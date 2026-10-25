@@ -1903,10 +1903,11 @@ def test_decision_quality_scope_hints_and_scrollable_filter_keep_refresh_visible
 
     assert "只篩下方項目列" in view.symbol_scope_hint.text()
     assert "不是單股分數" in view.symbol_scope_hint.text()
-    assert "現行作用範圍待產品確認" in view.symbol_scope_hint.text()
-    assert "最新一筆的決策品質分數" in view.min_score_scope_hint.text()
-    assert "未達時清空項目列" in view.min_score_scope_hint.text()
-    assert "作用範圍待產品確認" in view.min_score_scope_hint.text()
+    assert "最新整體分數" in view.symbol_scope_hint.text()
+    assert "篩選後最新覆盤的整體決策品質分數" in view.min_score_scope_hint.text()
+    assert "不是逐項分數" in view.min_score_scope_hint.text()
+    assert "只清空項目列" in view.min_score_scope_hint.text()
+    assert "分數卡保留原分數" in view.min_score_scope_hint.text()
     assert isinstance(view.filter_scroll_area, QScrollArea)
     assert outer_scroll.verticalScrollBar().maximum() > 0
     assert outer_scroll.verticalScrollBar().value() == 0

@@ -492,7 +492,13 @@ def test_r012_file_create_failure_rolls_back_identity_claim_and_same_hash_retrie
     def fail_link(source: Path, destination: Path, *, follow_symlinks: bool) -> None:
         raise PermissionError("injected exclusive create failure")
 
-    monkeypatch.setattr("data_module.result_artifact_store.os.link", fail_link)
+    def fail_rename(source: Path, destination: Path) -> None:
+        raise PermissionError("injected exclusive create failure")
+
+    if os.name == "nt":
+        monkeypatch.setattr("data_module.result_artifact_store.os.rename", fail_rename)
+    else:
+        monkeypatch.setattr("data_module.result_artifact_store.os.link", fail_link)
     with pytest.raises(ExecutionArtifactWriteError):
         save.save_execution(execution)
     assert tuple(store.artifact_root.glob("*.json")) == ()
@@ -1175,6 +1181,67 @@ def test_r012_root_and_file_symlinks_fail_closed(tmp_path: Path) -> None:
     with pytest.raises(ResultArtifactIntegrityError):
         store.publish_artifact(raw, metadata)
     assert tuple(outside.iterdir()) == ()
+
+
+def test_r012_store_layout_does_not_require_windows_final_path_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, _, save, queries = _stack(tmp_path)
+    runs_dir = store.database_path.parent
+    original_resolve = Path.resolve
+
+    def deny_final_path_for_runs(
+        path: Path, *, strict: bool = False
+    ) -> Path:
+        if path == runs_dir:
+            raise PermissionError("simulated Windows final-path access denial")
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", deny_final_path_for_runs)
+
+    execution = _execution("r012-final-path-access-denied")
+    assert save.save_execution(execution).index_status.value == "indexed"
+    assert queries.get(execution.result_id) is not None
+
+
+def test_r012_reparse_ancestor_fails_closed_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blocked_ancestor = tmp_path / "output"
+    runs_dir = blocked_ancestor / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    original_check = ResultArtifactStore._is_symlink_or_reparse
+
+    def mark_ancestor_as_reparse(path: Path) -> bool:
+        return path == blocked_ancestor or original_check(path)
+
+    monkeypatch.setattr(
+        ResultArtifactStore,
+        "_is_symlink_or_reparse",
+        staticmethod(mark_ancestor_as_reparse),
+    )
+    execution = _execution("r012-reparse-ancestor")
+    raw = encode_execution(execution)
+    payload_hash = str(_envelope(raw)["payload_hash"])
+    metadata = ArtifactIndexMetadata(
+        result_id=execution.result_id,
+        payload_hash=payload_hash,
+        artifact_sha256="sha256:" + hashlib.sha256(raw).hexdigest(),
+        schema_version="recommendation-execution.v1",
+        schema_revision=2,
+        label="x",
+        notes="",
+        persisted_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    with pytest.raises(ResultArtifactIntegrityError):
+        store.publish_artifact(raw, metadata)
+    assert not runs_dir.exists()
 
 
 def test_r012_symlinked_artifact_is_not_followed(tmp_path: Path) -> None:

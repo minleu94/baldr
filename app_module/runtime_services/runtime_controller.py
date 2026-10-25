@@ -41,7 +41,15 @@ class RuntimeController:
         self.health_service = RuntimeHealthService(self.store)
         self.event_stream_service = RuntimeEventStreamService(self.store)
         self.scheduled_operations_service = (
-            ScheduledOperationsStatusService(Path(scheduled_output_root))
+            ScheduledOperationsStatusService(
+                Path(scheduled_output_root),
+                formal_status_path=(
+                    Path(scheduled_output_root).parent
+                    / "formal_daily_publications"
+                    / "scheduler"
+                    / "latest_status.json"
+                ),
+            )
             if scheduled_output_root is not None
             else None
         )

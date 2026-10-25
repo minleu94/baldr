@@ -644,9 +644,13 @@ def _locate_legacy_recommendation_run(
         return None
     ind_sha = cast(
         str | None,
-        entry["independent_pre_migration_file_sha256"]
-        if entry.get("independent_pre_migration_file_sha256") is not None
-        else (entry["relocated_file_sha256"] if verified else None),
+        (
+            entry["independent_pre_migration_file_sha256"]
+            if entry.get("independent_pre_migration_file_sha256") is not None
+            else entry["relocated_file_sha256"]
+        )
+        if verified
+        else None,
     )
     return LocatedLegacyRecommendationRun(
         result_id=result_id,

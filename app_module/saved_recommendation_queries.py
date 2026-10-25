@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields, replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, TypedDict, cast
 
 from app_module.recommendation.persistence import RecommendationExecutionPersistence
 from app_module.recommendation.contracts import ExecutionStatus
 from app_module.recommendation.queries import RecommendationExecutionQueries
 from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.recommendation.queries import SQLiteLegacyRecommendationRawByteReader
 from app_module.recommendation.negative_evidence_projection import (
     LEGACY_NEGATIVE_EVIDENCE_EVENT_TYPE,
     NegativeEvidenceProjectionError,
@@ -23,6 +24,118 @@ from app_module.recommendation.negative_evidence_projection import (
 )
 from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
 from data_module.result_artifact_store import ResultArtifactStore
+from data_module.legacy_recommendation_run_locator import (
+    LegacyRecommendationCustodyEvidencePin,
+)
+
+
+# 這筆 2026-09-23 遷移推薦只接受既有 candidate 的逐筆身份證據；
+# 固定候選 bytes、大小及身份欄位，其他 legacy rows 一律維持原拒讀行為。
+class _LegacyRecommendationCustodySpec(TypedDict):
+    relative_path: Path
+    sha256: str
+    size_bytes: int
+    record_pointer: tuple[str, ...]
+
+
+_LEGACY_CUSTODY_EVIDENCE: dict[str, _LegacyRecommendationCustodySpec] = {
+    "scheduled_rec_20260909_051003": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-09/candidate_scheduled_rec_20260909_051003_1304.json"),
+        "sha256": "sha256:f1049632e3de07918787b94a339f56f35a56c235194c82e6e719a6e6eea0a6e9",
+        "size_bytes": 3705,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260910_051003": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-10/candidate_scheduled_rec_20260910_051003_1454.json"),
+        "sha256": "sha256:f17d42b41cf831a7d8dd1d31433b7fda3e89b750e4cdd1a064a6d2da721b12c4",
+        "size_bytes": 3739,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260911_051003": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-11/candidate_scheduled_rec_20260911_051003_1528.json"),
+        "sha256": "sha256:8c6b866b8d722b96b8befc4a11803ae18cff6df91bb7d21935e16385dcfd1db3",
+        "size_bytes": 3743,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260912_051003": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-12/candidate_scheduled_rec_20260912_051003_1528.json"),
+        "sha256": "sha256:2405c3e1a8b1c1be8716a6d6e528f91188288b915e4e877cd3ae2cbb1c4c17e5",
+        "size_bytes": 3743,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260913_051004": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-13/candidate_scheduled_rec_20260913_051004_1528.json"),
+        "sha256": "sha256:3a64d86196a59e273357cef154b0e61ebf1788209f97548ecf6e1cd4c556bd5c",
+        "size_bytes": 3743,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260914_051003": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-14/candidate_scheduled_rec_20260914_051003_1528.json"),
+        "sha256": "sha256:804c4ddd74790f17c2631f90953a4b45982e756b8d50dde5f4ae4a0dc575d681",
+        "size_bytes": 3742,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260917_051002": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-17/candidate_scheduled_rec_20260917_051002_1308.json"),
+        "sha256": "sha256:eb2b41a690d38743229adb44f730ab6da467a6f1560212f6961d37756b61ff82",
+        "size_bytes": 4313,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260918_051002": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-18/candidate_scheduled_rec_20260918_051002_1103.json"),
+        "sha256": "sha256:da9e05a8342097c71d1f896cdd22ccf7b7b8c5d353efca449bf92df19c7e9ab8",
+        "size_bytes": 4338,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260919_051002": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-19/candidate_scheduled_rec_20260919_051002_1103.json"),
+        "sha256": "sha256:964129574be2c83767387ea6374d4a4d9689164682b9915deba915fca9899993",
+        "size_bytes": 4338,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260920_051002": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-20/candidate_scheduled_rec_20260920_051002_1103.json"),
+        "sha256": "sha256:f8ae4e13d62fc96dfef6a21c5b0b58df1fc6b0c504d97623000605254ec61046",
+        "size_bytes": 4338,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260921_051002": {
+        "relative_path": Path("output/forward_position_thesis/2026-09-21/candidate_scheduled_rec_20260921_051002_1314.json"),
+        "sha256": "sha256:a84f13c2d503b4ab8766bf4e9ca922827df36ab6582d36db4524450d5b12a9b4",
+        "size_bytes": 4332,
+        "record_pointer": ("recommendation_source",),
+    },
+    "scheduled_rec_20260923_051003": {
+        "relative_path": Path(
+            "output/forward_position_thesis/2026-09-23/"
+            "candidate_scheduled_rec_20260923_051003_1101.json"
+        ),
+        "sha256": "sha256:3d5784c24ee92257dfa8b9a66955305fc6800c595df4cfc4b53f746b82706e47",
+        "size_bytes": 4337,
+        "record_pointer": ("recommendation_source",),
+    }
+}
+
+
+def _legacy_recommendation_custody_evidence(
+    repository_root: Path | None = None,
+) -> dict[str, LegacyRecommendationCustodyEvidencePin]:
+    """回傳逐筆固定的 pre-migration 身份證據；證據缺失時 locator 會 fail closed。"""
+
+    root = repository_root or Path(__file__).resolve().parents[1]
+    evidence: dict[str, LegacyRecommendationCustodyEvidencePin] = {}
+    for result_id, item in _LEGACY_CUSTODY_EVIDENCE.items():
+        evidence_path = (root / item["relative_path"]).resolve()
+        evidence[result_id] = LegacyRecommendationCustodyEvidencePin(
+            evidence_path=evidence_path,
+            evidence_sha256=str(item["sha256"]),
+            evidence_size_bytes=int(item["size_bytes"]),
+            record_pointer=tuple(item["record_pointer"]),
+            result_id_field="result_id",
+            origin_path_field="path",
+            original_sha256_field="file_sha256",
+        )
+    return evidence
 
 
 def recommendation_runs_dir(config: Any) -> Path:
@@ -46,7 +159,17 @@ def build_recommendation_execution_queries(
         artifact_root=runs_dir / "execution_artifacts",
         database_path=runs_dir / "recommendation_runs.db",
     )
-    return RecommendationExecutionQueries(RecommendationExecutionPersistence(store))
+    legacy_reader = SQLiteLegacyRecommendationRawByteReader(
+        runs_dir,
+        runs_dir / "recommendation_runs.db",
+        allowed_relocated_custody_tiers=("tier1_independent_pre_migration_file_sha256",),
+        relocated_custody_evidence=_legacy_recommendation_custody_evidence(),
+        allow_research_only_relocated=True,
+    )
+    return RecommendationExecutionQueries(
+        RecommendationExecutionPersistence(store),
+        legacy_reader=legacy_reader,
+    )
 
 
 def execution_result_config(execution: Any) -> dict[str, Any]:
@@ -141,18 +264,72 @@ def select_latest_saved_recommendation(
         # Query 的 legacy list 沿用 runs.created_at DESC / result_id ASC。
         return legacy[0], None
 
-    clocks: list[tuple[RecommendationExecutionReadModel, datetime]] = []
+    # 舊 runs.created_at 有些沒有 offset。保留「未知時區」語義，但可用 ±24
+    # 小時包住所有 civil timezone；只有時間區間完全分離時才跨 namespace 排序。
+    # 這不替舊值補時區，也不會在相鄰／重疊時段猜最新結果。
+    unknown_zone_bound = timedelta(hours=24)
+    clocks: list[
+        tuple[RecommendationExecutionReadModel, datetime, datetime]
+    ] = []
     for item in read_models:
         persisted_at = item.persisted_at
-        if (
-            not isinstance(persisted_at, datetime)
-            or persisted_at.tzinfo is None
-            or persisted_at.utcoffset() is None
-        ):
+        if isinstance(persisted_at, datetime):
+            try:
+                offset = persisted_at.utcoffset()
+            except (OverflowError, ValueError):
+                offset = None
+            if persisted_at.tzinfo is not None and offset is not None:
+                try:
+                    instant = persisted_at.astimezone(timezone.utc)
+                except (OverflowError, ValueError):
+                    return None, "recommendation_latest_selection_ambiguous_clock"
+                clocks.append((item, instant, instant))
+                continue
+            naive_clock = persisted_at.replace(tzinfo=None)
+        else:
+            legacy_read_model = item.legacy_result
+            created_at = getattr(legacy_read_model, "created_at", None)
+            if not isinstance(created_at, str) or not created_at.strip():
+                return None, "recommendation_latest_selection_ambiguous_clock"
+            try:
+                naive_clock = datetime.fromisoformat(created_at)
+            except ValueError:
+                return None, "recommendation_latest_selection_ambiguous_clock"
+            try:
+                offset = naive_clock.utcoffset()
+            except (OverflowError, ValueError):
+                offset = None
+            if naive_clock.tzinfo is not None and offset is not None:
+                try:
+                    instant = naive_clock.astimezone(timezone.utc)
+                except (OverflowError, ValueError):
+                    return None, "recommendation_latest_selection_ambiguous_clock"
+                clocks.append((item, instant, instant))
+                continue
+            naive_clock = naive_clock.replace(tzinfo=None)
+        try:
+            lower = (naive_clock - unknown_zone_bound).replace(tzinfo=timezone.utc)
+            upper = (naive_clock + unknown_zone_bound).replace(tzinfo=timezone.utc)
+        except (OverflowError, ValueError):
             return None, "recommendation_latest_selection_ambiguous_clock"
-        clocks.append((item, persisted_at.astimezone(timezone.utc)))
-    latest_time = max(timestamp for _item, timestamp in clocks)
-    tied = [item for item, timestamp in clocks if timestamp == latest_time]
+        clocks.append((item, lower, upper))
+
+    definitely_latest = [
+        item
+        for item, lower, _upper in clocks
+        if all(
+            lower > other_upper
+            for other, _other_lower, other_upper in clocks
+            if other is not item
+        )
+    ]
+    if len(definitely_latest) == 1:
+        return definitely_latest[0], None
+
+    if any(lower != upper for _item, lower, upper in clocks):
+        return None, "recommendation_latest_selection_ambiguous_clock"
+    latest_time = max(lower for _item, lower, _upper in clocks)
+    tied = [item for item, lower, _upper in clocks if lower == latest_time]
     return min(tied, key=lambda item: item.result_id), None
 
 
@@ -161,7 +338,11 @@ def saved_recommendation_capture_projection(
 ) -> dict[str, object]:
     """投影 coverage/status consumers 所需的已保存 capture 欄位。"""
 
-    result: dict[str, object] = {"result_id": read_model.result_id}
+    result: dict[str, object] = {
+        "result_id": read_model.result_id,
+        "integrity_basis": read_model.integrity_basis,
+        "source_diagnostics": tuple(read_model.diagnostics),
+    }
     execution = read_model.execution
     if execution is not None:
         result["created_at"] = (

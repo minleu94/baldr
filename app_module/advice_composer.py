@@ -268,7 +268,10 @@ class AdviceComposer:
         return RecommendationAdviceDTO(
             stock_code=recommendation.stock_code,
             advice_action=decision.action,
-            classification=self._classification(mode, decision.reasons),
+            classification=self._classification(
+                mode,
+                strategy_status=strategy_status,
+            ),
             why_reasons=tuple(self._split_reasons(recommendation.recommendation_reasons)),
             why_not_reasons=decision.reasons,
             risk_reasons=risk_reasons,
@@ -847,7 +850,11 @@ class AdviceComposer:
         return "FEASIBLE" if value is True else "NOT_FEASIBLE"
 
     @staticmethod
-    def _classification(mode: AdviceMode, reasons: tuple[str, ...]) -> AdviceClassification:
-        if mode is AdviceMode.PROFESSIONAL and "professional_candidate_research_only" in reasons:
+    def _classification(
+        mode: AdviceMode,
+        *,
+        strategy_status: str | None,
+    ) -> AdviceClassification:
+        if mode is AdviceMode.PROFESSIONAL and strategy_status != "promoted":
             return AdviceClassification.PROFESSIONAL_CANDIDATE
         return AdviceClassification.FORMAL_ADVICE

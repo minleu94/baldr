@@ -53,6 +53,31 @@ def _create_sidecar(path: Path, source_path: Path) -> None:
                         {
                             "last_trading_date": "2026-08-07",
                             "human_approval_required": True,
+                            "source_coverage": {
+                                "status": "degraded",
+                                "trading_day_count": 2,
+                                "observed_row_count": 3,
+                                "duplicate_symbol_rows": 0,
+                                "quality_findings": ["required_price_values_missing"],
+                                "incomplete_row_count": 1,
+                                "integrity_examples": [
+                                    {
+                                        "date": "2026-08-07",
+                                        "symbol": "2330",
+                                        "missing_fields": ["收盤價"],
+                                        "activity": {"成交股數": 1000, "成交筆數": 12},
+                                        "classification": "official_source_reports_missing_values",
+                                        "official_ohlc": {
+                                            "開盤價": "10",
+                                            "最高價": "10",
+                                            "最低價": "10",
+                                            "收盤價": "--",
+                                        },
+                                        "official_receipt_sha256": "sha256:" + ("b" * 64),
+                                    }
+                                ],
+                                "integrity_examples_truncated": False,
+                            },
                         }
                     ),
                     "2026-08-10 01:00:00",
@@ -86,6 +111,14 @@ def test_build_packet_is_read_only_and_excludes_failed_by_default(tmp_path: Path
     assert packet["formal_credit_authorized"] is False
     assert packet["write_performed"] is False
     assert packet["records"][0]["review"]["approval_status"] == APPROVAL_STATUS
+    markdown = render_markdown(packet)
+    assert "required_price_values_missing" in markdown
+    assert "2026-08-07` / `2330" in markdown
+    assert "收盤價" in markdown
+    assert "official_source_reports_missing_values" in markdown
+    assert "成交股數" in markdown
+    assert "sha256:" + ("b" * 64) in markdown
+    assert '"收盤價": "--"' in markdown
     assert sidecar_path.read_bytes() == before
 
 

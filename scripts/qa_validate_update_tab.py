@@ -25,8 +25,13 @@ from data_module.config import TWStockConfig
 from data_module.fundamental_schema import apply_fundamental_schema
 from app_module.update_service import UpdateService
 
-# 設置日誌
-log_dir = project_root / 'output' / 'qa' / 'update_tab'
+# 設置日誌；受限工作區可將證據導向隔離的可寫目錄，預設位置保持相容。
+log_dir = Path(
+    os.environ.get(
+        "BALDR_UPDATE_TAB_QA_LOG_DIR",
+        str(project_root / 'output' / 'qa' / 'update_tab'),
+    )
+)
 log_dir.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(

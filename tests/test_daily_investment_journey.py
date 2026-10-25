@@ -15,6 +15,7 @@ from app_module.daily_investment_journey import (
     _EvidenceRead,
     _headline,
     _industry_rotation_summary,
+    _next_action,
     _project_learning_receipt,
 )
 from app_module.decision_desk_dtos import (
@@ -1169,6 +1170,86 @@ def test_missing_database_is_not_created_by_daily_read_model(tmp_path: Path) -> 
     assert daily.evidence_event_count == 0
     assert any("evidence_db_missing" in item for item in daily.diagnostics)
     assert not missing_db.exists()
+
+
+@pytest.mark.parametrize(
+    ("status", "candidate", "evidence", "scheduled", "expected", "forbidden"),
+    [
+        (
+            "missing",
+            _CandidateRead(status="missing"),
+            _EvidenceRead(status="missing"),
+            ScheduledEvidenceStatus(),
+            "數據更新",
+            "EvidenceEvent table",
+        ),
+        (
+            "read_failure",
+            _CandidateRead(status="read_failure"),
+            _EvidenceRead(status="missing"),
+            ScheduledEvidenceStatus(),
+            "查看每日來源詳情",
+            "scope receipt",
+        ),
+        (
+            "stale",
+            _CandidateRead(status="stale"),
+            _EvidenceRead(status="ready"),
+            ScheduledEvidenceStatus(),
+            "舊結果只作歷史參考",
+            "stale 參考",
+        ),
+        (
+            "degraded",
+            _CandidateRead(status="missing"),
+            _EvidenceRead(status="ready"),
+            ScheduledEvidenceStatus(),
+            "明選來源與日期",
+            "run JSON",
+        ),
+        (
+            "degraded",
+            _CandidateRead(status="candidate"),
+            _EvidenceRead(status="waiting_for_time"),
+            ScheduledEvidenceStatus(),
+            "查看證據成熟度",
+            "run JSON",
+        ),
+        (
+            "degraded",
+            _CandidateRead(status="candidate"),
+            _EvidenceRead(status="ready", outcome_missing=1),
+            ScheduledEvidenceStatus(pipeline_overall_status="blocked"),
+            "核對阻擋原因",
+            "可驗證狀態",
+        ),
+        (
+            "degraded",
+            _CandidateRead(status="candidate"),
+            _EvidenceRead(status="missing"),
+            ScheduledEvidenceStatus(),
+            "歷史回放也不能替代自然成熟",
+            "沒有結果",
+        ),
+    ],
+)
+def test_next_action_routes_data_gaps_to_user_visible_read_only_steps(
+    status: str,
+    candidate: _CandidateRead,
+    evidence: _EvidenceRead,
+    scheduled: ScheduledEvidenceStatus,
+    expected: str,
+    forbidden: str,
+) -> None:
+    action = _next_action(
+        status=status,
+        candidate=candidate,
+        evidence=evidence,
+        scheduled_status=scheduled,
+    )
+
+    assert expected in action
+    assert forbidden not in action
 
 
 def test_learning_projection_preserves_active_candidate_distinction() -> None:

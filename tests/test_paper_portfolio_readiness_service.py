@@ -480,6 +480,32 @@ def test_status_boundary_or_snapshot_mismatch_degrades_readiness(tmp_path: Path)
     assert "paper_daily_status_boundary_violation:broker_execution" in result.blockers
 
 
+def test_stale_status_db_path_is_reconciled_only_by_exact_snapshot_identity(tmp_path: Path) -> None:
+    output_root = tmp_path / "output"
+    state_db = output_root / "paper_portfolio" / "paper_portfolio.sqlite"
+    status_path = output_root / "scheduled" / "paper_portfolio_daily" / "latest_status.json"
+    snapshot = _snapshot("paper-main-20260821", "2026-08-21", "1100.00")
+    PaperPortfolioSnapshotRepository(state_db).append(snapshot)
+    stale_state_path = tmp_path / "previous-drive" / "paper_portfolio.sqlite"
+    _status(status_path, snapshot=snapshot, state_db=stale_state_path)
+
+    accepted = PaperPortfolioReadinessService(output_root=output_root).inspect()
+
+    assert "paper_daily_status_state_db_path_mismatch" not in accepted.blockers
+    assert "paper_daily_status_state_db_path_rebound_by_snapshot_identity" in accepted.warnings
+    assert any(
+        item.startswith("paper_daily_status_state_db_path_mismatch_verified_by_snapshot_id_date_cash_total")
+        for item in accepted.diagnostics
+    )
+
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    payload["total_value"] = "1101.00"
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    rejected = PaperPortfolioReadinessService(output_root=output_root).inspect()
+
+    assert "paper_daily_status_state_db_path_mismatch" in rejected.blockers
+
+
 def test_skipped_non_trading_day_does_not_mismatch_last_trading_snapshot(tmp_path: Path) -> None:
     output_root = tmp_path / "output"
     state_db = output_root / "paper_portfolio" / "paper_portfolio.sqlite"

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
 from typing import Dict, Any, Optional, List, Callable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import json
 import os
@@ -40,6 +40,7 @@ from app_module.program_readiness_projection import (
     PROGRAM_READINESS_LANE_LABELS,
     PROGRAM_READINESS_LANE_ORDER,
     load_program_readiness,
+    project_program_readiness,
 )
 from data_module.source_acceptance_decision_registry import parse_source_acceptance_decisions
 from data_module.monthly_revenue_snapshot_selection import (
@@ -409,6 +410,7 @@ class UpdateView(QWidget):
         data_freshness_status_path: str | Path | None = None,
         tpex_status_path: str | Path | None = None,
         program_readiness_path: str | Path | None = None,
+        program_readiness_live_inspection: bool = False,
     ):
         """初始化數據更新視圖
 
@@ -479,6 +481,7 @@ class UpdateView(QWidget):
             if program_readiness_path is not None
             else None
         )
+        self.program_readiness_live_inspection = bool(program_readiness_live_inspection)
         self._p0_control_center_service = P0SourceControlCenterService()
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -1326,16 +1329,16 @@ class UpdateView(QWidget):
         p0_layout.addWidget(self.p0_source_control_table)
         self.p0_details_button = self._add_update_details(all_layout, p0_group, "官方來源候選與接受條件")
 
-        # 整體 readiness 面板：只投影明確指定的 program-readiness artifact，
-        # 讓使用者在同一頁看見各 lane 的真實 blocker 與下一步；不在 UI
-        # 重新計算 readiness，也不因顯示結果授予任何正式權限。
-        readiness_group = QGroupBox("整體程式 readiness（唯讀）")
+        # 整體 readiness 面板：有指定整體 artifact 時只讀該檔；正式主程式
+        # 未指定時，在背景唯讀盤點各 lane。P0 lane 使用同一頁已設定的 audit、
+        # license 與 decision artifact；不在 UI 掃描來源或授予正式權限。
+        readiness_group = QGroupBox("整體 Gate 與缺口（唯讀）")
         _set_update_group_tone(readiness_group)
         readiness_layout = QVBoxLayout(readiness_group)
         readiness_layout.setSpacing(8)
         readiness_layout.setContentsMargins(12, 12, 12, 12)
         self.program_readiness_summary_label = QLabel(
-            "尚未檢查整體程式 readiness；此區只讀取明確指定的 readiness artifact。"
+            "尚未盤點七個產品區域；此區只讀取明確指定的盤點資料。"
         )
         self.program_readiness_summary_label.setWordWrap(True)
         self.program_readiness_summary_label.setTextFormat(Qt.PlainText)
@@ -1347,7 +1350,7 @@ class UpdateView(QWidget):
         readiness_layout.addWidget(self.program_readiness_summary_label)
         self.program_readiness_table = QTableWidget(0, 4)
         self.program_readiness_table.setHorizontalHeaderLabels(
-            ("Lane", "狀態", "阻擋原因", "下一步")
+            ("產品區域", "狀態", "缺口／阻擋原因", "下一步")
         )
         self.program_readiness_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.program_readiness_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1366,8 +1369,8 @@ class UpdateView(QWidget):
         ensure_visible_rows(self.program_readiness_table, 5)
         self.program_readiness_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.program_readiness_table.setToolTip(
-            "固定顯示七個 readiness lane；缺少的 lane 會標示未提供。只讀取明確 readiness artifact；"
-            "lane 狀態與 blocker 不會在 UI 被自動解除。"
+            "固定顯示七個產品區域；未指定整體盤點資料時即時唯讀檢查。P0 只讀取明確設定的 audit、"
+            "license 與 owner decision 檔，不會由 UI 發出網路請求；lane 狀態與 blocker 不會在 UI 自動解除。"
         )
         readiness_layout.addWidget(self.program_readiness_table)
         self.readiness_details_button = self._add_update_details(all_layout, readiness_group, "使用資格與完整阻擋原因")
@@ -3000,22 +3003,41 @@ class UpdateView(QWidget):
         )
 
     def _get_program_readiness(self) -> Dict[str, Any]:
-        """讀取明確指定的整體 readiness artifact；不掃描或重新計算。"""
+        """優先讀指定報告；正式主程式未指定時做背景唯讀即時盤點。"""
 
         try:
-            return load_program_readiness(
-                self.program_readiness_path,
-                freshness_reference_paths=(
-                    tuple(
-                        path
-                        for path in (
-                            self.data_update_status_path,
-                            self.data_freshness_status_path,
-                        )
-                        if path is not None
-                    )
-                ),
+            freshness_paths = tuple(
+                path
+                for path in (
+                    self.data_update_status_path,
+                    self.data_freshness_status_path,
+                )
+                if path is not None
             )
+            if self.program_readiness_path is not None:
+                return load_program_readiness(
+                    self.program_readiness_path,
+                    freshness_reference_paths=freshness_paths,
+                )
+            if not self.program_readiness_live_inspection:
+                return load_program_readiness(None)
+
+            from scripts.inspect_program_readiness import inspect_program_readiness
+
+            config = self.update_service.config
+            data_root = getattr(config, "data_root", None)
+            output_root = getattr(config, "output_root", None)
+            if data_root is None or output_root is None:
+                return load_program_readiness(None)
+            report = inspect_program_readiness(
+                data_root=data_root,
+                output_root=output_root,
+                p0_audit_path=self.p0_source_audit_path,
+                p0_license_evidence_path=self.p0_license_evidence_path,
+                p0_decision_path=self.p0_source_decision_path,
+                training_as_of=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            )
+            return project_program_readiness(report)
         except Exception as exc:
             # loader 已將常見 malformed 狀態轉成 fail-closed payload；這層
             # 仍保留最後防線，避免一個狀態 artifact 讓資料頁整體消失。
@@ -3394,6 +3416,7 @@ class UpdateView(QWidget):
         value = payload if isinstance(payload, dict) else {}
         status = str(value.get("status") or "unknown").strip().lower() or "unknown"
         label.setText(format_program_readiness_summary(value))
+        label.setToolTip(f"整體狀態代碼：{status}")
         label.setTextFormat(Qt.PlainText)
         label.setStyleSheet(
             f"color: {self._timeline_status_color(status)}; font-size: 11px;"
@@ -3448,11 +3471,11 @@ class UpdateView(QWidget):
             if progress_text:
                 next_text = f"目前：{progress_text}\n下一步：{next_text}"
             if not lane_supplied or raw_lane.get("external_input_required") is True:
-                next_text = f"{next_text}（需外部輸入）"
+                next_text = f"{next_text}（需補資料、實測或人工審查）"
             cells = (
                 PROGRAM_READINESS_LANE_LABELS.get(lane, lane),
-                f"{format_status_token(raw_status)}（{raw_status}）",
-                format_program_readiness_blockers(blockers),
+                format_status_token(raw_status),
+                format_program_readiness_blockers(blockers, include_raw=False),
                 next_text,
             )
             row_index = table.rowCount()
@@ -3462,6 +3485,10 @@ class UpdateView(QWidget):
                 item.setToolTip(cell)
                 if column_index == 1:
                     item.setForeground(QColor(self._timeline_status_color(raw_status)))
+                    item.setToolTip(f"狀態代碼：{raw_status}")
+                elif column_index == 2:
+                    raw_blockers = "\n".join(blockers) or "無"
+                    item.setToolTip(f"完整阻擋原因代碼（供追查）：\n{raw_blockers}")
                 table.setItem(row_index, column_index, item)
         table.resizeRowsToContents()
 
@@ -3610,7 +3637,12 @@ class UpdateView(QWidget):
             fallback_display = "未提供"
         pit_status = str(row.get("pit_status") or "未提供")
         availability = str(row.get("availability") or row.get("audit_status") or "未提供")
-        pit_display = f"{pit_status}\n可得性：{availability}"
+        pit_status_display = (
+            "來源日期早於查詢日"
+            if pit_status == "source_date_mismatch"
+            else pit_status
+        )
+        pit_display = f"{pit_status_display}\n可得性：{format_status_token(availability)}"
         timestamp_kind = str(row.get("timestamp_kind") or "")
         probe_outcome = str(row.get("probe_outcome") or "")
         if timestamp_kind:
@@ -3629,6 +3661,22 @@ class UpdateView(QWidget):
             f"accepted {accepted} / observed {observed}\n"
             f"blocked {blocked}"
         )
+        if availability == "stale_fallback_observed":
+            fallback_observed = cls._p0_count_text(
+                row.get("fallback_raw_row_count")
+            )
+            fallback_accepted = cls._p0_count_text(
+                row.get("fallback_accepted_row_count")
+            )
+            fallback_dates = row.get("fallback_observation_dates") or []
+            fallback_date_text = ", ".join(
+                str(item) for item in fallback_dates if str(item).strip()
+            ) or "日期未提供"
+            coverage_display += (
+                f"\n較早日 fallback：accepted {fallback_accepted} / "
+                f"observed {fallback_observed}（{fallback_date_text}）"
+                "；不可當作查詢日資料"
+            )
         license_display = str(row.get("license_status") or "未提供")
         license_urls = row.get("license_evidence_urls") or []
         if license_urls:

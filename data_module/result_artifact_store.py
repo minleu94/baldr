@@ -141,6 +141,19 @@ class ResultArtifactStore:
         reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
         return bool(attributes & reparse_flag)
 
+    @classmethod
+    def _has_reparse_component(cls, path: Path) -> bool:
+        """逐層檢查絕對路徑，不依賴 Windows final-path resolve 權限。"""
+
+        absolute = Path(os.path.abspath(path))
+        components = (*reversed(absolute.parents), absolute)
+        for component in components:
+            if component == component.parent:
+                continue
+            if cls._is_symlink_or_reparse(component):
+                return True
+        return False
+
     @staticmethod
     def artifact_name_for(result_id: str) -> str:
         """以 opaque ID 的 UTF-8 SHA-256 做固定小寫檔名，避免路徑語意。"""
@@ -156,7 +169,9 @@ class ResultArtifactStore:
     def _ensure_layout(self, *, create_artifact_root: bool = False) -> bool:
         self._validate_config(integrity_error=True)
         database_parent = self.database_path.parent
-        if self._is_symlink_or_reparse(database_parent) or self._is_symlink_or_reparse(self.artifact_root):
+        if self._has_reparse_component(database_parent) or self._has_reparse_component(
+            self.artifact_root
+        ):
             raise ResultArtifactIntegrityError("database/artifact root 不可為 symlink")
         if self._is_symlink_or_reparse(self.database_path):
             raise ResultArtifactIntegrityError("database path 不可為 symlink")
@@ -168,16 +183,13 @@ class ResultArtifactStore:
                 raise ResultArtifactPublishError("無法建立 artifact store 目錄") from exc
         elif not database_parent.exists():
             return False
-        if self._is_symlink_or_reparse(database_parent) or self._is_symlink_or_reparse(self.artifact_root):
+        if self._has_reparse_component(database_parent) or self._has_reparse_component(
+            self.artifact_root
+        ):
             raise ResultArtifactIntegrityError("database/artifact root 不可為 symlink")
         if self._is_symlink_or_reparse(self.database_path):
             raise ResultArtifactIntegrityError("database path 不可為 symlink")
-        try:
-            resolved_parent = database_parent.resolve(strict=True)
-            resolved_root_parent = self.artifact_root.parent.resolve(strict=True)
-        except OSError as exc:
-            raise ResultArtifactIntegrityError("artifact store root 無法解析") from exc
-        if resolved_root_parent != resolved_parent:
+        if self.artifact_root.parent != database_parent:
             raise ResultArtifactIntegrityError(
                 "artifact root 必須是 SQLite database 目錄的直接子目錄"
             )
@@ -189,11 +201,8 @@ class ResultArtifactStore:
         path = self.artifact_root / name
         if not self.artifact_root.exists():
             return path
-        try:
-            if path.parent.resolve(strict=True) != self.artifact_root.resolve(strict=True):
-                raise ResultArtifactIntegrityError("artifact path 超出設定 root")
-        except OSError as exc:
-            raise ResultArtifactIntegrityError("artifact path root 無法解析") from exc
+        if path.parent != self.artifact_root or self._has_reparse_component(path.parent):
+            raise ResultArtifactIntegrityError("artifact path 超出設定 root")
         if self._is_symlink_or_reparse(path):
             raise ResultArtifactIntegrityError("artifact file 不可為 symlink")
         return path
@@ -483,7 +492,7 @@ class ResultArtifactStore:
                 )
             if os.name == "nt":
                 # Keep the checked root directory object open without delete sharing
-                # for path-based temp/create-only-link operations.
+                # for path-based temporary-file publication.
                 root_handle = self._windows_open_no_follow(self.artifact_root, directory=True)
             descriptor, temporary = tempfile.mkstemp(
                 prefix=".result-artifact-", suffix=".tmp", dir=self.artifact_root
@@ -494,7 +503,13 @@ class ResultArtifactStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             try:
-                os.link(temporary_path, path, follow_symlinks=False)
+                if os.name == "nt":
+                    # Windows rename is atomic within this directory and refuses
+                    # an existing destination; unlike hard-link creation, it does
+                    # not require the hard-link capability blocked in some hosts.
+                    os.rename(temporary_path, path)
+                else:
+                    os.link(temporary_path, path, follow_symlinks=False)
             except FileExistsError:
                 if self._is_symlink_or_reparse(path):
                     raise ResultArtifactIntegrityError("artifact file 不可為 symlink")

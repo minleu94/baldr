@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date
+import tempfile
+from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from app_module.evidence_event_dtos import (
     EvidenceDataQuality,
@@ -19,8 +21,11 @@ from app_module.pre_v2_readiness_service import (
     STATUS_ACTION_REQUIRED,
     STATUS_READY,
     STATUS_WAITING_FOR_TIME,
+    _latest_recommendation_payload,
     render_pre_v2_readiness_markdown,
 )
+from app_module.pre_v2_readiness_service import _inspect_source_gaps_read_only
+from app_module.recommendation.persistence import ExecutionArtifactIntegrityError
 from data_module.config import TWStockConfig
 from scripts.inspect_program_readiness import (
     _lane,
@@ -445,6 +450,56 @@ def test_pre_v2_readiness_flags_source_and_report_gaps_without_creating_missing_
     assert items["source_gaps"].status == STATUS_ACTION_REQUIRED
     assert items["read_only_agent_report_sample"].status == STATUS_ACTION_REQUIRED
     assert not missing_db.exists()
+
+
+def test_recommendation_query_integrity_failure_keeps_reason_and_redacts_root(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+
+    class BrokenQueries:
+        def list(self):
+            raise ExecutionArtifactIntegrityError(
+                f"legacy data_path 超出 runs 目錄範圍: {tmp_path / 'private' / 'run.json'}"
+            )
+
+    result, diagnostic = _latest_recommendation_payload(config, queries=BrokenQueries())
+
+    assert result is None
+    assert diagnostic is not None
+    assert "recommendation_query_failure:ExecutionArtifactIntegrityError" in diagnostic
+    assert "legacy data_path 超出 runs 目錄範圍" in diagnostic
+    assert str(tmp_path) not in diagnostic
+
+
+def test_ambiguous_legacy_clock_reports_saved_history_without_claiming_missing(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    canonical = SimpleNamespace(
+        execution=object(),
+        legacy_result=None,
+        persisted_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        result_id="canonical-saved-result",
+    )
+    legacy = SimpleNamespace(
+        execution=None,
+        legacy_result=SimpleNamespace(result_id="legacy-saved-result"),
+        persisted_at=None,
+        result_id="legacy-saved-result",
+    )
+    queries = SimpleNamespace(list=lambda: (canonical, legacy))
+
+    source_gaps = _inspect_source_gaps_read_only(
+        config,
+        evidence_db_path=config.db_file,
+        decision_date=None,
+        queries=queries,
+    )
+
+    assert source_gaps["recommendation_persisted_available"] is True
+    assert "recommendation_persisted_missing" not in source_gaps["blocking_gaps"]
+    assert "recommendation_latest_selection_ambiguous_clock" in source_gaps["warnings"]
 
 
 def test_pre_v2_readiness_excludes_pending_weekly_sidecar_from_gate(
@@ -973,45 +1028,46 @@ def test_program_readiness_markdown_exposes_order_and_performance_boundary(tmp_p
 
 
 def test_program_readiness_projects_performance_owner_packet(tmp_path: Path) -> None:
-    packet_path = tmp_path / "performance-owner-packet.json"
-    packet_path.write_text(
-        json.dumps(
-            {
-                "schema_version": "performance-canary-owner-review.v1",
-                "packet_status": "needs_named_owner_reviewer",
-                "owner_role": "",
-                "reviewer_role": "",
-                "owner_reviewer_required": True,
-                "formal_oos_allowed": False,
-                "broker_order_allowed": False,
-                "production_worker_enabled": False,
-                "production_fetch_pool_enabled": False,
-                "automatic_delete_allowed": False,
-                "candidate_only": True,
-                "write_performed": False,
-                "destructive_action_performed": False,
-                "review_records": [
-                    {"lane": "technical_production_canary", "decision": "pending"},
-                    {"lane": "technical_single_writer_staging", "decision": "observed_staging_only"},
-                    {"lane": "direct_ooc_storage", "decision": "pending_capacity_owner_review"},
-                    {"lane": "broker_bounded_fetch", "decision": "pending_production_pool_review"},
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    with tempfile.TemporaryDirectory(prefix="baldr-performance-packet-") as temp_dir:
+        packet_path = Path(temp_dir) / "performance-owner-packet.json"
+        packet_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "performance-canary-owner-review.v1",
+                    "packet_status": "needs_named_owner_reviewer",
+                    "owner_role": "",
+                    "reviewer_role": "",
+                    "owner_reviewer_required": True,
+                    "formal_oos_allowed": False,
+                    "broker_order_allowed": False,
+                    "production_worker_enabled": False,
+                    "production_fetch_pool_enabled": False,
+                    "automatic_delete_allowed": False,
+                    "candidate_only": True,
+                    "write_performed": False,
+                    "destructive_action_performed": False,
+                    "review_records": [
+                        {"lane": "technical_production_canary", "decision": "pending"},
+                        {"lane": "technical_single_writer_staging", "decision": "observed_staging_only"},
+                        {"lane": "direct_ooc_storage", "decision": "pending_capacity_owner_review"},
+                        {"lane": "broker_bounded_fetch", "decision": "pending_production_pool_review"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
-    report = inspect_program_readiness(
-        data_root=tmp_path / "data",
-        output_root=tmp_path / "output",
-        performance_owner_packet_path=packet_path,
-    )
+        report = inspect_program_readiness(
+            data_root=tmp_path / "data",
+            output_root=tmp_path / "output",
+            performance_owner_packet_path=packet_path,
+        )
 
-    performance = report["workstreams"]["performance"]
-    assert "performance_owner_packet_invalid" not in performance["blockers"]
-    assert performance["details"]["owner_packet"]["status"] == "needs_named_owner_reviewer"
-    assert performance["details"]["owner_packet"]["review_lane_count"] == 4
-    assert performance["details"]["owner_packet"]["pending_lane_count"] == 3
+        performance = report["workstreams"]["performance"]
+        assert "performance_owner_packet_invalid" not in performance["blockers"]
+        assert performance["details"]["owner_packet"]["status"] == "needs_named_owner_reviewer"
+        assert performance["details"]["owner_packet"]["review_lane_count"] == 4
+        assert performance["details"]["owner_packet"]["pending_lane_count"] == 3
 
 
 def test_program_readiness_accepts_real_staging_process_pool_worker_contract(

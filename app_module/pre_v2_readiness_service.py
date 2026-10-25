@@ -7,7 +7,7 @@ from pathlib import Path
 import json
 import re
 import sqlite3
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from app_module.agent_evidence_access_service import (
     AgentEvidenceAccessService,
@@ -213,6 +213,11 @@ class PreV2ReadinessService:
             "human_approval_required": True,
             "approved_projection_configured": self.approved_weekly_history_projection_path is not None,
             "pending_collection_periods": [],
+            "pending_collection_reviewability": {
+                "unreviewable_count": 0,
+                "source_unavailable_count": 0,
+                "coverage_missing_count": 0,
+            },
         }
         if self.approved_weekly_history_projection_path is None:
             diagnostics.append("approved_weekly_history_projection_not_configured")
@@ -261,14 +266,23 @@ class PreV2ReadinessService:
         try:
             with closing(_connect_read_only(sidecar_path)) as conn:
                 if _table_exists(conn, "evidence_weekly_collections"):
+                    columns = {
+                        str(row[1])
+                        for row in conn.execute(
+                            "PRAGMA table_info(evidence_weekly_collections)"
+                        ).fetchall()
+                    }
+                    optional_columns = tuple(
+                        name
+                        for name in ("source_path", "payload_json")
+                        if name in columns
+                    )
+                    selected_columns = ("period_start", "period_end", *optional_columns)
                     rows = conn.execute(
-                        """
-                        SELECT period_start, period_end
-                        FROM evidence_weekly_collections
-                        WHERE status IN ('pending_human_review', 'observed_automatic')
-                          AND error_type = ''
-                          AND source_hash LIKE 'sha256:%'
-                        """
+                        f"SELECT {', '.join(selected_columns)} "
+                        "FROM evidence_weekly_collections "
+                        "WHERE status IN ('pending_human_review', 'observed_automatic') "
+                        "AND error_type = '' AND source_hash LIKE 'sha256:%'"
                     ).fetchall()
                     for row in rows:
                         evidence["pending_collection_periods"].append(
@@ -278,6 +292,33 @@ class PreV2ReadinessService:
                                 "evidence_source": "pending_human_review_sidecar",
                             }
                         )
+                        source_path = str(row["source_path"] or "").strip() if "source_path" in optional_columns else ""
+                        payload: Mapping[str, Any] | None = None
+                        if "payload_json" in optional_columns:
+                            try:
+                                parsed_payload = json.loads(str(row["payload_json"] or "{}"))
+                            except (TypeError, json.JSONDecodeError):
+                                parsed_payload = None
+                            if isinstance(parsed_payload, Mapping):
+                                payload = parsed_payload
+                        payload_collection = payload.get("collection_payload") if payload is not None else None
+                        if isinstance(payload_collection, Mapping):
+                            payload = payload_collection
+                        has_coverage = payload is not None and isinstance(
+                            payload.get("source_coverage"), Mapping
+                        )
+                        try:
+                            source_unavailable = bool(source_path) and not Path(source_path).exists()
+                        except OSError:
+                            source_unavailable = bool(source_path)
+                        coverage_missing = payload is not None and not has_coverage
+                        if source_unavailable or coverage_missing:
+                            reviewability = evidence["pending_collection_reviewability"]
+                            reviewability["unreviewable_count"] += 1
+                            if source_unavailable:
+                                reviewability["source_unavailable_count"] += 1
+                            if coverage_missing:
+                                reviewability["coverage_missing_count"] += 1
         except FileNotFoundError:
             check_read_cancelled()
             diagnostics.append("weekly_collection_sidecar_not_observed")
@@ -298,7 +339,12 @@ class PreV2ReadinessService:
         ]
         pending_periods = evidence["pending_collection_periods"]
         next_actions: tuple[str, ...]
-        if pending_periods:
+        reviewability = evidence["pending_collection_reviewability"]
+        if pending_periods and reviewability["unreviewable_count"] >= len(pending_periods):
+            next_actions = (
+                "舊週收集記錄缺少可核對的來源或 coverage；需以目前資料來源重新收集。Owner 核准無法補出缺少的證據。",
+            )
+        elif pending_periods:
             next_actions = (
                 "由 owner/reviewer 審核 pending_human_review 週期，並寫入具名 approved-weekly-history projection；未核准前不計 Gate credit。",
             )
@@ -549,7 +595,9 @@ def _inspect_source_gaps_read_only(
         effective_decision_date,
         today=today,
     )
-    recommendation_available = recommendation is not None
+    recommendation_available = recommendation is not None or (
+        recommendation_diagnostic == "recommendation_latest_selection_ambiguous_clock"
+    )
     why_not_ready = _has_payload((recommendation or {}).get("why_not_payload_json"))
     liquidity_ready = _has_payload((recommendation or {}).get("liquidity_gate_payload_json"))
     screening_matrix_ready = _has_payload((recommendation or {}).get("screening_matrix_json"))
@@ -732,7 +780,13 @@ def _latest_recommendation_payload(
             return None, None
         return saved_recommendation_capture_projection(read_model), None
     except (ExecutionPersistenceError, ValueError) as exc:
-        return None, f"recommendation_query_failure:{type(exc).__name__}"
+        reason = " ".join(str(exc).split())
+        # 保留可操作的 integrity 原因，但不讓資料根絕對路徑流入 UI／readiness。
+        reason = re.sub(r"(?i)\b[A-Z]:\\[^,;|()]+", "<path>", reason)[:200]
+        diagnostic = f"recommendation_query_failure:{type(exc).__name__}"
+        if reason:
+            diagnostic = f"{diagnostic}:{reason}"
+        return None, diagnostic
 
 
 def _latest_decision_desk_snapshot(

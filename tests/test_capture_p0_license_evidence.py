@@ -9,6 +9,27 @@ import pytest
 import scripts.capture_p0_license_evidence as capture
 
 
+def test_visible_terms_fingerprint_ignores_dynamic_scripts_without_saving_text() -> None:
+    first = (
+        b"<html><body>Terms &amp; attribution</body><script>challenge='first'</script></html>"
+    )
+    second = (
+        b"<html><body>Terms &amp; attribution</body><script>challenge='second'</script></html>"
+    )
+
+    first_fingerprint = capture._license_content_fingerprint(
+        first, {"Content-Type": "text/html; charset=utf-8"},
+        fingerprint_mode="html_visible_text_nfc.v1",
+    )
+    second_fingerprint = capture._license_content_fingerprint(
+        second, {"Content-Type": "text/html; charset=utf-8"},
+        fingerprint_mode="html_visible_text_nfc.v1",
+    )
+
+    assert first_fingerprint == second_fingerprint
+    assert first_fingerprint[1] == len(b"Terms & attribution")
+
+
 class _FakeHeaders:
     def __init__(self) -> None:
         self._values = {

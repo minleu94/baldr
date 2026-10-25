@@ -1,8 +1,8 @@
-"""受控建立 Paper Portfolio 的 frozen-constituent Equal Weight benchmark。
+"""受控建立或續接 Paper Portfolio 的 frozen-constituent Equal Weight benchmark。
 
 這個 service 將 benchmark 建置的讀取／驗證／append 邊界放在應用層，讓
 CLI 與 Qt 走同一套契約。預覽永遠 query-only；只有明確 ``confirm=True``
-才會建立新的 append-only ledger，且既有 output 絕不覆寫。
+才會建立新 ledger 或只追加已核對完整重算後缺少的尾段；既有列絕不覆寫。
 """
 
 from __future__ import annotations
@@ -112,6 +112,31 @@ class PaperEqualWeightBenchmarkPreview:
         }
 
 
+@dataclass(frozen=True)
+class PaperEqualWeightBenchmarkUpdatePreview:
+    """既有 benchmark 的可續接預覽；只包含待追加的嚴格 suffix。"""
+
+    build_preview: PaperEqualWeightBenchmarkPreview
+    existing_entries: tuple[EqualWeightBenchmarkEntry, ...]
+    append_entries: tuple[EqualWeightBenchmarkEntry, ...]
+
+    @property
+    def existing_count(self) -> int:
+        return len(self.existing_entries)
+
+    @property
+    def append_count(self) -> int:
+        return len(self.append_entries)
+
+    @property
+    def append_first_date(self) -> str | None:
+        return self.append_entries[0].decision_date if self.append_entries else None
+
+    @property
+    def append_latest_date(self) -> str | None:
+        return self.append_entries[-1].decision_date if self.append_entries else None
+
+
 class PaperEqualWeightBenchmarkBuilder:
     """建立並在確認後保存 Equal Weight benchmark。"""
 
@@ -197,6 +222,93 @@ class PaperEqualWeightBenchmarkBuilder:
         self.write_new_ledger(output, current.entries, route=self.route,
                               personal_paths=self.personal_paths, portfolio_id=self.portfolio_id,
                               benchmark_id=self.benchmark_id)
+        return output
+
+    def preview_update(
+        self,
+        *,
+        baseline_path: str | Path,
+        state_db_path: str | Path,
+        market_db_path: str | Path,
+        output_ledger_path: str | Path,
+    ) -> PaperEqualWeightBenchmarkUpdatePreview:
+        """核對既有列是完整重算結果的精確前綴，再預覽缺少日期。"""
+
+        build = self.preview(
+            baseline_path=baseline_path,
+            state_db_path=state_db_path,
+            market_db_path=market_db_path,
+            output_ledger_path=output_ledger_path,
+        )
+        output_exists = self.custody.exists(build.output_ledger_path)
+        existing: tuple[EqualWeightBenchmarkEntry, ...] = ()
+        if output_exists:
+            ledger = EqualWeightBenchmarkLedger(
+                build.output_ledger_path,
+                route=self.route,
+                personal_paths=self.personal_paths,
+                portfolio_id=self.portfolio_id,
+                benchmark_id=self.benchmark_id,
+                read_only=True,
+            )
+            existing = ledger.list(self.benchmark_id)
+        if len(existing) > len(build.entries) or build.entries[: len(existing)] != existing:
+            raise ValueError(
+                "existing benchmark is not an exact prefix of the current causal rebuild"
+            )
+        return PaperEqualWeightBenchmarkUpdatePreview(
+            build_preview=build,
+            existing_entries=existing,
+            append_entries=build.entries[len(existing) :],
+        )
+
+    def commit_update(
+        self,
+        preview: PaperEqualWeightBenchmarkUpdatePreview,
+        *,
+        confirm: bool = False,
+    ) -> Path:
+        """重新驗證 inputs 與既有前綴後，只追加缺少的 benchmark 日期。"""
+
+        if not confirm:
+            raise ValueError("paper benchmark update requires explicit confirm=True")
+        build = preview.build_preview
+        if build.portfolio_id != self.portfolio_id or build.benchmark_id != self.benchmark_id:
+            raise ValueError("benchmark update preview belongs to a different builder identity")
+        current = self.preview_update(
+            baseline_path=build.baseline_path,
+            state_db_path=build.state_db_path,
+            market_db_path=build.market_db_path,
+            output_ledger_path=build.output_ledger_path,
+        )
+        if current != preview:
+            raise ValueError("benchmark inputs or existing prefix changed after preview")
+        output = build.output_ledger_path
+        if not self.custody.exists(output):
+            return self.commit(build, confirm=True)
+        if not current.append_entries:
+            return output
+        require_paper_writer(self.route)
+
+        ledger = EqualWeightBenchmarkLedger(
+            output,
+            route=self.route,
+            personal_paths=self.personal_paths,
+            portfolio_id=self.portfolio_id,
+            benchmark_id=self.benchmark_id,
+        )
+        for entry in current.append_entries:
+            ledger.append(entry)
+        saved = EqualWeightBenchmarkLedger(
+            output,
+            route=self.route,
+            personal_paths=self.personal_paths,
+            portfolio_id=self.portfolio_id,
+            benchmark_id=self.benchmark_id,
+            read_only=True,
+        ).list(self.benchmark_id)
+        if saved != build.entries:
+            raise RuntimeError("appended benchmark readback differs from the verified rebuild")
         return output
 
     def build_entries(
@@ -482,6 +594,7 @@ __all__ = [
     "PAPER_EQUAL_WEIGHT_BENCHMARK_BUILD_SCHEMA_VERSION",
     "PaperEqualWeightBenchmarkBuilder",
     "PaperEqualWeightBenchmarkPreview",
+    "PaperEqualWeightBenchmarkUpdatePreview",
 ]
 
 

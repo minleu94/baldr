@@ -13,6 +13,9 @@ from app_module.dtos.runtime_dtos import (
 )
 from app_module.runtime_services.event_time import parse_runtime_event_timestamp
 from app_module.decision_capture_status_reader import read_decision_capture_status
+from app_module.runtime_services.formal_input_status_reader import (
+    read_last_non_skipped_attempt,
+)
 
 
 _CORE_JOBS: tuple[tuple[str, str], ...] = (
@@ -23,13 +26,14 @@ _CORE_JOBS: tuple[tuple[str, str], ...] = (
     ("decision_evidence_capture", "決策證據擷取"),
     ("paper_portfolio_daily", "Paper Portfolio"),
 )
+_FORMAL_JOB = ("formal_input_producer", "Formal 輸入產生器")
 _SAFETY_JOBS: tuple[tuple[str, str], ...] = (
     ("official_market_events", "官方市場事件"),
     ("ml_promotion_evidence", "ML Promotion 證據"),
     ("ml_allocation_copilot", "ML Shadow Co-pilot"),
     ("ml_direct_chain_maintenance", "ML Direct/OOC 維護"),
 )
-_JOB_LABELS = dict(_CORE_JOBS + _SAFETY_JOBS)
+_JOB_LABELS = dict(_CORE_JOBS + (_FORMAL_JOB,) + _SAFETY_JOBS)
 _SUCCESS_STATUSES = frozenset({"passed", "published", "completed"})
 
 
@@ -40,16 +44,19 @@ class ScheduledOperationsStatusService:
         self,
         scheduled_root: Path,
         *,
+        formal_status_path: Path | None = None,
         now_provider: Callable[[], datetime] | None = None,
         freshness_window: timedelta = timedelta(hours=36),
     ) -> None:
         self._scheduled_root = Path(scheduled_root)
+        self._formal_status_path = Path(formal_status_path) if formal_status_path else None
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self._freshness_window = freshness_window
 
     def get_snapshot(self) -> ScheduledOperationsSnapshotDTO:
         now = _as_utc(self._now_provider())
-        known_job_ids = tuple(job_id for job_id, _label in (_CORE_JOBS + _SAFETY_JOBS))
+        job_specs = self._job_specs()
+        known_job_ids = tuple(job_id for job_id, _label in job_specs)
         discovered_job_ids = self._discover_job_ids()
         job_ids = known_job_ids + tuple(
             job_id for job_id in discovered_job_ids if job_id not in known_job_ids
@@ -83,16 +90,16 @@ class ScheduledOperationsStatusService:
                 state="attention" if _lane_for_job(job_id) == "core" else "unavailable",
                 updated_at=None,
                 lane=_lane_for_job(job_id),
-                source_path=str(self._scheduled_root / job_id / "latest_status.json"),
+                source_path=str(self._status_path(job_id)),
                 read_state="service_error",
                 diagnostic=diagnostic,
             )
-            for job_id, label in (_CORE_JOBS + _SAFETY_JOBS)
+            for job_id, label in self._job_specs()
         )
         return ScheduledOperationsSnapshotDTO(
             overall_state="attention",
             core_ready_count=0,
-            core_job_count=len(_CORE_JOBS),
+            core_job_count=len(self._core_job_specs()),
             operations=operations,
             observed_at=now,
             scheduled_root=str(self._scheduled_root),
@@ -115,7 +122,7 @@ class ScheduledOperationsStatusService:
         job_id: str,
         now: datetime,
     ) -> ScheduledOperationStatusDTO:
-        status_path = self._scheduled_root / job_id / "latest_status.json"
+        status_path = self._status_path(job_id)
         lane = _lane_for_job(job_id)
         is_core_job = lane == "core"
         label = _JOB_LABELS.get(job_id, job_id)
@@ -179,6 +186,10 @@ class ScheduledOperationsStatusService:
 
         raw_status = str(raw_payload.get("status", "unknown")).strip().lower() or "unknown"
         state, diagnostic = self._classify(job_id, raw_status, raw_payload, is_core_job)
+        if job_id == "formal_input_producer":
+            state, diagnostic = self._formal_status_detail(
+                raw_status, raw_payload, status_path, state, diagnostic
+            )
         updated_at, observed_at_raw, observed_at_source, timestamp_diagnostic = _status_timestamp(
             raw_payload,
             file_mtime=updated_at,
@@ -210,6 +221,74 @@ class ScheduledOperationsStatusService:
             read_state="observed",
             diagnostic=diagnostic,
         )
+
+    def _status_path(self, job_id: str) -> Path:
+        if job_id == "formal_input_producer" and self._formal_status_path is not None:
+            return self._formal_status_path
+        return self._scheduled_root / job_id / "latest_status.json"
+
+    def _core_job_specs(self) -> tuple[tuple[str, str], ...]:
+        return _CORE_JOBS + ((_FORMAL_JOB,) if self._formal_status_path is not None else ())
+
+    def _job_specs(self) -> tuple[tuple[str, str], ...]:
+        return self._core_job_specs() + _SAFETY_JOBS
+
+    @staticmethod
+    def _formal_status_detail(
+        raw_status: str,
+        payload: dict[str, object],
+        status_path: Path,
+        state: str,
+        diagnostic: str,
+    ) -> tuple[str, str]:
+        """Show current Formal status and last real workday result without granting credit."""
+
+        detail = diagnostic
+        if raw_status == "skipped_non_trading_day":
+            last_attempt = read_last_non_skipped_attempt(status_path)
+            if last_attempt is None:
+                return "attention", "formal_non_trading_day_noop;last_workday_attempt_unavailable"
+            last_status = str(last_attempt.get("status") or "unknown").strip().lower()
+            blockers = last_attempt.get("blockers")
+            exit_code = last_attempt.get("exit_code")
+            details = [f"last_workday_status={last_status}"]
+            if isinstance(exit_code, int):
+                details.append(f"exit_code={exit_code}")
+            if isinstance(blockers, list):
+                safe_blockers = [
+                    str(value).replace("\r", " ").replace("\n", " ")[:240]
+                    for value in blockers[:5]
+                    if isinstance(value, str) and value.strip()
+                ]
+                if safe_blockers:
+                    details.append("blockers=" + " | ".join(safe_blockers))
+            completed_at = last_attempt.get("completed_at")
+            if isinstance(completed_at, str) and completed_at.strip():
+                details.append(f"completed_at={completed_at[:64]}")
+            run_id = last_attempt.get("run_id")
+            if isinstance(run_id, str) and run_id.strip():
+                details.append(f"run_id={run_id[:64]}")
+            if (
+                last_status in _SUCCESS_STATUSES
+                and isinstance(exit_code, int)
+                and exit_code == 0
+                and not blockers
+            ):
+                return "guarded", "non_trading_day_noop;" + ";".join(details)
+            return "attention", "non_trading_day_noop;" + ";".join(details)
+
+        blockers = payload.get("blockers")
+        if isinstance(blockers, list):
+            safe_blockers = [
+                str(value).replace("\r", " ").replace("\n", " ")[:240]
+                for value in blockers[:5]
+                if isinstance(value, str) and value.strip()
+            ]
+            if safe_blockers:
+                detail = ";".join(
+                    part for part in (detail, "blockers=" + " | ".join(safe_blockers)) if part
+                )
+        return state, detail
 
     def _read_decision_capture(
         self, path: Path, now: datetime, label: str, lane: str,
@@ -376,7 +455,7 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _lane_for_job(job_id: str) -> str:
-    if job_id in dict(_CORE_JOBS):
+    if job_id in dict(_CORE_JOBS + (_FORMAL_JOB,)):
         return "core"
     if job_id in dict(_SAFETY_JOBS):
         return "safety"

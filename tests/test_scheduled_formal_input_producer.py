@@ -114,6 +114,76 @@ def test_non_trading_day_skips_before_runtime_config(
     assert status["blockers"] == []
 
 
+def test_non_trading_day_status_preserves_last_non_skipped_failure(
+    tmp_path: Path,
+) -> None:
+    status_root = tmp_path / "publication" / "scheduler"
+    failure_status = {
+        "status": "blocked",
+        "observed_at": "2026-10-23T01:00:00+00:00",
+        "blockers": ["formal_input_wrapper_runtime_config_binding_path_mismatch"],
+    }
+    first, first_exit = runner._persist_scheduled_terminal(
+        failure_status,
+        status_root=status_root,
+        run_id="weekday-failure",
+        started_at="2026-10-23T01:00:00+00:00",
+        exit_code=2,
+    )
+    assert first_exit == 2
+
+    skipped_status = {
+        "status": "skipped_non_trading_day",
+        "observed_at": "2026-10-24T01:00:00+00:00",
+        "blockers": [],
+    }
+    latest, skipped_exit = runner._persist_scheduled_terminal(
+        skipped_status,
+        status_root=status_root,
+        run_id="weekend-noop",
+        started_at="2026-10-24T01:00:00+00:00",
+        exit_code=0,
+    )
+
+    assert skipped_exit == 0
+    assert latest["status"] == "skipped_non_trading_day"
+    assert latest["last_non_skipped_attempt"] == {
+        "run_id": "weekday-failure",
+        "status": "blocked",
+        "observed_at": "2026-10-23T01:00:00+00:00",
+        "completed_at": first["completed_at"],
+        "exit_code": 2,
+        "blockers": ["formal_input_wrapper_runtime_config_binding_path_mismatch"],
+        "terminal_receipt": first["terminal_receipt"],
+    }
+    stored = json.loads((status_root / "latest_status.json").read_text(encoding="utf-8"))
+    assert stored["last_non_skipped_attempt"] == latest["last_non_skipped_attempt"]
+
+    # 模擬舊版 latest status 已被休市 no-op 覆寫且沒有新摘要欄位。
+    runner._write_status(
+        status_root / "latest_status.json",
+        {
+            "status": "skipped_non_trading_day",
+            "run_id": "legacy-weekend-noop",
+            "observed_at": "2026-10-25T01:00:00+00:00",
+            "blockers": [],
+        },
+    )
+    consecutive_skip, consecutive_exit = runner._persist_scheduled_terminal(
+        {
+            "status": "skipped_non_trading_day",
+            "observed_at": "2026-10-26T01:00:00+00:00",
+            "blockers": [],
+        },
+        status_root=status_root,
+        run_id="second-weekend-noop",
+        started_at="2026-10-26T01:00:00+00:00",
+        exit_code=0,
+    )
+    assert consecutive_exit == 0
+    assert consecutive_skip["last_non_skipped_attempt"] == latest["last_non_skipped_attempt"]
+
+
 def test_scheduled_formal_wrapper_uses_durable_publication_and_no_clock_override() -> None:
     text = WRAPPER.read_text(encoding="utf-8").lower()
 

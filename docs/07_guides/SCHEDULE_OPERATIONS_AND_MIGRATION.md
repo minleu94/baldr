@@ -19,6 +19,12 @@
 
 2026-10-21 Windows readback 為 21/21，query error 0、XML definition delta 0；Direct maintainer 預期停用。唯一新 natural run 是 formal-input：blocked/result 2、runtime config expired、formal write=false、無 immutable run receipt。Quick custody actual readback 與 21-task CLI readback 各自成功，但工程 QA 尚未 pass；總體 `PARTIAL_RECOVERY`，修復後自然 run 均待驗。Paper 輸出邊界、Forward PIT 缺件、Quick、BankTaiwan、DST 等分支的實際原因與 QA003–QA007 原結果依[recovery 摘要](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)逐項判讀；程式或設定候選不等於修復後自然 run。Source-contract closure 定位修復由 C 核完整依賴中，未全核前不能標記完成。兩個 Codex heartbeat 仍 ACTIVE 且 config SHA 與 previous-after 相同；TOML 未提供模型欄位。
 
+## 2026-10-25 Formal runtime binding 修復狀態
+
+10/21–23 Formal 工作日失敗根因與 10/24 roll-forward D 槽 baseline 卡點，已依 Owner 授權處理：建立 10/27 date-scoped candidate config 與版本化 binding `output/v4_next_formal/formal_runtime_environment_binding_20261025.json`；Rule preopen、PIT preopen、PIT sidecar、Formal input、Paper EOD 五個 canonical CMD wrapper 均在 process boundary 指向此 binding。舊 binding 保留，未重註冊或修改 Task Scheduler、帳戶、trigger 或 NextRun。五個 runtime role 的 preflight 已 verified，source path 指向 F 槽，狀態為 `waiting_for_activation`，candidate-only、formal OOS=false。
+
+此狀態只證明新 runtime config／wrapper contract 已讀回，不證明 Task Scheduler 已觸發，也不證明 Rule、PIT、Formal 或 Paper producer 成功。等台北 2026-10-27 開市週期後，依 exact task→producer→receipt→artifact→consumer identity 驗收；Strict Formal inputs、Paper 成交成本與 ML 自然成熟證據仍須逐項過其 Gate。舊工作日失敗與新 binding hash、preflight 收據及未驗界線見[Formal runtime QA](../06_qa/BALDR_FORMAL_OWNER_CLEARANCE_20261025.md#2026-10-25-formal-runtime-binding-與續期根因)。
+
 本指南說明 baldr 排程的種類、日常核對入口與移機界線。它是操作文件，不是註冊、啟用、手動觸發、改帳戶或切換 portable executable 的授權。若目標是新機或 owner 移交，從[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)開始；唯讀查證看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 ## 排程種類與權威

@@ -81,7 +81,9 @@ class _ExcludedEvidenceCapture:
     """摘要 excluded revision 單次驗證實際讀取的檔案 bytes。"""
 
     def __init__(self, data_root: Path) -> None:
-        self.data_root = data_root.resolve(strict=True)
+        self.data_root = _plain_directory_absolute(
+            data_root, "錯日排除資料根目錄",
+        )
         self.files: list[ValidatedEvidenceFileV1] = []
         self.physical_dependencies: list[ExcludedPhysicalDependencyV1] = []
         self._roles: set[str] = set()
@@ -222,7 +224,7 @@ def _assert_no_reparse_components(path: Path, data_root: Path) -> None:
     """拒絕資料根目錄到 evidence 檔案間的連結或 Windows reparse 元件。"""
 
     absolute = Path(os.path.abspath(path))
-    root = data_root.resolve(strict=True)
+    root = _plain_directory_absolute(data_root, "錯日排除資料根目錄")
     try:
         relative = absolute.relative_to(root)
     except ValueError as exc:
@@ -232,6 +234,10 @@ def _assert_no_reparse_components(path: Path, data_root: Path) -> None:
         current = current / component
         try:
             info = current.lstat()
+        except FileNotFoundError:
+            # 尚未建立的目標或父目錄不可能是已存在的 reparse 元件；
+            # 前面已存在的每一段都已逐一檢查，停止於第一個缺件即可。
+            break
         except OSError as exc:
             raise ValueError(f"排除修訂證據路徑元件無法檢查：{current}") from exc
         attributes = getattr(info, "st_file_attributes", 0)
@@ -243,6 +249,34 @@ def _assert_no_reparse_components(path: Path, data_root: Path) -> None:
             or (callable(is_junction) and is_junction())
         ):
             raise ValueError(f"排除修訂證據路徑不得穿越連結或 junction：{current}")
+
+
+def _plain_directory_absolute(path: Path, label: str) -> Path:
+    """不呼叫 Windows GetFinalPathName，逐段驗證已解析目錄沒有 reparse。"""
+
+    absolute = Path(os.path.abspath(path))
+    current = Path(absolute.parts[0])
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    for index, part in enumerate(absolute.parts[1:], start=1):
+        current = current / part
+        try:
+            info = current.lstat()
+        except OSError as exc:
+            raise ValueError(f"{label} 路徑元件無法檢查：{current}: {exc}") from exc
+        attributes = getattr(info, "st_file_attributes", 0)
+        is_junction = getattr(current, "is_junction", None)
+        if (
+            stat.S_ISLNK(info.st_mode)
+            or bool(attributes & reparse_flag)
+            or (callable(is_junction) and is_junction())
+        ):
+            raise ValueError(f"{label} 不得穿越連結或 junction：{current}")
+        if index < len(absolute.parts) - 1 and not stat.S_ISDIR(info.st_mode):
+            raise ValueError(f"{label} 路徑祖先不是目錄：{current}")
+
+    if not stat.S_ISDIR(current.lstat().st_mode):
+        raise ValueError(f"{label} 不是目錄：{absolute}")
+    return absolute
 
 
 def _root(database_path: Path) -> Path:
@@ -699,10 +733,8 @@ def _scan_directory(path: Path, label: str) -> list[os.DirEntry[str]]:
 def _resolved_receipt_root(root: Path) -> Path | None:
     """逐段檢查固定 receipt root；只把真正不存在的普通元件視為無候選。"""
     try:
-        data_root = root.resolve(strict=True)
-        if not stat.S_ISDIR(data_root.stat().st_mode):
-            raise ValueError(f"資料根目錄不是目錄：{root}")
-    except (OSError, RuntimeError) as exc:
+        data_root = _plain_directory_absolute(root, "錯日排除資料根目錄")
+    except (OSError, RuntimeError, ValueError) as exc:
         raise ValueError(f"資料根目錄無法解析或讀取：{root}: {exc}") from exc
 
     current = data_root

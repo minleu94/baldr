@@ -5,7 +5,9 @@ from pathlib import Path
 from app_module.program_readiness_projection import (
     PROGRAM_READINESS_SCHEMA,
     load_program_readiness,
+    project_program_readiness,
 )
+from scripts.inspect_program_readiness import _inspect_runtime_lane
 from ui_qt.views.update.update_formatters import (
     format_program_readiness_blockers,
     format_program_readiness_lane_progress,
@@ -73,6 +75,19 @@ def test_valid_program_readiness_projects_only_bounded_lane_fields(tmp_path: Pat
     assert projected["writes_allowed"] is False
 
 
+def test_live_readiness_projection_does_not_require_or_invent_artifact_path():
+    projected = project_program_readiness(_payload())
+
+    assert projected["status"] == "action_required"
+    assert projected["path"] is None
+    assert projected["workstreams"]["p0"]["blockers"] == [
+        "source_acceptance_decision_missing"
+    ]
+    assert "details" not in projected["workstreams"]["p0"]
+    assert projected["boundary"]["formal_oos_allowed"] is False
+    assert projected["writes_allowed"] is False
+
+
 def test_unsupported_program_readiness_schema_is_invalid(tmp_path: Path):
     path = tmp_path / "invalid.json"
     path.write_text(json.dumps({"schema_version": "other.v1"}), encoding="utf-8")
@@ -110,11 +125,52 @@ def test_program_readiness_summary_keeps_status_and_boundary_visible(tmp_path: P
     path.write_text(json.dumps(_payload()), encoding="utf-8")
     summary = format_program_readiness_summary(load_program_readiness(path))
 
-    assert "整體狀態：需處理（action_required）" in summary
-    assert "Readiness lane：2/7 個（已載入/預期）；阻擋原因：1 個；需外部輸入：1 個" in summary
-    assert "writes_allowed=False" in summary
-    assert "broker_order_allowed=False" in summary
+    assert "整體狀態：需處理" in summary
+    assert "資料檢查區：2/7 個；待處理原因：1 項；待外部資料／操作週期／人工審查：1 區" in summary
+    assert "允許資料寫入=False" in summary
+    assert "允許下單=False" in summary
     assert "source_acceptance_decision_missing" not in summary
+
+
+def test_runtime_ready_host_and_staging_probe_do_not_report_stale_acl_action(
+    tmp_path: Path,
+) -> None:
+    readiness_path = tmp_path / "runtime-readiness.json"
+    readiness_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "runtime-environment-readiness.v1",
+                "overall_state": "ready",
+                "diagnostics": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    staging_probe_path = tmp_path / "runtime-write-probe.json"
+    staging_probe_path.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "file_write_succeeded": True,
+                "sqlite_write_succeeded": True,
+                "registry_transaction_succeeded": True,
+                "cleanup_succeeded": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    lane = _inspect_runtime_lane(
+        tmp_path / "data",
+        tmp_path / "output",
+        write_probe_path=staging_probe_path,
+        readiness_path=readiness_path,
+    )
+
+    assert lane["status"] == "ready"
+    assert lane["blockers"] == []
+    assert "正式 host" in lane["next_actions"][0]
+    assert "需由 owner 在正式環境確認" not in lane["next_actions"][0]
 
 
 def test_projection_keeps_bounded_lane_progress_without_nested_details(tmp_path: Path):
@@ -196,21 +252,21 @@ def test_projection_keeps_bounded_lane_progress_without_nested_details(tmp_path:
     p0_progress = format_program_readiness_lane_progress(
         "p0", projected["workstreams"]["p0"]
     )
-    assert "accepted 0／limited 0" in p0_progress
-    assert "route 已嘗試 1/2" in p0_progress
+    assert "正式接受 0／限用途 0" in p0_progress
+    assert "來源查詢已嘗試 1/2" in p0_progress
     evidence_progress = format_program_readiness_lane_progress(
         "evidence", projected["workstreams"]["evidence"]
     )
-    assert "weekly 0/3" in evidence_progress
+    assert "真實週證據 0/3" in evidence_progress
     assert "待人工審核 3 期" in evidence_progress
     assert "dry-run 2/3" in evidence_progress
-    assert "formal credit=未授權" in evidence_progress
+    assert "正式週證據核准：未授權" in evidence_progress
 
     blockers = format_program_readiness_blockers(
         ["source_acceptance_decision_missing", "formal_input_source_missing:pit_sector_membership"]
     )
     assert "尚未提供來源接受決議（source_acceptance_decision_missing）" in blockers
-    assert "Formal 來源資料缺件：pit_sector_membership" in blockers
+    assert "缺少 Formal 輸入資料：PIT 產業成分" in blockers
 
 
 def test_formal_progress_explains_evidence_states_without_named_reviewer_gate(
@@ -258,13 +314,36 @@ def test_formal_progress_explains_evidence_states_without_named_reviewer_gate(
         "readiness_status": "waiting_for_formal_inputs",
     }
     progress = format_program_readiness_lane_progress("formal_ml", formal)
-    assert "formal consumer verified 0/3" in progress
-    assert "機器候選 1" in progress
-    assert "來源缺件 2" in progress
+    assert "Formal 正式讀取驗證 0/3 項" in progress
+    assert "僅機器候選 1 項" in progress
+    assert "缺少來源資料 2 項" in progress
     blockers = format_program_readiness_blockers(formal["blockers"])
-    assert "Formal 來源資料缺件：causal_non_cash_portfolio_ledger" in blockers
-    assert "Formal 僅有機器候選：pit_sector_membership" in blockers
+    assert "缺少 Formal 輸入資料：因果模擬持倉帳" in blockers
+    assert "Formal 輸入仍是機器候選：PIT 產業成分" in blockers
     assert "具名" not in blockers
+
+
+def test_program_readiness_blockers_offer_plain_chinese_display_and_raw_audit_codes():
+    raw = [
+        "p0_source_acceptance_pending",
+        "paper_weekly_report_boundary_mismatch",
+        "paper_daily_status_schema_mismatch",
+        "training_as_of_timezone_required",
+        "formal_input_source_missing:pit_sector_membership",
+        "unrecognized_future_blocker",
+    ]
+
+    user_facing = format_program_readiness_blockers(raw, include_raw=False)
+    audit = format_program_readiness_blockers(raw)
+
+    assert "官方來源仍待逐項接受或限用途審查" in user_facing
+    assert "Paper 與基準的報告日期範圍不一致" in user_facing
+    assert "Paper 每日狀態紀錄格式不符" in user_facing
+    assert "Formal／ML 訓練截止時間缺少時區" in user_facing
+    assert "缺少 Formal 輸入資料：PIT 產業成分" in user_facing
+    assert "其他阻擋原因，請查看完整診斷" in user_facing
+    assert "p0_source_acceptance_pending" in audit
+    assert "unrecognized_future_blocker" in audit
 
 
 def test_projection_surfaces_performance_owner_packet_review_state(tmp_path: Path):
@@ -343,5 +422,5 @@ def test_paper_progress_explains_missing_cost_ledger(tmp_path: Path):
         "paper", projected["workstreams"]["paper"]
     )
 
-    assert "成本帳 缺漏（missing）" in progress
-    assert "週報 尚不可計算（成本帳缺漏）（not_computable_cost_ledger_missing）" in progress
+    assert "成交成本帳：缺漏" in progress
+    assert "週報：尚不可計算（成本帳缺漏）" in progress

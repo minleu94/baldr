@@ -234,8 +234,15 @@ def _drain_qt_deferred_deletes(
         except RuntimeError:
             # 其他關閉路徑可能已先釋放 wrapper；不要再次觸碰失效 C++ object。
             continue
-    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
-    app.processEvents()
+    try:
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        app.processEvents()
+    except RuntimeError:
+        # A queued Qt callback may touch a child widget whose C++ object was
+        # already deleted during close.  The window teardown is already in
+        # progress; do not turn that late callback into a second shutdown error.
+        record_diagnostic("qt_deferred_delete_drain_stopped_invalid_object")
+        return
     # processEvents 可能才配送 QThread.finished 的 queued cleanup；若該回呼
     # 在視窗釋放後呼叫 worker.deleteLater，第二次有限 flush 會在 Qt 尚有效時
     # 一併排空新建立的 DeferredDelete。
@@ -2148,6 +2155,7 @@ class MainWindow(QMainWindow):
                 data_freshness_status_path=self._data_freshness_status_path(),
                 tpex_status_path=self._tpex_status_path(),
                 program_readiness_path=self._program_readiness_path(),
+                program_readiness_live_inspection=True,
             )
             self.update_view = update_view
             print("[MainWindow] 數據更新視圖創建成功")
@@ -4988,16 +4996,41 @@ def _cleanup_startup(app, controller) -> None:
     controller.dismiss()
     if window is None:
         return
-    window.hide()
-    window.close()
-    if not getattr(window, "_shutdown_close_finalizing", True):
+    try:
+        window.hide()
+        window.close()
+    except RuntimeError:
+        # Qt may have deleted the wrapper while dismissing the startup view.
+        # Cleanup is best effort once its native window no longer exists.
+        record_diagnostic("startup_cleanup_skipped_deleted_window")
+        return
+    try:
+        close_finalizing = getattr(window, "_shutdown_close_finalizing", True)
+    except RuntimeError:
+        record_diagnostic("startup_cleanup_skipped_deleted_window")
+        return
+    if not close_finalizing:
         timer = QTimer()
         timer.setInterval(50)
-        timer.timeout.connect(lambda: app.quit() if window._shutdown_close_finalizing else None)
+
+        def quit_after_close_finalizes() -> None:
+            try:
+                finalizing = window._shutdown_close_finalizing
+            except RuntimeError:
+                finalizing = True
+            if finalizing:
+                app.quit()
+
+        timer.timeout.connect(quit_after_close_finalizes)
         timer.start()
         app.exec()
         timer.stop()
-    _drain_qt_deferred_deletes(app, (window,))
+    try:
+        _drain_qt_deferred_deletes(app, (window,))
+    except RuntimeError:
+        # Startup failure is already being unwound; a late Qt deletion callback
+        # must not replace the original exception.
+        record_diagnostic("startup_cleanup_drain_stopped_invalid_object")
 
 
 def main(*, application_settings: ApplicationSettings | None = None,

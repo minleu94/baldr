@@ -23,6 +23,8 @@ REPORT_LIMITATIONS = (
     "不寫 production DB、不啟用 scheduler、不改 ScoringEngine、不改推薦 threshold 或權重。",
     "decision-time feature 必須有 explicit available_date，且 available_date 不得晚於 decision_date。",
     "缺資料、缺 table、缺 available_date 或 future available_date 只輸出 diagnostics，不補值、不靜默通過。",
+    "最新資料日與欄位盤點只揭露原件狀態；沒有來源專屬 freshness 規則時，不代表目前新鮮或可供決策。",
+    "capture timestamp 是本機觀測時間，不等同來源方 publication timestamp，也不能回推更早日期的 PIT 可得性。",
 )
 
 SOURCE_LABELS = {
@@ -59,6 +61,7 @@ COLUMN_ALIASES = {
     "stock_code": ("stock_code", "symbol", "證券代號", "股票代號"),
     "decision_date": ("decision_date", "as_of_date", "date", "日期"),
     "available_date": ("available_date", "可得日", "公告日"),
+    "observed_at": ("observed_at", "first_observed_at", "captured_at"),
     "source_version": ("source_version", "來源版本"),
     "quality": ("quality", "source_quality", "資料品質"),
     "foreign_investor_buy": ("foreign_investor_buy", "外資買進", "外資買超買進"),
@@ -89,6 +92,7 @@ class SourceCandidateRow:
     symbol: str | None = None
     decision_date: str | None = None
     available_date: str | None = None
+    observed_at: str | None = None
     source_version: str = ""
     quality: str = "missing"
     payload: dict[str, Any] = field(default_factory=dict)
@@ -99,6 +103,7 @@ class SourceCandidateRow:
             "symbol": self.symbol,
             "decision_date": self.decision_date,
             "available_date": self.available_date,
+            "observed_at": self.observed_at,
             "source_version": self.source_version,
             "quality": self.quality,
             "payload": dict(self.payload),
@@ -115,6 +120,9 @@ class SourceCandidateReadinessItem:
     accepted_row_count: int
     blocked_row_count: int
     diagnostics: tuple[str, ...]
+    latest_observation_date: str | None
+    latest_available_date: str | None
+    latest_capture_at: str | None
     coverage: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -127,6 +135,9 @@ class SourceCandidateReadinessItem:
             "accepted_row_count": self.accepted_row_count,
             "blocked_row_count": self.blocked_row_count,
             "diagnostics": list(self.diagnostics),
+            "latest_observation_date": self.latest_observation_date,
+            "latest_available_date": self.latest_available_date,
+            "latest_capture_at": self.latest_capture_at,
             "coverage": dict(self.coverage),
         }
 
@@ -340,6 +351,9 @@ class SourceCandidateReadinessService:
                 accepted_row_count=0,
                 blocked_row_count=0,
                 diagnostics=diagnostics,
+                latest_observation_date=None,
+                latest_available_date=None,
+                latest_capture_at=None,
                 coverage=_coverage(source_id, ()),
             )
 
@@ -347,6 +361,12 @@ class SourceCandidateReadinessService:
         blocked = 0
         item_diagnostics: list[str] = list(missing_diagnostics)
         accepted_payload_fields: list[str] = []
+        observed_payload_fields: list[str] = []
+
+        for row in rows:
+            observed_payload_fields.extend(
+                str(key) for key, value in row.payload.items() if value is not None
+            )
 
         for row in rows:
             row_diagnostics = self._row_diagnostics(row)
@@ -359,6 +379,21 @@ class SourceCandidateReadinessService:
 
         decision_ready = accepted > 0
         status = "decision_ready_candidate" if decision_ready and blocked == 0 else "degraded"
+        observation_dates = tuple(
+            parsed
+            for parsed in (_parse_date(row.decision_date) for row in rows)
+            if parsed is not None
+        )
+        available_dates = tuple(
+            parsed
+            for parsed in (_parse_date(row.available_date) for row in rows)
+            if parsed is not None
+        )
+        capture_times = tuple(
+            parsed
+            for parsed in (_parse_aware_datetime(row.observed_at) for row in rows)
+            if parsed is not None
+        )
         return SourceCandidateReadinessItem(
             source_id=source_id,
             label=SOURCE_LABELS[source_id],
@@ -368,7 +403,18 @@ class SourceCandidateReadinessService:
             accepted_row_count=accepted,
             blocked_row_count=blocked,
             diagnostics=_unique(item_diagnostics),
-            coverage=_coverage(source_id, accepted_payload_fields),
+            latest_observation_date=(
+                max(observation_dates).isoformat() if observation_dates else None
+            ),
+            latest_available_date=(
+                max(available_dates).isoformat() if available_dates else None
+            ),
+            latest_capture_at=max(capture_times).isoformat() if capture_times else None,
+            coverage=_coverage(
+                source_id,
+                accepted_payload_fields,
+                observed_fields=observed_payload_fields,
+            ),
         )
 
     def _row_diagnostics(self, row: SourceCandidateRow) -> tuple[str, ...]:
@@ -472,13 +518,13 @@ def render_source_candidate_markdown(report: SourceCandidateReadinessReport) -> 
         "",
         "此報告只檢查三大法人、信用交易與 TDCC / 集保庫存來源候選狀態，不是交易建議，也不代表任何投資有效性。",
         "",
-        "| source_id | label | status | decision_ready | rows | accepted | blocked | diagnostics |",
-        "|---|---|---|---:|---:|---:|---:|---|",
+        "| source_id | label | status | decision_ready | rows | accepted | blocked | latest_observation | latest_available | latest_capture_at | observed_fields | decision_ready_fields | diagnostics |",
+        "|---|---|---|---:|---:|---:|---:|---|---|---|---|---|---|",
     ]
     for item in payload["items"]:
         diagnostics = ", ".join(item["diagnostics"])
         lines.append(
-            "| {source_id} | {label} | {status} | {decision_ready} | {row_count} | {accepted_row_count} | {blocked_row_count} | {diagnostics} |".format(
+            "| {source_id} | {label} | {status} | {decision_ready} | {row_count} | {accepted_row_count} | {blocked_row_count} | {latest_observation} | {latest_available} | {latest_capture} | {observed_fields} | {decision_ready_fields} | {diagnostics} |".format(
                 source_id=item["source_id"],
                 label=item["label"],
                 status=item["status"],
@@ -486,6 +532,11 @@ def render_source_candidate_markdown(report: SourceCandidateReadinessReport) -> 
                 row_count=item["row_count"],
                 accepted_row_count=item["accepted_row_count"],
                 blocked_row_count=item["blocked_row_count"],
+                latest_observation=item["latest_observation_date"] or "unknown",
+                latest_available=item["latest_available_date"] or "unknown",
+                latest_capture=item["latest_capture_at"] or "unknown",
+                observed_fields=", ".join(item["coverage"]["candidate_fields_present"]) or "none",
+                decision_ready_fields=", ".join(item["coverage"]["decision_ready_fields_present"]) or "none",
                 diagnostics=diagnostics,
             )
         )
@@ -509,6 +560,7 @@ def _load_source_rows(conn: sqlite3.Connection, source_id: str, decision_date: s
                 symbol=_first_present(raw, COLUMN_ALIASES["stock_code"]),
                 decision_date=_first_present(raw, COLUMN_ALIASES["decision_date"]) or decision_date,
                 available_date=_first_present(raw, COLUMN_ALIASES["available_date"]),
+                observed_at=_first_present(raw, COLUMN_ALIASES["observed_at"]),
                 source_version=str(_first_present(raw, COLUMN_ALIASES["source_version"]) or ""),
                 quality=str(_first_present(raw, COLUMN_ALIASES["quality"]) or "missing"),
                 payload=payload,
@@ -526,8 +578,14 @@ def _first_present(row: dict[str, Any], names: Iterable[str]) -> Any:
     return None
 
 
-def _coverage(source_id: str, payload_fields: Iterable[str]) -> dict[str, Any]:
+def _coverage(
+    source_id: str,
+    payload_fields: Iterable[str],
+    *,
+    observed_fields: Iterable[str] | None = None,
+) -> dict[str, Any]:
     present = tuple(sorted(set(payload_fields)))
+    observed = tuple(sorted(set(observed_fields if observed_fields is not None else present)))
     required = REQUIRED_FIELDS[source_id]
     optional = OPTIONAL_FIELDS[source_id]
     return {
@@ -535,7 +593,8 @@ def _coverage(source_id: str, payload_fields: Iterable[str]) -> dict[str, Any]:
         "required_fields_present": [field_name for field_name in required if field_name in present],
         "optional_fields": list(optional),
         "optional_fields_present": [field_name for field_name in optional if field_name in present],
-        "candidate_fields_present": list(present),
+        "candidate_fields_present": list(observed),
+        "decision_ready_fields_present": list(present),
     }
 
 
@@ -546,6 +605,21 @@ def _parse_date(value: str | None) -> date | None:
         return date.fromisoformat(str(value)[:10])
     except ValueError:
         return None
+
+
+def _parse_aware_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def _is_blocking_diagnostic(diagnostic: str) -> bool:

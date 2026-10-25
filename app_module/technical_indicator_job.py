@@ -192,9 +192,76 @@ class TechnicalIndicatorJob:
                         if candidate in table_columns :
                             stock_column =candidate
                             break
-                    stock_data =db .execute_query (
-                    f'SELECT * FROM daily_prices ORDER BY "{date_column}" ASC, "{stock_column}" ASC;'
-                    )
+                    if target_stock is not None:
+                        # 單股重算只需讀取該股；全市場 SELECT 會把數百萬列展開，
+                        # 即使呼叫端只要求一檔也會耗盡受控 worker 的記憶體。
+                        stock_data = db.execute_query(
+                            f'SELECT * FROM daily_prices '
+                            f'WHERE "{stock_column}" = ? '
+                            f'ORDER BY "{date_column}" ASC;',
+                            (target_stock,),
+                        )
+                    elif not force_all and start_date is None:
+                        # 近期發布只需要回看窗口及 MA60 等最長基礎指標的暖機資料。
+                        # 以交易日數界定輸入，避免把數百萬列歷史行情一次展開成 DataFrame。
+                        warmup_sessions = 60
+                        required_sessions = max(int(incremental_lookback_days), 1) + warmup_sessions
+                        cutoff_data = db.execute_query(
+                            f'SELECT "{date_column}" FROM daily_prices '
+                            f'WHERE "{date_column}" IS NOT NULL '
+                            f'GROUP BY "{date_column}" '
+                            f'ORDER BY "{date_column}" DESC LIMIT 1 OFFSET ?;',
+                            (required_sessions - 1,),
+                        )
+                        if cutoff_data.empty:
+                            stock_data = pd.DataFrame()
+                        else:
+                            cutoff_date = cutoff_data.iloc[0, 0]
+                            stock_data = db.execute_query(
+                                f'SELECT * FROM daily_prices '
+                                f'WHERE "{date_column}" >= ? '
+                                f'ORDER BY "{date_column}" ASC, "{stock_column}" ASC;',
+                                (cutoff_date,),
+                            )
+                            # 新代碼尚無個股指標檔時，保留該股完整歷史語義；
+                            # 只逐股補讀缺少快取的代碼，不退回全市場歷史載入。
+                            if not stock_data.empty:
+                                symbol_values = (
+                                    stock_data[stock_column]
+                                    .dropna()
+                                    .astype(str)
+                                    .str.strip()
+                                    .unique()
+                                )
+                                missing_symbols = [
+                                    symbol
+                                    for symbol in symbol_values
+                                    if not (
+                                        Path(self._ports.config.technical_dir)
+                                        / f"{str(symbol).strip()}_indicators.csv"
+                                    ).is_file()
+                                ]
+                                for symbol in missing_symbols:
+                                    full_history = db.execute_query(
+                                        f'SELECT * FROM daily_prices '
+                                        f'WHERE "{stock_column}" = ? '
+                                        f'ORDER BY "{date_column}" ASC;',
+                                        (symbol,),
+                                    )
+                                    if not full_history.empty:
+                                        stock_data = pd.concat(
+                                            [stock_data, full_history],
+                                            ignore_index=True,
+                                        )
+                                if missing_symbols:
+                                    stock_data = stock_data.drop_duplicates(
+                                        subset=[date_column, stock_column],
+                                        keep="last",
+                                    )
+                    else:
+                        stock_data =db .execute_query (
+                        f'SELECT * FROM daily_prices ORDER BY "{date_column}" ASC, "{stock_column}" ASC;'
+                        )
                     if not stock_data .empty :
                     # 確保日期與代號為字串型態，與後續邏輯一致
                         if date_column in stock_data .columns :
@@ -312,6 +379,7 @@ class TechnicalIndicatorJob:
                     )
 
             auto_incremental =not force_all and start_date is None
+            skip_csv_save = bool(getattr(self._ports.config, 'use_sqlite', False) and auto_incremental)
             if auto_incremental :
                 logger .info (
                 f"使用智慧增量技術指標計算，回看 {incremental_lookback_days} 個交易日"
@@ -565,7 +633,8 @@ class TechnicalIndicatorJob:
                     record_publication_phase("stock_file_write_returned")
 
                     if isinstance (result ,pd .DataFrame ):
-                        all_data .append (result )
+                        if not skip_csv_save:
+                            all_data .append (result )
                         sqlite_publications.append(publish_result.copy())
                         results ['success_count']+=1
                         results ['updated_stocks'].append (stock_id )
@@ -620,7 +689,8 @@ class TechnicalIndicatorJob:
                 )
                 process_pool_report = process_pool_result["report"]
                 results["technical_process_pool"] = process_pool_report
-                all_data.extend(process_pool_result["all_data"])
+                if not skip_csv_save:
+                    all_data.extend(process_pool_result["all_data"])
                 sqlite_publications.extend(process_pool_result["publications"])
                 results["success_count"] += process_pool_result["success_count"]
                 results["updated_stocks"].extend(process_pool_result["updated_stocks"])
@@ -662,11 +732,17 @@ class TechnicalIndicatorJob:
             )
 
             # 合併並儲存所有結果
-            if all_data :
+            if all_data or (skip_csv_save and sqlite_publications):
                 if progress_callback :
-                    progress_callback ("合併所有指標數據...",90 )
+                    progress_callback (
+                        "同步 SQLite 增量發布列..." if skip_csv_save else "合併所有指標數據...",
+                        90,
+                    )
 
-                logger .info ("合併所有指標數據...")
+                logger .info (
+                    "SQLite 增量模式保留本輪發布列，略過完整技術 CSV 歷史合併。"
+                    if skip_csv_save else "合併所有指標數據..."
+                )
 
                 if _is_cancel_requested(cancel_callback):
                     record_publication_phase("cancel_before_publication_merge")
@@ -707,7 +783,7 @@ class TechnicalIndicatorJob:
 
                     valid_data .append (df )
 
-                if not valid_data :
+                if not valid_data and not skip_csv_save:
                     record_publication_phase("publication_merge_failed")
                     logger .error ("沒有有效的數據可以合併！")
                     return {
@@ -716,35 +792,30 @@ class TechnicalIndicatorJob:
                     **results
                     }
 
-                    # 合併有效數據
-                final_df =pd .concat (valid_data ,ignore_index =True )
+                if not skip_csv_save:
+                    # 僅需要整合 CSV 的模式才建立全量合併 DataFrame。
+                    final_df =pd .concat (valid_data ,ignore_index =True )
+                    logger .info (f"合併前有效數據數量: {len(valid_data)}")
+                    logger .info (f"合併後總筆數: {len(final_df):,}")
+                    logger .info (f"合併後股票數量: {final_df['證券代號'].nunique() if '證券代號' in final_df.columns else 'N/A'}")
 
-                # ✅ 數據驗證：檢查合併後的數據
-                logger .info (f"合併前有效數據數量: {len(valid_data)}")
-                logger .info (f"合併後總筆數: {len(final_df):,}")
-                logger .info (f"合併後股票數量: {final_df['證券代號'].nunique() if '證券代號' in final_df.columns else 'N/A'}")
+                    if '日期'in final_df .columns and '證券代號'in final_df .columns :
+                        duplicates =final_df .duplicated (subset =['日期','證券代號']).sum ()
+                        if duplicates >0 :
+                            logger .warning (f"發現 {duplicates} 筆重複數據（日期+證券代號），將去重")
+                            final_df =final_df .drop_duplicates (subset =['日期','證券代號'],keep ='last')
+                            logger .info (f"去重後總筆數: {len(final_df):,}")
 
-                # 檢查是否有重複數據
-                if '日期'in final_df .columns and '證券代號'in final_df .columns :
-                    duplicates =final_df .duplicated (subset =['日期','證券代號']).sum ()
-                    if duplicates >0 :
-                        logger .warning (f"發現 {duplicates} 筆重複數據（日期+證券代號），將去重")
-                        final_df =final_df .drop_duplicates (subset =['日期','證券代號'],keep ='last')
-                        logger .info (f"去重後總筆數: {len(final_df):,}")
+                    save_path =self._ports.config .all_stocks_data_file
+                    if _is_cancel_requested(cancel_callback):
+                        record_publication_phase("cancel_before_aggregate_csv")
+                        return {
+                        'success':False ,
+                        'cancelled':True ,
+                        'message':'技術指標計算已取消（寫入整合輸出前）',
+                        **results
+                        }
 
-                save_path =self._ports.config .all_stocks_data_file
-                skip_csv_save =getattr (self._ports.config ,'use_sqlite',False )and auto_incremental
-
-                if _is_cancel_requested(cancel_callback):
-                    record_publication_phase("cancel_before_aggregate_csv")
-                    return {
-                    'success':False ,
-                    'cancelled':True ,
-                    'message':'技術指標計算已取消（寫入整合輸出前）',
-                    **results
-                    }
-
-                if not skip_csv_save :
                     csv_publication = final_df
                     if not full_market_replace:
                         if save_path.exists():
@@ -781,10 +852,9 @@ class TechnicalIndicatorJob:
                         record_publication_phase("aggregate_csv_write_completed")
                         file_size_mb =save_path .stat ().st_size /1024 /1024
                         logger .info (f"已保存整合指標到: {save_path}（檔案大小: {file_size_mb:.2f} MB）")
-                else :
-                    logger .info ("智慧增量模式且啟用 SQLite，跳過大型 all_stocks_data.csv 合併重寫，直接使用增量寫入 SQLite。")
+                # SQLite sync below consumes only sqlite_publications in incremental mode.
 
-                    # 🌟 如果啟用 SQLite，同步將指標寫入 SQLite technical_indicators 表中
+                # 🌟 如果啟用 SQLite，同步將指標寫入 SQLite technical_indicators 表中
                 if getattr (self._ports.config ,'use_sqlite',False ):
                     if _is_cancel_requested(cancel_callback):
                         record_publication_phase("cancel_before_sqlite_write")

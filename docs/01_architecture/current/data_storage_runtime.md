@@ -48,6 +48,8 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ## 讀寫與保存契約
 
+正式 `use_sqlite` 的技術指標增量計算不再一次把整張 `daily_prices` 展開成 DataFrame：以最新交易日為端點，讀取 `incremental_lookback_days + 60` 個交易日（預設 120+60），60 日供目前最長基礎指標 MA60 暖機；每檔股票仍沿原排序、指標計算及 SQLite／CSV 發布路徑。`force_all`、單股與明確 `start_date` 仍沿全歷史語義；近期窗口內沒有個股指標檔的代碼會額外按股讀取完整歷史。applied raw-alias receipt 可承接只改磁碟代號、其他 DATA_ROOT 絕對路徑元件完全相同的搬遷；writer 會把舊路徑映射到現行根，仍逐一驗證 applied receipt/journal、technical manifest/receipt SHA、source SQLite SHA、大小與修改時間。其他根路徑變更一律拒絕，不能因此跳過證據或發布守衛。
+
 TPEx日價沿原下載／normalizer／CSV／SQLite同步另保存同次逐列來源證據；原始response的勝出ordinal與SHA經官方parser重建17欄，Quick只轉交本次projection，application在upsert後唯讀核SQLite同鍵值。原請求URL與final URL分別保存並核官方端點／日期參數；舊CSV不補來源、歧義列不歸因。獨立`tpex_row_evidence`不改原TWSE欄位，availability／正式來源／PIT／training仍未接受，詳[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex-日價同次逐列來源證據track-b)。
 
 Source題材法人版本另用flow-only v2 descriptor，同包只放原映射副本；外部daily目錄與用途檔以精確pins唯讀綁原位置，不重seal／搬移或建立空價格DB。v1同包SQLite版保持，v2的實際保存小時與原來源時鐘各自核，不給歷史PIT。新descriptor的schema、用途、partial及變動守衛見[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#題材tpex股數診斷版本source-v2)；目前QA200為限定Source，201a真原件與202e正常Main3560→51796已限定驗證，固定09不含。

@@ -184,7 +184,8 @@ def get_existing_dates(file_path: Path) -> set[str]:
 
 def batch_update_market_index(start_date: str, end_date: str = None, 
                               delay_min: float = 4.0, delay_max: float = 4.0,
-                              config=None, capture_manifests=None):
+                              config=None, capture_manifests=None,
+                              batch_outcome=None):
     """批量更新大盤指數數據
     
     Args:
@@ -198,6 +199,31 @@ def batch_update_market_index(start_date: str, end_date: str = None,
     if config is None:
         config = TWStockConfig()
     loader = DataLoader(config)
+    updated_dates = []
+    failed_dates = []
+
+    def record_outcome(success, *, failure_reason=None):
+        if batch_outcome is None:
+            return
+        batch_outcome.clear()
+        batch_outcome.update({
+            "success": bool(success),
+            "updated_dates": list(updated_dates),
+            "failed_dates": sorted(set(failed_dates)),
+            "capture_manifests": [
+                str(path) for path in (capture_manifests or [])
+            ],
+            "source_status": (
+                "failed_or_partial" if failed_dates
+                else "updated_with_verified_captures" if updated_dates
+                else "no_new_market_dates"
+            ),
+            "failure_reason": failure_reason,
+            "failure_date_range": {
+                "start_date": start_date,
+                "end_date": end_date,
+            } if failure_reason or failed_dates else None,
+        })
     
     # 獲取交易日列表
     try:
@@ -211,10 +237,12 @@ def batch_update_market_index(start_date: str, end_date: str = None,
         )
     except OfficialTradingCalendarError as exc:
         logger.error("官方交易日曆無法解析，停止大盤批次更新：%s", exc)
+        record_outcome(False, failure_reason=str(exc))
         return False
     
     if not trading_days:
         logger.warning("沒有找到需要更新的交易日")
+        record_outcome(True)
         return True
     
     # 獲取已存在的日期集合，避免重複下載，並支持歷史數據回補
@@ -225,6 +253,7 @@ def batch_update_market_index(start_date: str, end_date: str = None,
     
     if not trading_days:
         logger.info("所有數據已是最新，無需更新")
+        record_outcome(True)
         return True
     
     logger.info(f"準備更新從 {trading_days[0]} 到 {trading_days[-1]} 的大盤指數數據")
@@ -239,8 +268,6 @@ def batch_update_market_index(start_date: str, end_date: str = None,
     
     success_count = 0
     fail_count = 0
-    failed_dates = []
-    
     for i, date in enumerate(trading_days, 1):
         logger.info(f"\n[{i}/{len(trading_days)}] 正在更新 {date} 的大盤指數數據...")
         
@@ -255,6 +282,7 @@ def batch_update_market_index(start_date: str, end_date: str = None,
             if success:
                 logger.info(f"  ✓ {date} 更新成功")
                 success_count += 1
+                updated_dates.append(date)
             else:
                 logger.error(f"  ✗ {date} 更新失敗")
                 fail_count += 1
@@ -292,7 +320,9 @@ def batch_update_market_index(start_date: str, end_date: str = None,
         config.create_backup(config.market_index_file)
     
     logger.info("=" * 60)
-    return fail_count == 0
+    success = fail_count == 0
+    record_outcome(success)
+    return success
 
 def batch_update_industry_index(start_date: str, end_date: str = None, 
                                 delay_min: float = 4.0, delay_max: float = 4.0,

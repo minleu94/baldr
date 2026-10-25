@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from html import escape
 from pathlib import Path
 from collections.abc import Callable
 from datetime import date, datetime
@@ -3477,11 +3478,31 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
 
         elif state == "NO_ELIGIBLE_ADVICE":
-            reasons_str = f" | 原因: {extra_msg}" if extra_msg else ""
+            if warnings:
+                visible_warnings = tuple(_advice_warning_text(value) for value in warnings)
+                warning_lines = "<br/>".join(
+                    f"• {escape(value)}" for value in visible_warnings[:3]
+                )
+                remaining = len(visible_warnings) - 3
+                remaining_note = (
+                    f"<br/>另有 {remaining} 則，請見下方完整原警告。"
+                    if remaining > 0
+                    else ""
+                )
+                empty_state_text = (
+                    "本次沒有可呈現的 Advice；DTO 同時回報以下警告，請先依警告判讀資料或資格問題。<br/>"
+                    f"{warning_lines}{remaining_note}<br/>"
+                    "這些警告不會自動補齊資料或取得正式資格。"
+                )
+            else:
+                empty_state_text = (
+                    "本次 DTO 未回傳符合條件的 Advice、研究候選或配置列，也沒有提供空結果原因。<br/>"
+                    "不能僅由空結果推斷資料完整或風險已解除。"
+                )
+            extra_note = f"<br/>診斷：{escape(extra_msg)}" if extra_msg else ""
             self.advice_empty_label.setText(
                 "<b>【狀態：NO_ELIGIBLE_ADVICE】</b><br/>"
-                f"目前無符合條件之 Advice 建議{reasons_str}。<br/>"
-                "這可能是由於今日策略條件過於嚴格、資料品質未達 Gate 閥值、或可成交性不足所導致的正常空結果。"
+                f"{empty_state_text}{extra_note}"
             )
             self.advice_empty_widget.setVisible(True)
             self.advice_recommendation_table.setVisible(False)
@@ -4702,6 +4723,24 @@ def _localize_workbench_text(text: str) -> str:
     for source, target in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
         localized = localized.replace(source, target)
     return localized
+
+
+def _advice_warning_text(value: object) -> str:
+    """把已知 Advice 診斷碼轉成白話，未知值原樣保留以供追溯。"""
+
+    raw = str(value or "").strip()
+    known = {
+        "evidence_quality_missing": "缺少合格證據，不能產生 Advice。",
+        "guided_mode_strategy_not_promoted": "Guided 策略尚未正式採用，不能產生正式 Advice。",
+        "risk_budget_unavailable": "缺少已核驗的風險預算，不能提供配置。",
+        "execution_feasibility_not_confirmed": "可成交性尚未核實。",
+        "promoted_strategy_acceptance_evidence_missing": (
+            "策略標示為 promoted，但缺少正式採用、參數鎖定與揭露證據。"
+        ),
+        "candidate_data_date_missing": "候選資料日期缺失，不能用決策日代替。",
+        "verified_recommendation_read_missing": "當日候選缺少通過身分核對的保存結果。",
+    }
+    return known.get(raw, raw or "未提供警告內容。")
 
 
 def _format_detail_body(item) -> str:

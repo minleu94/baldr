@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 import json
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -30,6 +31,9 @@ from app_module.evidence_event_dtos import (
 )
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.workbench_source_service import WorkbenchSourceService
+from app_module.advice_dtos import AdviceAction, AdviceClassification
+from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from app_module.recommendation_learning_paths import resolve_recommendation_learning_paths
 from app_module.sqlite_read_only import ReadOperationCancelled
@@ -385,6 +389,122 @@ def _scheduled_outputs(config: TWStockConfig) -> None:
         (evidence_report_dir / f"{day}_evidence_pipeline_dry_run.md").write_text("report", encoding="utf-8")
 
 
+def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> None:
+    result = RecommendationResultDTO(
+        result_id="scheduled-result",
+        result_name="Scheduled result",
+        config={},
+        recommendations=[
+            RecommendationDTO(
+                stock_code="2330",
+                stock_name="TSMC",
+                close_price=1000,
+                price_change=0,
+                total_score=80,
+                indicator_score=30,
+                pattern_score=25,
+                volume_score=25,
+                recommendation_reasons="rule candidate",
+                industry="semiconductor",
+                regime_match=True,
+            )
+        ],
+    )
+    read_model = RecommendationExecutionReadModel(
+        execution=None,
+        label="Scheduled result",
+        notes=None,
+        persisted_at=None,
+        payload_hash=None,
+        artifact_location="verified-read-only-artifact",
+        legacy_result=result,
+    )
+    daily_evidence = SimpleNamespace(
+        candidate_status="candidate",
+        candidate_quality="observed",
+        candidate_data_date="2026-07-07",
+    )
+
+    advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
+        read_model,
+        daily_evidence=daily_evidence,
+        decision_date="2026-07-07",
+    )
+
+    assert advice is not None
+    assert advice.recommendations[0].stock_code == "2330"
+    assert advice.recommendations[0].advice_action is AdviceAction.RESEARCH
+    assert advice.recommendations[0].classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+    assert "scheduled-result" in advice.recommendations[0].source_trace
+    assert advice.portfolio_rows == ()
+    degraded_advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
+        read_model,
+        daily_evidence=SimpleNamespace(
+            candidate_status="candidate_degraded",
+            candidate_quality="degraded",
+            candidate_data_date="2026-07-07",
+            warnings=("候選來源 coverage degraded",),
+        ),
+        decision_date="2026-07-07",
+    )
+    assert degraded_advice.recommendations == ()
+    assert "candidate_degraded" in degraded_advice.diagnostics[0]
+    assert "coverage degraded" in degraded_advice.warnings[1]
+    assert WorkbenchSourceService._compose_scheduled_candidate_advice(
+        None,
+        daily_evidence=SimpleNamespace(
+            candidate_status="candidate",
+            candidate_quality="observed",
+            candidate_data_date="2026-07-07",
+            warnings=(),
+        ),
+        decision_date="2026-07-07",
+    ).warnings
+    missing_date_advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
+        read_model,
+        daily_evidence=SimpleNamespace(
+            candidate_status="candidate",
+            candidate_quality="observed",
+            candidate_data_date=None,
+        ),
+        decision_date="2026-07-07",
+    )
+    assert missing_date_advice.recommendations == ()
+    assert missing_date_advice.data_as_of_date == ""
+    assert WorkbenchSourceService._compose_scheduled_candidate_advice(
+        read_model,
+        daily_evidence=SimpleNamespace(
+            candidate_status="candidate",
+            candidate_quality="observed",
+            candidate_data_date="2026-07-08",
+        ),
+        decision_date="2026-07-07",
+    ).diagnostics == ("candidate_data_date_after_decision_date",)
+
+    promoted_result = RecommendationResultDTO(
+        result_id="promoted-result",
+        result_name="Promoted result",
+        config={"strategy_status": "promoted"},
+        recommendations=result.recommendations,
+    )
+    promoted_read = RecommendationExecutionReadModel(
+        execution=None,
+        label="Promoted result",
+        notes=None,
+        persisted_at=None,
+        payload_hash=None,
+        artifact_location="verified-read-only-artifact",
+        legacy_result=promoted_result,
+    )
+    promoted_advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
+        promoted_read,
+        daily_evidence=daily_evidence,
+        decision_date="2026-07-07",
+    )
+    assert promoted_advice.recommendations == ()
+    assert "promoted_strategy_acceptance_evidence_missing" in promoted_advice.diagnostics
+
+
 def test_workbench_source_service_reads_real_read_only_sources(tmp_path: Path) -> None:
     config = _config(tmp_path)
     record_path = tmp_path / "multi-day.md"
@@ -462,6 +582,81 @@ def test_workbench_source_service_reads_real_read_only_sources(tmp_path: Path) -
     assert all(item["degraded_reason"] for item in payload["action_items"])
     assert all(item["drilldown_target"] for item in payload["action_items"])
     assert not any(item["write_intent"] for item in payload["action_items"])
+
+
+def test_workbench_source_service_injects_exact_current_legacy_candidate_read(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    record_path = tmp_path / "multi-day.md"
+    _seed_ready_sources(config, record_path)
+    _scheduled_outputs(config)
+
+    result_id = "scheduled_rec_20260706_051001"
+    result_path = Path(config.output_root) / "recommendation" / "runs" / f"{result_id}.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "result_id": result_id,
+                "result_name": "verified scheduled candidate",
+                "config": {},
+                "recommendations": [
+                    {
+                        "stock_code": "2330",
+                        "stock_name": "TSMC",
+                        "close_price": 1000.0,
+                        "price_change": 0.0,
+                        "total_score": 80.0,
+                        "indicator_score": 30.0,
+                        "pattern_score": 25.0,
+                        "volume_score": 25.0,
+                        "recommendation_reasons": "已保存規則候選",
+                        "industry": "semiconductor",
+                        "regime_match": True,
+                    }
+                ],
+                "run_context": {"as_of_date": "2026-07-06"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    status_path = (
+        Path(config.output_root)
+        / "scheduled"
+        / "recommendation_snapshot"
+        / "latest_status.json"
+    )
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status.update(
+        decision_date="2026-07-06",
+        result_id=result_id,
+        recommendations_count=1,
+    )
+    status_path.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
+
+    dashboard = WorkbenchSourceService(
+        config,
+        evidence_db_path=config.db_file,
+        clock=lambda: datetime(2026, 7, 7, 12, tzinfo=timezone.utc),
+    ).inspect(
+        decision_date="2026-07-06",
+        multi_day_record_path=record_path,
+    )
+
+    assert dashboard.daily_evidence is not None
+    assert dashboard.daily_evidence.candidate_status == "candidate"
+    assert dashboard.daily_evidence.candidate_result_id == result_id
+    assert dashboard.advice_dashboard is not None
+    assert dashboard.advice_dashboard.decision_date == "2026-07-06"
+    assert dashboard.advice_dashboard.data_as_of_date == "2026-07-06"
+    assert len(dashboard.advice_dashboard.recommendations) == 1
+    advice = dashboard.advice_dashboard.recommendations[0]
+    assert advice.stock_code == "2330"
+    assert advice.advice_action.value == "RESEARCH"
+    assert advice.classification.value == "PROFESSIONAL_CANDIDATE"
+    assert result_id in advice.source_trace
+    assert dashboard.advice_dashboard.portfolio_rows == ()
 
 
 def test_workbench_source_service_excludes_future_snapshot_from_default_current_view(

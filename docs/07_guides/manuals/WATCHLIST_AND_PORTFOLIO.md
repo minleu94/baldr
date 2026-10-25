@@ -205,11 +205,15 @@ M157 顯示補充：明選「當前持倉部位」列後，表前摘要的平均
 
 Paper Portfolio 分頁主要唯讀呈現 snapshot、現金、狀態、ledger、成本、benchmark、weekly report、blockers 與 warnings。資料缺少時顯示 partial／not computable，不能把未知成本、缺成交或空快照補成零。
 
+若狀態收據記錄舊資料庫路徑，只有在 snapshot ID、日期、現金與總值都和目前選定帳本相同時，畫面才會把它列為「舊路徑已由 snapshot 身分核對」警告；任何欄位不符或缺失仍會阻擋。週報邊界不一致與缺少成交成本帳會分別說明，括號保留原始診斷碼供排錯。
+
+Paper 摘要會並列 snapshot、Equal Weight 與成交成本帳的日期區間與筆數；任一側缺日期或沒有成交紀錄時會直接標示，不會用另一份帳本的日期補值。用這些區間核對週報涵蓋範圍，再查看展開診斷中的阻擋原因。
+
 後繼開發來源的 Paper 概覽把「尚無 snapshot」與「已有 snapshot、最新版本沒有持倉」分開顯示；空表不再佔據整個分頁。先核摘要中的真實 snapshot／持倉筆數、總值與現金，再核空狀態的帳戶命名空間、snapshot ID 與日期。金額「未知」代表來源未提供，`TWD 0.00` 才是已保存的零值；有持倉時原明細表會恢復。Paper 操作區以三列、每列兩欄呈現，較窄視窗及 125%／150% DPI 仍可讀完整操作名稱。最近週報摘要、帳戶命名空間與最新 snapshot ID 保持可見；來源路徑、阻擋、警告與週報完整原文預設收合，按「展開來源與完整診斷」查閱，刷新不會改變展開狀態。讀取失敗會在摘要提示，詳細原因在展開內容。空持倉不代表帳戶資格或績效通過。本改造只在原始碼，固定 EXE 尚未包含。
 
-- 「匯入 Paper 成交 CSV」先預覽 hash、筆數和成本；確認填入的是實際模擬成交且欄位完整後，才二次確認 append 到 Paper Trade Ledger。此動作不改手動帳、不改 Paper snapshot，也不送 broker order。
+- 「匯入 Paper 成交 CSV」使用 `paper-trade-import.v1`：包含 Paper fill 身份、日期、標的、買賣、委託／成交股數、參考價／成交價、費用、滑價、換手、執行落差及狀態等完整欄位；可由服務辨認的中英欄名見輸出範本。先預覽 hash、筆數、成本與逐列錯誤；確認填入的是實際模擬成交且欄位完整後，才二次確認 append 到 Paper Trade Ledger。券商原生檔案若缺少這些欄位，不能推測補值，需先做該券商的明確欄位 adapter。此動作不改手動帳、不改 Paper snapshot，也不送 broker order。
 - 「匯出成交範本」建立只有欄名的空白 CSV，預設不覆寫既有檔案。
-- 「預覽／建立 Equal Weight」先唯讀檢查基準、snapshot 日期、固定成分與每個決策日的 T-1 價格；只有預覽通過且再次確認後才建立新的研究用 benchmark ledger。這不等於填入 Paper fills 或實盤績效。
+- 「預覽／更新 Equal Weight」先唯讀檢查 baseline、snapshot 日期、固定成分與每個決策日的 T-1 價格，再比對既有 ledger。只有既有列與完整因果重算完全一致時，才可確認建立新 ledger 或追加缺少的連續尾段；不改既有列。這不等於填入 Paper fills 或實盤績效。
 - 「計算最近週報」使用畫面允許範圍內的 snapshot 數量（預設 5 筆，可調 1–31）；不足或成本來源不完整時會明示不能計算，不用缺件補零。
 
 若本機有可讀的 source-backed Health read model，Paper 區另有「Paper 持倉健康／退出候選（獨立 Paper identity，唯讀）」區塊。選取一列閱讀研究建議、評估原因、需要確認、日期與來源；可能顯示 `HOLD`、`REDUCE_CANDIDATE`、`EXIT_CANDIDATE` 或 `WATCH`。`WATCH`／未知、沒有 receipt 或 stale 表示這次不能採用 action，先依提示讀取來源診斷。這個區塊只讀 Health projection，不會執行 evaluator 或產生新的 Health receipt；刷新 Portfolio 也不是 Health producer。

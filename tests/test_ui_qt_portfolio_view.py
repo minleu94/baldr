@@ -55,6 +55,8 @@ from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioSnapshotRepository,
 )
 from app_module.paper_trade_ledger import PaperTradeLedgerRepository
+from app_module.paper_equal_weight_benchmark_builder import PaperEqualWeightBenchmarkBuilder
+from app_module.paper_equal_weight_benchmark_ledger import EqualWeightBenchmarkLedger
 from ui_qt.views.portfolio_view import (
     AddTradeDialog,
     PortfolioView,
@@ -62,6 +64,28 @@ from ui_qt.views.portfolio_view import (
 )
 import ui_qt.views.portfolio_view as portfolio_view_module
 from ui_qt.workers.task_worker import TaskWorker, running_task_workers
+
+
+def test_paper_diagnostic_text_explains_path_rebound_and_retains_raw_code() -> None:
+    message = portfolio_view_module._paper_diagnostic_text(
+        "paper_daily_status_state_db_path_rebound_by_snapshot_identity"
+    )
+    assert "snapshot ID、日期、現金與總值" in message
+    assert "paper_daily_status_state_db_path_rebound_by_snapshot_identity" in message
+    assert portfolio_view_module._paper_diagnostic_text("future_unknown_code") == "future_unknown_code"
+
+
+@pytest.mark.parametrize(
+    ("first_date", "latest_date", "expected"),
+    [
+        ("2026-08-01", "2026-08-31", "2026-08-01 → 2026-08-31"),
+        ("2026-08-01", None, "始於 2026-08-01；結束日未知"),
+        (None, "2026-08-31", "起始日未知；截至 2026-08-31"),
+        (None, None, "無日期資料"),
+    ],
+)
+def test_paper_date_range_preserves_unknown_bounds(first_date, latest_date, expected):
+    assert portfolio_view_module._paper_date_range(first_date, latest_date) == expected
 
 
 def app():
@@ -2754,7 +2778,7 @@ def test_paper_portfolio_readiness_tab_discloses_snapshot_and_missing_benchmark(
                 "decision_date": snapshot.decision_date,
                 "cash": "100.00",
                 "total_value": "1000.00",
-                "state_db": str(state_db.resolve()),
+                "state_db": str(tmp_path / "previous-drive" / "paper_portfolio.sqlite"),
                 "writes_market_db": False,
                 "auto_rebalance_allowed": False,
                 "changes_advice": False,
@@ -2767,13 +2791,34 @@ def test_paper_portfolio_readiness_tab_discloses_snapshot_and_missing_benchmark(
     view = make_portfolio_view(tmp_path)
     view.refresh_all()
 
-    assert "最新可採用 snapshot：2026-08-21" in view.paper_readiness_summary_label.text()
+    assert "snapshot 區間：2026-08-21 → 2026-08-21" in view.paper_readiness_summary_label.text()
     assert "raw 累積 1 筆" in view.paper_readiness_summary_label.text()
     assert "TWD 1,000.00" in view.paper_readiness_summary_label.text()
     assert "Equal Weight：尚無" in view.paper_readiness_summary_label.text()
-    assert "成本帳：資料缺件（missing）（0 筆）" in view.paper_readiness_summary_label.text()
+    assert "成本帳：資料缺件（missing）（0 筆；無成交紀錄）" in view.paper_readiness_summary_label.text()
     assert "equal_weight_benchmark_db_missing" in view.paper_readiness_detail_label.text()
+    assert "snapshot ID、日期、現金與總值已和目前帳本核對一致" in view.paper_readiness_detail_label.text()
+    assert "paper_daily_status_state_db_path_rebound_by_snapshot_identity" in view.paper_readiness_detail_label.text()
     assert view.paper_snapshot_table.model().rowCount() == 1
+
+    view._render_paper_readiness(
+        replace(
+            view._paper_readiness,
+            benchmark_observation_count=21,
+            benchmark_first_date="2026-07-12",
+            benchmark_latest_date="2026-08-28",
+            cost_record_count=2,
+            cost_ledger_first_date="2026-08-27",
+            cost_ledger_latest_date="2026-08-28",
+        )
+    )
+    summary = view.paper_readiness_summary_label.text()
+    details = view.paper_readiness_detail_label.text()
+    assert "Equal Weight：21 筆（2026-07-12 → 2026-08-28）" in summary
+    assert "成本帳：資料缺件（missing）（2 筆；2026-08-27 → 2026-08-28）" in summary
+    assert "snapshot 覆蓋：2026-08-21 → 2026-08-21｜1 筆" in details
+    assert "Equal Weight 覆蓋：2026-07-12 → 2026-08-28｜21 筆" in details
+    assert "成交成本覆蓋：2026-08-27 → 2026-08-28｜2 筆" in details
 
 
 def test_paper_portfolio_compact_empty_state_preserves_unknown_zero_and_rows(tmp_path):
@@ -2856,7 +2901,7 @@ def test_paper_actions_keep_full_labels_in_two_columns(tmp_path):
         item = controls.itemAtPosition(row, column)
         assert item is not None and item.widget() is widget
     assert view.btn_refresh_paper.text() == "重新讀取 Paper 狀態"
-    assert view.btn_build_paper_benchmark.text() == "預覽／建立 Equal Weight"
+    assert view.btn_build_paper_benchmark.text() == "預覽／更新 Equal Weight"
     assert view.btn_import_paper_fills.text() == "匯入 Paper 成交 CSV"
     assert view.btn_export_paper_template.text() == "匯出成交範本"
     assert view.btn_refresh_paper_weekly.text() == "計算最近週報"
@@ -2917,7 +2962,7 @@ def test_paper_portfolio_tab_discloses_weekly_evidence_gap_without_writing(tmp_p
     assert not (tmp_path / "paper_portfolio").exists()
 
 
-def test_paper_equal_weight_button_previews_then_builds_new_ledger(tmp_path, monkeypatch):
+def test_paper_equal_weight_button_previews_then_appends_missing_suffix(tmp_path, monkeypatch):
     baseline_path = tmp_path / "paper_portfolio" / "baseline_20260712.json"
     baseline_path.parent.mkdir(parents=True)
     baseline_path.write_text(
@@ -2980,6 +3025,17 @@ def test_paper_equal_weight_button_previews_then_builds_new_ledger(tmp_path, mon
             (("2330", "20260820", "101.00"), ("2317", "20260820", "49.00")),
         )
 
+    output_path = tmp_path / "paper_portfolio" / "paper_equal_weight_benchmark.sqlite"
+    build = PaperEqualWeightBenchmarkBuilder(
+        today_provider=lambda: date(2026, 8, 21)
+    ).preview(
+        baseline_path=baseline_path,
+        state_db_path=state_db,
+        market_db_path=market_db,
+        output_ledger_path=output_path,
+    )
+    EqualWeightBenchmarkLedger(output_path).append(build.entries[0])
+
     view = make_portfolio_view(tmp_path)
     messages: list[str] = []
     monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.Yes)
@@ -2987,10 +3043,14 @@ def test_paper_equal_weight_button_previews_then_builds_new_ledger(tmp_path, mon
 
     view.btn_build_paper_benchmark.click()
 
-    benchmark_path = tmp_path / "paper_portfolio" / "paper_equal_weight_benchmark.sqlite"
+    benchmark_path = output_path
     assert benchmark_path.exists()
-    assert "已保存" in messages[-1]
-    assert "Equal Weight：2 筆" in view.paper_readiness_summary_label.text()
+    assert "追加 1 筆" in messages[-1]
+    assert [row.decision_date for row in EqualWeightBenchmarkLedger(benchmark_path, read_only=True).list("paper-main-equal")] == [
+        "2026-08-20",
+        "2026-08-21",
+    ]
+    assert "Equal Weight：2 筆（2026-08-20 → 2026-08-21）" in view.paper_readiness_summary_label.text()
 
 
 def test_paper_fill_csv_import_requires_confirmation_and_only_writes_paper_ledger(
@@ -3016,7 +3076,7 @@ def test_paper_fill_csv_import_requires_confirmation_and_only_writes_paper_ledge
     ledger_path = tmp_path / "paper_portfolio" / "paper_trade_ledger.sqlite"
     assert [fill.fill_id for fill in PaperTradeLedgerRepository(ledger_path).list()] == ["fill-1"]
     assert [trade.trade_id for trade in view.portfolio_service.trades] == ["t1", "t2"]
-    assert "成本帳：可用（ready）（1 筆）" in view.paper_readiness_summary_label.text()
+    assert "成本帳：可用（ready）（1 筆；2026-08-27 → 2026-08-27）" in view.paper_readiness_summary_label.text()
 
 
 def test_paper_fill_template_export_writes_headers_only_and_not_ledger(tmp_path, monkeypatch):

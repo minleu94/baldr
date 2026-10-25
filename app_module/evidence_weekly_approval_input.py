@@ -20,6 +20,7 @@ SCHEMA_VERSION = "evidence-weekly-approval-input.v1"
 PENDING_STATUS = "pending_human_review"
 FAILED_STATUS = "collection_failed"
 APPROVAL_STATUS = "pending_owner_reviewer"
+SOURCE_COVERAGE_STATUSES = {"degraded", "observed_no_basic_integrity_gaps"}
 
 
 def _utc_now() -> str:
@@ -91,6 +92,26 @@ def _record_from_row(
         raise ValueError(f"pending weekly collection contains an error: {collection_id}")
 
     payload_last_trading_date = str(payload.get("last_trading_date") or "").strip()
+    source_coverage = payload.get("source_coverage")
+    reviewability_reasons: list[str] = []
+    if status == FAILED_STATUS:
+        reviewability_status = FAILED_STATUS
+        reviewability_reasons.append("collection_failed")
+    elif not isinstance(source_coverage, Mapping):
+        reviewability_status = "recollection_required"
+        reviewability_reasons.append("source_coverage_not_captured")
+    elif not str(source_coverage.get("status") or "").strip():
+        reviewability_status = "recollection_required"
+        reviewability_reasons.append("source_coverage_status_missing")
+    elif str(source_coverage.get("status") or "").strip().casefold() not in SOURCE_COVERAGE_STATUSES:
+        reviewability_status = "recollection_required"
+        reviewability_reasons.append(
+            "source_coverage_status_unrecognized:"
+            + str(source_coverage.get("status") or "").strip()[:80]
+        )
+    else:
+        reviewability_status = "reviewable_candidate"
+
     return {
         "collection_id": collection_id,
         "period_start": period_start,
@@ -101,12 +122,22 @@ def _record_from_row(
         "created_at": str(row["created_at"] or "").strip(),
         "last_trading_date": payload_last_trading_date,
         "collection_payload": payload,
+        "reviewability_status": reviewability_status,
+        "reviewability_reasons": reviewability_reasons,
         "error": {
             "type": error_type,
             "message": error_message,
         },
         "review": {
-            "approval_status": APPROVAL_STATUS,
+            "approval_status": (
+                FAILED_STATUS
+                if status == FAILED_STATUS
+                else (
+                    "recollection_required"
+                    if reviewability_status == "recollection_required"
+                    else APPROVAL_STATUS
+                )
+            ),
             "owner_role": owner_role,
             "reviewer_role": reviewer_role,
             "review_decision": "",
@@ -165,13 +196,21 @@ def build_weekly_approval_input(
     failed_count = sum(
         1 for record in records if record["collection_status"] == FAILED_STATUS
     )
+    recollection_required_count = sum(
+        1 for record in records if record["reviewability_status"] == "recollection_required"
+    )
     source_paths = sorted({record["source_path"] for record in records})
     source_hashes = sorted({record["source_hash"] for record in records})
-    packet_status = (
-        "ready_for_human_review"
-        if normalized_owner and normalized_reviewer
-        else "needs_named_owner_reviewer"
-    )
+    if recollection_required_count:
+        packet_status = "recollection_required"
+    elif pending_count == 0 and failed_count:
+        packet_status = "collection_failed"
+    elif pending_count == 0:
+        packet_status = "no_pending_reviews"
+    elif normalized_owner and normalized_reviewer:
+        packet_status = "ready_for_human_review"
+    else:
+        packet_status = "needs_named_owner_reviewer"
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": _utc_now(),
@@ -183,6 +222,8 @@ def build_weekly_approval_input(
         "record_count": len(records),
         "pending_human_review_count": pending_count,
         "collection_failed_count": failed_count,
+        "recollection_required_count": recollection_required_count,
+        "reviewable_pending_count": pending_count - recollection_required_count,
         "owner_reviewer_required": True,
         "owner_role": normalized_owner,
         "reviewer_role": normalized_reviewer,
@@ -213,6 +254,7 @@ def render_markdown(packet: Mapping[str, Any]) -> str:
         f"- Sidecar SHA-256: `{packet.get('sidecar_sha256', '')}`",
         f"- Pending human review: `{packet.get('pending_human_review_count', 0)}`",
         f"- Collection failed: `{packet.get('collection_failed_count', 0)}`",
+        f"- Recollection required: `{packet.get('recollection_required_count', 0)}`",
         f"- Owner role: `{packet.get('owner_role', '') or 'REQUIRES_NAMED_OWNER'}`",
         f"- Reviewer role: `{packet.get('reviewer_role', '') or 'REQUIRES_NAMED_REVIEWER'}`",
         "- Formal credit authorized: `false`",
@@ -222,23 +264,76 @@ def render_markdown(packet: Mapping[str, Any]) -> str:
         "",
         "## Review records",
         "",
-        "| Period | Collection ID | Source hash | Last trading date | Approval status | Decision |",
-        "|---|---|---|---|---|---|",
+        "| Period | Collection ID | Source hash | Last trading date | Reviewability | Observed coverage | Findings | Approval status | Decision |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for record in records:
         review = record.get("review", {})
+        collection_payload = record.get("collection_payload", {})
+        coverage = collection_payload.get("source_coverage", {})
+        findings = coverage.get("quality_findings", [])
         lines.append(
-            "| {start}..{end} | `{collection}` | `{source_hash}` | `{last_trading}` | "
-            "`{approval}` | `{decision}` |".format(
+            "| {start}..{end} | `{collection}` | `{source_hash}` | `{last_trading}` | `{reviewability}` | "
+            "{coverage_status} / {trading_days} dates / {rows} rows / {duplicates} duplicates | "
+            "{findings} | `{approval}` | `{decision}` |".format(
                 start=record.get("period_start", ""),
                 end=record.get("period_end", ""),
                 collection=record.get("collection_id", ""),
                 source_hash=record.get("source_hash", ""),
                 last_trading=record.get("last_trading_date", "") or "unknown",
+                reviewability=record.get("reviewability_status", "unknown"),
+                coverage_status=coverage.get("status", "not_collected"),
+                trading_days=coverage.get("trading_day_count", "unknown"),
+                rows=coverage.get("observed_row_count", "unknown"),
+                duplicates=coverage.get("duplicate_symbol_rows", "unknown"),
+                findings=(", ".join(str(item) for item in findings) or "none_observed"),
                 approval=review.get("approval_status", APPROVAL_STATUS),
                 decision=review.get("review_decision", "") or "pending",
             )
         )
+    recollection_records = [
+        record for record in records if record.get("reviewability_status") == "recollection_required"
+    ]
+    if recollection_records:
+        lines.extend(["", "## Recollection required before review", ""])
+        for record in recollection_records:
+            reasons = record.get("reviewability_reasons", [])
+            lines.append(
+                f"- {record.get('period_start', '')}..{record.get('period_end', '')} "
+                f"`{record.get('collection_id', '')}`: "
+                + (", ".join(str(item) for item in reasons) or "review evidence incomplete")
+            )
+    integrity_records = [
+        record
+        for record in records
+        if record.get("collection_payload", {}).get("source_coverage", {}).get(
+            "integrity_examples"
+        )
+    ]
+    if integrity_records:
+        lines.extend(["", "## Source integrity details", ""])
+        for record in integrity_records:
+            coverage = record["collection_payload"]["source_coverage"]
+            lines.append(
+                f"### {record.get('period_start', '')}..{record.get('period_end', '')}"
+            )
+            lines.append(
+                f"- Incomplete rows: `{coverage.get('incomplete_row_count', 'unknown')}`"
+            )
+            for item in coverage.get("integrity_examples", []):
+                lines.append(
+                    "- `{date}` / `{symbol}`: missing {fields}; `{classification}`; official `{official}`; receipt `{receipt}`; activity {activity}".format(
+                        date=item.get("date", "unknown"),
+                        symbol=item.get("symbol", "unknown"),
+                        fields=", ".join(item.get("missing_fields", [])) or "unknown",
+                        classification=item.get("classification", "cause_unverified"),
+                        official=json.dumps(item.get("official_ohlc", {}), ensure_ascii=False, sort_keys=True),
+                        receipt=item.get("official_receipt_sha256") or "unverified",
+                        activity=json.dumps(item.get("activity", {}), ensure_ascii=False, sort_keys=True),
+                    )
+                )
+            if coverage.get("integrity_examples_truncated"):
+                lines.append("- More rows omitted; see the JSON packet.")
     lines.extend(
         [
             "",

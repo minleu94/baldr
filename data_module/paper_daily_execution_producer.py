@@ -2142,8 +2142,19 @@ def _validate_queue_receipt(
     source_path = recommendation_value.get("path")
     if not isinstance(source_path, str) or not source_path.strip():
         return "result_recommendation_path_missing"
+    resolved_source_path = Path(source_path).expanduser().resolve()
     try:
-        source_raw = Path(source_path).expanduser().resolve().read_bytes()
+        source_raw = resolved_source_path.read_bytes()
+    except FileNotFoundError:
+        relocated = _locate_pinned_relocated_recommendation_source(
+            result_id=source_result_id,
+            origin_path=resolved_source_path,
+            expected_file_hash=source_hash,
+        )
+        if relocated is None:
+            return "recommendation_source_unreadable:FileNotFoundError"
+        resolved_source_path, source_raw = relocated
+    try:
         if _sha256_bytes(source_raw) != source_hash:
             return "recommendation_source_changed"
         source_value = json.loads(source_raw.decode("utf-8"))
@@ -2152,7 +2163,7 @@ def _validate_queue_receipt(
         if _payload_hash(source_value) != recommendation_content_hash:
             return "recommendation_source_content_changed"
         recommendation = _load_recommendation(
-            Path(source_path).expanduser().resolve(),
+            resolved_source_path,
             observed=recorded_at,
         )
         if recommendation.result_id != source_result_id:
@@ -2249,6 +2260,93 @@ def _validate_queue_receipt(
     ):
         return "processed_ledger_readback_mismatch"
     return None
+
+
+def _locate_pinned_relocated_recommendation_source(
+    *,
+    result_id: str,
+    origin_path: Path,
+    expected_file_hash: str,
+) -> tuple[Path, bytes] | None:
+    """以既有 tier-1 搬遷清冊唯讀定位缺失路徑的推薦來源。"""
+
+    try:
+        from data_module.legacy_recommendation_run_locator import (  # noqa: PLC0415
+            load_pinned_legacy_recommendation_locators,
+        )
+
+        entries = load_pinned_legacy_recommendation_locators()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    matches = [
+        entry
+        for entry in entries or ()
+        if entry.get("result_id") == result_id
+        and entry.get("origin_path") == str(origin_path)
+        and entry.get("relocated_file_sha256") == expected_file_hash
+        and entry.get("custody_verification_tier")
+        == "tier1_independent_pre_migration_file_sha256"
+    ]
+    if len(matches) != 1:
+        return None
+    runs_root = Path(str(matches[0]["current_path"])).parent.resolve()
+    database_path = runs_root / "recommendation_runs.db"
+    if not database_path.is_file():
+        return None
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(
+            f"file:{database_path.as_posix()}?mode=ro", uri=True, timeout=5.0
+        )
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            """
+            SELECT result_id, result_name, regime, stock_count, config, notes,
+                   created_at, data_path
+            FROM runs WHERE result_id = ?
+            """,
+            (result_id,),
+        ).fetchone()
+    except (OSError, sqlite3.Error):
+        return None
+    finally:
+        if connection is not None:
+            connection.close()
+    if row is None or str(row["data_path"]) != str(origin_path):
+        return None
+    try:
+        from data_module.legacy_recommendation_run_locator import (  # noqa: PLC0415
+            compute_legacy_runs_db_row_sha256,
+            locate_legacy_recommendation_run,
+        )
+
+        row_hash = compute_legacy_runs_db_row_sha256(
+            result_id=row["result_id"],
+            result_name=row["result_name"],
+            regime=row["regime"],
+            stock_count=row["stock_count"],
+            config=row["config"],
+            notes=row["notes"],
+            created_at=row["created_at"],
+            data_path=row["data_path"],
+        )
+        located = locate_legacy_recommendation_run(
+            result_id,
+            str(origin_path),
+            runs_root=runs_root,
+            db_row_sha256=row_hash,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+    if (
+        located is None
+        or located.result_id != result_id
+        or not located.custody_verified
+        or located.research_only
+        or located.relocated_file_sha256 != expected_file_hash
+    ):
+        return None
+    return located.current_path, located.raw_payload
 
 
 def _validate_required_candidate_hashes(

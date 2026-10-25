@@ -273,3 +273,48 @@ def test_main_drain_releases_worker_delete_queued_by_native_finished() -> None:
 
     assert shiboken6.isValid(window) is False
     assert shiboken6.isValid(worker) is False
+
+
+def test_main_drain_stops_when_qt_callback_touches_deleted_child(monkeypatch) -> None:
+    """已刪除子 widget 的 queued callback 不得再次打斷關閉流程。"""
+
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    diagnostics: list[str] = []
+
+    def raise_deleted_object() -> None:
+        raise RuntimeError("Internal C++ object already deleted")
+
+    monkeypatch.setattr(
+        main_module,
+        "record_diagnostic",
+        lambda event, **_kwargs: diagnostics.append(event),
+    )
+
+    main_module._drain_qt_deferred_deletes(
+        SimpleNamespace(processEvents=raise_deleted_object),
+        (),
+    )
+
+    assert diagnostics[-1] == "qt_deferred_delete_drain_stopped_invalid_object"
+
+
+def test_startup_cleanup_ignores_already_deleted_window_wrapper(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class _DeletedWindow:
+        def hide(self) -> None:
+            raise RuntimeError("Internal C++ object already deleted")
+
+        def close(self) -> None:
+            calls.append("close")
+
+    controller = SimpleNamespace(
+        window=_DeletedWindow(),
+        dismiss=lambda: calls.append("dismiss"),
+    )
+
+    main_module._cleanup_startup(SimpleNamespace(), controller)
+
+    assert calls == ["dismiss"]

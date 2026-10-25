@@ -348,7 +348,7 @@ def test_registered_projection_rejects_reparse_runs_root(
     assert legacy_path.read_bytes() == raw
 
 
-def test_registered_projection_rejects_runs_root_resolve_retarget(
+def test_registered_projection_uses_configured_root_without_resolve_retarget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -376,12 +376,11 @@ def test_registered_projection_rejects_runs_root_resolve_retarget(
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", retarget_runs_root)
-    with pytest.raises(
-        ExecutionArtifactIntegrityError,
-        match="runs root resolve 與 configured absolute path 不一致",
-    ):
-        reader._read_scoped_path(result_id, str(legacy_path))
-    assert legacy_path.read_bytes() == raw
+    resolved_path, payload, _located = reader._read_scoped_path(
+        result_id, str(legacy_path)
+    )
+    assert resolved_path == legacy_path
+    assert payload == raw
     assert json.loads(redirected_path.read_text(encoding="utf-8"))["source_id"] == (
         "synthetic-retargeted-root"
     )

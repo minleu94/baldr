@@ -18,6 +18,10 @@ V2 開發分支產品接受摘要：[BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md](BA
 
 可先讀[V2自動化驗收一頁摘要與截圖](BALDR_V2_AUTOMATED_ACCEPTANCE_20261021.md)，不要求Owner現在逐頁操作。
 
+[2026-10-24 Workbench Advice 排程候選接線](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md)記錄 verified 當日結果如何進入唯讀 Professional 研究候選、配置缺件如何 fail closed，以及較廣每日旅程測試被隔離 temp 路徑 artifact rename 錯誤阻斷的範圍；不代表正式來源或 Gate 通過。
+
+[2026-10-25 Workbench Advice 空結果判讀](BALDR_WORKBENCH_ADVICE_EMPTY_STATE_20261025.md)記錄 UI 如何區分帶有來源／資格警告的空 DTO 與未附原因的空結果；完整原警告保留，來源、PIT、ML 與 Gate 資格不變。
+
 [10/18後繼題材研究](BALDR_THEME_DAILY_QA_20261018.md)另核每日聚合、首頁／題材／個股返回及Journal原判斷重啟回訪；[研究12回報修正](BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)包含清除、同版顯示均線、原價格筆記刪除與明確一般查詢，完整Gate接受範圍保持。
 
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。

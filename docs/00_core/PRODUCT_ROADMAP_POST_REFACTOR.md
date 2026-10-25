@@ -452,15 +452,17 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 
 已完成行為不變重構的執行與 rollback companion 保存在[歷史報告](../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md)，只供追溯，不作目前工程計畫或狀態依據。
 
-## 21. Remaining Open Decisions
+## 21. Owner Decisions and Remaining External Dependencies
 
-下列選項需要在對應 Gate 取得使用者決策；其餘未確定事項採保守 fail-closed：
+2026-10-24，Owner 明確授權總負責者以可回退的保守預設解除既有產品選擇阻塞。選定方向如下；未取得相應資料或驗收證據時仍 fail-closed，政策決定不等於 Gate 接受：
 
-1. Guided Mode 的預設風險等級、現金下限與最大持倉數。
-2. Paper Portfolio 與實際 Broker CSV 的優先對接格式。
-3. Gate 2 production evidence write-mode scheduler 的人工批准時間點。
-4. P0 資料來源採官方自建、授權供應商或雙來源交叉驗證的成本選擇。
-5. 是否允許通過 Gate 7 的 ML challenger 影響正式排序；即使允許，也不授權自動交易。
+1. **Guided Mode 預設風險**：預設採保守級別，沿用現行 `AdvicePolicyConfig` 控制值：現金保留至少 2,000 bp、最多 8 檔、單檔上限 1,500 bp。它們是產品預設上限／底線，不代表已知使用者帳戶餘額或個人風險承受度；現金、持倉與風險預算未由同一可信 snapshot 核實時，Advice 必須拒絕配置並顯示缺件。
+2. **Paper／Broker CSV**：Paper 成交優先既有 `paper-trade-import.v1` 完整 fill 欄位與可核對別名；預覽需檢查檔案 hash 與全部列，明確確認後才 append 到 Paper Trade Ledger。券商原生 CSV adapter 延後至指定券商後再做欄位映射，不將一般 `trade-import.v1` 手動帳匯入路徑當作 Paper 成交；不連券商 API、不送委託。
+3. **Gate 2 evidence write-mode scheduler**：不以日期自動啟用。須先滿足至少 3 個真實 weekly review period、3 個真實操作日 evidence record，完成 backup／restore 與 disable-first recovery rehearsal，再以明確 approval artifact 啟用；在此之前保持 disabled／dry-run。
+4. **P0 資料來源成本**：先採可取得且可核驗的官方來源。未接受來源只進 diagnostics／shadow，不能進 formal decision layer；不採購付費資料。若官方來源留下 Gate 缺口，先列出欄位、覆蓋與報價，再另作具體預算決策。
+5. **ML 正式影響**：ML challenger 只可在 Gate 7 前置條件滿足後進 shadow；正式排序影響須 Gate 7 全部 promotion 證據、rollback 與獨立 approval artifact 齊備。這不授權自動交易。
+
+其餘未明示事項仍採保守 fail-closed。以上決策可供工程按順序推進，不代替來源授權、PIT／品質證據、成熟樣本或正式排程收據。
 
 ---
 

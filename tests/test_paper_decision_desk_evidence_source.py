@@ -317,6 +317,24 @@ def test_1418_unproven_position_remains_degraded_and_explicitly_paper_research(
     assert result.metadata["formal_credit"] is False
 
 
+def test_stale_status_db_path_requires_exact_snapshot_financial_identity(tmp_path: Path) -> None:
+    source, state_db, status_path, health_path = _source(tmp_path)
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    payload["state_db"] = str(tmp_path / "previous-drive" / "paper_portfolio.sqlite")
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    accepted = source.build(date(2026, 9, 2))
+
+    assert "paper_daily_status_state_db_path_mismatch" not in accepted.blockers
+    assert "paper_daily_status_state_db_path_rebound_by_snapshot_identity" in accepted.warnings
+
+    payload["cash"] = "1.00"
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    rejected = source.build(date(2026, 9, 2))
+
+    assert "paper_daily_status_state_db_path_mismatch" in rejected.blockers
+
+
 @pytest.mark.parametrize(
     "invalid_source",
     ("missing_snapshot", "bad_status", "bad_schema", "bad_date", "bad_quantity"),

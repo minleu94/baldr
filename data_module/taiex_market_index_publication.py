@@ -462,10 +462,11 @@ def publish_taiex_market_index(
     *, config: Any, capture_manifests: Sequence[Path], market_update_result: Mapping[str, Any],
 ) -> dict[str, Any]:
     """同步整份 TAIEX CSV，並只為明確 capture 的同次列發布證據。"""
-    if market_update_result.get("success") is not True:
+    partial_capture_only = market_update_result.get("success") is not True
+    if partial_capture_only and not capture_manifests:
         return {
             "success": False,
-            "message": "大盤更新未成功，略過 TAIEX SQLite 同步",
+            "message": "大盤更新未成功且沒有有效 capture，略過 TAIEX SQLite 同步",
             "source": "market_index",
             "synced_records": 0,
             "row_evidence": _unknown("market_update_not_successful"),
@@ -515,8 +516,20 @@ def publish_taiex_market_index(
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         capture_failure = "capture_validation_failed"
 
+    if partial_capture_only:
+        if capture_failure is not None or not captures:
+            return {
+                "success": False,
+                "message": "大盤批次部分失敗且 capture 無法完整驗證，略過 TAIEX SQLite 同步",
+                "source": "market_index",
+                "synced_records": 0,
+                "row_evidence": _unknown(capture_failure or "partial_capture_missing"),
+            }
+        captured_dates = {capture.source_date for capture in captures}
+        frame = frame.loc[frame["日期"].isin(captured_dates)].copy()
+
     # 此 writer 會替換 CSV 所含日期的 TAIEX 列，但不刪同日 sibling；
-    # replace_dates 只要求 formal guard 核對日期替換所需的完整受保護欄位，
+    # 部分批次只傳入已驗證 capture 的日期；replace_dates 只要求 formal guard 核對日期替換所需的完整受保護欄位，
     # 不會執行日期級刪除。先於 DBManager 初始化，避免 guard 前的 schema side effect。
     records = frame.to_dict(orient="records")
     try:
@@ -594,12 +607,23 @@ def publish_taiex_market_index(
 
     result: dict[str, Any] = {
         "success": True,
-        "message": "TAIEX CSV 已依複合鍵同步至 SQLite",
+        "message": (
+            "TAIEX 有效 capture 日期已同步；大盤來源批次仍部分失敗"
+            if partial_capture_only
+            else "TAIEX CSV 已依複合鍵同步至 SQLite"
+        ),
         "source": "market_index",
         "table": "market_indices",
         "synced_records": int(len(frame)),
         "row_evidence": _unknown(capture_failure or "no_explicit_capture"),
     }
+    if partial_capture_only:
+        result["upstream_update_partial"] = True
+        failed_dates = market_update_result.get("failed_dates", [])
+        if isinstance(failed_dates, (list, tuple)) and all(
+            isinstance(value, str) for value in failed_dates
+        ):
+            result["failed_dates"] = list(failed_dates)
     if capture_failure is not None or not captures:
         return result
 

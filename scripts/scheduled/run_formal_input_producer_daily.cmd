@@ -4,6 +4,7 @@ setlocal EnableExtensions
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..\..") do set "REPO_ROOT=%%~fI"
 cd /d "%REPO_ROOT%" || exit /b 1
+set "FORMAL_DAILY_RUNTIME_ENVIRONMENT_FILE=%REPO_ROOT%\output\v4_next_formal\formal_runtime_environment_binding_20261025.json"
 
 if defined BALDR_PYTHON set "PYTHON=%BALDR_PYTHON%"
 if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"

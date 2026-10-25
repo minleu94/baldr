@@ -24,6 +24,9 @@ from app_module.workbench_dtos import (
     WorkbenchDashboardDTO,
     WorkbenchLatestCaptureStatus,
 )
+from app_module.advice_composer import AdviceComposer
+from app_module.advice_dtos import AdviceDashboardDTO, AdviceMode, AdvicePolicyConfig
+from app_module.advice_policy import AdvicePolicy
 from app_module.personal_journal_paths import PersonalJournalPaths
 from app_module.continuity_review_projection import (
     ContinuityReviewProjectionService,
@@ -39,7 +42,10 @@ from app_module.recommendation_learning_evidence_projection_service import (
     RecommendationLearningEvidenceProjectionService,
 )
 from app_module.recommendation.queries import RecommendationExecutionReadSnapshot
-from app_module.saved_recommendation_queries import build_recommendation_execution_queries
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    execution_result_config,
+)
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
 from app_module.position_health_transition_read_service import (
@@ -259,22 +265,118 @@ class WorkbenchSourceService:
             requested_date=dashboard.as_of_date.isoformat()
         )
         check_read_cancelled()
-        daily_evidence = self.daily_investment_journey_service.build(
-            decision_snapshot=decision_snapshot,
-            scheduled_status=scheduled_status,
-            recommendation_learning_status=recommendation_learning_status,
-            recommendation_learning_projection=learning_projection,
-            requested_decision_date=dashboard.as_of_date.isoformat(),
+        daily_evidence, recommendation_read_model = (
+            self.daily_investment_journey_service.build_with_recommendation_read(
+                decision_snapshot=decision_snapshot,
+                scheduled_status=scheduled_status,
+                recommendation_learning_status=recommendation_learning_status,
+                recommendation_learning_projection=learning_projection,
+                requested_decision_date=dashboard.as_of_date.isoformat(),
+            )
         )
         check_read_cancelled()
+        advice_dashboard = self._compose_scheduled_candidate_advice(
+            recommendation_read_model,
+            daily_evidence=daily_evidence,
+            decision_date=dashboard.as_of_date.isoformat(),
+        )
         position_health = self.position_health_read_service.read_latest(
             expected_decision_date=dashboard.as_of_date.isoformat(),
         )
         check_read_cancelled()
         return replace(
             dashboard,
+            advice_dashboard=advice_dashboard,
             daily_evidence=daily_evidence,
             position_health=position_health,
+        )
+
+    @staticmethod
+    def _compose_scheduled_candidate_advice(
+        recommendation_read_model: Any | None,
+        *,
+        daily_evidence: Any,
+        decision_date: str,
+    ) -> AdviceDashboardDTO:
+        """Expose only the exact, verified current scheduled read as research candidates."""
+
+        policy_config = AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL)
+        if recommendation_read_model is None or daily_evidence.candidate_status != "candidate":
+            status = str(daily_evidence.candidate_status or "unknown")
+            if status == "candidate":
+                reason = "當日候選列缺少通過身分核對的保存結果；未注入 Advice。"
+                code = "verified_recommendation_read_missing"
+            else:
+                reason = f"當日候選狀態為「{status}」；未注入 Advice。請檢查每日來源日期、品質與保存結果身份。"
+                code = f"scheduled_candidate_status:{status}"
+            return AdviceDashboardDTO(
+                decision_date=decision_date,
+                data_as_of_date=(daily_evidence.candidate_data_date or ""),
+                mode=AdviceMode.PROFESSIONAL,
+                policy=policy_config,
+                diagnostics=(code,),
+                warnings=tuple(dict.fromkeys((reason, *tuple(daily_evidence.warnings)))),
+            )
+        if recommendation_read_model.execution is not None:
+            config = execution_result_config(recommendation_read_model.execution)
+        elif recommendation_read_model.legacy_result is not None:
+            config = recommendation_read_model.legacy_result.config
+        else:
+            return AdviceDashboardDTO(
+                decision_date=decision_date,
+                data_as_of_date=(daily_evidence.candidate_data_date or ""),
+                mode=AdviceMode.PROFESSIONAL,
+                policy=policy_config,
+                diagnostics=("recommendation_read_model_unsupported",),
+                warnings=("保存推薦格式無法由 Advice 安全讀取；未注入候選。",),
+            )
+        # A promoted strategy needs its own acceptance/lock/disclosure evidence
+        # before it can be rendered as formal Advice. This read path has none.
+        if config.get("strategy_status") == "promoted":
+            return AdviceDashboardDTO(
+                decision_date=decision_date,
+                data_as_of_date=(daily_evidence.candidate_data_date or ""),
+                mode=AdviceMode.PROFESSIONAL,
+                policy=policy_config,
+                diagnostics=("promoted_strategy_acceptance_evidence_missing",),
+                warnings=(
+                    "來源策略標示為 promoted，但此讀取路徑沒有正式採用、參數鎖定與揭露證據；請完成 Gate 核驗後再載入正式 Advice。",
+                ),
+            )
+        data_as_of_date = daily_evidence.candidate_data_date
+        if not data_as_of_date:
+            return AdviceDashboardDTO(
+                decision_date=decision_date,
+                data_as_of_date="",
+                mode=AdviceMode.PROFESSIONAL,
+                policy=policy_config,
+                diagnostics=("candidate_data_date_missing",),
+                warnings=("候選資料日期缺失；不能把決策日代作資料日，因此未注入 Advice。",),
+            )
+        if data_as_of_date > decision_date:
+            return AdviceDashboardDTO(
+                decision_date=decision_date,
+                data_as_of_date=data_as_of_date,
+                mode=AdviceMode.PROFESSIONAL,
+                policy=policy_config,
+                diagnostics=("candidate_data_date_after_decision_date",),
+                warnings=("候選資料日晚於決策日；已阻擋 Advice 注入。",),
+            )
+        evidence_quality = (
+            "OBSERVED" if daily_evidence.candidate_quality == "observed" else "DEGRADED"
+        )
+        warnings = (
+            "排程候選已核對保存結果與日期／cohort；目前僅供研究，不代表策略已通過正式採用 Gate。",
+            "未載入同一決策日的帳戶持倉、現金與風險預算，因此不提供配置或加碼判斷。",
+        )
+        return AdviceComposer(AdvicePolicy(policy_config)).compose(
+            recommendations=recommendation_read_model,
+            portfolio_result=None,
+            evidence_quality=evidence_quality,
+            decision_date=decision_date,
+            data_as_of_date=data_as_of_date,
+            mode=AdviceMode.PROFESSIONAL,
+            evidence_warnings=warnings,
         )
 
     def _load_recommendation_learning_status(

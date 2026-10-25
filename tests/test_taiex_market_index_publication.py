@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+import importlib.util
 import json
 from pathlib import Path
 import sqlite3
@@ -258,6 +259,54 @@ def test_quick_runner_real_update_service_captures_and_publishes_taiex(
     assert evidence.status == "attested"
 
 
+def test_update_service_preserves_market_batch_failure_dates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    service = UpdateService(config)
+
+    class _BatchLoader:
+        def create_module(self, _spec):
+            return None
+
+        def exec_module(self, module):
+            def batch_update_market_index(
+                *, start_date, end_date, config, capture_manifests, batch_outcome,
+            ):
+                assert (start_date, end_date) == ("2026-10-12", "2026-10-23")
+                assert config is service.config
+                assert capture_manifests == []
+                batch_outcome.update({
+                    "success": False,
+                    "updated_dates": [],
+                    "failed_dates": ["2026-10-23"],
+                    "capture_manifests": [],
+                    "source_status": "failed_or_partial",
+                    "failure_reason": None,
+                    "failure_date_range": {
+                        "start_date": "2026-10-12",
+                        "end_date": "2026-10-23",
+                    },
+                })
+                return False
+
+            module.batch_update_market_index = batch_update_market_index
+
+    def isolated_spec(name, _location, *args, **kwargs):
+        if name == "batch_update_market_and_industry_index":
+            return importlib.util.spec_from_loader(name, _BatchLoader())
+        return None
+
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", isolated_spec)
+    result = service.update_market("2026-10-12", "2026-10-23", capture_manifests=[])
+
+    assert result["success"] is False
+    assert result["failed_dates"] == ["2026-10-23"]
+    assert result["updated_dates"] == []
+    assert result["source_status"] == "failed_or_partial"
+    assert "2026-10-23" in result["message"]
+
+
 def test_capture_reference_is_not_returned_when_csv_commit_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -363,6 +412,68 @@ def test_unproven_partial_update_never_syncs_or_publishes_evidence(tmp_path: Pat
     assert result["synced_records"] == 0
     assert result["row_evidence"]["status"] == "unknown"
     assert _read_rows(config) == []
+
+
+def test_partial_market_batch_syncs_only_explicitly_captured_dates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import data_module.taiex_market_index_publication as publication
+
+    config = _config(tmp_path)
+    config.market_index_file.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"日期": "2026-05-27", "收盤價": 19800, "開盤價": 19700,
+         "最高價": 19900, "最低價": 19600, "成交量": 900},
+    ]).to_csv(config.market_index_file, index=False, encoding="utf-8-sig")
+    db = DBManager(config)
+    db.write_dataframe("market_indices", pd.DataFrame([
+        {"日期": "20260527", "指數名稱": "TAIEX", "收盤指數": 1.0},
+        {"日期": "20260528", "指數名稱": "TAIEX", "收盤指數": 2.0},
+        {"日期": "20260528", "指數名稱": "半導體", "收盤指數": 1234.5},
+    ]), if_exists="append")
+
+    captures: list[Path] = []
+    assert _loader(config).update_market_index("2026-05-28", capture_manifests=captures)
+    verified = publication._VerifiedCapture(
+        source_date="20260528",
+        row={
+            "日期": "20260528", "指數名稱": "TAIEX", "收盤價": "20000.50",
+            "開盤價": "19990.00", "最高價": "20010.00", "最低價": "19900.00",
+            "成交量": 1234,
+        },
+        captured_at="2026-10-24T12:00:00+00:00",
+        relative_manifest="meta_data/official_market_daily_sources/capture/manifest.json",
+        manifest_sha256="a" * 64,
+        reports=(),
+    )
+    monkeypatch.setattr(publication, "_verified_capture", lambda *_args: verified)
+    monkeypatch.setattr(
+        publication,
+        "_write_sidecar",
+        lambda *_args: {
+            "schema_version": 1,
+            "status": "captured",
+            "relative_path": "taiex_market_index/test.json",
+            "sha256": "b" * 64,
+        },
+    )
+
+    result = UpdateService(config).publish_taiex_market_index(
+        capture_manifests=captures,
+        market_update_result={"success": False, "failed_dates": ["2026-05-29"]},
+    )
+
+    assert result["success"] is True
+    assert result["upstream_update_partial"] is True
+    assert result["failed_dates"] == ["2026-05-29"]
+    assert result["synced_records"] == 1
+    assert result["row_evidence"]["status"] == "captured"
+    rows = _read_rows(config)
+    assert rows == [
+        ("20260527", "TAIEX", 1.0, None, None, None, None),
+        ("20260528", "TAIEX", 20000.5, 19990.0, 20010.0, 19900.0, 1234.0),
+        ("20260528", "半導體", 1234.5, None, None, None, None),
+    ]
 
 
 def test_sqlite_disabled_preserves_skip_semantics_and_no_evidence(tmp_path: Path) -> None:

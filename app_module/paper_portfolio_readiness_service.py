@@ -243,6 +243,8 @@ class PaperPortfolioReadinessService:
         ):
             raise PersonalStoreRouteError("personal_store_selector_required")
         self.custody = PersonalStoreCustody(route, personal_paths)
+        self.route = route
+        self.personal_paths = personal_paths
         self.output_root = Path(output_root)
         if route is not None:
             paths = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id)
@@ -357,6 +359,7 @@ class PaperPortfolioReadinessService:
             status_payload,
             latest_snapshot=latest_snapshot,
             blockers=blockers,
+            warnings=warnings,
             diagnostics=diagnostics,
         )
 
@@ -829,6 +832,7 @@ class PaperPortfolioReadinessService:
         *,
         latest_snapshot: dict[str, Any] | None,
         blockers: list[str],
+        warnings: list[str],
         diagnostics: list[str],
     ) -> None:
         if status_payload is None or latest_snapshot is None:
@@ -836,8 +840,33 @@ class PaperPortfolioReadinessService:
         expected_state = str(self.state_db_path.resolve())
         reported_state = str(status_payload.get("state_db", ""))
         if reported_state and str(Path(reported_state).resolve()) != expected_state:
-            blockers.append("paper_daily_status_state_db_path_mismatch")
-            diagnostics.append("paper_daily_status_state_db_path_not_opened")
+            identity_matches = (
+                str(status_payload.get("status", "")) == "passed"
+                and str(status_payload.get("snapshot_id", ""))
+                == str(latest_snapshot["snapshot_id"])
+                and str(status_payload.get("decision_date", ""))
+                == str(latest_snapshot["decision_date"])
+            )
+            for payload_key, snapshot_key in (
+                ("cash", "cash"),
+                ("total_value", "total_value"),
+            ):
+                try:
+                    identity_matches = identity_matches and _decimal(
+                        status_payload.get(payload_key), payload_key
+                    ) == latest_snapshot[snapshot_key]
+                except (TypeError, ValueError, ArithmeticError):
+                    identity_matches = False
+            if identity_matches:
+                warnings.append(
+                    "paper_daily_status_state_db_path_rebound_by_snapshot_identity"
+                )
+                diagnostics.append(
+                    "paper_daily_status_state_db_path_mismatch_verified_by_snapshot_id_date_cash_total"
+                )
+            else:
+                blockers.append("paper_daily_status_state_db_path_mismatch")
+                diagnostics.append("paper_daily_status_state_db_path_not_opened")
         # A non-trading-day run intentionally does not append a snapshot.  Its
         # decision_date identifies the skipped calendar day, while the latest
         # snapshot remains the last trading day.  Comparing those two dates

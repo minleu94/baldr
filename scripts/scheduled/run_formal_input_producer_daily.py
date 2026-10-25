@@ -11,6 +11,7 @@ blocker，排程以非零狀態結束，不把 candidate-only 當成 Formal 3/3 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from collections import deque
 from datetime import date, datetime, timedelta, timezone
 import argparse
 import hashlib
@@ -28,6 +29,9 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app_module.runtime_services.formal_input_status_reader import (  # noqa: E402
+    read_last_non_skipped_attempt,
+)
 from data_module.formal_daily_input_producer import (  # noqa: E402
 DAILY_FORMAL_INPUT_PRODUCER_SCHEMA_VERSION,
     DailyFormalInputPaths,
@@ -1565,6 +1569,94 @@ def _add_observability_blocker(status: dict[str, object], detail: str) -> None:
     status["observability_blocker"] = ";".join(str(item) for item in values)
 
 
+def _last_non_skipped_attempt(status_path: Path) -> dict[str, object] | None:
+    """從最新狀態延續最近一次非休市排程的可診斷摘要。"""
+    return read_last_non_skipped_attempt(status_path)
+
+
+def _last_non_skipped_attempt_from_log(
+    status_path: Path,
+) -> dict[str, object] | None:
+    """由 append-only attempt log 與 terminal receipt 還原舊版 latest status。"""
+
+    attempt_log_path = status_path.with_name("attempts.jsonl")
+    try:
+        with attempt_log_path.open("r", encoding="utf-8") as stream:
+            recent_lines = deque(stream, maxlen=10_000)
+    except (OSError, UnicodeError):
+        return None
+    receipt_root = (status_path.parent / "receipts").resolve()
+    for line in reversed(recent_lines):
+        try:
+            attempt_value = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(attempt_value, Mapping):
+            continue
+        attempt = dict(attempt_value)
+        status_text = attempt.get("status")
+        run_id = attempt.get("run_id")
+        if (
+            attempt.get("phase") != "terminal_persistence_completed"
+            or not isinstance(status_text, str)
+            or status_text == "skipped_non_trading_day"
+            or not isinstance(run_id, str)
+            or not run_id
+        ):
+            continue
+        receipt_ref = attempt.get("terminal_receipt")
+        if not isinstance(receipt_ref, Mapping):
+            continue
+        receipt_path_value = receipt_ref.get("path")
+        receipt_sha256 = receipt_ref.get("sha256")
+        if not isinstance(receipt_path_value, str) or not isinstance(receipt_sha256, str):
+            continue
+        try:
+            receipt_path = Path(receipt_path_value).resolve()
+            if receipt_path.parent != receipt_root:
+                continue
+            receipt_bytes = receipt_path.read_bytes()
+            if "sha256:" + hashlib.sha256(receipt_bytes).hexdigest() != receipt_sha256:
+                continue
+            receipt_value = json.loads(receipt_bytes.decode("utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            continue
+        if (
+            not isinstance(receipt_value, Mapping)
+            or receipt_value.get("schema_version")
+            != "formal-input-producer-terminal-receipt.v1"
+            or receipt_value.get("run_id") != run_id
+            or receipt_value.get("status") != status_text
+        ):
+            continue
+        receipt_blockers = receipt_value.get("blockers")
+        attempt_blockers = attempt.get("blockers")
+        observability_blockers = attempt.get("observability_blockers")
+        blockers = [
+            item
+            for source in (receipt_blockers, attempt_blockers, observability_blockers)
+            if isinstance(source, list)
+            for item in source
+            if isinstance(item, str)
+        ]
+        unique_blockers = list(dict.fromkeys(blockers))
+        return {
+            "run_id": run_id,
+            "status": status_text,
+            "observed_at": receipt_value.get("status_payload", {}).get("observed_at")
+            if isinstance(receipt_value.get("status_payload"), Mapping)
+            else attempt.get("observed_at"),
+            "completed_at": receipt_value.get("completed_at"),
+            "exit_code": attempt.get("exit_code"),
+            "blockers": unique_blockers,
+            "terminal_receipt": {
+                "path": str(receipt_path),
+                "sha256": receipt_sha256,
+            },
+        }
+    return None
+
+
 def _persist_scheduled_terminal(
     status: dict[str, object],
     *,
@@ -1577,6 +1669,8 @@ def _persist_scheduled_terminal(
     """保存可覆寫的 latest locator 與 create-only 的單次排程終態收據。"""
 
     status_path = status_root / "latest_status.json"
+    if status.get("status") == "skipped_non_trading_day":
+        status["last_non_skipped_attempt"] = _last_non_skipped_attempt(status_path)
     attempt_log_path = status_root / "attempts.jsonl"
     receipt_path = status_root / "receipts" / f"{run_id}.json"
     status["run_id"] = run_id

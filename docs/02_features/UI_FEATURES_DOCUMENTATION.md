@@ -1,14 +1,20 @@
 ﻿# UI 功能文件（Qt）
 
+每日決策旅程會依資料狀態把「下一步」導向可見的介面入口：市場快照缺失時查「數據更新」，來源讀取失敗／日期不一致／推薦快照缺件時查「每日來源詳情」，證據未成熟或缺少結果時查「證據成熟度」。這些入口只讀取或檢視既有狀態，不會將缺值解讀成零風險，也不會把歷史回放當成自然成熟。
+
 M167–M169：Decision Desk 可比產業圖的選中列新增 5／20 日兩列原值對照，產業指數、摘要所列 TAIEX 基準與來源超額各佔一欄，bp 正負、0 與 Unknown 分明；原超額條、群組和代表股下鑽保持，來源／資料日／品質與 current research only 留在摘要及卡片可存取描述。Runtime 已保存營運狀態分布追加同次 DTO 的本頁讀取時間，來源未確認、空態與原分布不變；Backtest 分析診斷可用狀態改獨立 teal，原月報酬紅正綠負不變。這三項只改呈現層，不重算金融值、推斷自然排程或改來源資格。限定測試與原生畫面見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m167m169-產業報酬背景營運讀取時間與回測狀態色)。
 
 M166「資料與更新」的狀態卡沿原始狀態文字顯示獨立作業狀態色：最新 teal、錯誤／阻擋 orchid、進行中資訊藍、部分／降級／需處理 amber、未檢查／未設定中性；研究候選保留紫色。磁碟預檢阻擋仍寫「需處理」，但以錯誤色標示阻擋；P0 來源治理表的來源阻擋及審核不可用也用錯誤色。原日期、缺件、來源碼和資格維持，狀態色不是行情方向。真 DPI216 的兩尺寸前後及 Main 畫面、測試收據見[限定 QA](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m166-資料更新狀態色與原生對照)。
+
+Data Update 的總體 readiness live inspection 會把同頁已設定的 P0 audit、license candidate 及 owner decision 檔交給七 lane inspector，避免 P0 Control Center 與總體 Gate 顯示不同輸入；明確指定的整體 readiness artifact 仍優先。此接線只讀既有檔案，不觸發 P0 網路探測或改變來源資格。驗收見[即時 readiness QA](../06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-24-p0-即時盤點與-readiness-輸入接線)。
+
+Readiness 面板用中文呈現狀態、進度和常見阻擋原因，下一步會指出需要的資料、實測或自然週期。原始原因碼保留在原因欄提示及完整診斷中，方便追查；此呈現不改 Gate 判斷、來源資格或正式權限。驗收見[2026-10-25 Gate 原因白話呈現 QA](../06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-25-gate-原因白話呈現與診斷追查)。
 
 M163–M165 將 M162 狀態軸接到 Runtime 治理健康／重大違規、Workbench 徽章與表格、Research Console 狀態列。`observed`、`verified` 及 Workbench 的研究候選／`active_model` 用資訊藍，`accepted`／`ready`／`done` 用 teal，降級／待處理用 amber，缺件／阻擋／目前重大違規用 orchid，未知／停用為中性；Research Console 的候選仍用原紫色，fixture／replay 保留原灰色。Runtime 從目前違規切到無違規、歷史或讀取錯誤會清掉錯誤色，歷史事件不表示目前有違規。原狀態碼、原注意列判斷、DTO／來源資格、台股 market_* 與金融計算不變；[限定 QA 與原生畫面](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m163m165-狀態語義遷移與原生複核)不等於正式產品 Gate。
 
 M162 共用狀態色：QLabel 的 statusTone、StatusBadge 和 SemanticChip 用獨立狀態 token，已觀測／人工觀測以資訊藍表示，ready／done／passed 為 teal，估計／降級與需人工處理為 amber，缺件／阻擋／critical 為 orchid，unknown／off 中性。台股 market_up 紅、market_down 綠、market_flat 中性與原狀態文字保持；狀態顏色不是行情方向、正式來源資格或交易訊號。真 OS DPI216 兩尺寸原生樣本及受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m162-共用狀態色與市場方向色隔離)；Light、其他 DPI 與完整 Gate 未驗。
 
-M160 決策工作台 Advice：原 `AdviceDashboardDTO` 的模式、決策日／資料日、正式／Professional／配置列數與原警告先呈摘要；正式與配置表的已知動作、品質、可成交性顯中文，原碼在提示及無障礙文字，未知仍原樣。選列卡顯原理由／論點、適用期間、風險與失效條件，長內容完整保留在共用證據明細；0 列不占表格高度，有列保留表內捲動。載入、失敗及空態清舊，沒有新增策略判斷、交易指令或來源資格。隔離合成 Native 與 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m160-workbench-advice-判讀層級)；正式來源與產品 Gate 未接受。
+M160 決策工作台 Advice：原 `AdviceDashboardDTO` 的模式、決策日／資料日、正式／Professional／配置列數與原警告先呈摘要；正式與配置表的已知動作、品質、可成交性顯中文，原碼在提示及無障礙文字，未知仍原樣。選列卡顯原理由／論點、適用期間、風險與失效條件，長內容完整保留在共用證據明細；0 列不占表格高度，有列保留表內捲動。Professional 模式只有明確 `promoted` 策略能列為正式 Advice；缺失或其他策略狀態留在研究候選。載入、失敗及空態清舊，沒有新增策略判斷、交易指令或來源資格。隔離合成 Native 與 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m160-workbench-advice-判讀層級)；正式來源與產品 Gate 未接受。
 
 M158 回測原報告基準比較：Sharpe 策略／比較基準／差額三格只在 Qt 顯示層縮成兩位，有捨入標「約」，極小非零以科學記號保留符號；真零、未知與原缺件原因分開，完整原值在提示及無障礙描述。bp 列、DTO、計算與報告來源不變。M159 Portfolio 手動帳：同份持倉快照在完整持倉表及操作列後顯示未實現毛損益正／負／零／未知等權家數圖；原行情狀態／日期／現價或原損益不合格列未知，0 檔不畫假比例，載入／失敗清舊。圖條不是資金權重、報酬或風險。真 OS DPI216 兩尺寸合成原生畫面與受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m158-backtest-原報告基準-sharpe-判讀)；正式／私人資料、固定 EXE 及產品 Gate 未接受。
 
@@ -342,7 +348,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 - 決策品質按日期與覆盤類型篩出原覆盤後，項目表與待處理／已覆盤／已略過計數只包含這些覆盤 `review_id` 的原項目；明填 Portfolio ID 時再依原覆盤 `metadata_json.portfolio_id` 精確限縮，舊紀錄缺身份不猜。無符合覆盤時不顯示其他範圍的全域項目。流程分數的既有計算及原始證據不變。
 - 決策品質項目表只對既有八種項目類型、三級嚴重度與三種狀態顯示中文；hover 可讀原碼，明細同時列中文與原碼。新／未知碼直接保留原文，空值顯「未知」；`source_type` 仍保留原來源字串，篩選及 DTO 原碼不變。
 - 決策品質「最低分數」只接受留空或 0–10000 的整數；非法輸入不呼叫唯讀來源，欄位與結果區明示錯誤，清除上次卡片／表格／詳情且拒絕遲到的舊請求結果。修正後重新整理才顯示新結果；此驗證只防止 UI 錯誤與舊資料誤認，不更動門檻作用範圍或原分數計算。
-- 決策品質篩選左欄（M103）設有內部捲動與固定的「重新整理」按鈕；股票提示目前只篩下方項目列，分數卡仍取所選覆盤範圍最新分數。最低分數目前只比較該最新覆盤分數，低於門檻時清空項目列，卡片仍顯原值。這是現行行為揭露及 characterization test，M73 的正式作用範圍仍待產品裁決，未重算分數或改 reader。
+- 決策品質篩選左欄（M103）設有內部捲動與固定的「重新整理」按鈕。產品範圍採整體覆盤分數契約：股票代號只篩下方項目列，分數卡仍顯示所選覆盤範圍最新整體分數，不解讀為單股分數；最低分數比較篩選後最新覆盤的整體決策品質分數，未達時只清空項目列，分數卡保留原值。門檻不是逐項分數，也不會重算原分數或改變 reader。
 - 決策品質窄欄版面（M105）：左側標籤在欄寬不足時換到輸入欄上方，日期、股票、Portfolio ID、項目、嚴重度、狀態與最低分數的控制右界留在內層視口；保留左欄垂直捲動與固定刷新。右側原分數卡、表格及金融語義不變。
 - 證據覆盤「資料缺口」（M106）在原表上方以 2×2 分布條呈現服務已回報、且與已載入列數一致的 observed／degraded／missing／其他品質代碼筆數。每類保留精確數字，其他代碼保留原碼；成功空集合才是真 0，診斷、缺計數或計數矛盾均顯未知。刷新及失敗清除前次卡、表與選列詳情。條長只描述本次載入的資料狀態，不代表投資績效、來源資格或正式缺口統計；原 service、DTO、金融計算、PIT 與來源身份不變。
 - 大盤指數「檢測市場狀態」在受管背景工作讀取原 Regime service；進行中停用按鈕、顯示載入並清舊分類／技術值／策略文字，完成或錯誤才恢復按鈕。既有 Regime history 的轉移與 CAS 衝突仍由原 service 決定，錯誤明示而不套用舊結論；關窗會等待受管工作自然結束，合作式取消不代表既有 history 寫入回滾。
@@ -561,11 +567,11 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 - Stress 情境身份（M102）：切換目前情境下拉選項時清除前次計算摘要、診斷與明細表，並停用保存；只有對新選項重新執行並取得結果才可保存。保存入口再核對結果與目前選項的 scenario ID，避免舊結果繞過 UI 寫入研究歷史。執行失敗也清舊；原 partial、不可計算、缺值、真零與二次確認維持既有契約，固定舊 EXE 尚未包含 M102。
 - Stress 輸入來源（M104）：目前情境及保存確認明示資料取自 `PortfolioService` 的交易／手動持倉 DTO（Main 預設 `portfolio_id=default`）；Stress 放在 Paper 分區只是導覽位置，不讀 Paper snapshot、ledger 或 Health。切換導覽分區不更換 Stress 結果身份或其資料來源；未改 Stress service、公式、保存 payload 或 Paper 帳。
 - Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果。「情境壓力」內的「目前情境／已保存歷史」子頁分開即時結果與只讀回訪；選取歷史列後，同筆卡片並列原基準市值、壓力後市值與變動（TWD）、情境、日期、覆蓋和狀態。M100 將歷史表可見高度限制在最多約七列，超過時用表內垂直捲動，選列卡保持內容高度；換模型或讀取失敗會重算空表高度。`PortfolioStressHistoryReadService` 仍 query-only，缺 DB 不初始化，原表與 hash 保留；缺值／真零分開，換列、刷新、空結果及讀取錯誤清除舊卡，固定揭露研究用途與 `writes_allowed=false`。不計算跨情境排名、跌幅或預測；固定 EXE 尚未包含 M100。
-- Paper Portfolio：由 `PaperPortfolioReadinessService` 唯讀讀取 daily status、append-only snapshot 與可選 Equal Weight ledger；畫面顯示 raw 累積筆數與最新可採用 snapshot，遇到 future row 會保留 blocker／diagnostic、降級並排除於 current projection。操作控制改三列雙欄以保留較窄畫面及高 DPI 下的完整名稱；缺 snapshot、benchmark 或成本帳時明示 `partial`／`degraded`／`not_computable`，不建立 schema、不把 paper 結果冒充正式持倉或投資績效。
+- Paper Portfolio：由 `PaperPortfolioReadinessService` 唯讀讀取 daily status、append-only snapshot 與可選 Equal Weight ledger；摘要顯示 snapshot、benchmark、成交成本帳各自的日期區間與筆數，缺日期或成交資料明確標示，避免只看筆數而漏掉期間不一致。遇到 future row 會保留 blocker／diagnostic、降級並排除於 current projection。操作控制改三列雙欄以保留較窄畫面及高 DPI 下的完整名稱；缺 snapshot、benchmark 或成本帳時明示 `partial`／`degraded`／`not_computable`，不建立 schema、不把 paper 結果冒充正式持倉或投資績效。
 - Paper Trade Ledger v1：由獨立 append-only contract 保存研究用 fill event，要求 requested／filled 數量、狀態、Decimal 成本、turnover、execution gap 與來源；Portfolio readiness 會唯讀顯示 ledger 狀態與 full／partial／reject／override 統計，缺欄位不放行 weekly report。
 - Paper 成交 CSV：Paper Portfolio 分頁可先預覽完整 execution CSV，要求狀態、reference／fill price、Decimal 成本、turnover、execution gap 與來源事件；只有二次確認且檔案 hash 未變更才由 `PaperTradeImportService` atomic append 至 Paper Trade Ledger，不更新手動 Portfolio、snapshot 或 broker。
 - Paper 成交範本：同一分頁可先匯出只含受治理欄位標題的空白 CSV 範本；範本不填入示例成交、拒絕覆寫既有檔案，也不建立 ledger。填入真實 execution 後仍必須回到 Paper 成交 CSV 的預覽／二次確認流程。
-- Paper weekly evidence v1：Portfolio 的 Paper 分頁可按「計算最近週報」，以最近 snapshot 邊界唯讀讀取 Paper snapshot、Equal Weight ledger 與成本帳，顯示毛／淨報酬、benchmark、淨超額、成本、換手與觀測日數；未來 period／snapshot、期間邊界、成本欄位或 ledger 缺件時維持 `partial`／`degraded`／`not_computable`，不補值、不寫資料。Equal Weight builder 也會在 preview／apply 前拒絕 future snapshot。
+- Paper weekly evidence v1：Portfolio 的 Paper 分頁可按「計算最近週報」，以最近 snapshot 邊界唯讀讀取 Paper snapshot、Equal Weight ledger 與成本帳，顯示毛／淨報酬、benchmark、淨超額、成本、換手與觀測日數；未來 period／snapshot、期間邊界、成本欄位或 ledger 缺件時維持 `partial`／`degraded`／`not_computable`，不補值、不寫資料。Equal Weight builder 以「預覽／更新」比對既有 ledger 與完整因果重算；僅接受精確歷史前綴並追加缺少的連續尾段，既有列不同或缺行時拒絕更新。Builder 仍在 preview／apply 前拒絕 future snapshot。
 - 顯示策略版本或推薦來源追蹤。
 - 生命週期回顧：顯示 thesis 狀態、來源追溯、執行落差、訊號 / 市場 / 資料品質 attribution 與摘要 tokens。
 - 生命週期回顧的來源、條件、論點、指標、品質與建倉來源已知狀態碼在首層顯中文，原碼留在 tooltip；未識別碼顯原文，不改健康 DTO 或 position identity。

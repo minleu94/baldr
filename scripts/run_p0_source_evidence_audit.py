@@ -41,6 +41,8 @@ from data_module.source_acceptance_governance import (
     MACHINE_EVIDENCE_SCHEMA_VERSION,
     SourceAcceptanceGovernance,
     calculate_machine_evidence_hash,
+    decode_official_openapi_document,
+    official_openapi_candidate_paths,
 )
 from scripts.capture_p0_license_evidence import (
     MACHINE_LICENSE_SCOPE_POLICIES,
@@ -137,9 +139,9 @@ SOURCE_PROVIDER_INFO: dict[str, tuple[str, str, str]] = {
     "pit.quarterly_financials": ("MOPS", "statement:publication_artifact", "existing_artifact"),
 }
 
-# 本輪只把一條已有 parser 的官方 source 接成 machine producer。其餘來源
-# 仍由既有 P0 matrix 投影為 candidate／degraded，避免把未完成的三 formal
-# inputs 或其他 route 誤標成已接線。
+# 只把已有 parser、官方資料端點及獨立 universe 的月營收 sources 接成
+# machine producer。其餘來源仍由 P0 matrix 投影為 candidate／degraded，
+# 避免將未完成的 formal inputs 或其他 route 誤標成已接線。
 MACHINE_SOURCE_PRODUCER_CONFIG: dict[str, dict[str, Any]] = {
     "twse.monthly_revenue_announcement": {
         "source_version": "twse-t187ap05_L.v1",
@@ -148,8 +150,32 @@ MACHINE_SOURCE_PRODUCER_CONFIG: dict[str, dict[str, Any]] = {
         "source_url": "https://openapi.twse.com.tw/v1/opendata/t187ap05_L",
         "universe_source_id": "twse.listed_company_registry",
         "universe_url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+        "universe_listing_date_field": "上市日期",
+        "universe_excluded_symbol_prefixes": ("91",),
+        "universe_exclusion_policy": (
+            "mops_monthly_revenue_scope_excludes_tdr;"
+            "twse_tdr_security_codes_start_with_91"
+        ),
+        "universe_basis": (
+            "official_twse_registry_minus_tdr_and_post_report_date_listings"
+        ),
+        "coverage_basis": (
+            "official_twse_monthly_revenue_reporting_scope_by_report_date"
+        ),
         "license_url": "https://www.twse.com.tw/zh/terms/use.html",
-    }
+    },
+    "tpex.monthly_revenue_announcement": {
+        "source_version": "tpex-mopsfin-t187ap05_O.v1",
+        "endpoint_id": "tpex:openapi:mopsfin_t187ap05_O",
+        "acquisition_route_id": "tpex.openapi.mopsfin_t187ap05_O",
+        "source_url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+        "universe_source_id": "tpex.current_otc_roster",
+        "universe_url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
+        "universe_basis": "independent_official_tpex_registry_with_report_date_listing_alignment",
+        "coverage_basis": "official_tpex_otc_registry_symbols_listed_by_report_date",
+        "universe_listing_date_field": "DateOfListing",
+        "license_url": "https://www.tpex.org.tw/web/inc/gtsm_disclaimer.php?l=zh-tw",
+    },
 }
 MACHINE_SOURCE_MAX_BYTES = 8 * 1024 * 1024
 MACHINE_SOURCE_TIMEOUT_SECONDS = 30.0
@@ -387,6 +413,7 @@ def build_machine_evidence_bundle(
     source_id: str,
     license_capture_path: Path,
     output_path: Path,
+    parent_revision_id: str | None = None,
     audit_payload: Mapping[str, Any] | None = None,
     opener: Callable[..., Any] | None = None,
     timeout_seconds: float = MACHINE_SOURCE_TIMEOUT_SECONDS,
@@ -463,16 +490,26 @@ def build_machine_evidence_bundle(
         timeout_seconds=timeout_seconds,
         max_bytes=max_bytes,
     )
-    government_metadata_path = input_dir / "data_gov_dataset_18420.json"
+    government_metadata_path = input_dir / (
+        f"data_gov_dataset_{government_dataset['dataset_id']}.json"
+    )
     government_metadata_bytes = government_metadata_capture["payload"]
     government_metadata_path.write_bytes(government_metadata_bytes)
+    endpoint_api_documentation_url = str(
+        government_dataset.get("endpoint_api_documentation_url")
+        or government_dataset["api_documentation_url"]
+    )
     government_api_doc_capture = _fetch_machine_source(
-        str(government_dataset["api_documentation_url"]),
+        endpoint_api_documentation_url,
         opener=selected_opener,
         timeout_seconds=timeout_seconds,
         max_bytes=max_bytes,
     )
-    government_api_doc_path = input_dir / "twse_openapi_swagger.json"
+    government_api_doc_path = input_dir / (
+        "tpex_openapi_swagger.json"
+        if source_id.startswith("tpex.")
+        else "twse_openapi_swagger.json"
+    )
     government_api_doc_path.write_bytes(government_api_doc_capture["payload"])
     government_api_doc_evidence = _validate_government_openapi_mapping(
         government_api_doc_capture,
@@ -521,15 +558,6 @@ def build_machine_evidence_bundle(
         payload=source_bytes,
     )
     parser_result = parse_monthly_revenue_open_data(source_envelope)
-    universe_codes, universe_as_of_date = _parse_independent_listed_universe(
-        universe_bytes
-    )
-    accepted_symbols = {
-        observation.symbol.strip()
-        for observation in parser_result.accepted
-        if observation.symbol.strip()
-    }
-    covered_symbols = accepted_symbols.intersection(universe_codes)
     report_dates = {
         observation.observation_date
         for observation in parser_result.accepted
@@ -538,6 +566,36 @@ def build_machine_evidence_bundle(
         raise ValueError(
             "official monthly revenue response must contain accepted rows for exactly one report date"
         )
+    source_observation_date = next(iter(report_dates))
+    universe_codes, universe_as_of_date = _parse_independent_listed_universe(
+        universe_bytes
+    )
+    future_listings = _future_listed_universe_symbols(
+        universe_bytes,
+        listing_date_field=str(config.get("universe_listing_date_field") or ""),
+        cutoff_date=date.fromisoformat(source_observation_date),
+    )
+    raw_universe_count = len(universe_codes)
+    universe_codes.difference_update(future_listings)
+    excluded_prefixes = tuple(
+        str(prefix)
+        for prefix in config.get("universe_excluded_symbol_prefixes", ())
+        if str(prefix)
+    )
+    source_scope_exclusions = sorted(
+        symbol
+        for symbol in universe_codes
+        if any(symbol.startswith(prefix) for prefix in excluded_prefixes)
+    )
+    universe_codes.difference_update(source_scope_exclusions)
+    if not universe_codes:
+        raise ValueError("independent listed universe is empty after source-scope alignment")
+    accepted_symbols = {
+        observation.symbol.strip()
+        for observation in parser_result.accepted
+        if observation.symbol.strip()
+    }
+    covered_symbols = accepted_symbols.intersection(universe_codes)
     if len(accepted_symbols) != len(parser_result.accepted):
         raise ValueError(
             "official monthly revenue response contains duplicate stock symbols; producer refuses to infer coverage"
@@ -567,9 +625,15 @@ def build_machine_evidence_bundle(
             "official source quality is below the machine minimum of 9500bp"
         )
 
-    source_observation_date = next(iter(report_dates))
     missing_symbols = sorted(universe_codes - covered_symbols)
-    unexpected_symbols = sorted(accepted_symbols - universe_codes)
+    out_of_scope_symbols = sorted(
+        symbol
+        for symbol in accepted_symbols - universe_codes
+        if any(symbol.startswith(prefix) for prefix in excluded_prefixes)
+    )
+    unexpected_symbols = sorted(
+        accepted_symbols - universe_codes - set(out_of_scope_symbols)
+    )
 
     # 統一以 producer 對原始 bytes 的 hash 作為 quality／PIT／availability
     # 的 subject content hash；artifact 檔案本身另由 envelope hash 綁定。
@@ -624,16 +688,46 @@ def build_machine_evidence_bundle(
         ),
         "content_sha256": universe_hash,
         "count": len(universe_codes),
+        "official_roster_count": raw_universe_count,
+        "future_listing_exclusions": [
+            {"symbol": symbol, "listed_on": listed_on.isoformat()}
+            for symbol, listed_on in sorted(future_listings.items())
+        ],
+        "source_scope_exclusion_policy": str(
+            config.get("universe_exclusion_policy") or ""
+        ),
+        "source_scope_excluded_symbols": source_scope_exclusions,
+        "source_scope_excluded_symbol_prefixes": list(excluded_prefixes),
+        "source_scope_excluded_observed_symbols": out_of_scope_symbols,
+        "population_cutoff_date": source_observation_date,
         "as_of_date": universe_as_of_date,
-        "basis": "independent_official_twse_listed_registry_unique_symbols",
+        "basis": str(config.get(
+            "universe_basis",
+            "independent_official_twse_listed_registry_unique_symbols",
+        )),
         "input_artifact": universe_binding,
     }
     coverage = {
         "numerator": len(covered_symbols),
         "denominator": len(universe_codes),
         "expected_universe_count": len(universe_codes),
+        "official_roster_count": raw_universe_count,
+        "future_listing_exclusions": [
+            {"symbol": symbol, "listed_on": listed_on.isoformat()}
+            for symbol, listed_on in sorted(future_listings.items())
+        ],
+        "source_scope_exclusion_policy": str(
+            config.get("universe_exclusion_policy") or ""
+        ),
+        "source_scope_excluded_symbols": source_scope_exclusions,
+        "source_scope_excluded_symbol_prefixes": list(excluded_prefixes),
+        "source_scope_excluded_observed_symbols": out_of_scope_symbols,
+        "population_cutoff_date": source_observation_date,
         "coverage_bp": coverage_bp,
-        "basis": "official_twse_listed_registry_unique_symbol_intersection",
+        "basis": str(config.get(
+            "coverage_basis",
+            "official_twse_listed_registry_unique_symbol_intersection",
+        )),
         "covered_symbol_sha256": _hash_symbol_set(covered_symbols),
         "missing_symbols": missing_symbols,
         "missing_count": len(missing_symbols),
@@ -778,6 +872,8 @@ def build_machine_evidence_bundle(
         raise ValueError(
             "machine evidence decision_date must equal the producer's current UTC date"
         )
+    if parent_revision_id is not None and not parent_revision_id.strip():
+        raise ValueError("machine evidence parent_revision_id cannot be blank")
     machine_payload: dict[str, Any] = {
         "schema_version": MACHINE_EVIDENCE_SCHEMA_VERSION,
         "policy_version": MACHINE_DECISION_POLICY_VERSION,
@@ -785,10 +881,9 @@ def build_machine_evidence_bundle(
         "decision_date": decision_date.isoformat(),
         "decision_timestamp": decision_timestamp.isoformat(),
         "decision_revision_id": (
-            f"machine:{source_id}:"
-            f"{source_payload_digest.removeprefix('sha256:')[:16]}"
+            f"machine:{source_id}:{decision_timestamp.strftime('%Y%m%dT%H%M%S%fZ')}"
         ),
-        "parent_revision_id": None,
+        "parent_revision_id": parent_revision_id,
         "source_version": str(config["source_version"]),
         "license": license_envelope,
         "quality": quality_envelope,
@@ -834,6 +929,7 @@ def _fetch_machine_source(
         headers={
             "User-Agent": "technical-analysis-p0-machine-producer/1.0",
             "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.7",
+            "Accept-Encoding": "identity",
         },
     )
     fetched_at = datetime.now(timezone.utc)
@@ -857,7 +953,7 @@ def _fetch_machine_source(
             header_map = {
                 name: value
                 for name, value in headers.items()
-                if str(name).lower() in {"date", "last-modified", "etag", "content-type"}
+                if str(name).lower() in {"date", "last-modified", "etag", "content-type", "content-encoding"}
             }
         else:
             getter = getattr(headers, "get", None)
@@ -973,6 +1069,7 @@ def _validate_government_dataset_metadata(
         "endpoint_url": expected.get("endpoint_url"),
         "resource_url": expected.get("resource_url"),
         "api_documentation_url": expected.get("api_documentation_url"),
+        "endpoint_api_documentation_url": expected.get("endpoint_api_documentation_url"),
         "api_documentation_evidence": dict(api_documentation_evidence),
         "metadata_modified": result.get("modifiedDate"),
         "http_status": capture.get("http_status"),
@@ -996,21 +1093,21 @@ def _validate_government_openapi_mapping(
         raise ValueError("government OpenAPI metadata payload is empty")
     if capture.get("http_status") not in range(200, 300):
         raise ValueError("government OpenAPI metadata response is not successful")
-    if capture.get("final_url") != expected.get("api_documentation_url"):
+    documentation_url = str(
+        expected.get("endpoint_api_documentation_url")
+        or expected.get("api_documentation_url")
+        or ""
+    )
+    if capture.get("final_url") != documentation_url:
         raise ValueError("government OpenAPI metadata redirected unexpectedly")
     try:
-        decoded = json.loads(payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        decoded, unicode_escape_repairs = decode_official_openapi_document(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError("government OpenAPI metadata JSON is invalid") from exc
-    if not isinstance(decoded, Mapping):
-        raise ValueError("government OpenAPI metadata must be an object")
     endpoint_url = str(expected.get("endpoint_url") or "")
     endpoint_path = urlparse(endpoint_url).path
     paths = decoded.get("paths")
-    base_path = str(decoded.get("basePath") or "").rstrip("/")
-    candidate_paths = [endpoint_path]
-    if base_path and endpoint_path.startswith(base_path + "/"):
-        candidate_paths.append(endpoint_path[len(base_path) :])
+    candidate_paths = official_openapi_candidate_paths(decoded, endpoint_url)
     swagger_path = next(
         (candidate for candidate in candidate_paths if isinstance(paths, Mapping) and candidate in paths),
         None,
@@ -1024,8 +1121,9 @@ def _validate_government_openapi_mapping(
         "path": _relative_candidate_path(path, output_dir),
         "content_sha256": _sha256_prefixed(payload),
         "bytes": len(payload),
-        "kind": "official_twse_openapi_swagger",
-        "metadata_url": expected.get("api_documentation_url"),
+        "kind": "official_openapi_swagger",
+        "invalid_unicode_escape_repairs": unicode_escape_repairs,
+        "metadata_url": documentation_url,
         "endpoint_url": endpoint_url,
         "endpoint_path": endpoint_path,
         "swagger_path": swagger_path,
@@ -1065,6 +1163,51 @@ def _parse_independent_listed_universe(payload: bytes) -> tuple[set[str], str]:
     if len(as_of_dates) != 1:
         raise ValueError("independent listed universe must have one as-of date")
     return codes, next(iter(as_of_dates))
+
+
+def _future_listed_universe_symbols(
+    payload: bytes,
+    *,
+    listing_date_field: str,
+    cutoff_date: date,
+) -> dict[str, date]:
+    """Identify current-roster symbols listed after a historical source date.
+
+    This removes only explicitly future-listed companies from the denominator;
+    it cannot reconstruct securities delisted after the observation date.
+    """
+
+    if not listing_date_field:
+        return {}
+    try:
+        decoded = json.loads(payload.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("independent listed universe JSON is invalid") from exc
+    if not isinstance(decoded, list):
+        raise ValueError("independent listed universe must be a JSON array")
+    future: dict[str, date] = {}
+    for row in decoded:
+        if not isinstance(row, Mapping):
+            raise ValueError("independent listed universe row must be an object")
+        code = str(row.get("公司代號") or row.get("SecuritiesCompanyCode") or "").strip()
+        raw_date = str(row.get(listing_date_field) or "").strip()
+        if len(raw_date) != 8 or not raw_date.isdigit():
+            raise ValueError(
+                f"independent listed universe has invalid {listing_date_field}"
+            )
+        try:
+            listed_on = date.fromisoformat(
+                f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"independent listed universe has invalid {listing_date_field}"
+            ) from exc
+        if listed_on > cutoff_date:
+            if not code:
+                raise ValueError("future-listed universe row has no stock symbol")
+            future[code] = listed_on
+    return future
 
 
 def _write_machine_artifact(
@@ -1398,8 +1541,42 @@ def build_p0_source_evidence_audit(
         network_status = str(probe.get("network_status", "reachable"))
         probe_outcome = str(probe.get("probe_outcome", "unknown"))
 
+        fallback_counts: dict[str, int] | None = None
+        fallback_is_stale_observed = False
+        if (
+            source_id in {"institutional_flows", "credit_transactions"}
+            and probe_outcome == "official_no_data"
+            and probe.get("fallback_probe_outcome") == "date_mismatch"
+            and probe.get("fallback_schema_status") == "matched"
+            and probe.get("fallback_requested_date") == decision_date.isoformat()
+        ):
+            fallback_counts = _validated_probe_counts(
+                {
+                    "raw_row_count": probe.get("fallback_raw_row_count"),
+                    "accepted_row_count": probe.get("fallback_accepted_row_count"),
+                    "duplicate_row_count": probe.get("fallback_duplicate_row_count"),
+                    "quarantine_row_count": probe.get("fallback_quarantine_row_count"),
+                    "blocked_row_count": probe.get("fallback_blocked_row_count"),
+                }
+            )
+            raw_fallback_dates = probe.get("fallback_observation_dates")
+            if isinstance(raw_fallback_dates, list) and raw_fallback_dates:
+                try:
+                    fallback_dates = [
+                        date.fromisoformat(str(value)) for value in raw_fallback_dates
+                    ]
+                except ValueError:
+                    fallback_dates = []
+                fallback_is_stale_observed = (
+                    fallback_counts["accepted_row_count"] > 0
+                    and bool(fallback_dates)
+                    and all(value < decision_date for value in fallback_dates)
+                )
+
         if network_status == "failed":
             availability = "probe_failed"
+        elif fallback_is_stale_observed:
+            availability = "stale_fallback_observed"
         elif probe_outcome == "official_no_data" or schema_status == "no_data":
             availability = "official_no_data"
         else:
@@ -1410,6 +1587,11 @@ def build_p0_source_evidence_audit(
             pit_status = "unavailable"
             timestamp_kind = "unavailable"
             remaining_blocker = "network_probe_failed"
+        elif fallback_is_stale_observed:
+            machine_status = "degraded"
+            pit_status = "source_date_mismatch"
+            timestamp_kind = "first_observed_only"
+            remaining_blocker = "fallback_observation_date_mismatch"
         elif probe_outcome == "official_no_data" or schema_status == "no_data":
             machine_status = "missing"
             pit_status = "unavailable"
@@ -1439,6 +1621,17 @@ def build_p0_source_evidence_audit(
                 "payload_hash_verified",
             ]
             non_auto_verifiable = [
+                "legal_license_review",
+                "owner_written_acceptance",
+            ]
+        elif fallback_is_stale_observed and fallback_counts is not None:
+            auto_verifiable = [
+                "fallback_schema_validation_passed",
+                "fallback_row_conservation_verified",
+                "fallback_payload_hash_verified",
+            ]
+            non_auto_verifiable = [
+                "requested_date_freshness_review",
                 "legal_license_review",
                 "owner_written_acceptance",
             ]
@@ -1473,6 +1666,13 @@ def build_p0_source_evidence_audit(
             "auto_verifiable": auto_verifiable,
             "non_auto_verifiable": non_auto_verifiable,
         }
+        if fallback_is_stale_observed:
+            item["fallback_schema_status"] = "matched"
+            item["fallback_raw_row_count"] = fallback_counts["raw_row_count"]
+            item["fallback_accepted_row_count"] = fallback_counts["accepted_row_count"]
+            item["fallback_duplicate_row_count"] = fallback_counts["duplicate_row_count"]
+            item["fallback_quarantine_row_count"] = fallback_counts["quarantine_row_count"]
+            item["fallback_blocked_row_count"] = fallback_counts["blocked_row_count"]
         if (
             source_id in MICROSTRUCTURE_SOURCE_IDS
             and schema_status == "matched"
@@ -1532,6 +1732,13 @@ def build_p0_source_evidence_audit(
             "fallback_endpoint_id",
             "fallback_acquisition_route_id",
             "fallback_probe_outcome",
+            "fallback_schema_status",
+            "fallback_raw_row_count",
+            "fallback_accepted_row_count",
+            "fallback_duplicate_row_count",
+            "fallback_quarantine_row_count",
+            "fallback_blocked_row_count",
+            "fallback_payload_sha256",
             "fallback_official_status",
             "fallback_http_status",
             "fallback_payload_sha256",
@@ -1793,7 +2000,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--machine-source-id",
         choices=tuple(MACHINE_SOURCE_PRODUCER_CONFIG),
         default="twse.monthly_revenue_announcement",
-        help="machine producer 本輪唯一支援的官方 source",
+        help="選擇已接入 machine producer 的官方 source",
+    )
+    parser.add_argument(
+        "--machine-parent-revision-id",
+        help="機器決議覆核／更新時，綁定同一來源的前一決議 revision id",
     )
     args = parser.parse_args(argv)
 
@@ -1824,11 +2035,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if not args.live:
             raise ValueError("machine producer requires --live for an official bounded fetch")
+        if args.machine_parent_revision_id is not None and not args.machine_parent_revision_id.strip():
+            raise ValueError("--machine-parent-revision-id cannot be blank")
         machine_payload = build_machine_evidence_bundle(
             args.decision_date,
             source_id=args.machine_source_id,
             license_capture_path=args.license_capture,
             output_path=args.machine_evidence_output,
+            parent_revision_id=args.machine_parent_revision_id,
             audit_payload=payload,
         )
         # 只在 stdout 顯示 machine producer 的 hash／scope 摘要；完整 artifact

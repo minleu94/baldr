@@ -133,6 +133,53 @@ def test_snapshot_distinguishes_operational_core_from_guarded_safety_boundaries(
     )
 
 
+def test_formal_non_trading_day_surfaces_last_workday_blocker(tmp_path):
+    output_root = tmp_path / "output"
+    root = output_root / "scheduled"
+    status_path = (
+        output_root
+        / "formal_daily_publications"
+        / "scheduler"
+        / "latest_status.json"
+    )
+    status_path.parent.mkdir(parents=True)
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "skipped_non_trading_day",
+                "observed_at": NOW.isoformat(),
+                "last_non_skipped_attempt": {
+                    "run_id": "workday-run-1",
+                    "status": "blocked",
+                    "exit_code": 2,
+                    "completed_at": "2026-08-05T22:00:00+00:00",
+                    "blockers": ["runtime_config_expired:2026-08-01:2026-08-05"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(status_path, (NOW.timestamp(), NOW.timestamp()))
+
+    snapshot = ScheduledOperationsStatusService(
+        root,
+        formal_status_path=status_path,
+        now_provider=lambda: NOW,
+    ).get_snapshot()
+    operation = next(
+        item for item in snapshot.operations if item.job_id == "formal_input_producer"
+    )
+
+    assert operation.raw_status == "skipped_non_trading_day"
+    assert operation.state == "attention"
+    assert "last_workday_status=blocked" in operation.diagnostic
+    assert "exit_code=2" in operation.diagnostic
+    assert "runtime_config_expired" in operation.diagnostic
+    assert operation.source_path == str(status_path)
+    assert snapshot.overall_state == "attention"
+    assert snapshot.core_job_count == 7
+
+
 def test_warning_success_is_guarded_and_counts_as_ready_core_operation(tmp_path):
     output_root = tmp_path / "output"
     root = output_root / "scheduled"

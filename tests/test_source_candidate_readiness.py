@@ -11,6 +11,7 @@ from app_module.source_candidate_readiness import (
     SourceCandidateRow,
     build_p0_candidate_statuses,
     build_sample_source_candidate_report,
+    render_source_candidate_markdown,
 )
 from data_module.p0_candidate_manifest import RawPayloadManifest
 from data_module.p0_candidate_repository import CandidateRepository
@@ -111,6 +112,54 @@ def test_future_available_date_is_blocked() -> None:
     assert credit["decision_ready"] is False
     assert credit["blocked_row_count"] == 1
     assert "future_data_blocked" in credit["diagnostics"]
+
+
+def test_blocked_rows_still_report_observed_fields_and_latest_dates() -> None:
+    row = SourceCandidateRow(
+        source_id="institutional_flows",
+        symbol="2330",
+        decision_date="2026-07-08",
+        available_date=None,
+        observed_at="2026-07-09T08:30:00+08:00",
+        source_version="legacy-candidate-v1",
+        quality="degraded",
+        payload={
+            "foreign_investor_buy": 1000,
+            "foreign_investor_sell": 700,
+            "foreign_investor_net": 300,
+            "investment_trust_buy": 200,
+            "investment_trust_sell": 100,
+            "investment_trust_net": 100,
+            "dealer_buy": 80,
+            "dealer_sell": 60,
+            "dealer_net": 20,
+        },
+    )
+
+    report = SourceCandidateReadinessService(
+        rows=(row,),
+        decision_date="2026-07-08",
+    ).build_report()
+    payload = report.to_dict()
+    institutional = _item(payload, "institutional_flows")
+
+    assert institutional["decision_ready"] is False
+    assert institutional["accepted_row_count"] == 0
+    assert institutional["latest_observation_date"] == "2026-07-08"
+    assert institutional["latest_available_date"] is None
+    assert institutional["latest_capture_at"] == "2026-07-09T00:30:00+00:00"
+    assert set(institutional["coverage"]["candidate_fields_present"]) == set(
+        institutional["coverage"]["required_fields"]
+    )
+    assert institutional["coverage"]["decision_ready_fields_present"] == []
+
+    markdown = render_source_candidate_markdown(report)
+    assert "latest_observation" in markdown
+    assert "2026-07-08" in markdown
+    assert "latest_capture_at" in markdown
+    assert "2026-07-09T00:30:00+00:00" in markdown
+    assert "foreign_investor_buy" in markdown
+    assert "decision_ready_fields" in markdown
 
 
 def test_all_three_sources_can_emit_readiness_items_with_optional_credit_diagnostics() -> None:

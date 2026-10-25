@@ -12,10 +12,11 @@ import json
 import math
 from numbers import Real
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import shutil
 import sqlite3
+import stat
 import tempfile
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
@@ -77,6 +78,35 @@ def _file_hash(path: Path) -> str:
 def _file_identity(path: Path) -> dict[str, int]:
     stat = path.stat()
     return {"size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+
+
+def _absolute_regular_file_no_reparse(path: Path | str, label: str) -> Path:
+    """以逐段 lstat 驗證一般檔案，避免 Windows 對開啟中的 SQLite 做 final-path 查詢。"""
+
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    current = Path(absolute.parts[0])
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    final_info = None
+    for index, part in enumerate(absolute.parts[1:], start=1):
+        current = current / part
+        try:
+            info = current.lstat()
+        except OSError as exc:
+            raise RawAliasRepairError(f"{label} 路徑元件無法檢查：{current}") from exc
+        attributes = getattr(info, "st_file_attributes", 0)
+        is_junction = getattr(current, "is_junction", None)
+        if (
+            stat.S_ISLNK(info.st_mode)
+            or bool(attributes & reparse_flag)
+            or (callable(is_junction) and is_junction())
+        ):
+            raise RawAliasRepairError(f"{label} 不得穿越連結或 junction：{current}")
+        if index < len(absolute.parts) - 1 and not stat.S_ISDIR(info.st_mode):
+            raise RawAliasRepairError(f"{label} 路徑祖先不是目錄：{current}")
+        final_info = info
+    if final_info is None or not stat.S_ISREG(final_info.st_mode):
+        raise RawAliasRepairError(f"{label} 不是一般檔案：{absolute}")
+    return absolute
 
 
 def _atomic_bytes(path: Path, data: bytes) -> None:
@@ -417,6 +447,36 @@ def _resolve_within(root: Path, value: object, *, must_exist: bool = True) -> Pa
     if candidate.is_symlink():
         raise RawAliasRepairError(f"修復路徑不可為符號連結：{candidate}")
     return resolved
+
+
+def _path_after_drive_relocation(root: Path, value: object) -> Path:
+    """Map a historical absolute path only when its root differs by drive letter."""
+
+    if not isinstance(value, str) or not value:
+        raise RawAliasRepairError("修復證據缺少路徑")
+    current_root = PureWindowsPath(str(root.resolve(strict=True)))
+    historical = PureWindowsPath(value)
+    if not historical.is_absolute() or not current_root.is_absolute():
+        raise RawAliasRepairError("raw alias historical path 必須是絕對路徑")
+    current_parts = tuple(part.casefold() for part in current_root.parts[1:])
+    historical_parts = historical.parts[1:]
+    same_root_suffix = (
+        len(historical_parts) >= len(current_parts)
+        and tuple(part.casefold() for part in historical_parts[:len(current_parts)]) == current_parts
+    )
+    if not same_root_suffix:
+        raise RawAliasRepairError("raw alias historical DATA_ROOT 不同；只支援同路徑的磁碟代號搬遷")
+    if historical.drive.casefold() == current_root.drive.casefold():
+        return Path(value)
+    if (
+        re.fullmatch(r"[A-Za-z]:", historical.drive) is None
+        or re.fullmatch(r"[A-Za-z]:", current_root.drive) is None
+    ):
+        raise RawAliasRepairError("raw alias root relocation 僅支援 Windows 磁碟代號")
+    relative = historical_parts[len(current_parts):]
+    if not relative:
+        return root
+    return root.joinpath(*relative)
 
 
 def _safe_target(root: Path, value: object) -> Path:
@@ -1934,7 +1994,9 @@ def _load_applied_raw_alias_receipt_evidence(
 ) -> tuple[dict[str, Any] | None, dict[Path, str], Path, tuple[str, ...]]:
     """一次讀取並驗 seal，回傳 marker 與本次 scope 的 raw evidence SHA。"""
 
-    database_path = Path(database_path).resolve(strict=True)
+    database_path = _absolute_regular_file_no_reparse(
+        database_path, "raw alias SQLite",
+    )
     root = database_path.parent.parent if database_path.parent.name.casefold() == "sqlite" else database_path.parent
     receipt_root = root / RECEIPT_ROOT
     if not receipt_root.exists():
@@ -2011,14 +2073,18 @@ def _raw_alias_authority_source_evidence(
 
     database_path = database_path.resolve(strict=True)
     root = database_path.parent.parent if database_path.parent.name.casefold() == "sqlite" else database_path.parent
-    if marker.get("root") != str(root):
+    if _path_after_drive_relocation(root, marker.get("root")).resolve(strict=True) != root:
         raise RawAliasRepairError("raw alias receipt 與要求寫入的 DATA_ROOT 不同")
     expected_database = _database_path(root).resolve(strict=True)
     if database_path != expected_database:
         raise RawAliasRepairError("raw alias receipt 不屬於要求寫入的 SQLite 資料庫")
 
-    technical_receipt_dir = _resolve_within(root, marker.get("technical_receipt_dir"))
-    source_db = _resolve_within(root, marker.get("source_db"))
+    technical_receipt_dir = _resolve_within(
+        root, str(_path_after_drive_relocation(root, marker.get("technical_receipt_dir"))),
+    )
+    source_db = _resolve_within(
+        root, str(_path_after_drive_relocation(root, marker.get("source_db"))),
+    )
     source_root = (root / SOURCE_RECEIPT_ROOT).resolve(strict=True)
     if technical_receipt_dir.parent != source_root or source_db.parent != technical_receipt_dir or source_db.name != "source.sqlite":
         raise RawAliasRepairError("raw alias receipt 的 immutable source/技術 receipt 路徑不符")
@@ -2045,10 +2111,10 @@ def _raw_alias_authority_source_evidence(
     if (
         receipt != journal
         or receipt.get("state") != "applied"
-        or Path(str(source.get("root", ""))).resolve() != root
-        or Path(str(source.get("source_db", ""))).resolve() != source_db
+        or _path_after_drive_relocation(root, source.get("root")).resolve(strict=True) != root
+        or _path_after_drive_relocation(root, source.get("source_db")).resolve(strict=True) != source_db
         or manifest.get("schema_version") != TECHNICAL_STAGE_SCHEMA
-        or manifest.get("source_db") != str(source_db)
+        or _path_after_drive_relocation(root, manifest.get("source_db")).resolve(strict=True) != source_db
         or source.get("source_sha256") != marker.get("source_sha256")
         or manifest.get("source_sha256") != marker.get("source_sha256")
         or receipt.get("source_sha256") != marker.get("source_sha256")

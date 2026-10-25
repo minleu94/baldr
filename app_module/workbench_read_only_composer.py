@@ -1662,10 +1662,23 @@ def _pending_weekly_review_summary(weekly: PreV2ReadinessItem | None) -> str:
             period_labels.append(f"{start}→{end}")
     if not period_labels:
         return ""
+    reviewability = weekly.evidence.get("pending_collection_reviewability")
+    if isinstance(reviewability, Mapping):
+        unreviewable_count = reviewability.get("unreviewable_count")
+        if isinstance(unreviewable_count, int) and unreviewable_count >= len(period_labels):
+            return (
+                f"；{unreviewable_count} 期舊週收集缺可核來源或 coverage，需重新收集；"
+                "Owner 核准無法補出缺少的資料"
+            )
     preview = ", ".join(period_labels[:3])
     if len(period_labels) > 3:
         preview += ", …"
-    return f"；pending_human_review {len(period_labels)} 期（{preview}）"
+    summary = f"；pending_human_review {len(period_labels)} 期（{preview}）"
+    if isinstance(reviewability, Mapping):
+        unreviewable_count = reviewability.get("unreviewable_count")
+        if isinstance(unreviewable_count, int) and unreviewable_count > 0:
+            summary += f"；其中 {unreviewable_count} 期缺可核來源或 coverage，需重新收集"
+    return summary
 
 
 def _status_to_severity(status: str) -> str:

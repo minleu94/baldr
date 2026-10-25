@@ -1,4 +1,5 @@
 ﻿from types import SimpleNamespace
+import json
 import warnings
 import sqlite3
 from datetime import timedelta
@@ -594,13 +595,38 @@ def test_check_source_detail_reads_scheduler_artifacts_read_only(tmp_path):
     status_path = config.output_root / "scheduled" / "data_update_quick" / "latest_status.json"
     status_path.parent.mkdir(parents=True)
     status_path.write_text('{"status": "passed"}', encoding="utf-8")
+    formal_status_path = (
+        config.output_root
+        / "formal_daily_publications"
+        / "scheduler"
+        / "latest_status.json"
+    )
+    formal_status_path.parent.mkdir(parents=True)
+    formal_status_path.write_text(
+        json.dumps(
+            {
+                "status": "skipped_non_trading_day",
+                "last_non_skipped_attempt": {
+                    "status": "blocked",
+                    "exit_code": 2,
+                    "blockers": ["runtime_config_expired:2026-08-01:2026-08-05"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
     detail = UpdateService(config).check_source_detail("scheduler_status")
 
     assert detail["status"] == "attention"
     assert detail["scheduler_state"] == "attention"
-    assert detail["core_job_count"] == 6
-    assert detail["operation_count"] >= 9
+    assert detail["core_job_count"] == 7
+    assert detail["operation_count"] >= 10
+    formal = next(
+        item for item in detail["operations"] if item["job_id"] == "formal_input_producer"
+    )
+    assert formal["raw_status"] == "skipped_non_trading_day"
+    assert "runtime_config_expired" in formal["diagnostic"]
     assert detail["read_only"] is True
     assert any("latest_status_missing" in item for item in detail["warnings"])
     assert not (config.output_root / "scheduled" / "data_freshness" / "latest_status.json").exists()

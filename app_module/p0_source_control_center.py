@@ -157,6 +157,8 @@ class P0SourceControlRow:
     fallback_payload_sha256: str | None = None
     fallback_payload_size_bytes: int | None = None
     fallback_observation_dates: tuple[str, ...] = ()
+    fallback_raw_row_count: int | None = None
+    fallback_accepted_row_count: int | None = None
     fallback_requested_date: str | None = None
     fallback_quarantine_reasons: tuple[str, ...] = ()
     fallback_error_type: str | None = None
@@ -181,7 +183,14 @@ class P0SourceControlRow:
             raise ValueError(f"unknown P0 source: {self.source_id}")
         if self.downstream_eligibility != "none":
             raise ValueError("P0 control center cannot grant downstream eligibility")
-        for name in ("observed_rows", "accepted_rows", "blocked_rows", "coverage_bp"):
+        for name in (
+            "observed_rows",
+            "accepted_rows",
+            "blocked_rows",
+            "coverage_bp",
+            "fallback_raw_row_count",
+            "fallback_accepted_row_count",
+        ):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -264,6 +273,8 @@ class P0SourceControlRow:
             "fallback_payload_sha256": self.fallback_payload_sha256,
             "fallback_payload_size_bytes": self.fallback_payload_size_bytes,
             "fallback_observation_dates": list(self.fallback_observation_dates),
+            "fallback_raw_row_count": self.fallback_raw_row_count,
+            "fallback_accepted_row_count": self.fallback_accepted_row_count,
             "fallback_requested_date": self.fallback_requested_date,
             "fallback_quarantine_reasons": list(self.fallback_quarantine_reasons),
             "fallback_error_type": self.fallback_error_type,
@@ -569,6 +580,14 @@ class P0SourceControlCenterService:
                 if audit
                 else ()
             ),
+            fallback_raw_row_count=(
+                _optional_int(audit.get("fallback_raw_row_count")) if audit else None
+            ),
+            fallback_accepted_row_count=(
+                _optional_int(audit.get("fallback_accepted_row_count"))
+                if audit
+                else None
+            ),
             fallback_requested_date=(
                 _optional_text(audit.get("fallback_requested_date")) if audit else None
             ),
@@ -742,6 +761,10 @@ def _normalize_audit_row(
             "fallback_observation_dates": _optional_string_tuple(
                 raw.get("fallback_observation_dates")
             ),
+            "fallback_raw_row_count": _optional_int(raw.get("fallback_raw_row_count")),
+            "fallback_accepted_row_count": _optional_int(
+                raw.get("fallback_accepted_row_count")
+            ),
             "fallback_requested_date": _optional_text(raw.get("fallback_requested_date")),
             "fallback_quarantine_reasons": _optional_string_tuple(
                 raw.get("fallback_quarantine_reasons")
@@ -796,6 +819,10 @@ def _normalize_audit_row(
         "fallback_payload_size_bytes": _optional_int(raw.get("fallback_payload_size_bytes")),
         "fallback_observation_dates": _optional_string_tuple(
             raw.get("fallback_observation_dates")
+        ),
+        "fallback_raw_row_count": _optional_int(raw.get("fallback_raw_row_count")),
+        "fallback_accepted_row_count": _optional_int(
+            raw.get("fallback_accepted_row_count")
         ),
         "fallback_requested_date": _optional_text(raw.get("fallback_requested_date")),
         "fallback_quarantine_reasons": _optional_string_tuple(

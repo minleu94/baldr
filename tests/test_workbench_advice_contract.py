@@ -230,7 +230,10 @@ def test_no_eligible_advice_keeps_empty_reason_separate_from_source_warnings() -
         auto_refresh=False,
     )
 
-    assert "目前無符合條件之 Advice 建議" in view.advice_empty_label.text()
+    assert "本次沒有可呈現的 Advice" in view.advice_empty_label.text()
+    assert "first_warning" in view.advice_empty_label.text()
+    assert "second_warning" in view.advice_empty_label.text()
+    assert "不會自動補齊資料或取得正式資格" in view.advice_empty_label.text()
     assert "原警告：" in view.advice_warning_status.text()
     assert "first_warning\n• second_warning" in view.advice_warning_status.text()
     assert "無合格標的" not in view.advice_warning_status.text()
@@ -241,10 +244,39 @@ def test_no_eligible_advice_keeps_empty_reason_separate_from_source_warnings() -
         auto_refresh=False,
     )
     assert "無原警告回報；這不代表沒有風險" in no_warning_view.advice_warning_status.text()
-    assert "目前無符合條件之 Advice 建議" in no_warning_view.advice_empty_label.text()
+    assert "沒有提供空結果原因" in no_warning_view.advice_empty_label.text()
+    assert "不能僅由空結果推斷資料完整或風險已解除" in no_warning_view.advice_empty_label.text()
     assert view.advice_recommendation_table.isHidden()
     assert view.advice_candidate_table.isHidden()
     assert view.advice_portfolio_table.isHidden()
+
+
+def test_no_eligible_advice_explains_known_warnings_and_escapes_source_text() -> None:
+    _app()
+    dashboard = _dashboard_with_advice()
+    blocked_advice = replace(
+        dashboard.advice_dashboard,
+        recommendations=(),
+        portfolio_rows=(),
+        warnings=(
+            "evidence_quality_missing",
+            "risk_budget_unavailable",
+            "raw <script>alert(1)</script>",
+            "fourth_warning",
+        ),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(dashboard, advice_dashboard=blocked_advice),
+        auto_refresh=False,
+    )
+
+    rendered = view.advice_empty_label.text()
+    assert "缺少合格證據，不能產生 Advice。" in rendered
+    assert "缺少已核驗的風險預算，不能提供配置。" in rendered
+    assert "raw &lt;script&gt;alert(1)&lt;/script&gt;" in rendered
+    assert "<script>" not in rendered
+    assert "另有 1 則，請見下方完整原警告。" in rendered
+    assert "raw <script>alert(1)</script>" in view.advice_warning_status.text()
 
 
 def test_advice_selection_card_bounds_height_and_keeps_full_text_reachable() -> None:

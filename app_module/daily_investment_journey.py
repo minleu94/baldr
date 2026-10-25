@@ -66,6 +66,7 @@ class _CandidateRead:
     warnings: tuple[str, ...] = ()
     diagnostics: tuple[str, ...] = ()
     source_trace: tuple[str, ...] = ()
+    recommendation_read_model: RecommendationExecutionReadModel | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,24 @@ class DailyInvestmentJourneyService:
         recommendation_learning_projection: RecommendationLearningEvidenceProjection | None = None,
         requested_decision_date: str | None = None,
     ) -> WorkbenchDailyEvidence:
+        daily_evidence, _ = self.build_with_recommendation_read(
+            decision_snapshot=decision_snapshot,
+            scheduled_status=scheduled_status,
+            recommendation_learning_status=recommendation_learning_status,
+            recommendation_learning_projection=recommendation_learning_projection,
+            requested_decision_date=requested_decision_date,
+        )
+        return daily_evidence
+
+    def build_with_recommendation_read(
+        self,
+        *,
+        decision_snapshot: DecisionDeskSnapshot | None,
+        scheduled_status: ScheduledEvidenceStatus,
+        recommendation_learning_status: Mapping[str, Any] | None,
+        recommendation_learning_projection: RecommendationLearningEvidenceProjection | None = None,
+        requested_decision_date: str | None = None,
+    ) -> tuple[WorkbenchDailyEvidence, RecommendationExecutionReadModel | None]:
         decision_date = _date_key(
             requested_decision_date
             or (decision_snapshot.as_of_date.isoformat() if decision_snapshot is not None else None)
@@ -258,7 +277,7 @@ class DailyInvestmentJourneyService:
         if research_fallback is not None:
             diagnostics.append(f"research_fallback_status={research_fallback.status}")
 
-        return WorkbenchDailyEvidence(
+        daily_evidence = WorkbenchDailyEvidence(
             status=status,
             decision_date=decision_date,
             data_as_of_date=data_as_of_date,
@@ -305,6 +324,7 @@ class DailyInvestmentJourneyService:
             diagnostics=tuple(dict.fromkeys(diagnostics)),
             source_trace=source_trace,
         )
+        return daily_evidence, candidate.recommendation_read_model
 
     def _build_research_fallback_packet(
         self,
@@ -783,6 +803,9 @@ class DailyInvestmentJourneyService:
             warnings=tuple(warnings),
             diagnostics=tuple(diagnostics),
             source_trace=tuple(trace),
+            recommendation_read_model=(
+                saved_read if status == "candidate" and saved_read is not None else None
+            ),
         )
 
     def _queries_for_runs_dir(self, runs_dir: Path) -> Any:
@@ -2225,16 +2248,39 @@ def _next_action(
     evidence: _EvidenceRead,
     scheduled_status: ScheduledEvidenceStatus,
 ) -> str:
-    if status in {"missing", "read_failure"}:
-        return "先重新整理唯讀來源，確認資料日期、scope receipt 與正式 EvidenceEvent table。"
+    if status == "missing":
+        return (
+            "缺少今日市場分析快照；按「重新整理狀態」，仍缺件時到「數據更新」核對資料日期與來源狀態。"
+            "缺件期間不推導成沒有候選或沒有風險。"
+        )
+    if status == "read_failure":
+        return (
+            "本次唯讀來源讀取失敗；按「查看每日來源詳情」核對來源與錯誤，再按「重新整理狀態」重讀。"
+        )
     if status == "stale":
-        return "先重新讀取今日來源；目前只保留 stale 參考，不把舊資料當作 current。"
+        return (
+            "決策日與來源日不一致，或證據快照已過期；按「查看每日來源詳情」確認過期項目，"
+            "更新來源後再按「重新整理狀態」。舊結果只作歷史參考。"
+        )
     if candidate.status in {"missing", "degraded"}:
-        return "先檢查 recommendation snapshot 與 run JSON；不可用空白候選推導結論。"
+        return (
+            "今日推薦快照缺失或資料不完整；按「查看每日來源詳情」核對決策日、來源與缺件原因。"
+            "若沒有今日有效快照，可到「市場探索」明選來源與日期做個股研究；舊保存推薦不代表今日候選。"
+        )
     if evidence.status == "waiting_for_time":
-        return "等待下一個官方交易日的可見價格觀測；成熟前不回填、不補未來資料。"
+        return (
+            "結果仍待後續官方交易日的價格觀測；可先做研究覆盤，按「查看證據成熟度」追蹤，"
+            "成熟前不回填或補未來資料。"
+        )
     if scheduled_status.pipeline_overall_status in {"invalid_evidence", "blocked"}:
-        return "先查看 Evidence scope 與 identity gate；pipeline 未達可驗證狀態。"
+        return (
+            "證據範圍或來源身份未通過；按「查看證據成熟度」核對阻擋原因，修正來源或範圍後再重新整理。"
+        )
+    if evidence.status in {"missing", "degraded"} or evidence.outcome_missing > 0:
+        return (
+            "研究證據缺少可核對的事件或結果；按「查看證據成熟度」檢查日期範圍與缺件。"
+            "空白不代表零風險，歷史回放也不能替代自然成熟。"
+        )
     return "開啟候選的既有個股研究報告，並依市場、產業、持倉順序人工覆盤。"
 
 

@@ -78,6 +78,7 @@ _MACHINE_ALLOWED_LICENSE_URLS = frozenset(
     {
         "https://www.twse.com.tw/zh/terms/use.html",
         "https://www.tpex.org.tw/web/inc/gtsm_disclaimer.php?l=zh-tw",
+        "https://www.tpex.org.tw/zh-tw/gtsm_disclaimer.html?l=zh-tw",
         "https://openapi.tdcc.com.tw/",
     }
 )
@@ -90,12 +91,12 @@ MACHINE_LICENSE_SCOPE_POLICIES: dict[str, dict[str, Any]] = {
         "policy_version": "twse-open-data-research-shadow.v2",
         "official_document": {
             "document_id": "twse-use-terms",
-            "document_version": "last-modified-2026-06-26",
+            "document_version": "last-modified-2026-10-22",
             "content_sha256": (
-                "sha256:ae9fa0704103fbae0ed61173a83cf55dca36dba2f7c86936fc018c4c39fb0c2c"
+                "sha256:13ad3d4507111e71f652941b670c84df332b43638d9bd2112e96dedadbfb3e10"
             ),
-            "content_bytes": 15304,
-            "last_modified": "Fri, 26 Jun 2026 02:46:42 GMT",
+            "content_bytes": 15458,
+            "last_modified": "Thu, 22 Oct 2026 06:38:26 GMT",
             "content_type": "text/html",
             "clause_profile_id": (
                 "twse-use-terms-consent-open-data-exception-"
@@ -140,10 +141,61 @@ MACHINE_LICENSE_SCOPE_POLICIES: dict[str, dict[str, Any]] = {
                         "https://openapi.twse.com.tw/v1/swagger.json"
                     ),
                     "metadata_content_sha256": (
-                        "sha256:2be48c7bd7385fbb3522df0e3c1e479dc92a8c66b85bbf1bc115e55182b9e4c7"
+                        "sha256:a9d0bac65a5a9b13e3fc17d1ff3ea94ce2cbb7b5a595cce646bdd28f69c01fd5"
                     ),
-                    "metadata_content_bytes": 3054,
+                    "metadata_content_bytes": 3058,
                     "metadata_modified": "2024-12-31 20:35:27",
+                },
+            }
+        },
+        "allowed_use_cases": ("research_shadow", "diagnostics"),
+        "formal_oos_allowed": False,
+        "production_scheduler_allowed": False,
+        "redistribution_allowed": False,
+        "legal_acceptance_inferred": False,
+    },
+    "https://www.tpex.org.tw/web/inc/gtsm_disclaimer.php?l=zh-tw": {
+        "policy_version": "tpex-open-data-research-shadow.v1",
+        "official_document": {
+            "document_id": "tpex-gtsm-disclaimer",
+            "document_version": "last-modified-2026-03-26",
+            "content_sha256": "sha256:e512db3b3c203fda12e910382e424d7b9418847266058fdabeea7464d5ec3fe0",
+            "content_bytes": 5225,
+            "last_modified": "Thu, 26 Mar 2026 07:55:02 GMT",
+            "final_url": "https://www.tpex.org.tw/zh-tw/gtsm_disclaimer.html?l=zh-tw",
+            "content_type": "text/html",
+            "fingerprint_mode": "html_visible_text_nfc.v1",
+            "clause_profile_id": "tpex-disclaimer-open-data-attribution-integrity-v1",
+            "verified_clause_ids": (
+                "automated_download_requires_consent",
+                "government_open_data_exception",
+                "source_attribution_and_integrity",
+            ),
+        },
+        "source_scopes": {
+            "tpex.monthly_revenue_announcement": {
+                "endpoint_id": "tpex:openapi:mopsfin_t187ap05_O",
+                "endpoint_url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+                "acquisition_route_id": "tpex.openapi.mopsfin_t187ap05_O",
+                "allowed_use_cases": ("research_shadow", "diagnostics"),
+                "government_dataset": {
+                    "dataset_id": 56510,
+                    "dataset_url": "https://data.gov.tw/dataset/56510",
+                    "metadata_url": "https://data.gov.tw/api/v2/rest/dataset/56510",
+                    "identifier": "",
+                    "title": "上櫃公司每月營業收入彙總表",
+                    "data_provider_id": "N121467221",
+                    "publisher_oid": "2.16.886.101.20003.20052.20004",
+                    "license_code": "1",
+                    "license_version": "政府資料開放授權條款-第1版",
+                    "license_url": "https://data.gov.tw/license",
+                    "endpoint_url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+                    "resource_url": "https://mopsfin.twse.com.tw/opendata/t187ap05_O.csv",
+                    "api_documentation_url": "https://openapi.twse.com.tw/v1/swagger.json",
+                    "endpoint_api_documentation_url": "https://www.tpex.org.tw/openapi/swagger.json",
+                    "metadata_content_sha256": "sha256:d51fe913e29ce00be5b4940c4f01049ba3dd1b0ec09731b4bb6c5adc186aca8b",
+                    "metadata_content_bytes": 2695,
+                    "metadata_modified": "2024-11-25 16:31:49",
                 },
             }
         },
@@ -619,7 +671,18 @@ def _evaluate_machine_evidence(
     final_url = _machine_text(license_payload.get("final_url"))
     if final_url not in _MACHINE_ALLOWED_LICENSE_URLS:
         blockers.append("machine_evidence_license_final_url_not_allowlisted")
-    if license_url and final_url and final_url != license_url:
+    expected_license_policy = _MACHINE_LICENSE_SCOPE_RULES.get(license_url)
+    expected_license_document = (
+        expected_license_policy.get("official_document")
+        if isinstance(expected_license_policy, Mapping)
+        else None
+    )
+    expected_final_url = (
+        _machine_text(expected_license_document.get("final_url"))
+        if isinstance(expected_license_document, Mapping)
+        else ""
+    ) or license_url
+    if license_url and final_url and final_url != expected_final_url:
         blockers.append("machine_evidence_license_final_url_mismatch")
     if not _machine_digest(license_payload.get("content_sha256")):
         blockers.append("machine_evidence_license_content_hash_invalid")
@@ -1224,6 +1287,7 @@ def _validate_machine_license_scope_policy(
             "document_version",
             "last_modified",
             "content_type",
+            "fingerprint_mode",
             "clause_profile_id",
         ):
             if document.get(field_name) != expected_document.get(field_name):
@@ -1297,6 +1361,7 @@ def _validate_machine_license_scope_policy(
                     "endpoint_url",
                     "resource_url",
                     "api_documentation_url",
+                    "endpoint_api_documentation_url",
                     "metadata_content_bytes",
                     "metadata_modified",
                 ):
@@ -1436,6 +1501,11 @@ def _validate_machine_license_capture_binding(
         if isinstance(expected_document, Mapping)
         else None
     )
+    expected_fingerprint_mode = (
+        _machine_text(expected_document.get("fingerprint_mode"))
+        if isinstance(expected_document, Mapping)
+        else ""
+    ) or "raw_response.v1"
     government_evidence = artifact.get("government_dataset_evidence")
     government_expected = (
         expected_scope.get("government_dataset")
@@ -1469,7 +1539,11 @@ def _validate_machine_license_capture_binding(
         ),
         "requested_url_allowlisted": expected_url in _MACHINE_LICENSE_SCOPE_RULES,
         "final_url_exact_allowlisted": (
-            target.get("final_url") == expected_url
+            target.get("final_url") == (
+                expected_document.get("final_url", expected_url)
+                if isinstance(expected_document, Mapping)
+                else expected_url
+            )
             and expected_url in _MACHINE_LICENSE_SCOPE_RULES
         ),
         "response_complete": target.get("truncated") is False,
@@ -1481,6 +1555,15 @@ def _validate_machine_license_capture_binding(
         "official_document_hash_verified": (
             bool(expected_document_hash) and target_hash == expected_document_hash
         ),
+        "official_document_fingerprint_mode_verified": (
+            target.get("fingerprint_mode") == expected_fingerprint_mode
+        ),
+        "raw_response_fingerprint_verified": (
+            _machine_digest(target.get("response_sha256"))
+            and isinstance(target.get("bytes_captured"), int)
+            and not isinstance(target.get("bytes_captured"), bool)
+            and target.get("bytes_captured", 0) > 0
+        ),
         "official_document_version_verified": (
             isinstance(expected_document, Mapping)
             and target_headers_mapping.get("last_modified")
@@ -1489,7 +1572,7 @@ def _validate_machine_license_capture_binding(
         "official_document_size_verified": (
             isinstance(expected_document_bytes, int)
             and not isinstance(expected_document_bytes, bool)
-            and target.get("bytes_captured") == expected_document_bytes
+            and target.get("fingerprint_content_bytes") == expected_document_bytes
         ),
         "official_document_type_verified": (
             bool(expected_media_type) and target_media_type == expected_media_type
@@ -1518,6 +1601,8 @@ def _validate_machine_license_capture_binding(
         "content_persisted",
         "final_host_allowlisted",
         "keyword_flags",
+        "fingerprint_mode",
+        "response_sha256",
     ):
         if field_name == "status":
             if target.get(field_name) != "captured":
@@ -1535,6 +1620,17 @@ def _validate_machine_license_capture_binding(
             blockers.append("machine_evidence_license_capture_content_hash_mismatch")
     elif artifact.get("status") == "machine_scope_verified":
         blockers.append("machine_evidence_license_capture_content_hash_missing")
+    artifact_response_hash = artifact.get("capture_target_response_sha256")
+    target_response_hash = target.get("response_sha256")
+    if _machine_digest(artifact_response_hash) and _machine_digest(target_response_hash):
+        if _normalize_machine_digest(str(artifact_response_hash)) != _normalize_machine_digest(
+            str(target_response_hash)
+        ):
+            blockers.append("machine_evidence_license_capture_response_hash_mismatch")
+    elif artifact.get("status") == "machine_scope_verified":
+        blockers.append("machine_evidence_license_capture_response_hash_missing")
+    if artifact.get("response_bytes") != target.get("bytes_captured"):
+        blockers.append("machine_evidence_license_capture_response_size_mismatch")
 
 
 def _validate_machine_government_dataset_binding(
@@ -1637,10 +1733,16 @@ def _validate_machine_government_dataset_binding(
                 if _normalize_machine_digest(str(api_declared_hash)) != api_actual_hash:
                     blockers.append("machine_evidence_government_api_hash_mismatch")
                 try:
-                    api_decoded = json.loads(api_raw_bytes.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
+                    api_decoded, unicode_escape_repairs = decode_official_openapi_document(
+                        api_raw_bytes
+                    )
+                except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
                     blockers.append("machine_evidence_government_api_json_invalid")
                 else:
+                    if api_binding.get("invalid_unicode_escape_repairs") != unicode_escape_repairs:
+                        blockers.append(
+                            "machine_evidence_government_api_unicode_repair_count_mismatch"
+                        )
                     endpoint_url = _machine_text(expected.get("endpoint_url"))
                     endpoint_path = urlparse(endpoint_url).path
                     api_paths = (
@@ -1648,21 +1750,16 @@ def _validate_machine_government_dataset_binding(
                         if isinstance(api_decoded, Mapping)
                         else None
                     )
-                    base_path = (
-                        _machine_text(api_decoded.get("basePath")).rstrip("/")
-                        if isinstance(api_decoded, Mapping)
-                        else ""
+                    candidate_paths = official_openapi_candidate_paths(
+                        api_decoded if isinstance(api_decoded, Mapping) else {},
+                        endpoint_url,
                     )
-                    candidate_paths = [endpoint_path]
-                    if base_path and endpoint_path.startswith(base_path + "/"):
-                        candidate_paths.append(endpoint_path[len(base_path) :])
                     if not isinstance(api_paths, Mapping) or not any(
                         candidate in api_paths for candidate in candidate_paths
                     ):
                         blockers.append("machine_evidence_government_api_endpoint_missing")
-                if api_binding.get("metadata_url") != expected.get(
-                    "api_documentation_url"
-                ):
+                expected_api_url = expected.get("endpoint_api_documentation_url") or expected.get("api_documentation_url")
+                if api_binding.get("metadata_url") != expected_api_url:
                     blockers.append("machine_evidence_government_api_url_mismatch")
                 if api_binding.get("endpoint_url") != expected.get("endpoint_url"):
                     blockers.append("machine_evidence_government_api_endpoint_mismatch")
@@ -1670,19 +1767,12 @@ def _validate_machine_government_dataset_binding(
                     _machine_text(expected.get("endpoint_url"))
                 ).path:
                     blockers.append("machine_evidence_government_api_path_mismatch")
-                endpoint_path = urlparse(
-                    _machine_text(expected.get("endpoint_url"))
-                ).path
-                base_path = ""
-                if isinstance(api_decoded, Mapping):
-                    base_path = _machine_text(api_decoded.get("basePath")).rstrip("/")
-                expected_swagger_path = endpoint_path
-                if base_path and endpoint_path.startswith(base_path + "/"):
-                    expected_swagger_path = endpoint_path[len(base_path) :]
-                if api_binding.get("swagger_path") not in {
-                    endpoint_path,
-                    expected_swagger_path,
-                }:
+                endpoint_path = urlparse(_machine_text(expected.get("endpoint_url"))).path
+                expected_paths = official_openapi_candidate_paths(
+                    api_decoded if isinstance(api_decoded, Mapping) else {},
+                    _machine_text(expected.get("endpoint_url")),
+                )
+                if api_binding.get("swagger_path") not in expected_paths:
                     blockers.append("machine_evidence_government_api_swagger_path_mismatch")
                 api_captured_at = _machine_datetime(
                     _machine_text(api_binding.get("fetched_at_utc"))
@@ -1749,6 +1839,7 @@ def _validate_machine_government_dataset_binding(
         ("endpoint_url", "endpoint_url"),
         ("resource_url", "resource_url"),
         ("api_documentation_url", "api_documentation_url"),
+        ("endpoint_api_documentation_url", "endpoint_api_documentation_url"),
         ("metadata_modified", "metadata_modified"),
     ):
         if binding.get(binding_field) != expected.get(expected_field):
@@ -1870,6 +1961,84 @@ def _machine_artifact_claim(
 
 def _machine_text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def decode_official_openapi_document(payload: bytes) -> tuple[Mapping[str, Any], int]:
+    """Parse an OpenAPI JSON object, preserving raw bytes and narrowly repairing
+    only malformed ``\\u`` escapes inside string values.
+
+    A repair turns the malformed escape into literal text; it never changes JSON
+    structure or endpoint keys. Callers must still verify the exact endpoint path.
+    The returned count makes any repair auditable in the evidence artifact.
+    """
+
+    text = payload.decode("utf-8")
+    output: list[str] = []
+    in_string = False
+    repairs = 0
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if in_string and char == "\\":
+            if index + 1 < len(text) and text[index + 1] == "u":
+                digits = text[index + 2 : index + 6]
+                if len(digits) != 4 or any(
+                    digit not in "0123456789abcdefABCDEF" for digit in digits
+                ):
+                    output.append("\\\\u")
+                    repairs += 1
+                    index += 2
+                    continue
+            output.append(char)
+            if index + 1 < len(text):
+                output.append(text[index + 1])
+                index += 2
+                continue
+            index += 1
+            continue
+        if char == '"':
+            in_string = not in_string
+        output.append(char)
+        index += 1
+    decoded = json.loads("".join(output))
+    if not isinstance(decoded, Mapping):
+        raise ValueError("OpenAPI document root must be an object")
+    return decoded, repairs
+
+
+def official_openapi_candidate_paths(
+    document: Mapping[str, Any], endpoint_url: str
+) -> tuple[str, ...]:
+    """Return exact path candidates from Swagger 2 or OpenAPI 3 server bases."""
+
+    endpoint = urlparse(endpoint_url)
+    if endpoint.scheme != "https" or not endpoint.netloc or not endpoint.path:
+        return ()
+    candidates = [endpoint.path]
+    bases: list[str] = []
+    base_path = _machine_text(document.get("basePath")).rstrip("/")
+    if base_path:
+        bases.append(base_path)
+    servers = document.get("servers")
+    if isinstance(servers, Sequence) and not isinstance(servers, (str, bytes)):
+        for server in servers:
+            if not isinstance(server, Mapping):
+                continue
+            server_url = _machine_text(server.get("url"))
+            parsed_server = urlparse(server_url)
+            if parsed_server.netloc and (
+                parsed_server.scheme != "https"
+                or parsed_server.netloc.casefold() != endpoint.netloc.casefold()
+            ):
+                continue
+            if parsed_server.path:
+                bases.append(parsed_server.path.rstrip("/"))
+    for base in bases:
+        if endpoint.path.startswith(base + "/"):
+            suffix = endpoint.path[len(base) :]
+            if suffix and suffix not in candidates:
+                candidates.append(suffix)
+    return tuple(candidates)
 
 
 def _machine_strings(value: Any) -> tuple[str, ...]:

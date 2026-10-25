@@ -517,7 +517,28 @@ class PaperDecisionDeskEvidenceSource:
                 blockers.append("paper_daily_status_date_mismatch")
             reported_db = str(payload.get("state_db") or "").strip()
             if reported_db and Path(reported_db).expanduser().resolve() != self.state_db_path:
-                blockers.append("paper_daily_status_state_db_path_mismatch")
+                identity_matches = (
+                    status == "passed"
+                    and str(payload.get("snapshot_id") or "") == snapshot.snapshot_id
+                    and str(payload.get("decision_date") or "")
+                    == snapshot.decision_date.isoformat()
+                )
+                for payload_key, expected in (
+                    ("cash", snapshot.cash),
+                    ("total_value", snapshot.total_value),
+                ):
+                    try:
+                        identity_matches = identity_matches and _parse_decimal(
+                            payload.get(payload_key), payload_key
+                        ) == expected
+                    except (TypeError, ValueError, ArithmeticError):
+                        identity_matches = False
+                if identity_matches:
+                    warnings.append(
+                        "paper_daily_status_state_db_path_rebound_by_snapshot_identity"
+                    )
+                else:
+                    blockers.append("paper_daily_status_state_db_path_mismatch")
         if status_date < as_of_date:
             warnings.append(f"paper_daily_status_as_of_fallback:{status_date.isoformat()}")
 

@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import subprocess
+import sqlite3
 import sys
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
@@ -27,6 +28,9 @@ from data_module.config import TWStockConfig
 from data_module.official_trading_calendar import (
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
+)
+from data_module.official_trading_calendar_cache import (
+    refresh_twse_temporary_closure_events,
 )
 from data_module.ml_storage_capacity import (
     BYTES_PER_GIB,
@@ -124,10 +128,12 @@ def _calendar_for_run(
     closure_argument = getattr(args, "temporary_closure_path", None)
     explicit_override = cache_argument is not None or closure_argument is not None
     if not explicit_override:
+        default_cache_root = _default_calendar_cache_path()
         return (
             OfficialTradingCalendar(
                 db_path=db_path,
-                calendar_cache_path=_default_calendar_cache_path(),
+                calendar_cache_path=default_cache_root,
+                temporary_closure_path=default_cache_root,
             ),
             True,
         )
@@ -350,18 +356,29 @@ def _append_history_safely(path: Path, payload: dict[str, Any]) -> dict[str, Any
         }
 
 
-def _setup_logging(log_path: Path) -> None:
+def _setup_logging(log_path: Path) -> Path:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     root = logging.getLogger()
     root.handlers.clear()
     root.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    try:
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    except PermissionError:
+        # A same-day rerun may find the conventional log held by another
+        # process. Keep the standard path when available, but give this run a
+        # distinct log so a stale/open file cannot block all work preflight.
+        fallback_path = log_path.with_name(
+            f"{log_path.stem}_{os.getpid()}_{uuid4().hex[:8]}{log_path.suffix}"
+        )
+        file_handler = logging.FileHandler(fallback_path, encoding="utf-8")
+        log_path = fallback_path
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     root.addHandler(console_handler)
+    return log_path
 
 
 def _step_payload(name: str, result: dict[str, Any], warning: bool = False) -> dict[str, Any]:
@@ -391,7 +408,10 @@ def _twse_skip_warning_messages(result: dict[str, Any]) -> list[str]:
     )
     if not skipped_dates:
         return []
-    return [f"TWSE 官方無交易資料日（休市／颱風等），已略過日期：{', '.join(skipped_dates)}"]
+    return [
+        "TWSE 官方當次查詢回覆無資料，已略過日期；"
+        f"休市狀態未由此回覆確認：{', '.join(skipped_dates)}"
+    ]
 
 
 def _update_market_with_capture(
@@ -450,6 +470,80 @@ def _sync_market_index_for_run(
             ),
         )
     return service.sync_source_to_sqlite("market_index")
+
+
+def _recover_missing_market_capture_manifests(
+    *,
+    data_root: Path,
+    database_path: Path,
+    start_date: str,
+    end_date: str,
+    current_manifests: list[Path],
+) -> tuple[list[Path], list[str]]:
+    """Recover only verified archived captures for TAIEX dates absent from SQLite."""
+
+    from data_module.taiex_market_index_publication import _verified_capture
+
+    start = _parse_date(start_date)
+    end = _parse_date(end_date)
+    if start is None or end is None or end < start:
+        return list(current_manifests), []
+    source_root = Path(data_root) / "meta_data" / "official_market_daily_sources"
+    try:
+        source_root = source_root.resolve(strict=True)
+        database_path = Path(database_path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return list(current_manifests), []
+    if not source_root.is_dir() or not database_path.is_file():
+        return list(current_manifests), []
+
+    try:
+        uri = database_path.as_uri() + "?mode=ro"
+        with sqlite3.connect(uri, uri=True) as connection:
+            connection.execute("PRAGMA query_only=ON")
+            existing = {
+                str(row[0]).replace("-", "").replace("/", "")
+                for row in connection.execute(
+                    'SELECT DISTINCT "日期" FROM "market_indices" '
+                    'WHERE "指數名稱"=?',
+                    ("TAIEX",),
+                ).fetchall()
+            }
+    except sqlite3.Error:
+        return list(current_manifests), []
+
+    verified_by_date: dict[str, list[Path]] = {}
+    current_dates: set[str] = set()
+    for manifest_path in current_manifests:
+        try:
+            capture = _verified_capture(manifest_path, Path(data_root))
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            continue
+        parsed_day = _parse_date(capture.source_date)
+        if parsed_day is not None:
+            current_dates.add(parsed_day.strftime("%Y%m%d"))
+    for manifest_path in sorted(source_root.glob("*/manifest.json")):
+        try:
+            capture = _verified_capture(manifest_path, Path(data_root))
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+            continue
+        source_day = _parse_date(capture.source_date)
+        if source_day is None or not start.date() <= source_day.date() <= end.date():
+            continue
+        date_key = source_day.strftime("%Y%m%d")
+        if date_key not in existing and date_key not in current_dates:
+            verified_by_date.setdefault(date_key, []).append(manifest_path)
+
+    # More than one archive receipt for a missing date is ambiguous. Keep that
+    # date out of the repair set; the publisher remains fail-closed.
+    recovered = [
+        paths[0]
+        for day, paths in sorted(verified_by_date.items())
+        if len(paths) == 1
+    ]
+    dates = [day for day, paths in sorted(verified_by_date.items()) if len(paths) == 1]
+    combined = list(dict.fromkeys([*current_manifests, *recovered]))
+    return combined, dates
 
 
 def _sync_partial_industry_captures(
@@ -540,6 +634,13 @@ def _run_step(
             "message": f"{type(exc).__name__}: {exc}",
         }
     ok = bool(result.get("success", True))
+    if ok and result.get("upstream_update_partial") is True:
+        logging.warning(
+            "Step published verified partial data while upstream remains partial: %s",
+            name,
+        )
+        steps.append(_step_payload(name, result, warning=True))
+        return None
     if not ok and warning_only:
         logging.warning("Step completed with warning: %s: %s", name, result.get("message", ""))
         steps.append(_step_payload(name, result, warning=True))
@@ -1186,7 +1287,7 @@ def main(argv: list[str] | None = None) -> int:
         else status_path.parent / "history.jsonl"
     )
     log_path = Path(args.log_path) if args.log_path else run_root / f"{today_key}_data_update_quick.log"
-    _setup_logging(log_path)
+    log_path = _setup_logging(log_path)
 
     capacity_preflight: dict[str, Any] | None = None
     candidate_db_path = (
@@ -1301,6 +1402,36 @@ def main(argv: list[str] | None = None) -> int:
     if args.technical_process_pool_max_retries is not None:
         config.technical_process_pool_max_retries = args.technical_process_pool_max_retries
 
+    calendar_cache_root = _default_calendar_cache_path()
+    temporary_closure_discovery: dict[str, Any] = {
+        "status": "calendar_cache_root_unavailable",
+        "network_attempts": 0,
+        "events": [],
+        "errors": [],
+    }
+    if calendar_cache_root is not None:
+        try:
+            temporary_closure_discovery = refresh_twse_temporary_closure_events(
+                calendar_year=run_date.year,
+                cache_root=calendar_cache_root,
+                allowed_root=REPO_ROOT / "output",
+                observed_at=run_now.astimezone(timezone.utc),
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            temporary_closure_discovery = {
+                "status": "temporary_closure_discovery_blocked",
+                "calendar_year": run_date.year,
+                "network_attempts": 0,
+                "events": [],
+                "errors": [f"{type(exc).__name__}:{str(exc)[:240]}"],
+            }
+        logging.info(
+            "TWSE temporary closure discovery status=%s attempts=%s events=%s",
+            temporary_closure_discovery.get("status"),
+            temporary_closure_discovery.get("network_attempts"),
+            len(temporary_closure_discovery.get("events", [])),
+        )
+
     calendar_records: list[dict[str, Any]] = []
     try:
         calendar, allow_calendar_online_probe = _calendar_for_run(
@@ -1355,6 +1486,7 @@ def main(argv: list[str] | None = None) -> int:
             "capacity_lock_path": str(capacity_lock_path),
             "capacity_reservation_acquired": False,
             "calendar_resolution": [],
+            "temporary_closure_discovery": temporary_closure_discovery,
             "steps": [],
             "warnings": [],
             "errors": [failure_message],
@@ -1376,8 +1508,24 @@ def main(argv: list[str] | None = None) -> int:
     service = UpdateService(config)
     steps: list[dict[str, Any]] = []
     warnings: list[str] = []
+    discovery_status = str(temporary_closure_discovery.get("status") or "unknown")
+    if discovery_status in {
+        "temporary_closure_discovery_blocked",
+        "temporary_closure_events_partial",
+        "calendar_cache_root_unavailable",
+    }:
+        warnings.append(
+            "TWSE 臨時休市公告未完整核對；年度開休市表不涵蓋臨時休市："
+            f"{discovery_status}"
+        )
+    if temporary_closure_discovery.get("errors"):
+        warnings.extend(
+            "TWSE 臨時休市公告查核：" + str(error)
+            for error in temporary_closure_discovery["errors"]
+        )
     failed: dict[str, Any] | None = None
     market_capture_manifests: list[Path] = []
+    industry_projection_handled = False
 
     logging.info("Scheduled quick data update window: %s to %s", start_date, end_date)
 
@@ -1403,9 +1551,10 @@ def main(argv: list[str] | None = None) -> int:
         "start_date": start_date,
         "end_date": end_date,
         "calendar_resolution": _serializable_calendar_records(calendar_records),
+        "temporary_closure_discovery": temporary_closure_discovery,
         "log_path": str(log_path),
         "steps": [],
-        "warnings": [],
+        "warnings": warnings,
         "errors": [],
         "writes_market_data_db": True,
         "writes_evidence_db": False,
@@ -1468,6 +1617,7 @@ def main(argv: list[str] | None = None) -> int:
                 end_date,
                 market_capture_manifests,
             ),
+            warning_only=True,
         )
     if failed is None:
         market_update_result: Any = next(
@@ -1478,6 +1628,18 @@ def main(argv: list[str] | None = None) -> int:
             ),
             {},
         )
+        if isinstance(market_update_result, dict) and market_update_result.get("success") is not True:
+            market_capture_manifests, recovered_dates = _recover_missing_market_capture_manifests(
+                data_root=config.data_root,
+                database_path=config.db_file,
+                start_date=start_date,
+                end_date=end_date,
+                current_manifests=market_capture_manifests,
+            )
+            market_update_result["recovered_capture_dates"] = recovered_dates
+            market_update_result["capture_manifests"] = [
+                str(path) for path in market_capture_manifests
+            ]
         failed = _run_step(
             steps=steps,
             name="sync_market_index_to_sqlite",
@@ -1486,6 +1648,7 @@ def main(argv: list[str] | None = None) -> int:
                 capture_manifests=market_capture_manifests,
                 market_update_result=market_update_result,
             ),
+            warning_only=True,
         )
     if failed is None:
         failed = _run_step(
@@ -1524,8 +1687,47 @@ def main(argv: list[str] | None = None) -> int:
                         f"{original_message}; partial capture date-scoped sync failed: "
                         f"{sync_message}"
                     )
+                else:
+                    industry_projection_handled = True
+                    failed = None
+                    for step in steps:
+                        if step.get("name") == "update_industry_index":
+                            step["status"] = "warning"
+                            step["message"] = (
+                                f"{step.get('message', '')}；有效 capture 日期已完成限定同步"
+                            )
+                            break
+        elif failed is not None and failed.get("failed_dates"):
+            unknown_legacy = failed.get("unverified_legacy_dates", [])
+            verified_skipped = failed.get("verified_skipped_dates", [])
+            if not unknown_legacy and verified_skipped:
+                # Industry and technical rows are independent once daily prices
+                # have synced. Keep the exact source failure visible, skip any
+                # legacy whole-CSV write, and let the technical branch proceed.
+                industry_projection_handled = True
+                failed = None
+                for step in steps:
+                    if step.get("name") == "update_industry_index":
+                        step["status"] = "warning"
+                        step["message"] = (
+                            f"{step.get('message', '')}；保留已驗證的產業投影，"
+                            "本次不執行整份 CSV 同步"
+                        )
+                        break
     if failed is None:
-        failed = _run_step(steps=steps, name="sync_industry_index_to_sqlite", action=lambda: service.sync_source_to_sqlite("industry_index"))
+        if industry_projection_handled:
+            steps.append({
+                "name": "sync_industry_index_to_sqlite",
+                "status": "skipped",
+                "message": "已完成 capture 日期限定同步或確認既有 projection；不執行整份 CSV 同步",
+                "result": {
+                    "success": True,
+                    "skipped": True,
+                    "reason": "verified_partial_industry_projection_preserved",
+                },
+            })
+        else:
+            failed = _run_step(steps=steps, name="sync_industry_index_to_sqlite", action=lambda: service.sync_source_to_sqlite("industry_index"))
     if failed is None and args.skip_broker_branch:
         steps.extend(
             [
@@ -1890,6 +2092,7 @@ def main(argv: list[str] | None = None) -> int:
         "start_date": start_date,
         "end_date": end_date,
         "calendar_resolution": _serializable_calendar_records(calendar_records),
+        "temporary_closure_discovery": temporary_closure_discovery,
         "log_path": str(log_path),
         "steps": steps,
         "warnings": warnings,

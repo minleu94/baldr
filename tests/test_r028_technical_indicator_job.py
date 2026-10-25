@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -74,6 +75,184 @@ def test_production_job_run_preserves_verified_candidate_method() -> None:
         "run_process_pool",
     )
     assert TechnicalIndicatorJobPorts.__dataclass_params__.frozen is True
+
+
+def test_currentity_sqlite_read_is_bounded_to_recompute_and_warmup_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import data_module.db_manager as db_manager_module
+    import app_module.technical_indicator_job as technical_indicator_job_module
+
+    config = TWStockConfig(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "artifacts",
+        profile="test",
+    )
+    config.use_sqlite = True
+    config.min_data_days = 30
+    config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    config.db_file.touch()
+    config.technical_dir.mkdir(parents=True, exist_ok=True)
+    (config.technical_dir / "2330_indicators.csv").touch()
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    class FakeDBManager:
+        def __init__(self, _: object) -> None:
+            pass
+
+        def execute_query(
+            self,
+            sql: str,
+            params: tuple[object, ...] = (),
+        ) -> pd.DataFrame:
+            calls.append((sql, params))
+            if sql.startswith("PRAGMA table_info"):
+                return pd.DataFrame(
+                    {"name": ["日期", "證券代號", "開盤價", "最高價", "最低價", "收盤價"]}
+                )
+            if "GROUP BY" in sql:
+                return pd.DataFrame({"日期": ["2026-01-01"]})
+            return pd.DataFrame(
+                {
+                    "日期": ["2026-01-01"],
+                    "證券代號": ["2330"],
+                    "開盤價": [100],
+                    "最高價": [101],
+                    "最低價": [99],
+                    "收盤價": [100],
+                }
+            )
+
+    monkeypatch.setattr(db_manager_module, "DBManager", FakeDBManager)
+    monkeypatch.setattr(
+        technical_indicator_job_module,
+        "validate_excluded_price_frame",
+        lambda *_: None,
+    )
+    cancel_checks = iter((False, True))
+    job = TechnicalIndicatorJob(
+        TechnicalIndicatorJobPorts(
+            config=config,
+            get_indicator_latest_date=lambda _: None,
+            run_process_pool=lambda **_: {},
+        )
+    )
+
+    result = job.run(
+        recompute_currentity=True,
+        incremental_lookback_days=120,
+        cancel_callback=lambda: next(cancel_checks),
+    )
+
+    assert result["cancelled"] is True
+    assert len(calls) == 3
+    cutoff_sql, cutoff_params = calls[1]
+    data_sql, data_params = calls[2]
+    assert "GROUP BY \"日期\"" in cutoff_sql
+    assert "LIMIT 1 OFFSET ?" in cutoff_sql
+    assert cutoff_params == (179,)
+    assert "WHERE \"日期\" >= ?" in data_sql
+    assert data_params == ("2026-01-01",)
+
+
+def test_target_stock_sqlite_read_filters_before_materializing_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import data_module.db_manager as db_manager_module
+    import app_module.technical_indicator_job as technical_indicator_job_module
+
+    config = TWStockConfig(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "artifacts",
+        profile="test",
+    )
+    config.use_sqlite = True
+    config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    config.db_file.touch()
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    class FakeDBManager:
+        def __init__(self, _: object) -> None:
+            pass
+
+        def execute_query(
+            self,
+            sql: str,
+            params: tuple[object, ...] = (),
+        ) -> pd.DataFrame:
+            calls.append((sql, params))
+            if sql.startswith("PRAGMA table_info"):
+                return pd.DataFrame(
+                    {"name": ["日期", "證券代號", "開盤價", "最高價", "最低價", "收盤價"]}
+                )
+            return pd.DataFrame(
+                {
+                    "日期": ["2026-01-01"],
+                    "證券代號": ["2330"],
+                    "開盤價": [100],
+                    "最高價": [101],
+                    "最低價": [99],
+                    "收盤價": [100],
+                }
+            )
+
+    monkeypatch.setattr(db_manager_module, "DBManager", FakeDBManager)
+    monkeypatch.setattr(
+        technical_indicator_job_module,
+        "validate_excluded_price_frame",
+        lambda *_: None,
+    )
+    cancel_checks = iter((False, True))
+    job = TechnicalIndicatorJob(
+        TechnicalIndicatorJobPorts(
+            config=config,
+            get_indicator_latest_date=lambda _: None,
+            run_process_pool=lambda **_: {},
+        )
+    )
+
+    result = job.run(
+        target_stock="2330",
+        force_all=False,
+        cancel_callback=lambda: next(cancel_checks),
+    )
+
+    assert result["cancelled"] is True
+    assert len(calls) == 2
+    stock_sql, stock_params = calls[1]
+    assert 'WHERE "證券代號" = ?' in stock_sql
+    assert stock_params == ("2330",)
+
+
+def test_sqlite_incremental_does_not_materialize_full_history_aggregate() -> None:
+    source = inspect.getsource(TechnicalIndicatorJob.run)
+    tree = ast.parse(textwrap.dedent(source))
+
+    def has_call(node: ast.AST, receiver: str, method: str, argument: str | None = None) -> bool:
+        return any(
+            isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Attribute)
+            and isinstance(item.func.value, ast.Name)
+            and item.func.value.id == receiver
+            and item.func.attr == method
+            and (
+                argument is None
+                or any(isinstance(arg, ast.Name) and arg.id == argument for arg in item.args)
+            )
+            for item in ast.walk(node)
+        )
+
+    sqlite_incremental_guards = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If) and ast.unparse(node.test) == "not skip_csv_save"
+    ]
+    assert any(has_call(node, "all_data", "append") for node in sqlite_incremental_guards)
+    assert any(has_call(node, "all_data", "extend") for node in sqlite_incremental_guards)
+    assert any(has_call(node, "pd", "concat", "valid_data") for node in sqlite_incremental_guards)
+    assert "if all_data or (skip_csv_save and sqlite_publications):" in source
 
 
 def test_update_service_facade_signature_matches_job_call_contract() -> None:

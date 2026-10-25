@@ -88,7 +88,7 @@ class DecisionQualityView(QWidget):
         self.end_date_input = OptionalDateFilterEdit()
         self.symbol_input = QLineEdit()
         self.symbol_scope_hint = QLabel(
-            "只篩下方項目列；上方分數卡仍顯示所選覆盤範圍最新分數，不是單股分數。現行作用範圍待產品確認。"
+            "股票代號只篩下方項目列。上方卡片仍顯示所選覆盤範圍的最新整體分數，不是單股分數。"
         )
         self.symbol_scope_hint.setObjectName("decisionQualitySymbolScopeHint")
         self.symbol_scope_hint.setWordWrap(True)
@@ -105,7 +105,7 @@ class DecisionQualityView(QWidget):
         self.min_score_input.setPlaceholderText("0-10000")
         self.min_score_input.setValidator(QIntValidator(0, 10000, self.min_score_input))
         self.min_score_scope_hint = QLabel(
-            "目前只用所選覆盤範圍最新一筆的決策品質分數作項目列門檻；未達時清空項目列，分數卡仍顯原值。作用範圍待產品確認。"
+            "以篩選後最新覆盤的整體決策品質分數作顯示門檻，不是逐項分數；未達時只清空項目列，分數卡保留原分數。"
         )
         self.min_score_scope_hint.setObjectName("decisionQualityMinScoreScopeHint")
         self.min_score_scope_hint.setWordWrap(True)

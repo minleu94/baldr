@@ -1,9 +1,9 @@
 """唯讀載入 ``program-readiness.v1`` 的 UI 投影。
 
-整體 readiness 報告由 ``scripts/inspect_program_readiness.py`` 產生，這個
-模組只接受呼叫端明確指定的 artifact 路徑，並把各 lane 的摘要投影給 UI。
-它不掃描資料目錄、不呼叫網路、不建立 SQLite，也不會因為顯示狀態而授予
-任何 scheduler、formal 或 broker 權限。
+整體 readiness 報告可由 ``scripts/inspect_program_readiness.py`` 即時唯讀產生，
+或由呼叫端指定 artifact 載入；本模組只把各 lane 的摘要投影給 UI。它不掃描
+資料目錄、不呼叫網路、不建立 SQLite，也不會因為顯示狀態而授予任何 scheduler、
+formal 或 broker 權限。
 """
 
 from __future__ import annotations
@@ -110,12 +110,35 @@ def load_program_readiness(
             f"program_readiness_schema_unsupported:{raw.get('schema_version')}",
             path=resolved_path,
         )
-    projected = _project_payload(raw, resolved_path)
-    projected["diagnostics"] = _append_staleness_diagnostics(
-        projected.get("diagnostics"),
-        readiness_path=resolved_path,
+    projected = project_program_readiness(
+        raw,
+        source_path=resolved_path,
         freshness_reference_paths=freshness_reference_paths,
     )
+    return projected
+
+
+def project_program_readiness(
+    payload: Mapping[str, Any],
+    *,
+    source_path: Path | None = None,
+    freshness_reference_paths: Sequence[Path] | None = None,
+) -> dict[str, Any]:
+    """Project one in-memory readiness report through the UI allowlist."""
+
+    if payload.get("schema_version") != PROGRAM_READINESS_SCHEMA:
+        return _empty_payload(
+            "invalid",
+            f"program_readiness_schema_unsupported:{payload.get('schema_version')}",
+            path=source_path,
+        )
+    projected = _project_payload(payload, source_path)
+    if source_path is not None:
+        projected["diagnostics"] = _append_staleness_diagnostics(
+            projected.get("diagnostics"),
+            readiness_path=source_path,
+            freshness_reference_paths=freshness_reference_paths,
+        )
     return projected
 
 
@@ -173,7 +196,7 @@ def _empty_payload(
     }
 
 
-def _project_payload(payload: Mapping[str, Any], path: Path) -> dict[str, Any]:
+def _project_payload(payload: Mapping[str, Any], path: Path | None) -> dict[str, Any]:
     raw_workstreams = payload.get("workstreams")
     workstreams = raw_workstreams if isinstance(raw_workstreams, Mapping) else {}
     raw_order = payload.get("execution_order")
@@ -208,7 +231,7 @@ def _project_payload(payload: Mapping[str, Any], path: Path) -> dict[str, Any]:
     return {
         "schema_version": PROGRAM_READINESS_SCHEMA,
         "status": _status_token(payload.get("status")),
-        "path": str(path),
+        "path": str(path) if path is not None else None,
         "generated_at": str(payload.get("generated_at") or "").strip() or None,
         "workstreams": projected_workstreams,
         "lane_order": list(PROGRAM_READINESS_LANE_ORDER),

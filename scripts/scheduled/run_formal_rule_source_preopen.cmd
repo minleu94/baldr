@@ -6,6 +6,7 @@ rem 不使用 FOR 路徑修飾，避免 Task Scheduler／巢狀 cmd.exe 的第�
 rem 把 %%~fI 誤當成無效的 batch 參數替換。
 cd /d "%SCRIPT_DIR%..\.." || exit /b 1
 set "REPO_ROOT=%CD%"
+set "FORMAL_DAILY_RUNTIME_ENVIRONMENT_FILE=%REPO_ROOT%\output\v4_next_formal\formal_runtime_environment_binding_20261025.json"
 
 if defined BALDR_PYTHON set "PYTHON=%BALDR_PYTHON%"
 if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"

@@ -386,6 +386,12 @@ def run_bounded_official_probe(probe_date: date) -> dict:
                                     "fallback_probe_outcome": "date_mismatch",
                                     "fallback_observation_dates": sorted(candidate_dates),
                                     "fallback_requested_date": requested_date,
+                                    "fallback_schema_status": "matched",
+                                    "fallback_raw_row_count": candidate_result.raw_row_count,
+                                    "fallback_accepted_row_count": candidate_result.accepted_row_count,
+                                    "fallback_duplicate_row_count": candidate_result.duplicate_row_count,
+                                    "fallback_quarantine_row_count": candidate_result.quarantine_row_count,
+                                    "fallback_blocked_row_count": candidate_result.blocked_row_count,
                                 }
                             )
                         elif not candidate_result.accepted:

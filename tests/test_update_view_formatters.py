@@ -109,6 +109,8 @@ def test_format_status_token_preserves_known_unknown_and_missing_values() -> Non
         == "尚不可計算（成本帳缺漏）"
     )
     assert format_status_token("official_no_data") == "官方無資料"
+    assert format_status_token("stale_fallback_observed") == "取得較早日期資料（非查詢日）"
+    assert format_status_token("source_date_mismatch") == "來源資料日期早於查詢日"
 
 
 def test_format_freshness_gap_explains_lagging_reference_and_latest_date() -> None:
@@ -180,6 +182,31 @@ def test_format_scheduler_operations_detail_explains_state_and_keeps_tokens() ->
     assert "診斷=non_trading_day_noop" in summary
     assert "operation_count=2" in summary
     assert "邊界：唯讀" in summary
+
+
+def test_format_scheduler_operations_detail_shows_formal_last_workday_blocker() -> None:
+    summary = format_scheduler_operations_detail(
+        {
+            "operation_count": 1,
+            "operations": [
+                {
+                    "label": "Formal 輸入產生器",
+                    "job_id": "formal_input_producer",
+                    "state": "attention",
+                    "raw_status": "skipped_non_trading_day",
+                    "diagnostic": (
+                        "non_trading_day_noop;last_workday_status=blocked;exit_code=2;"
+                        "blockers=runtime_config_expired:2026-08-01:2026-08-05"
+                    ),
+                }
+            ],
+        }
+    )
+
+    assert "Formal 輸入產生器：需處理" in summary
+    assert "raw=skipped_non_trading_day" in summary
+    assert "last_workday_status=blocked" in summary
+    assert "runtime_config_expired" in summary
 
 
 def test_format_data_freshness_preview_is_bounded_and_not_scheduler_summary() -> None:

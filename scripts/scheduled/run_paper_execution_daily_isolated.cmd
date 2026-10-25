@@ -9,6 +9,7 @@ rem Avoid a FOR modifier here: Task Scheduler and nested cmd.exe both parse
 rem that syntax, and a second parser can corrupt %%~fI before the adapter runs.
 cd /d "%SCRIPT_DIR%..\.." || exit /b 1
 set "REPO_ROOT=%CD%"
+set "FORMAL_DAILY_RUNTIME_ENVIRONMENT_FILE=%REPO_ROOT%\output\v4_next_formal\formal_runtime_environment_binding_20261025.json"
 
 set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" set "PYTHON=python"

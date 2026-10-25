@@ -41,6 +41,7 @@ from app_module.saved_recommendation_queries import select_latest_saved_recommen
 from app_module.saved_recommendation_queries import (
     canonical_manual_decision_date,
     canonical_scheduled_decision_date,
+    saved_recommendation_capture_projection,
 )
 from app_module.pre_v2_readiness_service import PreV2ReadinessService
 from app_module.watchlist_analysis_service import WatchlistAnalysisService
@@ -441,6 +442,65 @@ def test_latest_saved_mixed_selection_ties_by_result_id_and_rejects_unknown_cloc
     assert unknown_diagnostic == "recommendation_latest_selection_ambiguous_clock"
     assert naive is None
     assert naive_diagnostic == "recommendation_latest_selection_ambiguous_clock"
+
+
+def test_latest_saved_mixed_selection_uses_disjoint_bound_for_legacy_local_clock() -> None:
+    canonical = RecommendationExecutionReadModel(
+        execution=_execution(result_id="canonical-later"),
+        label="canonical",
+        notes="",
+        persisted_at=datetime(2026, 10, 22, 12, tzinfo=timezone.utc),
+        payload_hash=None,
+        artifact_location="canonical",
+    )
+    old_legacy = RecommendationExecutionReadModel(
+        execution=None,
+        legacy_result=SimpleNamespace(
+            result_id="legacy-older",
+            created_at="2026-09-24T05:10:02",
+        ),  # type: ignore[arg-type]
+        label="legacy",
+        notes="",
+        persisted_at=None,
+        payload_hash=None,
+        artifact_location="legacy",
+    )
+    near_legacy = replace(
+        old_legacy,
+        legacy_result=SimpleNamespace(
+            result_id="legacy-clock-overlap",
+            created_at="2026-10-22T05:10:02",
+        ),  # type: ignore[arg-type]
+    )
+
+    selected, diagnostic = select_latest_saved_recommendation((canonical, old_legacy))
+    ambiguous, ambiguous_diagnostic = select_latest_saved_recommendation(
+        (canonical, near_legacy)
+    )
+
+    assert selected is canonical
+    assert diagnostic is None
+    assert ambiguous is None
+    assert ambiguous_diagnostic == "recommendation_latest_selection_ambiguous_clock"
+
+
+def test_saved_capture_projection_preserves_read_model_integrity_diagnostics() -> None:
+    read_model = RecommendationExecutionReadModel(
+        execution=_execution(result_id="projection-integrity"),
+        label="integrity projection",
+        notes="",
+        persisted_at=datetime(2026, 9, 8, 7, tzinfo=timezone.utc),
+        payload_hash="sha256:" + "a" * 64,
+        artifact_location="integrity-projection",
+        schema_revision=2,
+        integrity_basis="canonical_payload_and_index_verified",
+        diagnostics=("legacy_relocated_custody_research_only",),
+    )
+
+    projected = saved_recommendation_capture_projection(read_model)
+
+    assert projected["integrity_basis"] == "canonical_payload_and_index_verified"
+    assert projected["source_diagnostics"] == ("legacy_relocated_custody_research_only",)
 
 
 def test_canonical_status_date_helpers_reject_noncompleted_or_decisionless_execution() -> None:

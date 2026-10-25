@@ -3161,11 +3161,14 @@ class UpdateService :
                     "start_date": start_date,
                     "end_date": end_date,
                 }
+                batch_outcome: Dict[str, Any] = {}
                 if 'config' in params:
                     logger.debug("更新函數支持 config 參數，傳遞配置")
                     update_kwargs["config"] = self.config
                 if capture_manifests is not None and 'capture_manifests' in params:
                     update_kwargs["capture_manifests"] = capture_manifests
+                if 'batch_outcome' in params:
+                    update_kwargs["batch_outcome"] = batch_outcome
                 result = update_func(**update_kwargs)
                 logger .info (f"[UpdateService] 大盤指數更新函數執行完成")
 
@@ -3186,11 +3189,32 @@ class UpdateService :
                     'failed_dates':result .get ('failed_dates',[])
                     }
                 elif isinstance (result ,bool ):
+                    updated_dates = batch_outcome.get("updated_dates", [])
+                    failed_dates = batch_outcome.get("failed_dates", [])
+                    if not isinstance(updated_dates, list):
+                        updated_dates = []
+                    if not isinstance(failed_dates, list):
+                        failed_dates = []
+                    if not result and not failed_dates and not batch_outcome:
+                        # Older injected batch implementations cannot report
+                        # per-date outcomes; preserve the conservative legacy
+                        # fallback only for those implementations.
+                        failed_dates = [start_date]
+                    message = (
+                        '大盤指數更新完成' if result
+                        else '大盤指數更新失敗（批次更新回傳失敗）'
+                    )
+                    if failed_dates:
+                        message = f"{message}；失敗日期：{', '.join(failed_dates)}"
                     return {
                     'success':result ,
-                    'message':'大盤指數更新完成' if result else '大盤指數更新失敗（批次更新回傳失敗）',
-                    'updated_dates':[],
-                    'failed_dates':[] if result else [start_date]
+                    'message':message,
+                    'updated_dates':updated_dates,
+                    'failed_dates':failed_dates,
+                    'capture_manifests':batch_outcome.get("capture_manifests", []),
+                    'source_status':batch_outcome.get("source_status"),
+                    'failure_reason':batch_outcome.get("failure_reason"),
+                    'failure_date_range':batch_outcome.get("failure_date_range"),
                     }
                 else :
                 # 不認得的回傳型別不能假設成功，避免吞掉批次失敗
@@ -4346,7 +4370,15 @@ class UpdateService :
                 ScheduledOperationsStatusService,
             )
 
-            snapshot = ScheduledOperationsStatusService(scheduled_root).get_snapshot()
+            snapshot = ScheduledOperationsStatusService(
+                scheduled_root,
+                formal_status_path=(
+                    scheduled_root.parent
+                    / "formal_daily_publications"
+                    / "scheduler"
+                    / "latest_status.json"
+                ),
+            ).get_snapshot()
             operations: list[dict[str, Any]] = []
             diagnostics: list[str] = []
             counts = {

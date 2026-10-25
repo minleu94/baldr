@@ -489,3 +489,9 @@ def test_bounded_probe_rejects_tpex_fallback_when_observation_date_is_not_reques
     assert institutional["fallback_probe_outcome"] == "date_mismatch"
     assert institutional["fallback_observation_dates"] == ["2026-07-09"]
     assert institutional["fallback_requested_date"] == "2026-07-10"
+    assert institutional["fallback_schema_status"] == "matched"
+    assert institutional["fallback_raw_row_count"] == 1
+    assert institutional["fallback_accepted_row_count"] == 1
+    assert institutional["fallback_duplicate_row_count"] == 0
+    assert institutional["fallback_quarantine_row_count"] == 0
+    assert institutional["fallback_blocked_row_count"] == 0

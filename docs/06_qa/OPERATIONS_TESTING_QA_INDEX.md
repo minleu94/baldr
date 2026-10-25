@@ -4,6 +4,34 @@
 
 ## 近期營運與測試收據
 
+[10/25 MOPS Q2 PIT availability 補件](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-25-mops-q2-pit-availability-補件)：bounded EZSearch 捕獲 718 個有效 availability projection，P0 季報來源從 machine missing 變為 candidate verified；仍是 research-only，未核准財報數值用途或 downstream。
+
+[10/24 TPEx＋TWSE coverage 校正及 10/23 P0 probe](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-23-最近應有交易日-13-source-bounded-refresh)：月營收兩來源各為 `limited`，coverage 893/893 與 1086/1086；最近應有交易日的 13-source probe 為 10 degraded／3 missing，合併投影為 2 limited／11 blocked_provenance、0 accepted、0 downstream。
+
+[10/24 TPEx 月營收 machine-evidence producer](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-24-tpex-月營收-machine-evidence-producer)：893/893 解析有效、quality 10000 bp；以官方上市日對齊報告日後 coverage 893/893。machine scope 只限 research-shadow／diagnostics，歷史 PIT 與其餘 P0 Gate 仍未完成。
+
+[10/24 Gate 1 Advice 分類缺口修正](BALDR_ADVICE_CLASSIFICATION_20261024.md)：Professional Mode 只有明確 promoted 策略可列為正式 Advice；聚焦測試 17 passed。此為分類契約修正，不代表 Gate 1／正式來源／PIT／ML／Owner UAT 整體接受。
+
+[10/24 P0 即時盤點與 readiness 輸入接線](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-24-p0-即時盤點與-readiness-輸入接線)：官方 P0 live routes 在本機 DNS 解析失敗；Runtime staging transaction／rollback 通過但正式路徑權限仍未驗證；更新頁 readiness 已接收同頁配置的 P0 證據檔。狀態與未完成 Gate 仍依收據及 Snapshot 判讀。
+[10/25 MOPS 原件資格重核](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-25-mops-現有原件與-p0-candidate-資格重核)：本機有 2026-Q2 current-restated 季報資料，但歷史 PIT／母體旗標不合格，不能當成 P0 季報 candidate；官方 DNS 本輪仍失敗。
+[10/24 Gate 續清：P0、效能與 technical canary](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-24-gate-續清-p0-官方回應效能基線與-technical-單股-canary)：外網受控 P0 audit 13-source 結果、兩項 latency baseline、worker recovery、broker HTTP canary 與 0050 production canary；performance 暫無 blockers，仍待真實排程觀察。
+
+[10/25 Workbench Advice 空結果判讀修正](BALDR_WORKBENCH_ADVICE_EMPTY_STATE_20261025.md)：帶警告與無警告的空 Advice DTO 現在分開說明，已知診斷碼摘要白話化、原始警告仍完整可查；UI 聚焦及共用 QA 通過，Gate／來源資格不變。
+
+[10/24 正式市場資料新鮮度重核與 bounded recovery](BALDR_LIVE_MARKET_FRESHNESS_RECHECK_20261024.md)：技指已用受驗證的 D→F 磁碟代號映射更新至 10/22，canonical receipt passed、computation evidence verified；SQLite 增量略過全歷史 aggregate。整體 runner `passed_with_warnings`，因 10/23 TAIEX／industry 無可用來源列；formal-source／historical-PIT eligibility 仍 false。
+
+10/25 官方公開頁交叉核對仍只見行情列至 10/22；開休市日曆與 TPEx 營業日公告支持保留 10/23 交易日判讀，但未證明缺源原因，詳同份新鮮度收據。
+
+[10/24 Formal／Paper 輸入路徑唯讀重核](BALDR_FORMAL_INPUT_PATH_RECHECK_20261024.md)：正確的三個 Formal 路徑變數已設定但指向不存在的 D 槽資料夾；目前資料根目錄對應目錄為空；Paper 輸入路徑未設定。未執行 producer 或修改環境。
+
+10/25 03:38 進一步重核：Formal User／Process 路徑指向不可被新 consumer 接受的 `clock-20260819`，映射後三個 `DATA_ROOT` 輸入目錄皆為空；Paper 路徑仍未設定，舊資料庫只核 metadata、不接受為目前帳戶來源。未執行 preflight 或寫入，詳[同份重核收據](BALDR_FORMAL_INPUT_PATH_RECHECK_20261024.md)。
+
+[10/24 每日決策旅程與推薦 artifact QA](BALDR_DAILY_DECISION_NEXT_ACTION_20261024.md)：每日旅程與 R012 保存／讀回 70 passed／3 skipped；Windows 路徑與 create-only 發布修復，正式來源及 ML Gate 不變。
+
+[10/24 Data Update 離線閉環與路徑防護 QA](BALDR_DAILY_UPDATE_OFFLINE_CLOSED_LOOP_QA_20261024.md)：合成 SQLite 寫入與技術指標讀回通過；4 項 live/download/merge 跳過，較廣 guard/publication 批次未通過，正式來源與 ML Gate 不變。
+
+10/25 同份收據另記 TWSE 當次查無資料警告改為「休市狀態未確認」；runner focused 32 passed／2 skipped、兩檔 `py_compile` 通過，避免把未回資料當作已核實休市原因。
+
 [10/13晨間／晚間排程查核與工程修正](BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)：日曆刷新終態、Evidence狀態診斷、Paper NULL open、Forward lock preflight、G9/H20逾時與Bank query unknown；原來源缺件、失敗及自然資格分開。
 
 | 要查的內容 | 證據入口 |

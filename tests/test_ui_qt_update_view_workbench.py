@@ -452,6 +452,47 @@ def test_update_view_shows_rejected_fallback_reason_and_date_provenance(tmp_path
     assert "Fallback：已嘗試 3／已採用 1／未採用 2" in view.p0_source_control_summary_label.text()
 
 
+def test_update_view_distinguishes_stale_fallback_from_requested_date_data(tmp_path):
+    audit_path = _write_p0_evidence_audit(tmp_path / "p0-audit-stale-fallback.json")
+    payload = json.loads(audit_path.read_text(encoding="utf-8"))
+    rows = payload["machine_evidence_matrix"]
+    rows[7].update(
+        {
+            "machine_status": "degraded",
+            "pit_status": "source_date_mismatch",
+            "availability": "stale_fallback_observed",
+            "probe_outcome": "official_no_data",
+            "raw_row_count": 0,
+            "accepted_row_count": 0,
+            "fallback_used": False,
+            "fallback_attempted": True,
+            "fallback_probe_outcome": "date_mismatch",
+            "fallback_requested_date": "2026-08-28",
+            "fallback_observation_dates": ["2026-08-27"],
+            "fallback_raw_row_count": 120,
+            "fallback_accepted_row_count": 118,
+            "fallback_schema_status": "matched",
+        }
+    )
+    audit_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    app()
+    view = _TestableUpdateView(
+        FakeUpdateService(),
+        p0_source_audit_path=audit_path,
+    )
+    view._on_status_checked(view._get_overview_status())
+
+    status_cell = view.p0_source_control_table.item(7, 4)
+    availability_cell = view.p0_source_control_table.item(7, 5)
+    assert status_cell is not None
+    assert availability_cell is not None
+    assert "來源日期早於查詢日" in status_cell.text()
+    assert "取得較早日期資料（非查詢日）" in status_cell.text()
+    assert "較早日 fallback：accepted 118 / observed 120（2026-08-27）" in availability_cell.text()
+    assert "不可當作查詢日資料" in availability_cell.text()
+
+
 def test_update_view_marks_missing_p0_artifact_as_unavailable(tmp_path):
     app()
     view = _TestableUpdateView(
@@ -513,11 +554,71 @@ def test_update_view_projects_program_readiness_lanes(tmp_path):
     assert status["program_readiness"]["status"] == "action_required"
     assert view.program_readiness_table.rowCount() == 7
     assert view.program_readiness_table.item(0, 0).text() == "P0 來源"
-    assert "source_acceptance_decision_missing" in view.program_readiness_table.item(0, 2).text()
-    assert "需外部輸入" in view.program_readiness_table.item(0, 3).text()
+    assert "尚未提供來源接受決議" in view.program_readiness_table.item(0, 2).text()
+    assert "source_acceptance_decision_missing" in view.program_readiness_table.item(0, 2).toolTip()
+    assert "需補資料、實測或人工審查" in view.program_readiness_table.item(0, 3).text()
     assert view.program_readiness_table.item(2, 0).text() == "Paper Portfolio"
-    assert "readiness_lane_not_supplied:paper" in view.program_readiness_table.item(2, 2).text()
-    assert "整體狀態：需處理（action_required）" in view.program_readiness_summary_label.text()
+    assert "缺少Paper Portfolio盤點資料" in view.program_readiness_table.item(2, 2).text()
+    assert "readiness_lane_not_supplied:paper" in view.program_readiness_table.item(2, 2).toolTip()
+    assert view.program_readiness_table.item(0, 1).text() == "需處理"
+    assert view.program_readiness_table.item(0, 1).toolTip() == "狀態代碼：action_required"
+    assert "整體狀態：需處理" in view.program_readiness_summary_label.text()
+    assert "action_required" in view.program_readiness_summary_label.toolTip()
+
+
+def test_update_view_runs_live_program_readiness_with_p0_artifacts(monkeypatch, tmp_path):
+    from datetime import datetime
+
+    from scripts import inspect_program_readiness as readiness_module
+
+    p0_audit_path = tmp_path / "p0-audit.json"
+    p0_license_path = tmp_path / "p0-license.json"
+    p0_decisions_path = tmp_path / "p0-decisions.json"
+    p0_audit_path.write_text("{}", encoding="utf-8")
+    p0_license_path.write_text("{}", encoding="utf-8")
+    p0_decisions_path.write_text("{}", encoding="utf-8")
+    observed = {}
+
+    def inspect(**kwargs):
+        observed.update(kwargs)
+        return {
+            "schema_version": "program-readiness.v1",
+            "status": "action_required",
+            "generated_at": "2026-10-24T12:00:00+00:00",
+            "workstreams": {
+                "evidence": {
+                    "status": "action_required",
+                    "blockers": ["recommendation_persisted_missing"],
+                    "next_actions": ["保存推薦證據"],
+                }
+            },
+            "boundary": {"read_only": True, "writes_allowed": False},
+        }
+
+    monkeypatch.setattr(readiness_module, "inspect_program_readiness", inspect)
+    view = _TestableUpdateView(
+        FakeUpdateService(),
+        p0_source_audit_path=p0_audit_path,
+        p0_license_evidence_path=p0_license_path,
+        p0_source_decision_path=p0_decisions_path,
+        program_readiness_live_inspection=True,
+    )
+
+    readiness = view._get_program_readiness()
+
+    assert observed["data_root"] == Path(".")
+    assert observed["output_root"] == Path(".")
+    assert observed["p0_audit_path"] == p0_audit_path.resolve()
+    assert observed["p0_license_evidence_path"] == p0_license_path.resolve()
+    assert observed["p0_decision_path"] == p0_decisions_path.resolve()
+    assert datetime.fromisoformat(observed["training_as_of"]).tzinfo is not None
+    assert readiness["status"] == "action_required"
+    assert readiness["workstreams"]["evidence"]["blockers"] == [
+        "recommendation_persisted_missing"
+    ]
+    assert readiness["path"] is None
+    assert readiness["read_only"] is True
+    assert readiness["writes_allowed"] is False
 
 
 def test_update_view_projects_explicit_data_update_timeline_and_steps(tmp_path):

@@ -552,9 +552,14 @@ def _inspect_runtime_lane(
                 status = "partial"
     actions: tuple[str, ...]
     if staging_probe is not None and staging_probe.get("status") == "passed":
-        actions = (
-            "Runtime staging 的實際 Registry transaction／rollback 已通過；正式 config.log／Registry ACL 仍依目前 host 權限顯示，需由 owner 在正式環境確認。",
-        )
+        if status == "ready":
+            actions = (
+                "正式 host 的 DATA_ROOT／OUTPUT_ROOT、log 與 Registry handle 檢查已通過；staging file／Registry transaction／rollback 也已通過。維持既有權限與寫入範圍，持續觀察正式排程。",
+            )
+        else:
+            actions = (
+                "Runtime staging 的實際 Registry transaction／rollback 已通過；正式 host readiness 仍有 diagnostics，依其項目處理 host 路徑／handle 權限。",
+            )
     else:
         actions = (
             "Runtime host 已可觀察；若要證明實際寫入，另在非正式 staging 目錄明確執行 write probe，不能把 os.access hint 當成正式 Registry transaction。",

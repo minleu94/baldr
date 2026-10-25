@@ -39,6 +39,89 @@ from data_module.twse_industry_index_capture import (
 )
 
 
+def test_setup_logging_uses_run_specific_fallback_when_default_is_locked(
+    monkeypatch, tmp_path: Path
+) -> None:
+    preferred = tmp_path / "20261024_data_update_quick.log"
+    real_file_handler = runner.logging.FileHandler
+    calls: list[Path] = []
+
+    def file_handler(path, *args, **kwargs):
+        calls.append(Path(path))
+        if len(calls) == 1:
+            raise PermissionError("simulated locked same-day log")
+        return real_file_handler(path, *args, **kwargs)
+
+    root = runner.logging.getLogger()
+    previous_handlers = list(root.handlers)
+    for handler in previous_handlers:
+        root.removeHandler(handler)
+    monkeypatch.setattr(runner.logging, "FileHandler", file_handler)
+    try:
+        actual = runner._setup_logging(preferred)
+        assert calls[0] == preferred
+        assert actual == calls[1]
+        assert actual.parent == preferred.parent
+        assert actual.stem.startswith("20261024_data_update_quick_")
+        assert actual.suffix == ".log"
+        assert actual.is_file()
+    finally:
+        for handler in list(root.handlers):
+            root.removeHandler(handler)
+            handler.close()
+        for handler in previous_handlers:
+            root.addHandler(handler)
+
+
+def test_market_capture_recovery_uses_only_missing_unique_verified_dates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_root = tmp_path / "meta_data" / "official_market_daily_sources"
+    source_root.mkdir(parents=True)
+    manifests = []
+    for folder, source_date in (("a", "2026-10-21"), ("b", "2026-10-22")):
+        capture_dir = source_root / folder
+        capture_dir.mkdir()
+        manifest = capture_dir / "manifest.json"
+        manifest.write_text(json.dumps({"source_date": source_date}), encoding="utf-8")
+        manifests.append(manifest)
+
+    database = tmp_path / "twstock.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            'CREATE TABLE market_indices ("日期" TEXT, "指數名稱" TEXT)'
+        )
+        connection.execute(
+            'INSERT INTO market_indices VALUES (?, ?)', ("20261020", "TAIEX")
+        )
+
+    class _Capture:
+        def __init__(self, source_date: str) -> None:
+            self.source_date = source_date
+
+    import data_module.taiex_market_index_publication as publication
+
+    monkeypatch.setattr(
+        publication,
+        "_verified_capture",
+        lambda path, _root: _Capture(
+            json.loads(Path(path).read_text(encoding="utf-8"))["source_date"]
+        ),
+    )
+    monkeypatch.setattr(Path, "resolve", lambda self, strict=False: self)
+
+    recovered, dates = runner._recover_missing_market_capture_manifests(
+        data_root=tmp_path,
+        database_path=database,
+        start_date="2026-10-12",
+        end_date="2026-10-23",
+        current_manifests=[manifests[0]],
+    )
+
+    assert recovered == manifests
+    assert dates == ["20261022"]
+
+
 def _patch_capacity_preflight_for_unit_test(monkeypatch) -> None:
     """Keep runner unit tests independent from the host's live free space."""
 
@@ -434,6 +517,25 @@ def test_run_step_converts_unexpected_service_exception_to_terminal_failure() ->
     assert "boom" in steps[0]["message"]
 
 
+def test_run_step_marks_successful_partial_market_publication_as_warning() -> None:
+    steps: list[dict] = []
+
+    failed = _run_step(
+        steps=steps,
+        name="sync_market_index_to_sqlite",
+        action=lambda: {
+            "success": True,
+            "upstream_update_partial": True,
+            "failed_dates": ["2026-10-23"],
+            "message": "two capture dates synced; 10/23 source missing",
+        },
+    )
+
+    assert failed is None
+    assert steps[0]["status"] == "warning"
+    assert steps[0]["result"]["failed_dates"] == ["2026-10-23"]
+
+
 def test_scheduled_target_weekday_uses_today_on_weekday() -> None:
     assert _scheduled_target_weekday(date(2026, 7, 3)) == date(2026, 7, 3)
 
@@ -499,7 +601,9 @@ def test_tpex_warning_messages_report_missing_failed_dates() -> None:
 def test_twse_skip_warning_messages_report_explicit_no_data_dates() -> None:
     warnings = _twse_skip_warning_messages({"no_data_skipped_dates": ["2026-07-10"]})
 
-    assert warnings == ["TWSE 官方無交易資料日（休市／颱風等），已略過日期：2026-07-10"]
+    assert warnings == [
+        "TWSE 官方當次查詢回覆無資料，已略過日期；休市狀態未由此回覆確認：2026-07-10"
+    ]
 
 
 def test_twse_skip_warning_messages_ignore_existing_file_skips() -> None:
@@ -1308,6 +1412,15 @@ def test_quick_runner_scoped_syncs_partial_industry_capture_but_stays_failed(
     _patch_isolated_industry_runner(monkeypatch, trading_dates=["2026-09-03", "2026-09-04"])
     data_root = tmp_path / "qa-data"
     output_root = tmp_path / "qa-output"
+    if batch_mode != "exception_without_capture":
+        output_root.mkdir(parents=True, exist_ok=True)
+        try:
+            output_root.resolve(strict=True)
+        except PermissionError:
+            pytest.skip(
+                "Windows sandbox denies resolving pytest-created output roots; "
+                "industry capture correctly fails closed in this environment"
+            )
     status_path = output_root / "scheduled" / "quick" / "latest_status.json"
     config = TWStockConfig(data_root=data_root, output_root=output_root)
     _seed_industry_runner_files(config)

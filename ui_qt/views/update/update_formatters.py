@@ -55,6 +55,8 @@ def format_status_token(status: Any) -> str:
         "empty": "缺漏",
         "unavailable": "不可用",
         "official_no_data": "官方無資料",
+        "stale_fallback_observed": "取得較早日期資料（非查詢日）",
+        "source_date_mismatch": "來源資料日期早於查詢日",
         "no_data": "官方無資料",
         "schema_blocked": "格式不符",
         "schema_mismatch": "格式不符",
@@ -267,7 +269,7 @@ def format_program_readiness_summary(payload: Mapping[str, Any]) -> str:
 
     raw_status = str(payload.get("status") or "unknown").strip().lower() or "unknown"
     lines = [
-        f"整體狀態：{format_status_token(raw_status)}（{raw_status}）",
+        f"整體狀態：{format_status_token(raw_status)}",
     ]
     workstreams = payload.get("workstreams")
     lane_values = (
@@ -297,8 +299,8 @@ def format_program_readiness_summary(payload: Mapping[str, Any]) -> str:
         value.get("external_input_required") is True for value in lane_values
     )
     lines.append(
-        f"Readiness lane：{len(lane_values)}/{len(expected_lanes)} 個（已載入/預期）；"
-        f"阻擋原因：{blocker_count} 個；需外部輸入：{external_count} 個"
+        f"資料檢查區：{len(lane_values)}/{len(expected_lanes)} 個；"
+        f"待處理原因：{blocker_count} 項；待外部資料／操作週期／人工審查：{external_count} 區"
     )
 
     generated_at = str(payload.get("generated_at") or "").strip()
@@ -311,11 +313,11 @@ def format_program_readiness_summary(payload: Mapping[str, Any]) -> str:
     boundary = payload.get("boundary")
     if isinstance(boundary, Mapping):
         lines.append(
-            "邊界：唯讀；"
-            f"writes_allowed={bool(boundary.get('writes_allowed') is True)}；"
-            f"broker_order_allowed={bool(boundary.get('broker_order_allowed') is True)}；"
-            f"formal_oos_allowed={bool(boundary.get('formal_oos_allowed') is True)}；"
-            f"production_scheduler_allowed={bool(boundary.get('production_scheduler_allowed') is True)}"
+            "安全邊界：唯讀；"
+            f"允許資料寫入={bool(boundary.get('writes_allowed') is True)}；"
+            f"允許下單={bool(boundary.get('broker_order_allowed') is True)}；"
+            f"允許 Formal OOS={bool(boundary.get('formal_oos_allowed') is True)}；"
+            f"允許正式排程={bool(boundary.get('production_scheduler_allowed') is True)}"
         )
 
     diagnostics = [str(item).strip() for item in payload.get("diagnostics", []) if str(item).strip()]
@@ -326,6 +328,8 @@ def format_program_readiness_summary(payload: Mapping[str, Any]) -> str:
 
 _READINESS_BLOCKER_LABELS = {
     "decision_time_availability_not_proven": "決策時間可得性尚未證明",
+    "fallback_observation_date_mismatch": "只取得較早日期資料；指定日期仍缺資料，不能當作該日或 PIT 證據",
+    "official_no_data_for_requested_date": "官方未回傳指定日期資料",
     "downstream_eligibility_none": "下游使用資格尚未開放",
     "formal_oos_disabled": "Formal OOS 尚未開放",
     "insufficient_dry_run_days": "多日 dry-run 天數不足",
@@ -341,11 +345,80 @@ _READINESS_BLOCKER_LABELS = {
     "technical_production_single_writer_canary_not_completed": "technical 正式 single-writer canary 尚未完成",
     "formal_credit_not_authorized": "Formal credit 尚未授權",
     "performance_owner_packet_invalid": "效能 owner packet 無法驗證",
+    "p0_projection_invalid": "P0 來源盤點資料無法讀取",
+    "p0_live_audit_not_supplied": "尚未取得近期官方來源盤點",
+    "p0_source_acceptance_pending": "官方來源仍待逐項接受或限用途審查",
+    "p0_downstream_eligibility_not_granted": "來源尚未取得下游使用資格",
+    "evidence_readiness_inspection_failed": "週期證據盤點讀取失敗",
+    "formal_ml_readiness_inspection_failed": "Formal／ML 輸入盤點讀取失敗",
+    "paper_readiness_inspection_failed": "Paper 輸入盤點讀取失敗",
+    "paper_weekly_report_boundary_mismatch": "Paper 與基準的報告日期範圍不一致",
+    "paper_weekly_report_not_computable": "Paper 週報尚不可計算",
+    "paper_weekly_report_requires_two_snapshots": "至少需要兩個有效 Paper 快照才能計算週報",
+    "paper_weekly_report_benchmark_observations_missing": "Paper 週報缺少對應日期的基準資料",
+    "paper_snapshot_history_missing": "Paper 持倉快照尚未提供",
+    "paper_snapshot_db_missing": "Paper 持倉資料庫不存在",
+    "paper_snapshot_table_missing": "Paper 持倉資料表不存在",
+    "paper_snapshot_positions_table_missing": "Paper 持倉明細資料表不存在",
+    "paper_trade_ledger_path_not_configured": "尚未設定 Paper 成交帳路徑",
+    "paper_trade_ledger_db_missing": "Paper 成交帳資料庫不存在",
+    "paper_trade_ledger_empty": "Paper 成交帳目前沒有成交資料",
+    "paper_trade_ledger_schema_mismatch": "Paper 成交帳欄位格式與契約不符",
+    "paper_weekly_report_cost_turnover_missing": "Paper 週報缺少交易成本或週轉資料",
+    "paper_weekly_report_execution_gap_missing": "Paper 週報缺少實際成交與預期執行差異",
+    "paper_weekly_report_requires_two_benchmarks": "至少需要兩期基準資料才能計算週報",
+    "paper_daily_status_missing": "尚未提供 Paper 每日狀態紀錄",
+    "paper_daily_status_invalid": "Paper 每日狀態紀錄無效",
+    "paper_daily_status_schema_mismatch": "Paper 每日狀態紀錄格式不符",
+    "paper_snapshot_future_dated": "Paper 持倉快照日期晚於檢查日",
+    "paper_daily_status_future_dated": "Paper 每日狀態日期晚於檢查日",
+    "paper_daily_status_state_db_path_mismatch": "Paper 狀態紀錄與目前選定的資料庫不一致",
+    "paper_snapshot_db_unavailable": "Paper 持倉資料庫無法讀取",
+    "paper_trade_ledger_db_unavailable": "Paper 成交帳資料庫無法讀取",
+    "equal_weight_benchmark_db_missing": "Equal Weight 基準資料庫不存在",
+    "equal_weight_benchmark_table_missing": "Equal Weight 基準資料表不存在",
+    "equal_weight_benchmark_db_unavailable": "Equal Weight 基準資料庫無法讀取",
+    "training_as_of_required": "Formal／ML 盤點缺少帶時區的訓練截止時間",
+    "training_as_of_invalid": "Formal／ML 訓練截止時間格式無效",
+    "training_as_of_timezone_required": "Formal／ML 訓練截止時間缺少時區",
+    "formal_oos_disabled": "Formal 樣本外驗證目前未開放",
+    "formal_credit_not_authorized": "正式週證據尚未逐筆完成核准",
+    "runtime_readiness_inspection_failed": "執行環境權限盤點失敗",
+    "runtime_write_probe_not_supplied_or_missing": "尚未提供正式主機寫入權限探針",
+    "runtime_staging_write_probe_failed": "隔離環境寫入與回復探針未通過",
+    "runtime_registry_snapshot_probe_not_supplied_or_missing": "尚未提供正式 Registry 的隔離交易探針",
+    "runtime_registry_snapshot_probe_failed": "正式 Registry 隔離交易／回復探針未通過",
+    "technical_performance_baseline_not_supplied": "尚未提供 Technical 實測效能基線",
+    "broker_performance_baseline_not_supplied": "尚未提供 Broker 實測效能基線",
+    "direct_chain_storage_preflight_blocked": "ML Direct／OOC 可用磁碟空間不足",
+    "direct_chain_storage_failure_observed": "ML Direct／OOC 最近一次維護遇到磁碟空間不足",
+    "ml_direct_chain_status_invalid": "ML Direct／OOC 維護狀態資料無效",
+    "update_history_not_observed": "尚未觀察到資料更新歷史",
+}
+
+_READINESS_LANE_LABELS = {
+    "p0": "P0 來源",
+    "evidence": "Evidence 週期證據",
+    "paper": "Paper Portfolio",
+    "formal_ml": "Formal／ML",
+    "runtime": "執行環境",
+    "performance": "效能基線",
+    "update_history": "更新歷史",
+}
+
+_FORMAL_INPUT_LABELS = {
+    "causal_non_cash_portfolio_ledger": "因果模擬持倉帳",
+    "formal_rule_champion_snapshot_history": "Rule Champion 歷史快照",
+    "pit_sector_membership": "PIT 產業成分",
 }
 
 
-def format_program_readiness_blockers(value: Any) -> str:
-    """Render blocker tokens with Chinese meaning while retaining raw tokens."""
+def format_program_readiness_blockers(
+    value: Any,
+    *,
+    include_raw: bool = True,
+) -> str:
+    """以白話中文呈現阻擋原因，必要時保留代碼供追查。"""
 
     if not isinstance(value, (list, tuple)) or not value:
         return "無"
@@ -354,29 +427,51 @@ def format_program_readiness_blockers(value: Any) -> str:
         raw = str(raw_value or "").strip()
         if not raw:
             continue
-        if raw.startswith("formal_input_not_ready:"):
-            input_name = raw.split(":", 1)[1].strip() or "未命名輸入"
-            label = f"Formal 輸入未就緒：{input_name}"
-        elif raw.startswith("formal_input_source_missing:"):
-            input_name = raw.split(":", 1)[1].strip() or "未命名輸入"
-            label = f"Formal 來源資料缺件：{input_name}"
-        elif raw.startswith("formal_input_machine_candidate:"):
-            input_name = raw.split(":", 1)[1].strip() or "未命名輸入"
-            label = f"Formal 僅有機器候選：{input_name}"
-        elif raw.startswith("formal_input_evidence_invalid:"):
-            input_name = raw.split(":", 1)[1].strip() or "未命名輸入"
-            label = f"Formal 來源證據無效：{input_name}"
-        elif raw.startswith("formal_input_evidence_unknown:"):
-            input_name = raw.split(":", 1)[1].strip() or "未命名輸入"
-            label = f"Formal 來源證據未知：{input_name}"
-        elif raw.startswith("formal_input_evidence_unclassified:"):
-            input_name = raw.split(":", 1)[1].strip() or "未命名輸入"
-            label = f"Formal 來源證據狀態未分類：{input_name}"
+        if raw.startswith("readiness_lane_not_supplied:"):
+            lane = raw.split(":", 1)[1].strip()
+            label = f"缺少{_READINESS_LANE_LABELS.get(lane, 'readiness')}盤點資料"
+        elif raw.startswith("formal_input_"):
+            prefix, _, input_name = raw.partition(":")
+            readable_input = _FORMAL_INPUT_LABELS.get(
+                input_name.strip(), input_name.strip() or "未命名輸入"
+            )
+            if prefix == "formal_input_not_ready":
+                label = f"Formal 輸入尚未通過驗證：{readable_input}"
+            elif prefix == "formal_input_source_missing":
+                label = f"缺少 Formal 輸入資料：{readable_input}"
+            elif prefix == "formal_input_machine_candidate":
+                label = f"Formal 輸入仍是機器候選：{readable_input}"
+            elif prefix == "formal_input_evidence_invalid":
+                label = f"Formal 輸入證據無效：{readable_input}"
+            elif prefix == "formal_input_evidence_unknown":
+                label = f"Formal 輸入證據狀態未知：{readable_input}"
+            elif prefix == "formal_input_evidence_unclassified":
+                label = f"Formal 輸入證據尚未分類：{readable_input}"
+            else:
+                label = f"Formal 輸入尚未就緒：{readable_input}"
         elif raw.startswith("scheduled_tasks_missing_or_unavailable:"):
             label = "排程工作未完整可用"
+        elif raw.startswith("paper_daily_status_boundary_violation:"):
+            key = raw.split(":", 1)[1].strip()
+            label = f"Paper 每日狀態違反安全邊界：{key or '欄位未命名'}"
+        elif raw.startswith("paper_daily_status_"):
+            suffix = raw.removeprefix("paper_daily_status_")
+            label = {
+                "missing": "尚未提供 Paper 每日狀態紀錄",
+                "invalid": "Paper 每日狀態紀錄無效",
+                "schema_mismatch": "Paper 每日狀態紀錄格式不符",
+                "future_dated": "Paper 每日狀態日期晚於檢查日",
+                "state_db_path_mismatch": "Paper 狀態紀錄與目前選定的資料庫不一致",
+                "passed": "Paper 每日狀態已通過",
+                "failed": "Paper 每日狀態未通過",
+                "pending": "Paper 每日狀態待處理",
+            }.get(suffix, "Paper 每日狀態需查看完整診斷")
         else:
-            label = _READINESS_BLOCKER_LABELS.get(raw, raw)
-        rendered.append(f"{label}（{raw}）" if label != raw else raw)
+            label = _READINESS_BLOCKER_LABELS.get(raw, "其他阻擋原因，請查看完整診斷")
+        if include_raw and label != raw:
+            rendered.append(f"{label}（{raw}）")
+        else:
+            rendered.append(label)
     return "；".join(rendered) or "無"
 
 
@@ -397,14 +492,14 @@ def format_program_readiness_lane_progress(lane: str, value: Mapping[str, Any]) 
         degraded = _safe_nonnegative_int(metrics.get("machine_degraded_count"))
         parts: list[str] = []
         if source_count:
-            parts.append(f"來源 {source_count} 個")
+            parts.append(f"來源 {source_count} 項")
         if verified or degraded or source_count:
             parts.append(f"機器證據 {verified + degraded}/{source_count or verified + degraded}")
-        parts.append(f"accepted {accepted}／limited {limited}")
+        parts.append(f"正式接受 {accepted}／限用途 {limited}")
         route_count = _safe_nonnegative_int(metrics.get("route_count"))
         route_attempted = _safe_nonnegative_int(metrics.get("route_attempted_count"))
         if route_count:
-            parts.append(f"route 已嘗試 {route_attempted}/{route_count}")
+            parts.append(f"來源查詢已嘗試 {route_attempted}/{route_count}")
         return "；".join(parts)
 
     if lane == "evidence":
@@ -412,7 +507,7 @@ def format_program_readiness_lane_progress(lane: str, value: Mapping[str, Any]) 
         weekly_required = _safe_nonnegative_int(metrics.get("weekly_required_count"))
         if weekly_required:
             parts.append(
-                f"weekly {_safe_nonnegative_int(metrics.get('weekly_observed_count'))}/{weekly_required}"
+                f"真實週證據 {_safe_nonnegative_int(metrics.get('weekly_observed_count'))}/{weekly_required}"
             )
         if "weekly_pending_count" in metrics:
             parts.append(
@@ -422,11 +517,11 @@ def format_program_readiness_lane_progress(lane: str, value: Mapping[str, Any]) 
         dry_required = _safe_nonnegative_int(metrics.get("dry_run_required_count"))
         if dry_required:
             parts.append(
-                f"dry-run {_safe_nonnegative_int(metrics.get('dry_run_observed_count'))}/{dry_required}"
+                f"操作日 dry-run {_safe_nonnegative_int(metrics.get('dry_run_observed_count'))}/{dry_required}"
             )
         if "formal_credit_authorized" in metrics:
             parts.append(
-                "formal credit="
+                "正式週證據核准："
                 + ("已授權" if metrics.get("formal_credit_authorized") is True else "未授權")
             )
         return "；".join(parts)
@@ -434,21 +529,21 @@ def format_program_readiness_lane_progress(lane: str, value: Mapping[str, Any]) 
     if lane == "paper":
         parts = []
         for key, label in (
-            ("snapshot_count", "snapshot"),
-            ("benchmark_observation_count", "benchmark"),
+            ("snapshot_count", "持倉快照"),
+            ("benchmark_observation_count", "基準觀測"),
             ("cost_record_count", "成本紀錄"),
-            ("filled_event_count", "fills"),
+            ("filled_event_count", "成交筆數"),
         ):
             if key in metrics:
                 parts.append(f"{label} {_safe_nonnegative_int(metrics.get(key))}")
         cost_ledger_status = str(metrics.get("cost_ledger_status") or "").strip()
         if cost_ledger_status:
             parts.append(
-                f"成本帳 {format_status_token(cost_ledger_status)}（{cost_ledger_status}）"
+                f"成交成本帳：{format_status_token(cost_ledger_status)}"
             )
         weekly_status = str(metrics.get("weekly_report_status") or "").strip()
         if weekly_status:
-            parts.append(f"週報 {format_status_token(weekly_status)}（{weekly_status}）")
+            parts.append(f"週報：{format_status_token(weekly_status)}")
         return "；".join(parts)
 
     if lane == "formal_ml":
@@ -456,15 +551,15 @@ def format_program_readiness_lane_progress(lane: str, value: Mapping[str, Any]) 
         total = _safe_nonnegative_int(metrics.get("input_count"))
         if not total:
             return ""
-        parts = [f"formal consumer verified {ready}/{total}"]
+        parts = [f"Formal 正式讀取驗證 {ready}/{total} 項"]
         candidate = _safe_nonnegative_int(metrics.get("machine_candidate_input_count"))
         missing = _safe_nonnegative_int(metrics.get("missing_input_count"))
         unknown = _safe_nonnegative_int(metrics.get("unknown_input_count"))
         invalid = _safe_nonnegative_int(metrics.get("invalid_input_count"))
         if candidate:
-            parts.append(f"機器候選 {candidate}")
+            parts.append(f"僅機器候選 {candidate} 項")
         if missing:
-            parts.append(f"來源缺件 {missing}")
+            parts.append(f"缺少來源資料 {missing} 項")
         if unknown:
             parts.append(f"來源未知 {unknown}")
         if invalid:

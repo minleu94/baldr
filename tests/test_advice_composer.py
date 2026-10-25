@@ -510,3 +510,46 @@ def test_professional_candidate_is_classified_for_research_section() -> None:
     recommendation = result.recommendations[0]
     assert recommendation.advice_action is AdviceAction.RESEARCH
     assert recommendation.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+
+
+@pytest.mark.parametrize("strategy_status", [None, "", "unknown", "retired"])
+def test_professional_without_promoted_strategy_status_stays_research_candidate(
+    strategy_status: str | None,
+) -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    source = _recommendation_result()
+    source.config["strategy_status"] = strategy_status
+    result = AdviceComposer(
+        AdvicePolicy(AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL))
+    ).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 12),
+        mode=AdviceMode.PROFESSIONAL,
+    )
+
+    recommendation = result.recommendations[0]
+    assert recommendation.advice_action is AdviceAction.RESEARCH
+    assert recommendation.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+
+
+def test_professional_promoted_strategy_keeps_formal_classification() -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    result = AdviceComposer(
+        AdvicePolicy(AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL))
+    ).compose(
+        recommendations=_recommendation_result(),
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 12),
+        mode=AdviceMode.PROFESSIONAL,
+    )
+
+    recommendation = result.recommendations[0]
+    assert recommendation.advice_action is AdviceAction.RESEARCH
+    assert recommendation.classification is AdviceClassification.FORMAL_ADVICE

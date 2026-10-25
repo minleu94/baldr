@@ -930,6 +930,15 @@ def publish_sqlite_row_evidence(
 ) -> dict[str, object]:
     """在既有 SQLite commit 後 readback；只為無歧義且值相符的列發布。"""
 
+    has_projection_candidate = any(
+        isinstance(diagnostic, Mapping)
+        and bool(diagnostic.get("date") or diagnostic.get("source_date"))
+        and isinstance(diagnostic.get("row_projection_manifest"), Mapping)
+        for diagnostic in source_diagnostics
+    )
+    if not has_projection_candidate:
+        return {"status": "unknown", "reason_code": "producer_manifest_missing"}
+
     output = Path(output_root).expanduser().resolve(strict=True)
     data = Path(data_root).expanduser().resolve(strict=True)
     supplied_database = Path(database_path).expanduser()

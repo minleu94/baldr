@@ -599,6 +599,62 @@ def test_official_no_data_is_not_reported_as_schema_drift() -> None:
     assert "schema_validation_passed" not in row["auto_verifiable"]
 
 
+def test_stale_date_mismatch_fallback_is_reported_as_degraded_observation() -> None:
+    report = _sample_probe_report()
+    report["probe_date"] = "2026-07-10"
+    report["sources"][0] = {
+        "source_id": "twse_institutional",
+        "network_status": "reachable",
+        "probe_outcome": "official_no_data",
+        "availability_status": "official_no_data",
+        "official_status": "No data for requested date",
+        "schema_status": "no_data",
+        "timestamp_evidence": "unavailable",
+        "raw_row_count": 0,
+        "accepted_row_count": 0,
+        "duplicate_row_count": 0,
+        "quarantine_row_count": 0,
+        "blocked_row_count": 0,
+        "payload_sha256": "a" * 64,
+        "fallback_attempted": True,
+        "fallback_probe_outcome": "date_mismatch",
+        "fallback_schema_status": "matched",
+        "fallback_observation_dates": ["2026-07-09"],
+        "fallback_requested_date": "2026-07-10",
+        "fallback_raw_row_count": 3,
+        "fallback_accepted_row_count": 2,
+        "fallback_duplicate_row_count": 0,
+        "fallback_quarantine_row_count": 1,
+        "fallback_blocked_row_count": 0,
+        "fallback_payload_sha256": "e" * 64,
+    }
+
+    payload = build_p0_source_evidence_audit(
+        date(2026, 7, 10), probe_report=report
+    )
+    row = next(
+        item
+        for item in payload["machine_evidence_matrix"]
+        if item["source_id"] == "institutional_flows"
+    )
+
+    assert row["machine_status"] == "degraded"
+    assert row["availability"] == "stale_fallback_observed"
+    assert row["schema_status"] == "no_data"
+    assert row["fallback_schema_status"] == "matched"
+    assert row["probe_outcome"] == "official_no_data"
+    assert row["timestamp_kind"] == "first_observed_only"
+    assert row["pit_status"] == "source_date_mismatch"
+    assert row["remaining_blocker"] == "fallback_observation_date_mismatch"
+    assert row["raw_row_count"] == 0
+    assert row["accepted_row_count"] == 0
+    assert row["quarantine_row_count"] == 0
+    assert row["fallback_raw_row_count"] == 3
+    assert row["fallback_accepted_row_count"] == 2
+    assert row["fallback_quarantine_row_count"] == 1
+    assert "fallback_payload_hash_verified" in row["auto_verifiable"]
+
+
 def test_evidence_audit_exposes_multiple_acquisition_routes() -> None:
     payload = build_p0_source_evidence_audit(
         date(2026, 7, 26), probe_report=_sample_probe_report()

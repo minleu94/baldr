@@ -2563,7 +2563,7 @@ class RecommendationService:
         decision_clock = (
             personal_decision_clock.isoformat(timespec="microseconds")
             if personal_decision_clock is not None
-            else ""
+            else datetime.now(timezone.utc).isoformat(timespec="microseconds")
         )
         self._personalization_execution_clocks = {
             "run_started_at": run_started_at,
@@ -2571,8 +2571,7 @@ class RecommendationService:
             "captured_at": source_available_at,
             "personalization_scope_declared_at": run_started_at,
         }
-        if personal_decision_clock is not None:
-            self._personalization_execution_clocks["decision_at"] = decision_clock
+        self._personalization_execution_clocks["decision_at"] = decision_clock
         market_warnings: list[str] = (
             ["industry_membership_not_point_in_time"] if cutoff else []
         )
@@ -2624,6 +2623,7 @@ class RecommendationService:
             "fundamental_input_diagnostic_source_row_count": 0,
             "fundamental_input_diagnostic_comparator_row_count": 0,
             "data_date": prepared_market.data_date,
+            "decision_at": decision_clock,
             "expected_market_date": prepared_market.expected_market_date,
             "market_calendar_status": prepared_market.market_calendar_status,
             "market_calendar_reason_code": prepared_market.market_calendar_reason_code,

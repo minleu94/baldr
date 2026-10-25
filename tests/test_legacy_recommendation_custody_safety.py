@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 import data_module.legacy_recommendation_run_locator as locator
+import app_module.saved_recommendation_queries as saved_queries
 
 
 def _sha(raw: bytes) -> str:
@@ -57,9 +58,65 @@ def test_independent_full_identity_required_and_read_back(sample):
     assert bound is not None and bound.custody_verified and not bound.research_only
     assert bound.effective_custody_verification_tier == "tier1_independent_pre_migration_file_sha256"
     assert bound.custody_evidence_basis == "external_identity_pin"
+    audited = locator.audit_legacy_recommendation_run(
+        "rec_test", entry["origin_path"], **options,
+    )
+    assert audited is not None and audited.research_only and not audited.custody_verified
+    assert audited.independent_pre_migration_file_sha256 is None
     pin.evidence_path.write_bytes(b"{}")
     assert locator.locate_legacy_recommendation_run(
         "rec_test", entry["origin_path"], **options, custody_evidence={"rec_test": pin},
+    ) is None
+
+
+def test_saved_query_custody_pin_is_narrow_and_checks_full_source_identity(
+    sample, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    entry, options, _, _ = sample
+    evidence = tmp_path / "accepted-candidate.json"
+    record = {
+        "result_id": entry["result_id"],
+        "path": entry["origin_path"],
+        "file_sha256": entry["relocated_file_sha256"],
+    }
+    raw = json.dumps({"source": record}).encode()
+    evidence.write_bytes(raw)
+    monkeypatch.setattr(
+        saved_queries,
+        "_LEGACY_CUSTODY_EVIDENCE",
+        {
+            "rec_test": {
+                "relative_path": evidence.name,
+                "sha256": _sha(raw),
+                "size_bytes": len(raw),
+                "record_pointer": ("source",),
+            }
+        },
+    )
+
+    pins = saved_queries._legacy_recommendation_custody_evidence(tmp_path)
+    assert set(pins) == {"rec_test"}
+    queries = saved_queries.build_recommendation_execution_queries(
+        None,
+        runs_dir=tmp_path / "runs",
+    )
+    assert queries._legacy_reader is not None
+    wired_pin = queries._legacy_reader._relocated_custody_evidence["rec_test"]
+    assert wired_pin.evidence_path.name == evidence.name
+    assert wired_pin.evidence_sha256 == _sha(raw)
+    assert queries._legacy_reader._allowed_relocated_custody_tiers == (
+        "tier1_independent_pre_migration_file_sha256",
+    )
+    assert queries._legacy_reader._allow_research_only_relocated is True
+    bound = locator.locate_legacy_recommendation_run(
+        "rec_test", entry["origin_path"], **options, custody_evidence=pins,
+    )
+    assert bound is not None and bound.custody_verified
+    assert bound.custody_evidence_basis == "external_identity_pin"
+
+    evidence.write_text(json.dumps({"source": {**record, "result_id": "other"}}))
+    assert locator.locate_legacy_recommendation_run(
+        "rec_test", entry["origin_path"], **options, custody_evidence=pins,
     ) is None
 
 

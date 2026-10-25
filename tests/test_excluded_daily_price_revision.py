@@ -397,6 +397,42 @@ def test_applied_exclusions_close_dates_and_pit_prefix(
         )
 
 
+def test_reparse_check_allows_missing_descendant_after_existing_components_are_checked(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "FA_Data"
+    root.mkdir()
+
+    exclusions._assert_no_reparse_components(
+        root / "_test" / "sqlite" / "twstock.db",
+        root,
+    )
+
+
+def test_empty_exclusion_scan_does_not_require_directory_realpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """可讀的資料根不應因 Windows 目錄 final-path 查詢被拒而阻斷同步。"""
+
+    root = tmp_path / "FA_Data"
+    root.mkdir()
+    database_path = _make_database(root, "directory-realpath")
+    original_resolve = Path.resolve
+
+    def resolve_with_restricted_data_root(
+        path: Path,
+        strict: bool = False,
+    ) -> Path:
+        if path == root and strict:
+            raise PermissionError(5, "Access is denied", str(root))
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve_with_restricted_data_root)
+
+    assert exclusions.load_exclusion_evidence(database_path) == []
+
+
 def test_rollback_rejects_later_rows_drift(
     evidence_root: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:

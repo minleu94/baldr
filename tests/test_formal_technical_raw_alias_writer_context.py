@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 
 from data_module import formal_technical_raw_alias_repair as repair
+from data_module.config import TWStockConfig
+from data_module.db_manager import DBManager
 
 
 _FIXTURES = runpy.run_path(
@@ -24,6 +26,23 @@ def _applied_context(tmp_path: Path):
     context = repair.create_raw_alias_writer_context(database_path)
     assert context is not None
     return database_path, context
+
+
+def test_historical_paths_map_only_across_a_drive_letter_relocation(tmp_path: Path) -> None:
+    root = (tmp_path / "Min" / "Python" / "Project" / "FA_Data").resolve()
+    root.mkdir(parents=True)
+    root_text = str(root)
+    suffix = root_text[2:]
+    old_root = "D:" + suffix
+
+    assert repair._path_after_drive_relocation(root, old_root) == root
+    assert repair._path_after_drive_relocation(
+        root, old_root + r"\output\scheduled\source.sqlite",
+    ) == root / "output" / "scheduled" / "source.sqlite"
+    with pytest.raises(repair.RawAliasRepairError, match="只支援同路徑"):
+        repair._path_after_drive_relocation(root, "D:\\Other\\FA_Data")
+    with pytest.raises(repair.RawAliasRepairError, match="絕對路徑"):
+        repair._path_after_drive_relocation(root, "relative\\source.sqlite")
 
 
 def test_writer_context_reuses_verified_parse_but_hashes_current_bytes(tmp_path: Path, monkeypatch) -> None:
@@ -127,6 +146,32 @@ def test_unapplied_root_does_not_create_writer_context(tmp_path: Path) -> None:
     fixture = _FIXTURES["_fixture"]
     root, _technical_receipt, _raw_receipt, _ = fixture(tmp_path)
     database_path = root / "sqlite" / "twstock.db"
+    assert repair.create_raw_alias_writer_context(database_path) is None
+
+
+def test_unapplied_context_does_not_require_sqlite_final_path_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = TWStockConfig(
+        data_root=tmp_path / "formal-root",
+        output_root=tmp_path / "artifacts",
+        profile="qa",
+    )
+    database_path = config.db_file
+    DBManager(config)
+    original_resolve = Path.resolve
+
+    def resolve_with_restricted_sqlite_final_path(
+        path: Path,
+        strict: bool = False,
+    ) -> Path:
+        if path == database_path and strict:
+            raise PermissionError(5, "Access is denied", str(database_path))
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve_with_restricted_sqlite_final_path)
+
     assert repair.create_raw_alias_writer_context(database_path) is None
 
 

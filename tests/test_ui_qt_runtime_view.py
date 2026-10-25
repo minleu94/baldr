@@ -490,6 +490,40 @@ def test_runtime_operations_state_filter_renders_all_normalized_states_and_prese
         assert f"目前顯示 1/5 項" in view.operations_summary_label.text()
 
 
+def test_runtime_formal_operation_displays_last_workday_blocker():
+    app()
+    view = RuntimeView()
+    operation = ScheduledOperationStatusDTO(
+        job_id="formal_input_producer",
+        label="Formal 輸入產生器",
+        raw_status="skipped_non_trading_day",
+        state="attention",
+        updated_at=datetime(2026, 10, 25, tzinfo=timezone.utc),
+        lane="core",
+        source_path="C:/output/formal_daily_publications/scheduler/latest_status.json",
+        diagnostic=(
+            "non_trading_day_noop;last_workday_status=blocked;exit_code=2;"
+            "blockers=runtime_config_expired:2026-09-09:2026-10-23"
+        ),
+    )
+
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="attention",
+        core_ready_count=0,
+        core_job_count=7,
+        operations=(operation,),
+        observed_at=datetime(2026, 10, 25, tzinfo=timezone.utc),
+    ))
+
+    assert "Formal 輸入產生器" in view.operations_list.item(0).text()
+    assert "diagnostic: non_trading_day_noop;last_workday_status=blocked" in (
+        view.operations_list.item(0).toolTip()
+    )
+    assert "runtime_config_expired:2026-09-09:2026-10-23" in (
+        view.operations_raw_text.toPlainText()
+    )
+
+
 def test_runtime_operations_filter_handles_selection_transitions_and_empty_states():
     app()
     view = RuntimeView()

@@ -18,6 +18,11 @@ import app_module.paper_equal_weight_benchmark_builder as producer
 from app_module.paper_equal_weight_benchmark_builder import PaperEqualWeightBenchmarkBuilder
 from app_module.paper_equal_weight_benchmark_ledger import EqualWeightBenchmarkLedger
 from app_module.paper_trade_ledger import PaperTradeLedgerRepository, PaperTradeFill
+from app_module.paper_portfolio_snapshot_repository import (
+    PaperPortfolioPositionSnapshot,
+    PaperPortfolioSnapshot,
+    PaperPortfolioSnapshotRepository,
+)
 from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path
 from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
 from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreMode, StoreIdentity, select_personal_store_route
@@ -153,6 +158,84 @@ print(json.dumps(dict(readiness=r,weekly=w)))
     assert allpins == [pin(x) for x in (pp.state_db, pp.cost_ledger_db, pp.benchmark_db, pp.status)]
     assert before == (pin(pp.state_db), pin(pp.cost_ledger_db))
     assert pins == (pin(market), pin(sentinel), pin(pp.baseline))
+
+
+def test_personal_benchmark_update_appends_only_verified_missing_suffix(tmp_path):
+    paths, route, pp, market, _sentinel = setup(tmp_path)
+    repository = PaperPortfolioSnapshotRepository(
+        pp.state_db,
+        route=route,
+        portfolio_id=ACCOUNT,
+        personal_paths=paths,
+    )
+    for day, mark_price in (("2026-08-20", "100.00"), ("2026-08-21", "105.00")):
+        repository.append(
+            PaperPortfolioSnapshot(
+                snapshot_id=f"{ACCOUNT}-{day.replace('-', '')}",
+                portfolio_id=ACCOUNT,
+                decision_date=day,
+                source_result_id="pinned-paper-source",
+                cash=Decimal("900.00"),
+                total_value=Decimal("1000.00"),
+                positions=(
+                    PaperPortfolioPositionSnapshot(
+                        stock_code="2330",
+                        quantity=1,
+                        mark_price=Decimal(mark_price),
+                        market_value=Decimal(mark_price),
+                        weight_bp=1000,
+                    ),
+                ),
+            )
+        )
+
+    benchmark_builder = build(paths, route)
+    inputs = dict(
+        baseline_path=pp.baseline,
+        state_db_path=pp.state_db,
+        market_db_path=market,
+        output_ledger_path=pp.benchmark_db,
+    )
+    initial = benchmark_builder.preview(**inputs)
+    benchmark_builder.commit(initial, confirm=True)
+
+    repository.append(
+        PaperPortfolioSnapshot(
+            snapshot_id=f"{ACCOUNT}-20260822",
+            portfolio_id=ACCOUNT,
+            decision_date="2026-08-22",
+            source_result_id="pinned-paper-source-next-day",
+            cash=Decimal("900.00"),
+            total_value=Decimal("1001.00"),
+            positions=(
+                PaperPortfolioPositionSnapshot(
+                    stock_code="2330",
+                    quantity=1,
+                    mark_price=Decimal("101.00"),
+                    market_value=Decimal("101.00"),
+                    weight_bp=1000,
+                ),
+            ),
+        )
+    )
+    update = benchmark_builder.preview_update(**inputs)
+    assert update.existing_count == 2
+    assert update.append_count == 1
+    with pytest.raises(ValueError, match="confirm"):
+        benchmark_builder.commit_update(update)
+    benchmark_builder.commit_update(update, confirm=True)
+
+    saved = EqualWeightBenchmarkLedger(
+        pp.benchmark_db,
+        route=route,
+        personal_paths=paths,
+        portfolio_id=ACCOUNT,
+        benchmark_id=BENCHMARK,
+        read_only=True,
+    ).list(BENCHMARK)
+    assert len(saved) == 3
+    assert saved == update.build_preview.entries
+    assert saved[-1].decision_date == "2026-08-22"
 
 
 @pytest.mark.parametrize("field", ["baseline_path", "state_db", "ledger_db", "output_root", "market_db"])

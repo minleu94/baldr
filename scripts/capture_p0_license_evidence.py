@@ -17,11 +17,14 @@ from __future__ import annotations
 import argparse
 from datetime import date, datetime, timezone
 from hashlib import sha256
+import html
 from pathlib import Path
 import json
+import re
 import sys
 import tempfile
 from typing import Any, Callable, Mapping, Sequence
+import unicodedata
 from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -54,6 +57,7 @@ ALLOWLISTED_LICENSE_URLS = frozenset(
     {
         "https://www.twse.com.tw/zh/terms/use.html",
         "https://www.tpex.org.tw/web/inc/gtsm_disclaimer.php?l=zh-tw",
+        "https://www.tpex.org.tw/zh-tw/gtsm_disclaimer.html?l=zh-tw",
         "https://openapi.tdcc.com.tw/",
     }
 )
@@ -283,6 +287,7 @@ def _capture_one(
         headers={
             "User-Agent": "technical-analysis-p0-license-evidence/1.0",
             "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.7",
+            "Accept-Encoding": "identity",
         },
     )
     captured_at = datetime.now(timezone.utc).isoformat()
@@ -297,6 +302,16 @@ def _capture_one(
             final_url = str(getattr(response, "geturl", lambda: url)() or url)
             final_host = urlparse(final_url).netloc.lower()
             text = _decode_bytes(sample, headers)
+            policy = MACHINE_LICENSE_SCOPE_POLICIES.get(url)
+            document = policy.get("official_document") if isinstance(policy, Mapping) else None
+            fingerprint_mode = (
+                str(document.get("fingerprint_mode") or "raw_response.v1")
+                if isinstance(document, Mapping)
+                else "raw_response.v1"
+            )
+            fingerprint_hash, fingerprint_bytes = _license_content_fingerprint(
+                sample, headers, fingerprint_mode=fingerprint_mode
+            )
             return {
                 **target,
                 "status": "captured",
@@ -307,11 +322,15 @@ def _capture_one(
                 "captured_at_utc": captured_at,
                 "bytes_captured": len(sample),
                 "truncated": truncated,
-                "content_sha256": sha256(sample).hexdigest(),
+                "content_sha256": fingerprint_hash,
+                "response_sha256": sha256(sample).hexdigest(),
+                "fingerprint_mode": fingerprint_mode,
+                "fingerprint_content_bytes": fingerprint_bytes,
                 "headers": {
                     "date": _header_value(headers, "Date"),
                     "last_modified": _header_value(headers, "Last-Modified"),
                     "content_type": _header_value(headers, "Content-Type"),
+                    "content_encoding": _header_value(headers, "Content-Encoding"),
                     "content_length": _header_value(headers, "Content-Length"),
                 },
                 "keyword_flags": _keyword_flags(text),
@@ -340,6 +359,28 @@ def _capture_one(
             "error": str(exc)[:240],
             "content_persisted": False,
         }
+
+
+def _license_content_fingerprint(
+    payload: bytes,
+    headers: Any,
+    *,
+    fingerprint_mode: str,
+) -> tuple[str, int]:
+    """Hash raw response bytes or stable visible HTML text; never persist text."""
+
+    if fingerprint_mode == "raw_response.v1":
+        return sha256(payload).hexdigest(), len(payload)
+    if fingerprint_mode != "html_visible_text_nfc.v1":
+        raise ValueError(f"unsupported license fingerprint mode: {fingerprint_mode}")
+    visible = _decode_bytes(payload, headers)
+    visible = re.sub(r"(?is)<script\b.*?</script>|<style\b.*?</style>", " ", visible)
+    visible = re.sub(r"(?s)<[^>]+>", " ", visible)
+    visible = html.unescape(visible)
+    visible = unicodedata.normalize("NFC", visible)
+    visible = re.sub(r"\s+", " ", visible).strip()
+    canonical = visible.encode("utf-8")
+    return sha256(canonical).hexdigest(), len(canonical)
 
 
 def capture_p0_license_evidence(
@@ -435,13 +476,27 @@ def build_machine_license_artifact(
     targets = capture_payload.get("targets")
     if isinstance(targets, (str, bytes)) or not isinstance(targets, Sequence):
         raise ValueError("capture payload targets must be an array")
-    matching = [
-        target
-        for target in targets
-        if isinstance(target, Mapping)
-        and source_id in target.get("source_ids", ())
-        and target.get("license_evidence_url") in ALLOWLISTED_LICENSE_URLS
-    ]
+    matching: list[Mapping[str, Any]] = []
+    for candidate in targets:
+        if not isinstance(candidate, Mapping):
+            continue
+        requested_candidate_url = candidate.get("license_evidence_url")
+        candidate_policy = (
+            MACHINE_LICENSE_SCOPE_POLICIES.get(str(requested_candidate_url))
+            if requested_candidate_url in ALLOWLISTED_LICENSE_URLS
+            else None
+        )
+        candidate_scopes = (
+            candidate_policy.get("source_scopes")
+            if isinstance(candidate_policy, Mapping)
+            else None
+        )
+        if (
+            source_id in candidate.get("source_ids", ())
+            and isinstance(candidate_scopes, Mapping)
+            and source_id in candidate_scopes
+        ):
+            matching.append(candidate)
     if len(matching) != 1:
         raise ValueError(
             f"capture payload must contain exactly one allowlisted target for source: {source_id}"
@@ -494,6 +549,9 @@ def build_machine_license_artifact(
     media_type = content_type.split(";", 1)[0].strip().casefold()
     expected_media_type = str(official_document.get("content_type") or "").casefold()
     expected_hash = official_document.get("content_sha256")
+    expected_fingerprint_mode = str(
+        official_document.get("fingerprint_mode") or "raw_response.v1"
+    )
     expected_hash_normalized = _normalize_sha256(expected_hash)
     target_hash_normalized = _normalize_sha256(content_hash)
     expected_bytes = official_document.get("content_bytes")
@@ -519,12 +577,22 @@ def build_machine_license_artifact(
         "captured": status == "captured",
         "http_success": isinstance(http_status, int) and 200 <= http_status < 300,
         "requested_url_allowlisted": requested_url in ALLOWLISTED_LICENSE_URLS,
-        "final_url_exact_allowlisted": final_url == requested_url
-        and final_url in ALLOWLISTED_LICENSE_URLS,
+        "final_url_exact_allowlisted": (
+            final_url == official_document.get("final_url", requested_url)
+            and final_url in ALLOWLISTED_LICENSE_URLS
+        ),
         "response_complete": target.get("truncated") is False,
         "capture_producer_verified": capture_producer_verified,
         "official_document_hash_verified": bool(expected_hash_normalized)
         and target_hash_normalized == expected_hash_normalized,
+        "official_document_fingerprint_mode_verified": (
+            target.get("fingerprint_mode") == expected_fingerprint_mode
+        ),
+        "raw_response_fingerprint_verified": (
+            _is_sha256_hex(target.get("response_sha256"))
+            and isinstance(target.get("bytes_captured"), int)
+            and target.get("bytes_captured", 0) > 0
+        ),
         "official_document_version_verified": (
             bool(official_document)
             and headers_mapping.get("last_modified") == expected_last_modified
@@ -532,7 +600,7 @@ def build_machine_license_artifact(
         "official_document_size_verified": (
             isinstance(expected_bytes, int)
             and not isinstance(expected_bytes, bool)
-            and target.get("bytes_captured") == expected_bytes
+            and target.get("fingerprint_content_bytes") == expected_bytes
         ),
         "official_document_type_verified": (
             bool(expected_media_type) and media_type == expected_media_type
@@ -562,6 +630,9 @@ def build_machine_license_artifact(
         "final_url": final_url,
         "http_status": http_status,
         "content_sha256": f"sha256:{content_hash}" if _is_sha256_hex(content_hash) else content_hash,
+        "fingerprint_mode": target.get("fingerprint_mode"),
+        "response_sha256": target.get("response_sha256"),
+        "response_bytes": target.get("bytes_captured"),
         "captured_at_utc": target.get("captured_at_utc"),
         "truncated": target.get("truncated"),
         "keyword_flags": keyword_flags,
@@ -595,11 +666,15 @@ def build_machine_license_artifact(
             "machine_policy_only": True,
         },
         "keyword_groups_observed": keyword_groups_observed,
-        "evidence_scope": "bounded_response_metadata_and_exact_official_document_fingerprint",
+        "evidence_scope": "bounded_raw_response_hash_and_official_terms_fingerprint_without_page_text",
         "source_route_ids": target.get("route_ids", []),
     }
     if _is_sha256_hex(content_hash):
         artifact["capture_target_content_sha256"] = f"sha256:{content_hash}"
+    if _is_sha256_hex(target.get("response_sha256")):
+        artifact["capture_target_response_sha256"] = (
+            f"sha256:{target['response_sha256']}"
+        )
     if capture_path is not None:
         capture_bytes = capture_path.read_bytes()
         reference_root = capture_root.resolve() if capture_root is not None else output_path.resolve().parent
@@ -645,6 +720,7 @@ def _government_dataset_binding_matches(
         "endpoint_url",
         "resource_url",
         "api_documentation_url",
+        "endpoint_api_documentation_url",
         "metadata_modified",
     ):
         if evidence.get(field_name) != expected.get(field_name):
@@ -670,8 +746,12 @@ def _government_dataset_binding_matches(
         return False
     api_bytes = api_evidence.get("bytes")
     api_status = api_evidence.get("http_status")
+    repair_count = api_evidence.get("invalid_unicode_escape_repairs")
     return (
-        api_evidence.get("metadata_url") == expected.get("api_documentation_url")
+        api_evidence.get("metadata_url") == (
+            expected.get("endpoint_api_documentation_url")
+            or expected.get("api_documentation_url")
+        )
         and api_evidence.get("endpoint_url") == expected.get("endpoint_url")
         and isinstance(api_evidence.get("endpoint_path"), str)
         and _is_sha256_hex(api_evidence.get("content_sha256"))
@@ -679,6 +759,9 @@ def _government_dataset_binding_matches(
         and not isinstance(api_bytes, bool)
         and api_bytes > 0
         and api_status in range(200, 300)
+        and isinstance(repair_count, int)
+        and not isinstance(repair_count, bool)
+        and repair_count >= 0
     )
 
 

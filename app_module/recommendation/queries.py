@@ -36,6 +36,7 @@ from data_module.legacy_recommendation_run_locator import (
     ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS,
     LegacyRecommendationCustodyEvidencePin,
     LocatedLegacyRecommendationRun,
+    audit_legacy_recommendation_run,
     compute_legacy_runs_db_row_sha256,
     locate_legacy_recommendation_run,
 )
@@ -750,6 +751,7 @@ class LegacyRecommendationBytes:
     created_at: str | None
     trusted_expected_sha256: str | None
     relocated_custody_tier: str | None = None
+    research_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -785,11 +787,13 @@ class SQLiteLegacyRecommendationRawByteReader:
         trusted_expected_hashes: Mapping[str, str] | None = None,
         allowed_relocated_custody_tiers: Collection[str] | None = None,
         relocated_custody_evidence: Mapping[str, LegacyRecommendationCustodyEvidencePin] | None = None,
+        allow_research_only_relocated: bool = False,
     ) -> None:
         self._runs_dir = Path(runs_dir)
         self._database_path = Path(database_path)
         self._trusted_expected_hashes = dict(trusted_expected_hashes or {})
         self._relocated_custody_evidence = dict(relocated_custody_evidence or {})
+        self._allow_research_only_relocated = bool(allow_research_only_relocated)
         self._allowed_relocated_custody_tiers: tuple[str, ...] | None = (
             None
             if allowed_relocated_custody_tiers is None
@@ -892,8 +896,7 @@ class SQLiteLegacyRecommendationRawByteReader:
                 raise ExecutionArtifactIntegrityError(
                     "無法安全檢查 legacy runs root/ancestors"
                 ) from exc
-            attributes = getattr(metadata, "st_file_attributes", 0)
-            if stat.S_ISLNK(metadata.st_mode) or attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+            if _is_symlink_or_reparse(current):
                 raise ExecutionArtifactIntegrityError(
                     "legacy runs 目錄不可為 symlink/reparse"
                 )
@@ -968,22 +971,8 @@ class SQLiteLegacyRecommendationRawByteReader:
         """回傳與設定路徑一致且不是 symlink/reparse 的 runs root。"""
 
         configured_root = Path(os.path.abspath(self._runs_dir))
-        if _is_symlink_or_reparse(configured_root):
-            raise ExecutionArtifactIntegrityError(
-                "legacy runs 目錄不可為 symlink/reparse"
-            )
-        try:
-            resolved_root = configured_root.resolve(strict=True)
-        except OSError as exc:
-            raise ExecutionArtifactIntegrityError("legacy runs 目錄不存在") from exc
-        if resolved_root != configured_root:
-            raise ExecutionArtifactIntegrityError(
-                "legacy runs root resolve 與 configured absolute path 不一致"
-            )
-        if _is_symlink_or_reparse(resolved_root):
-            raise ExecutionArtifactIntegrityError(
-                "legacy runs 目錄不可為 symlink/reparse"
-            )
+        if not self._preflight_runs_root_exists(configured_root):
+            raise ExecutionArtifactIntegrityError("legacy runs 目錄不存在")
         return configured_root
 
     def _read_scoped_path(
@@ -1016,6 +1005,13 @@ class SQLiteLegacyRecommendationRawByteReader:
                     allowed_tiers=self._allowed_relocated_custody_tiers,
                     custody_evidence=self._relocated_custody_evidence,
                 )
+                if located is None and self._allow_research_only_relocated:
+                    located = audit_legacy_recommendation_run(
+                        result_id,
+                        stored_path,
+                        runs_root=root,
+                        db_row_sha256=db_row_sha256,
+                    )
             if located is None:
                 raise ExecutionArtifactIntegrityError(
                     "legacy data_path 超出 runs 目錄範圍"
@@ -1038,14 +1034,10 @@ class SQLiteLegacyRecommendationRawByteReader:
             cursor = cursor / component
             if _is_symlink_or_reparse(cursor):
                 raise ExecutionArtifactIntegrityError("legacy data_path 不可經過 symlink")
+        if supplied_absolute != expected_absolute or not supplied_absolute.is_relative_to(root):
+            raise ExecutionArtifactIntegrityError("legacy data_path 不在 exact runs scope")
         try:
-            resolved = supplied_absolute.resolve(strict=True)
-        except OSError as exc:
-            raise ExecutionArtifactIntegrityError("legacy result bytes 不存在") from exc
-        if resolved != supplied_absolute or not resolved.is_relative_to(root):
-            raise ExecutionArtifactIntegrityError("legacy data_path 解析後超出 runs scope")
-        try:
-            payload = _read_regular_file_no_follow(resolved, root)
+            payload = _read_regular_file_no_follow(supplied_absolute, root)
         except ExecutionArtifactIntegrityError:
             raise
         except Exception as exc:
@@ -1066,7 +1058,7 @@ class SQLiteLegacyRecommendationRawByteReader:
             raise ExecutionArtifactIntegrityError(
                 "legacy runs root 在 raw bytes 讀取期間改變"
             )
-        return resolved, payload, located
+        return supplied_absolute, payload, located
 
     def get(self, result_id: str) -> LegacyRecommendationBytes | None:
         _require_safe_legacy_result_id(result_id)
@@ -1141,7 +1133,11 @@ class SQLiteLegacyRecommendationRawByteReader:
             db_row_sha256=db_row_sha256,
         )
         trusted_expected_sha256 = self._trusted_expected_hashes.get(result_id)
-        if trusted_expected_sha256 is None and located is not None:
+        if (
+            trusted_expected_sha256 is None
+            and located is not None
+            and located.custody_verified
+        ):
             trusted_expected_sha256 = located.independent_pre_migration_file_sha256
         return LegacyRecommendationBytes(
             result_id=result_id,
@@ -1154,6 +1150,7 @@ class SQLiteLegacyRecommendationRawByteReader:
             relocated_custody_tier=(
                 located.custody_verification_tier if located is not None else None
             ),
+            research_only=bool(located is not None and located.research_only),
         )
 
 
@@ -1470,6 +1467,8 @@ class RecommendationExecutionQueries:
             if before.relocated_custody_tier is not None
             else ()
         )
+        if before.research_only:
+            diagnostics += ("legacy_relocated_custody_research_only",)
         return RecommendationExecutionReadModel(
             execution=None,
             label=before.label or legacy_result.result_name,
@@ -1568,6 +1567,8 @@ class RecommendationExecutionQueries:
             raise ExecutionArtifactIntegrityError("legacy raw bytes/path 在單次讀取前後改變")
         if after.trusted_expected_sha256 != before.trusted_expected_sha256:
             raise ExecutionArtifactIntegrityError("legacy trusted hash authority 在讀取期間改變")
+        if after.research_only != before.research_only:
+            raise ExecutionArtifactIntegrityError("legacy research-only 狀態在讀取期間改變")
 
     def _legacy_identity_exists(
         self,
@@ -1632,47 +1633,26 @@ class RecommendationExecutionQueries:
             raise ExecutionArtifactIntegrityError(
                 "unindexed legacy read 缺少可驗證的 canonical store root"
             )
-        if _is_symlink_or_reparse(runs_dir):
-            raise ExecutionArtifactIntegrityError(
-                "unindexed legacy runs root 不可為 symlink/reparse"
-            )
-        try:
-            root = runs_dir.resolve(strict=True)
-        except FileNotFoundError:
+        root = Path(os.path.abspath(runs_dir))
+        if not SQLiteLegacyRecommendationRawByteReader._preflight_runs_root_exists(
+            root
+        ):
             return None
-        except OSError as exc:
-            raise ExecutionArtifactIntegrityError(
-                "unindexed legacy runs root 無法解析"
-            ) from exc
-        supplied_root = Path(os.path.abspath(runs_dir))
-        if root != supplied_root:
-            raise ExecutionArtifactIntegrityError(
-                "unindexed legacy runs root 解析後路徑不一致"
-            )
 
         expected_path = root / f"{result_id}.json"
+        if expected_path.parent != root:
+            raise ExecutionArtifactIntegrityError(
+                "unindexed legacy result path 超出精確 runs scope"
+            )
         if _is_symlink_or_reparse(expected_path):
             raise ExecutionArtifactIntegrityError(
                 "unindexed legacy result 不可為 symlink/reparse"
             )
         if not expected_path.exists():
             return None
+        checked_path = expected_path
         try:
-            resolved = expected_path.resolve(strict=True)
-        except OSError as exc:
-            raise ExecutionArtifactIntegrityError(
-                "unindexed legacy result path 無法解析"
-            ) from exc
-        if (
-            resolved != expected_path
-            or resolved.parent != root
-            or not resolved.is_relative_to(root)
-        ):
-            raise ExecutionArtifactIntegrityError(
-                "unindexed legacy result path 超出精確 runs scope"
-            )
-        try:
-            raw_payload = _read_regular_file_no_follow(resolved, root)
+            raw_payload = _read_regular_file_no_follow(checked_path, root)
         except ExecutionArtifactIntegrityError:
             raise
         except Exception as exc:
@@ -1685,7 +1665,7 @@ class RecommendationExecutionQueries:
             )
         return LegacyRecommendationBytes(
             result_id=result_id,
-            data_path=str(resolved),
+            data_path=str(checked_path),
             raw_payload=raw_payload,
             label=None,
             notes=None,

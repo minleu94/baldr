@@ -77,7 +77,16 @@ Decision Desk 現有的唯讀市場資料可見性列新增 `fundamental_stateme
 2026-10-25 重新查核官方條款後，現有 MOPS EZSearch 自動採集路徑的授權範圍仍未證實。證交所網站使用條款第 6 節限制未經同意的自動化下載，第 8 節將已授權政府資料開放平台提供的資料列為例外；條款文字是否適用到獨立的 `mopsov.twse.com.tw` EZSearch 端點，現有證據不能裁定。因此：
 
 - 已捕獲的 MOPS EZSearch 原件與逐筆 custody 繼續留在隔離候選中，僅作為既有研究觀測；不回填正式 DB、不給 source acceptance／Gate credit，也不再以新一輪自動擷取擴大這批資料，直到取得可指向該端點、該用途的明確授權或官方文件。
-- 政府資料開放平台逐一列出的資料集具有自己的授權與下載資源。例如 [上市公司每月營業收入彙總表（18420）](https://data.gov.tw/dataset/18420) 列示政府資料開放授權條款第 1 版、免費，且提供該資料集的 CSV 資源。這項授權只支援該目錄資料集及其列明資源的評估，不能推廣成所有 MOPS／OpenAPI 端點的通用授權；它也不會自行補上金額單位、逐筆首次可得時間、歷史修訂、季度表單覆蓋或 PIT 契約。
-- 既有季度 OpenAPI collector 曾完成 24 個數值 endpoint 的隔離研究擷取，原始回應與 review items 已有 2026-10-01 QA 紀錄。該批資料標記一般金額 `unit_unknown`、`available_at=null`，含 8 個未納入 preview 的 key/schema review 列，且不含現金流量表／權益變動表；不能因此視為完整季度來源或正式可用。後續若要再採集，應先確認該精確 OpenAPI／目錄資源的授權與使用條款，再把它當成獨立來源建立候選，不可把它改名或合併成 MOPS EZSearch。
+- 政府資料開放平台逐一列出的資料集具有自己的授權與下載資源。2026-10-25 查到下列四個一般業季度資料集皆列政府資料開放授權條款第 1 版、免費，並從各自的「資料資源下載網址」核出明列 CSV URL：
+
+| 市場／報表 | 開放資料集 | 目錄列出的 CSV 資源 |
+|---|---|---|
+| TWSE 資產負債表 | [94831](https://data.gov.tw/dataset/94831) | `https://mopsfin.twse.com.tw/opendata/t187ap07_L_ci.csv` |
+| TWSE 綜合損益表 | [91998](https://data.gov.tw/dataset/91998) | `https://mopsfin.twse.com.tw/opendata/t187ap06_L_ci.csv` |
+| TPEx 資產負債表 | [91967](https://data.gov.tw/dataset/91967) | `https://mopsfin.twse.com.tw/opendata/t187ap07_O_ci.csv` |
+| TPEx 綜合損益表 | [94853](https://data.gov.tw/dataset/94853) | `https://mopsfin.twse.com.tw/opendata/t187ap06_O_ci.csv` |
+
+這項明列授權只支援以上資料集及其目錄資源的評估／採集，不能推廣成所有 MOPS／OpenAPI 端點的通用授權。這四份資源只代表一般業，不能代表其他產業或全市場財報；欄位雖有「出表日期」，官方目錄沒有說明它等同逐筆首次公告或可得時間，一般金額單位亦未確認。因此下一步可從這四個明列 CSV 做隔離候選並保留原始 bytes／hash／response metadata，再逐項核 schema、更新時點、單位、coverage 和修訂語意；它們仍不得自動進正式 DB、PIT 或 Gate。
+- 既有季度 OpenAPI collector 曾完成 24 個數值 endpoint 的隔離研究擷取，原始回應與 review items 已有 2026-10-01 QA 紀錄。該批資料標記一般金額 `unit_unknown`、`available_at=null`，含 8 個未納入 preview 的 key/schema review 列，且不含現金流量表／權益變動表；不能因此視為完整季度來源或正式可用。不得將 OpenAPI 端點改名或合併成 MOPS EZSearch。
 
 本節記錄目前可核驗的來源範圍與工程採集守則，不作法律裁定。官方依據：[TWSE 使用條款](https://wwwc.twse.com.tw/zh/terms/use.html)；[data.gov.tw 18420](https://data.gov.tw/dataset/18420)。

@@ -2,7 +2,7 @@
 
 2026-10-25 本機資料品質唯讀盤點：本機 SQLite 有 246,331 筆月營收及 1,645,555 筆報表項目，但月營收 98.5% 標記為 `degraded`，報表項目全數 `degraded`；交叉核對確認這些缺件列全都沒有 `announced_date`。Current observations 有 319,893 列但 aggregate feature eligible 為 0；現有月營收對照檔與舊 degraded 鍵無重疊，季報 availability 對照檔不存在。Decision Desk 現能顯示季報與月營收公告日缺漏筆數，未把日期補成 observed。該 SQLite 未找到 Watchlist 命名表，但 Watchlist 可能使用不同 store。詳[資料品質唯讀盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md)；不接受來源、不改 Gate。
 
-2026-10-25 來源條款界線：MOPS EZSearch 自動採集的端點授權範圍尚未證實；既有候選保留為研究證據，不再擴大自動擷取，不回填正式 DB／不授 Gate credit。政府開放平台的授權只適用其明列資料集與資源；不推廣到相似端點，且不等於單位、逐筆 PIT、歷史修訂或 coverage 已驗收。後續採集先核對精確端點／資料集條款。詳[來源授權邊界](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#來源授權邊界與後續採集路徑)。
+2026-10-25 來源條款界線：MOPS EZSearch 自動採集的端點授權範圍尚未證實；既有候選保留為研究證據，不再擴大自動擷取，不回填正式 DB／不授 Gate credit。已確認政府開放平台列出的四個一般業季度 CSV 資源為 OGL v1，可做隔離候選；仍未證明全產業 coverage、金額單位或逐筆 PIT／修訂語意。詳[來源授權與 CSV 清單](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#來源授權邊界與後續採集路徑)。
 
 2026-10-25 Decision Desk 市場資料可見性補上季財報項目唯讀 aggregate：依決策日過濾後顯示列數、股票數、最新觀測期間與可用日；資料已標 degraded 時明示降級，eligibility 維持 research_only，PIT 與 license／coverage 資格不會由資料存在推定。再補月營收／季報公告日缺漏數量揭露；Service/UI focused tests 61 passed、Workbench 93 passed、Update validator 25 passed／0 failed／4 skipped、全域 mypy 1,145 檔無錯及變更 Python py_compile 通過。原生 GUI 與 Owner UAT 未完成。結果記錄於[資料品質盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#follow-up決策台季財報可見性)。
 

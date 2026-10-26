@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-26 Workbench Advice 證據成熟度呈現：列表與選列判讀卡現在顯示 Roadmap 定義的證據成熟度；只有五種明確 Advice tier 會翻譯為成熟度標籤，缺值與未對齊來源標記（含 raw `forward`）顯「未知／未對齊」，不升格或補值，Gate 完整性仍列待補。Workbench view 53、必要 UI 93 passed；Update validator 25／0／4；全域 mypy 1,153 檔 clean；3 個 Python 檔 compile 通過。來源、PIT、Gate 2、ML 資格未變；原生 GUI／Owner UAT 未驗。詳[Advice maturity QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-advice-證據成熟度明示)。
+
 2026-10-26 Gate 1 Advice 完整性判讀補強：Workbench 現把 `UNKNOWN`／`UNAVAILABLE`／空值及「未知／未提供」列為必要欄位待補；來源追溯須有結果 ID 或具體來源／拒絕依據，泛型來源類別不足。已知負向值仍標示為已知狀態，不等於 Gate 或來源合格。Composer 30、Workbench view 53、必要 UI 93 passed；Update validator 25／0／4；mypy 1,153 檔 clean；5 個修改 Python 檔 compile 通過。Advice QA 文件核對通過，Manual／Snapshot 仍受既有 `output` junction WinError 5 阻擋。詳[Advice completeness QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-gate-1-advice-未知欄位與來源追溯完整性)。
 
 2026-10-26 Workbench Advice 流動性 Gate 欄位接線：AdviceComposer 只將同一保存結果／同一股票、明確 liquidity 原因且 `fail + observed` 的負向證據標為未通過；缺列、重複、降級／估算或身份失配均顯未知。列表和選列詳情現可見該欄，不推定通過或補寫流動性數值。受控驗證：Composer 30、Workbench view 50、必要 UI 93 passed；Update validator 25／0／4；mypy 1,153 檔 clean；5 個 Python 檔 compile 通過。Gate 1、資料源、PIT 與 ML 資格不變。富邦 API 官方文件列有市場行情，但未提供 MOPS 公告時間／報表版本橋接，本輪不呼叫或接入券商 API。詳[Advice Gate QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-gate-1-advice-流動性-gate-投影)。

@@ -354,6 +354,7 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
         return display, detail
 
     quality = _advice_display_label("data_quality", str(row.data_quality or "").strip())
+    evidence_tier = advice_evidence_tier_label(str(row.evidence_tier or "").strip())
     feasibility = _advice_display_label(
         "execution_feasibility", str(row.execution_feasibility or "").strip()
     )
@@ -366,16 +367,32 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
     }.get(liquidity_state, liquidity_state or "未知")
     data_date = str(row.data_as_of_date or "").strip() or "未知"
     display = (
-        f"{quality}｜流動性 Gate：{liquidity_label}｜"
+        f"{quality}｜證據成熟度：{evidence_tier}｜流動性 Gate：{liquidity_label}｜"
         f"成交：{feasibility}｜資料日：{data_date}"
     )
     detail = (
-        f"資料品質：{quality}\n流動性 Gate：{liquidity_label}（原始值：{liquidity_state or '未提供'}）\n"
+        f"資料品質：{quality}\n"
+        f"證據成熟度：{evidence_tier}（原始值：{str(row.evidence_tier or '').strip() or '未提供'}；"
+        "沒有可核對的成熟度映射時，不從 replay／forward／paper／live 原始標籤推定）\n"
+        f"流動性 Gate：{liquidity_label}（原始值：{liquidity_state or '未提供'}）\n"
         f"可成交性：{feasibility}\n"
         f"決策日：{str(row.decision_date or '').strip() or '未知'}\n"
         f"資料日：{data_date}"
     )
     return display, detail
+
+
+def advice_evidence_tier_label(raw_value: str) -> str:
+    """只呈現 Roadmap 明列的成熟度；其他來源標籤維持未知。"""
+    if not raw_value:
+        return "未知／未對齊"
+    return {
+        "insufficient": "證據不足",
+        "directional": "方向性證據",
+        "forward-reviewed": "前瞻證據已覆核",
+        "paper-validated": "模擬驗證",
+        "live-reviewed": "實盤證據已覆核",
+    }.get(raw_value.strip().lower(), "未知／未對齊")
 
 
 def _first_reason(values: tuple[str, ...]) -> str:

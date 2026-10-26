@@ -80,6 +80,7 @@ from ui_qt.models.workbench_table_models import (
     WorkbenchReviewQueueTableModel,
     WorkbenchStatusStripTableModel,
     PositionHealthTableModel,
+    advice_evidence_tier_label,
     display_workbench_value,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -3885,6 +3886,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if len(compact_reasons_text) > 150:
             compact_reasons_text = compact_reasons_text[:147] + "…（完整理由見下方共用證據詳情）"
         contract_completeness = _advice_contract_completeness(item)
+        evidence_tier_raw = str(getattr(item, "evidence_tier", "") or "").strip()
+        evidence_tier_label = advice_evidence_tier_label(evidence_tier_raw)
         source_evidence = tuple(getattr(item, "source_evidence", ()) or ())
         source_evidence_text = "；".join(source_evidence) if source_evidence else "未提供"
         liquidity_raw = str(getattr(item, "liquidity_state", "") or "").strip().upper()
@@ -3900,6 +3903,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"校準適用期間：{presentation.horizon or '未提供'}｜"
             f"策略持有期間：{presentation.holding_horizon or '未提供'}｜"
             f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}｜"
+            f"證據成熟度：{evidence_tier_label}（原始值：{evidence_tier_raw or '未提供'}）｜"
             f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）｜"
             f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供'}\n"
             f"失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}"
@@ -3924,12 +3928,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"完整風險：{full_risks_text}\n"
             f"完整失效條件：{full_invalidation_text}\n"
             f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}\n"
+            f"證據成熟度：{evidence_tier_label}（原始值：{evidence_tier_raw or '未提供'}；"
+            "來源層級未對齊時不推定成熟度）\n"
             f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）\n"
             f"保存來源逐股證據：{source_evidence_text}"
         )
         self.advice_selection_card.setAccessibleDescription(
             f"{card_text}\n完整原始理由／論點：{full_reasons_text}\n"
             f"完整風險：{full_risks_text}\n完整失效條件：{full_invalidation_text}\n"
+            f"證據成熟度：{evidence_tier_label}（原始值：{evidence_tier_raw or '未提供'}）\n"
             f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）\n"
             f"保存來源逐股證據：{source_evidence_text}"
         )

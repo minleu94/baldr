@@ -139,6 +139,14 @@ Final 受控驗證：Advice／Workbench 聚焦組（排除上述兩項因 sandbo
 
 此人工研究入口只記錄納入研究、略過或註記，經既有 continuity writer/readback 核對結果；不建立交易／成交，不連接真實帳戶，不以 Advice payload hash 假扮 snapshot hash。正式資料、Advice／Gate 資格均未改。原生 GUI 與 Owner UAT 尚未執行；兩項 MainWindow journey 的 sandbox 限制也仍待可讀取合法研究根的環境重驗。
 
+## 2026-10-26 Advice 證據成熟度明示
+
+Advice 列的資料／執行狀態摘要現在另列「證據成熟度」；選列判讀卡、提示及無障礙描述也顯示成熟度原始值。呈現只翻譯 Product Roadmap 列明的 `insufficient`、`directional`、`forward-reviewed`、`paper-validated`、`live-reviewed`。缺值或未對齊值（例如原始 capture label `forward`）一律顯示「未知／未對齊」，完整性摘要仍將 `evidence_tier` 列為待補；不將 replay／forward／paper／live 自動映射為 Advice 的覆核成熟度。
+
+Workbench view 聚焦 **53 passed**，必要 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,153 source files，無錯誤**；三個變更 Python 檔 `py_compile` 通過。每項驗證使用單一 Windows Job，8 GiB 記憶體／12 程序上限及 kill-on-close 讀回成功，Job 剩餘程序 0，未強制清理。receipt／原始輸出留在授權 scratch `owned-validation/evidence-tier-*/`。第一次 runner 呼叫未提供 child Python executable，未啟動測試程序；修正命令後上述受控驗證通過。QA 文件 scoped document-control **12 features／2 link sources／0 errors**；包含 Manual／Snapshot 的較廣檢查只列出既有 `output/` Junction 外部 trial／task 連結無法解析，沒有新增章節連結錯誤。`git diff --check` 通過；原生桌面 GUI／Owner UAT 未執行。
+
+此項改善成熟度資訊可讀性與 fail-closed 顯示，不會填寫成熟度、改 Advice 動作或授予 Gate 1、來源、PIT、Gate 2 或 ML 資格；正式資料未變。
+
 ### 人工研究決定讀回摘要補強
 
 按「讀取／重新讀取同筆決定」成功後，Workbench 將既有狀態碼翻成「尚無人工決定／已納入研究／已略過」，並同列有效研究註記數及下次檢視時間。未知狀態保留原值提示，無效註記數顯示未知；身份衝突與 read error 沿用既有明確失敗摘要。此項只改善明確讀回按鈕的結果文字，沒有在 Advice 選列時同步讀 Journal，也不增加新的 I/O／背景工作或自動保存。

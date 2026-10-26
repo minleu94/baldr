@@ -1321,7 +1321,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
         0, view.advice_recommendation_model.column_index("evidence_status")
     )
     assert view.advice_recommendation_model.data(status_index) == (
-        "缺漏｜流動性 Gate：未知｜成交：不可成交｜資料日：未知"
+        "缺漏｜證據成熟度：未知／未對齊｜流動性 Gate：未知｜成交：不可成交｜資料日：未知"
     )
     assert "決策日：未知" in view.advice_recommendation_model.data(
         status_index, Qt.ToolTipRole
@@ -1331,6 +1331,8 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     )
     assert "正式 Advice" in view.advice_selection_card.text()
     assert "evidence_quality_missing" in view.advice_selection_card.text()
+    assert "證據成熟度：未知／未對齊（原始值：未提供）" in view.advice_selection_card.text()
+    assert "證據層級" in view.advice_selection_card.text()
     assert "失效條件：未提供" in view.advice_selection_card.text()
     assert "流動性 Gate：未知（原始值：UNKNOWN）" in view.advice_selection_card.text()
     assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
@@ -1374,7 +1376,7 @@ def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> N
     assert "缺少當日價格" in model.data(quick_index, Qt.ToolTipRole)
     assert model.data(risk_index) == "持倉限制待覆核（另 1 項）"
     assert model.data(status_index) == (
-        "部分資料｜流動性 Gate：未知｜成交：未知｜資料日：2026-07-03"
+        "部分資料｜證據成熟度：未知／未對齊｜流動性 Gate：未知｜成交：未知｜資料日：2026-07-03"
     )
     assert "流動性 Gate：未知（原始值：UNKNOWN）" in model.data(
         status_index, Qt.ToolTipRole
@@ -1382,6 +1384,40 @@ def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> N
     assert "決策日：2026-07-06" in model.data(status_index, Qt.ToolTipRole)
     assert model.data(confidence_index) == "中"
     assert model.data(confidence_index, Qt.ToolTipRole) == "原始值：medium"
+
+    reviewed = AdviceDashboardDTO(
+        decision_date="2026-07-06",
+        data_as_of_date="2026-07-03",
+        mode=AdviceMode.GUIDED,
+        policy=AdvicePolicyConfig(),
+        recommendations=(
+            RecommendationAdviceDTO(
+                stock_code="2317",
+                advice_action=AdviceAction.RESEARCH,
+                evidence_tier="forward-reviewed",
+            ),
+            RecommendationAdviceDTO(
+                stock_code="2308",
+                advice_action=AdviceAction.RESEARCH,
+                evidence_tier="forward",
+            ),
+        ),
+    )
+    reviewed_view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), advice_dashboard=reviewed),
+        auto_refresh=False,
+    )
+    reviewed_status = reviewed_view.advice_recommendation_model.index(
+        0, reviewed_view.advice_recommendation_model.column_index("evidence_status")
+    )
+    raw_forward_status = reviewed_view.advice_recommendation_model.index(
+        1, reviewed_view.advice_recommendation_model.column_index("evidence_status")
+    )
+    assert "證據成熟度：前瞻證據已覆核" in reviewed_view.advice_recommendation_model.data(reviewed_status)
+    assert "證據成熟度：未知／未對齊" in reviewed_view.advice_recommendation_model.data(raw_forward_status)
+    assert "forward／paper／live" in reviewed_view.advice_recommendation_model.data(
+        raw_forward_status, Qt.ToolTipRole
+    )
 
 
 def test_workbench_shows_stock_name_only_when_saved_result_identity_is_bound() -> None:

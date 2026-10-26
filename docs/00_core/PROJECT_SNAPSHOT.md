@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-26 Gate 2 週報 Owner 覆核入口：Evidence Review 歷史詳情顯示週報 SHA-256；已設定 `WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH` 時，可由 Owner 自我聲明姓名／角色、填理由並確認後，以 append-only 寫入 hash 綁定的外部 JSON projection。重複週期、hash 漂移及正式 SQLite 路徑會被拒絕，projection 固定不授 formal credit。聚焦測試 86 passed、Update Workbench 93 passed、validator 25/0/4、mypy 1,146 檔 clean、修改檔 compile 通過；尚未由真正 Owner 執行覆核，沒有寫正式 DB 或真實 projection。Gate 2 三週／三操作日、backup／rollback／recovery 與 scheduler 獨立 approval 仍未完成；Gate 3／ML 狀態不變。詳[Owner 覆核入口 QA](../06_qa/BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md)。
+
 2026-10-26 issuer 例外查核：TWSE 官方公告確認 `1589` 未依限申報 115 年 Q1/Q2，故 CSV 缺列是已解釋的非申報缺件，仍須降級呈現且不得補值；TPEx 官方公告確認 `3718` 由 `5371` 轉換而來、2026-09-03 生效，因此 `3718` 不屬 Q2 季末 issuer，應改查 `5371` 與歷史母體。Q2 候選兩碼皆無；其他資料契約與市場 coverage 未完成，不接受來源、不授 Gate／ML 資格。詳[issuer 例外查核](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-issuer-例外查核)。
 
 2026-10-26 官方目錄欄位契約查核：抽查 TWSE 一般業／金融業資產負債表目錄，可確認授權、季度頻率與欄名，但目錄未定義金額單位、合併／個別 basis、逐列 available-at 或修訂紀錄；這批 CSV 只有一次快照，所有列共用一個出表日期，HTTP Last-Modified 也只描述整個檔案。歷史 PIT／ML 仍不可用，除非取得有授權的歷史原件與逐筆時序。詳[欄位契約查核](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-官方目錄欄位契約查核)。

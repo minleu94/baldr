@@ -92,6 +92,7 @@ def _row_from_record(record: Any) -> EvidenceOperationsHistoryDashboardRow:
         manual_lifecycle_candidate_count=int(record.manual_lifecycle_candidate_count),
         warnings_count=int(record.warnings_count),
         review_id=str(record.review_id),
+        review_hash=str(record.review_hash),
         created_at=str(record.created_at),
     )
 

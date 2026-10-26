@@ -40,6 +40,7 @@ class EvidenceOperationsHistoryDashboardRow:
     manual_lifecycle_candidate_count: int
     warnings_count: int
     review_id: str
+    review_hash: str = ""
     created_at: str = ""
 
 

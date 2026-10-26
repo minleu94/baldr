@@ -16,10 +16,16 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QDateEdit,
+    QDialog,
+    QDialogButtonBox,
     QLabel,
+    QLineEdit,
+    QMessageBox,
     QScrollArea,
     QTabWidget,
+    QTextEdit,
     QWidget,
 )
 import pytest
@@ -1021,6 +1027,82 @@ def test_evidence_operations_history_details_show_missing_saved_time() -> None:
     assert "保存時間: 未提供" in details
     assert "Record ID: eor_without_time" in details
     assert "週期: 2026-07-06 至 2026-07-12" in details
+
+
+def test_weekly_review_owner_approval_is_hash_pinned_and_requires_projection(monkeypatch) -> None:
+    app()
+    row = EvidenceOperationsHistoryDashboardRow(
+        period_start="2026-10-19",
+        period_end="2026-10-25",
+        review_status="needs_manual_review",
+        scheduler_readiness="ready_for_manual_confirm",
+        production_scheduler_allowed=False,
+        decision_quality_reviews_count=1,
+        signal_decay_observations_count=0,
+        manual_lifecycle_candidate_count=0,
+        warnings_count=2,
+        review_id="eor_pinned",
+        review_hash="sha256:" + "a" * 64,
+    )
+    dashboard = FakeDashboard(
+        EvidenceOperationsHistoryDashboardResult(
+            EvidenceOperationsHistoryDashboardRequest(),
+            EvidenceOperationsHistoryDashboardCards(),
+            rows=(row,),
+        )
+    )
+
+    class ApprovalService:
+        projection_configured = True
+
+        def __init__(self):
+            self.request = None
+
+        def approve_weekly_review(self, **kwargs):
+            self.request = kwargs
+            return SimpleNamespace(saved=True, record=kwargs, error_code="", message="")
+
+    approval = ApprovalService()
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.Ok)
+    view = EvidenceOperationsHistoryView(
+        dashboard,
+        approval_service=approval,
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    view._on_dashboard_loaded(dashboard.result, request_id=view._active_request_id)
+
+    assert view.owner_approval_button.isEnabled()
+    assert "SHA-256：" + row.review_hash in view.detail_panel.toPlainText()
+    def accept_review_dialog(dialog):
+        inputs = dialog.findChildren(QLineEdit)
+        inputs[0].setText("Owner A")
+        inputs[1].setText("Portfolio Owner")
+        dialog.findChild(QTextEdit).setPlainText("已核對來源與警告。")
+        confirmation = dialog.findChild(QCheckBox)
+        button_box = dialog.findChild(QDialogButtonBox)
+        assert not button_box.button(QDialogButtonBox.Ok).isEnabled()
+        confirmation.setChecked(True)
+        assert button_box.button(QDialogButtonBox.Ok).isEnabled()
+        return QDialog.Accepted
+
+    monkeypatch.setattr(QDialog, "exec", accept_review_dialog)
+    view._approve_selected_weekly_review()
+    assert approval.request == {
+        "review_id": row.review_id,
+        "review_hash": row.review_hash,
+        "period_start": row.period_start,
+        "period_end": row.period_end,
+        "owner_name": "Owner A",
+        "owner_role": "Portfolio Owner",
+        "review_note": "已核對來源與警告。",
+    }
+
+    approval.projection_configured = False
+    view._update_owner_approval_state()
+    assert not view.owner_approval_button.isEnabled()
+    assert "WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH" in view.owner_approval_status_label.text()
 
 
 def test_evidence_operations_history_cards_distinguish_unavailable_from_observed_zero() -> None:

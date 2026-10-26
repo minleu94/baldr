@@ -4,6 +4,7 @@
 """
 
 import logging
+import os
 from copy import deepcopy
 
 from PySide6.QtWidgets import (
@@ -23,6 +24,7 @@ from app_module.live_research_gap_dashboard_service import create_live_research_
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 from app_module.backtest_optimization_stability import OptimizationStabilitySummary
 from app_module.signal_decay_dashboard_service import create_signal_decay_dashboard_service
+from app_module.weekly_review_approval_service import create_weekly_review_approval_service
 from ui_qt.views.evidence_review_view import EvidenceReviewView
 from ui_qt.views.forward_performance_view import ForwardPerformanceView
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -1487,6 +1489,10 @@ class BacktestResultPanel(QWidget):
             signal_decay_service=create_signal_decay_dashboard_service(config),
             decision_quality_service=create_decision_quality_dashboard_service(config),
             evidence_history_service=create_evidence_operations_history_dashboard_service(config),
+            evidence_approval_service=create_weekly_review_approval_service(
+                config,
+                projection_path=os.environ.get("WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH"),
+            ),
             scheduled_status_service=ScheduledEvidenceStatusService(config),
             evidence_db_path=str(getattr(config, "db_file", "")),
         )

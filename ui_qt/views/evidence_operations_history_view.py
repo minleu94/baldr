@@ -2,7 +2,21 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QResizeEvent
-from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QTableView, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGridLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QTableView,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app_module.evidence_operations_history_dashboard_dtos import (
     EvidenceOperationsHistoryDashboardRequest,
@@ -35,16 +49,19 @@ class EvidenceOperationsHistoryView(QWidget):
         self,
         dashboard_service,
         *,
+        approval_service=None,
         auto_refresh: bool = True,
         async_refresh: bool = True,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.dashboard_service = dashboard_service
+        self.approval_service = approval_service
         self.async_refresh = async_refresh
         self._active_request_id = 0
         self._workers: list[TaskWorker] = []
         self._current_result: EvidenceOperationsHistoryDashboardResult | None = None
+        self._selected_row = None
         self._cursor_stack = [None]
         self._page_index = 0
         self._loading = False
@@ -82,6 +99,21 @@ class EvidenceOperationsHistoryView(QWidget):
         filter_row.addWidget(self.previous_button, 0, 5)
         filter_row.addWidget(self.next_button, 0, 6)
         root.addLayout(filter_row)
+
+        approval_row = QGridLayout()
+        self.owner_approval_button = QPushButton("Owner 覆核此週報…")
+        self.owner_approval_button.setToolTip(
+            "以具名 owner 核准所選週報快照，建立 append-only 人工覆核紀錄；不會啟用排程或授予來源／Gate 資格。"
+        )
+        self.owner_approval_button.setEnabled(False)
+        self.owner_approval_button.clicked.connect(self._approve_selected_weekly_review)
+        self.owner_approval_status_label = QLabel(
+            "請先選取一筆週報。Owner 覆核是人工聲明，程式不會驗證登入身分。"
+        )
+        self.owner_approval_status_label.setWordWrap(True)
+        approval_row.addWidget(self.owner_approval_button, 0, 0)
+        approval_row.addWidget(self.owner_approval_status_label, 0, 1)
+        root.addLayout(approval_row)
 
         self.cards_layout = QGridLayout()
         self.cards_layout.setHorizontalSpacing(8)
@@ -180,6 +212,8 @@ class EvidenceOperationsHistoryView(QWidget):
         self.empty_state_label.setText("")
         self.scope_label.setText("")
         self.detail_panel.setPlainText("")
+        self._selected_row = None
+        self.owner_approval_button.setEnabled(False)
         if self.async_refresh:
             worker = TaskWorker(self.dashboard_service.load_dashboard, request)
             worker.finished.connect(lambda result, rid=request_id: self._on_dashboard_loaded(result, rid))
@@ -212,6 +246,8 @@ class EvidenceOperationsHistoryView(QWidget):
         self.summary_table.resizeColumnsToContents()
         if result.rows:
             self._render_details(result.rows[0], result)
+            self._selected_row = result.rows[0]
+            self._update_owner_approval_state()
         else:
             self.detail_panel.setPlainText("\n".join(result.limitations))
 
@@ -223,6 +259,8 @@ class EvidenceOperationsHistoryView(QWidget):
         self._current_result = None
         self._set_all_cards("未知")
         self.table_model.set_rows(())
+        self._selected_row = None
+        self.owner_approval_button.setEnabled(False)
         self.empty_state_label.setText(f"Evidence operations history 載入失敗：{message.splitlines()[0]}")
         self.scope_label.setText("")
         self.detail_panel.setPlainText("")
@@ -263,7 +301,119 @@ class EvidenceOperationsHistoryView(QWidget):
     def _on_table_row_clicked(self, index) -> None:
         row = self.table_model.row_at(index.row())
         if row is not None and self._current_result is not None:
+            self._selected_row = row
             self._render_details(row, self._current_result)
+            self._update_owner_approval_state()
+
+    def _update_owner_approval_state(self) -> None:
+        row = self._selected_row
+        enabled = (
+            self.approval_service is not None
+            and bool(getattr(self.approval_service, "projection_configured", False))
+            and row is not None
+            and bool(row.review_id)
+            and bool(row.review_hash)
+        )
+        self.owner_approval_button.setEnabled(bool(enabled))
+        if self.approval_service is None:
+            self.owner_approval_status_label.setText(
+                "Owner 覆核尚未接線；目前只讀取歷史。"
+            )
+        elif not bool(getattr(self.approval_service, "projection_configured", False)):
+            self.owner_approval_status_label.setText(
+                "尚未設定覆核投影檔；設定 WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH 並重啟程式後才能保存。"
+            )
+        elif row is None:
+            self.owner_approval_status_label.setText("請先選取一筆週報。")
+        elif not row.review_hash:
+            self.owner_approval_status_label.setText(
+                "此舊週報沒有可核對的 SHA-256，不能建立 hash-pinned 覆核。"
+            )
+        else:
+            self.owner_approval_status_label.setText(
+                "覆核只綁定目前選取的報告 hash；不授予來源接受、Gate credit 或正式排程權限。"
+            )
+
+    def _approve_selected_weekly_review(self) -> None:
+        row = self._selected_row
+        if self.approval_service is None or row is None or not row.review_hash:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Owner 覆核週報快照")
+        layout = QVBoxLayout(dialog)
+        identity = QLineEdit()
+        identity.setPlaceholderText("輸入實際覆核者姓名或可追溯識別")
+        role = QLineEdit()
+        role.setPlaceholderText("例如：Portfolio Owner")
+        note = QTextEdit()
+        note.setPlaceholderText("記錄已檢查的證據、資料品質、未解缺口與覆核理由")
+        note.setMinimumHeight(100)
+        form = QFormLayout()
+        form.addRow("覆核者（自我聲明）", identity)
+        form.addRow("Owner 角色", role)
+        form.addRow("覆核理由與後續", note)
+        layout.addLayout(form)
+        pin = QLabel(
+            f"週期：{row.period_start} 至 {row.period_end}\n"
+            f"週報 ID：{row.review_id}\n"
+            f"SHA-256：{row.review_hash}\n\n"
+            "這只記錄對週報快照的人工覆核，不會批准 production scheduler、接受資料來源或授予 Gate／ML 資格。"
+        )
+        pin.setWordWrap(True)
+        pin.setTextInteractionFlags(pin.textInteractionFlags() | Qt.TextSelectableByMouse)
+        layout.addWidget(pin)
+        confirmed = QCheckBox("我已核對上述週期與 hash，並確認自己是本次覆核者。")
+        layout.addWidget(confirmed)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("追加覆核紀錄")
+        buttons.button(QDialogButtonBox.Ok).setEnabled(False)
+        confirmed.toggled.connect(buttons.button(QDialogButtonBox.Ok).setEnabled)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+        owner_name = identity.text().strip()
+        owner_role = role.text().strip()
+        review_note = note.toPlainText().strip()
+        if not owner_name or not owner_role or not review_note:
+            QMessageBox.warning(
+                self,
+                "覆核資訊未完成",
+                "請填寫覆核者、Owner 角色與覆核理由。尚未保存任何內容。",
+            )
+            return
+
+        self._save_owner_approval(row, owner_name, owner_role, review_note)
+
+    def _save_owner_approval(self, row, owner_name: str, owner_role: str, review_note: str) -> bool:
+        if self.approval_service is None:
+            return False
+        result = self.approval_service.approve_weekly_review(
+            review_id=row.review_id,
+            review_hash=row.review_hash,
+            period_start=row.period_start,
+            period_end=row.period_end,
+            owner_name=owner_name,
+            owner_role=owner_role,
+            review_note=review_note,
+        )
+        if not result.saved:
+            QMessageBox.warning(
+                self,
+                "Owner 覆核未保存",
+                result.message or result.error_code or "未知錯誤。",
+            )
+            return False
+        QMessageBox.information(
+            self,
+            "覆核紀錄已追加",
+            "已保存此週報快照的 owner 覆核。這不代表正式排程、資料來源接受或 Gate／ML 通過。",
+        )
+        self.refresh_dashboard()
+        return True
 
     def _render_details(self, row, result: EvidenceOperationsHistoryDashboardResult) -> None:
         self.detail_panel.setPlainText(
@@ -279,6 +429,7 @@ class EvidenceOperationsHistoryView(QWidget):
                     f"Manual lifecycle candidates: {row.manual_lifecycle_candidate_count}",
                     f"Warnings: {row.warnings_count}",
                     f"Record ID: {row.review_id}",
+                    f"報告 SHA-256：{row.review_hash or '未知（歷史紀錄未提供）'}",
                     "限制: " + " ".join(result.limitations),
                 ]
             )

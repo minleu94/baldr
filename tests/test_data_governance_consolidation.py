@@ -178,6 +178,8 @@ def test_approved_weekly_history_projection_path_security(tmp_path: Path):
                 "period_start": "2026-07-06",
                 "period_end": "2026-07-12",
                 "owner_role": "portfolio_manager",
+                "owner_name": "Owner A",
+                "review_note": "已核對來源與限制。",
                 "approved_at": "2026-07-12T18:00:00Z",
                 "status": "approved_weekly_review",
             }
@@ -190,6 +192,8 @@ def test_approved_weekly_history_projection_path_security(tmp_path: Path):
     proj = load_approved_weekly_history_projection(proj_file)
     assert proj is not None
     assert len(proj.records) == 1
+    assert proj.records[0]["owner_name"] == "Owner A"
+    assert proj.records[0]["review_note"] == "已核對來源與限制。"
 
     with pytest.raises(ValueError, match="不得位於正式 SQLite 資料庫目錄中"):
         load_approved_weekly_history_projection("F:/Min/Python/Project/FA_Data/sqlite/projection.json")

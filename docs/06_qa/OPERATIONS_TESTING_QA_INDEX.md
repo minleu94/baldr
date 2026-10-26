@@ -4,6 +4,8 @@
 
 ## 近期營運與測試收據
 
+[10/26 Gate 2 週報 Owner 覆核入口](BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md)：歷史週報提供 hash 綁定、具名自我聲明與 append-only projection 覆核；86 個聚焦測試、Update Workbench 93 測試、validator 25/0/4 與全域 mypy 通過。尚未由真正 Owner 覆核，Gate 2 時間／操作日及復原演練仍缺，未授來源、Gate 或 ML 資格。
+
 [10/25 Scheduled Evidence 受控 Replay 路徑隔離](BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md)：正式 recommendation 唯讀綁定與 scratch 輸出分離通過；乾跑為 `degraded`，0 errors／20 warnings、0 event writes，未形成 weekly review 或 Gate credit。
 
 [10/25 MOPS Q2 PIT availability 補件](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-25-mops-q2-pit-availability-補件)：bounded EZSearch 捕獲 718 個有效 availability projection，P0 季報來源從 machine missing 變為 candidate verified；仍是 research-only，未核准財報數值用途或 downstream。

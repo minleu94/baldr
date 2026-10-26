@@ -1512,6 +1512,13 @@
         "app_module/daily_operations_receipts.py",
         "app_module/evidence_pipeline_runner.py",
         "app_module/evidence_event_service.py",
+        "app_module/evidence_operations_history_dashboard_dtos.py",
+        "app_module/evidence_operations_history_dashboard_service.py",
+        "app_module/approved_weekly_history_projection.py",
+        "app_module/weekly_review_approval_service.py",
+        "ui_qt/views/evidence_review_view.py",
+        "ui_qt/views/evidence_operations_history_view.py",
+        "ui_qt/views/backtest/result_panel.py",
         "app_module/scheduled_evidence_status_service.py",
         "scripts/audit_daily_operations.py",
         "scripts/run_evidence_pipeline.py",
@@ -1532,6 +1539,9 @@
         "tests/test_daily_operations_receipts.py",
         "tests/test_evidence_pipeline_runner.py",
         "tests/test_evidence_event_service.py",
+        "tests/test_evidence_operations_history_dashboard_service.py",
+        "tests/test_weekly_review_approval_service.py",
+        "tests/test_data_governance_consolidation.py",
         "tests/test_scheduled_evidence_status_service.py",
         "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py",
         "tests/test_run_evidence_pipeline_cli.py",
@@ -1539,10 +1549,12 @@
         "tests/test_repository_output_boundary.py"
       ],
       "manual": [
-        "docs/07_guides/APPLICATION_MANUAL.md"
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md"
       ],
       "evidence": [
-        "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md"
+        "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md",
+        "docs/06_qa/BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -1553,6 +1565,16 @@
         "tests/test_daily_operations_receipts.py",
         "app_module/evidence_pipeline_runner.py",
         "app_module/evidence_event_service.py",
+        "app_module/evidence_operations_history_dashboard_dtos.py",
+        "app_module/evidence_operations_history_dashboard_service.py",
+        "app_module/approved_weekly_history_projection.py",
+        "app_module/weekly_review_approval_service.py",
+        "ui_qt/views/evidence_review_view.py",
+        "ui_qt/views/evidence_operations_history_view.py",
+        "ui_qt/views/backtest/result_panel.py",
+        "tests/test_evidence_operations_history_dashboard_service.py",
+        "tests/test_weekly_review_approval_service.py",
+        "tests/test_data_governance_consolidation.py",
         "scripts/run_evidence_pipeline.py",
         "scripts/scheduled/run_scheduled_evidence_pipeline_dry_run.py",
         "app_module/scheduled_evidence_status_service.py",

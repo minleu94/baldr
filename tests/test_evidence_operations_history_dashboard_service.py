@@ -45,6 +45,7 @@ def _history_record(index: int, *, period_start: str = "2026-07-06", period_end:
         manual_lifecycle_candidate_count=0,
         warnings_count=index % 3,
         review_id=f"review-{index}",
+        review_hash="sha256:" + f"{index:064x}",
         created_at="2026-07-13T00:00:00Z",
     )
 
@@ -127,7 +128,7 @@ def test_history_dashboard_loads_saved_reviews_without_enabling_scheduler(tmp_pa
         start_date="2026-07-06",
         end_date="2026-07-12",
     )
-    EvidenceOperationsHistoryRepository(config).save_weekly_review(weekly, generated_by="test")
+    record = EvidenceOperationsHistoryRepository(config).save_weekly_review(weekly, generated_by="test")
 
     result = EvidenceOperationsHistoryDashboardService(EvidenceOperationsHistoryRepository(config)).load_dashboard(
         EvidenceOperationsHistoryDashboardRequest(start_date="2026-07-01", end_date="2026-07-31")
@@ -138,6 +139,7 @@ def test_history_dashboard_loads_saved_reviews_without_enabling_scheduler(tmp_pa
     assert result.has_more_rows is False
     assert result.cards.production_scheduler_allowed_count == 0
     assert result.rows[0].period_end == "2026-07-12"
+    assert result.rows[0].review_hash == record.review_hash
     assert result.rows[0].production_scheduler_allowed is False
     assert "不會啟用 production scheduler" in " ".join(result.limitations)
 

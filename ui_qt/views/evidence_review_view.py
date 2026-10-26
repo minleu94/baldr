@@ -21,6 +21,7 @@ class EvidenceReviewView(QWidget):
         signal_decay_service,
         decision_quality_service,
         evidence_history_service=None,
+        evidence_approval_service=None,
         scheduled_status_service=None,
         evidence_db_path: str | None = None,
         parent=None,
@@ -58,7 +59,14 @@ class EvidenceReviewView(QWidget):
         historical_verification_tabs.addTab(forward_performance_widget, "前瞻證據")
         historical_verification_tabs.addTab(SignalDecayView(signal_decay_service, auto_refresh=False), "訊號衰退")
         if evidence_history_service is not None:
-            historical_verification_tabs.addTab(EvidenceOperationsHistoryView(evidence_history_service, auto_refresh=False), "覆盤歷史")
+            historical_verification_tabs.addTab(
+                EvidenceOperationsHistoryView(
+                    evidence_history_service,
+                    approval_service=evidence_approval_service,
+                    auto_refresh=False,
+                ),
+                "覆盤歷史",
+            )
         historical_verification_layout.addWidget(historical_verification_tabs)
         self.tabs.addTab(historical_verification_widget, "歷史驗證")
 

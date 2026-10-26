@@ -56,6 +56,12 @@ def load_approved_weekly_history_projection(path: str | Path | None) -> Approved
             raise ValueError(f"approved weekly history projection 包含重複的週期: {period_key}")
         seen_periods.add(period_key)
 
-        records.append({key: str(item[key]) for key in (*required, "status")})
+        record = {key: str(item[key]) for key in (*required, "status")}
+        # Preserve human audit context when present, while remaining compatible
+        # with older projections that only carried owner_role.
+        for optional_key in ("owner_name", "review_note"):
+            if str(item.get(optional_key, "")).strip():
+                record[optional_key] = str(item[optional_key]).strip()
+        records.append(record)
 
     return ApprovedWeeklyHistoryProjection(records=tuple(records), path=resolved)

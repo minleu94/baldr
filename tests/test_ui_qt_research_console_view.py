@@ -418,6 +418,8 @@ def test_view_has_no_apply_promote_retrain_blend_accept_or_trade_controls() -> N
         "重新載入唯讀 projection",
         "選擇 csv 候選目錄…",
         "還原啟動設定",
+        "選擇公司名錄候選目錄…",
+        "還原啟動設定",
     ]
     assert not any(token in text for text in button_texts for token in forbidden)
 

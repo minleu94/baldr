@@ -1293,6 +1293,7 @@
         "app_module/p0_source_control_center.py",
         "app_module/research_console_source_service.py",
         "data_module/open_data_quarterly_candidate_audit.py",
+        "data_module/open_data_issuer_directory_candidate_audit.py",
         "ui_qt/views/update_view.py",
         "ui_qt/views/research_console_view.py",
         "ui_qt/views/update/update_formatters.py",
@@ -1311,6 +1312,7 @@
         "tests/test_update_view_formatters.py",
         "tests/test_p0_source_control_center.py",
         "tests/test_open_data_quarterly_candidate_audit.py",
+        "tests/test_open_data_issuer_directory_candidate_audit.py",
         "tests/test_open_data_quarterly_candidate_integration.py",
         "tests/test_ui_qt_update_view_workbench.py",
         "tests/test_ui_qt_daily_journey.py",
@@ -1375,7 +1377,8 @@
         "docs/06_qa/BALDR_P0_DECISION_CLARITY_QA_20261025.md",
         "docs/06_qa/BALDR_WEEKLY_COLLECTION_DETAIL_QA_20261025.md",
         "docs/06_qa/BALDR_WEEKLY_REVIEW_CANDIDATE_AUDIT_20261025.md",
-        "docs/06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md"
+        "docs/06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md",
+        "docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -1419,11 +1422,13 @@
         "tests/test_evidence_weekly_collection_repository.py",
         "app_module/p0_source_control_center.py",
         "app_module/research_console_source_service.py",
+        "data_module/open_data_issuer_directory_candidate_audit.py",
         "ui_qt/views/update_view.py",
         "ui_qt/views/research_console_view.py",
         "ui_qt/views/update/update_formatters.py",
         "tests/test_p0_source_control_center.py",
         "tests/test_open_data_quarterly_candidate_audit.py",
+        "tests/test_open_data_issuer_directory_candidate_audit.py",
         "tests/test_open_data_quarterly_candidate_integration.py",
         "tests/test_ui_qt_research_console_view.py",
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",

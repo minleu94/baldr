@@ -34,6 +34,12 @@ from data_module.open_data_quarterly_candidate_audit import (
     QuarterlyCandidateAuditError,
     audit_quarterly_candidate_root,
 )
+from data_module.open_data_issuer_directory_candidate_audit import (
+    AUDIT_SCHEMA as _ISSUER_DIRECTORY_AUDIT_SCHEMA,
+    IssuerDirectoryCandidateAuditError,
+    audit_issuer_directory_candidate_root,
+    build_quarterly_candidate_directory_comparison,
+)
 from data_module.source_acceptance_decision_registry import (
     SourceAcceptanceDecisionRevision,
     parse_source_acceptance_decisions,
@@ -119,6 +125,7 @@ class ResearchConsoleSourceService:
         p0_decision_provider: P0DecisionProvider | None = None,
         p0_decision_path: str | Path | None = None,
         p0_quarterly_candidate_root: str | Path | None = None,
+        p0_issuer_directory_candidate_root: str | Path | None = None,
         clock: ClockProvider | None = None,
         max_projection_age: timedelta = _DEFAULT_MAX_PROJECTION_AGE,
     ) -> None:
@@ -158,6 +165,19 @@ class ResearchConsoleSourceService:
             else None
         )
         self._p0_quarterly_candidate_root_default = self._p0_quarterly_candidate_root
+        configured_directory_root = (
+            p0_issuer_directory_candidate_root
+            if p0_issuer_directory_candidate_root is not None
+            else os.environ.get("P0_ISSUER_DIRECTORY_CANDIDATE_ROOT")
+        )
+        self._p0_issuer_directory_candidate_root = (
+            Path(configured_directory_root).expanduser().resolve()
+            if configured_directory_root
+            else None
+        )
+        self._p0_issuer_directory_candidate_root_default = (
+            self._p0_issuer_directory_candidate_root
+        )
         self._p0_control_center_service = P0SourceControlCenterService()
         if max_projection_age <= timedelta(0):
             raise ValueError("max_projection_age must be positive")
@@ -175,6 +195,20 @@ class ResearchConsoleSourceService:
             self._p0_quarterly_candidate_root = self._p0_quarterly_candidate_root_default
             return
         self._p0_quarterly_candidate_root = Path(path).expanduser().resolve()
+
+    @property
+    def p0_issuer_directory_candidate_root(self) -> Path | None:
+        return self._p0_issuer_directory_candidate_root
+
+    def set_p0_issuer_directory_candidate_root(self, path: str | Path | None) -> None:
+        """設定本次執行唯讀檢查的 issuer 名錄候選；不保存設定或改寫輸入。"""
+
+        if path is None or not str(path).strip():
+            self._p0_issuer_directory_candidate_root = (
+                self._p0_issuer_directory_candidate_root_default
+            )
+            return
+        self._p0_issuer_directory_candidate_root = Path(path).expanduser().resolve()
 
     def inspect(
         self,
@@ -441,7 +475,7 @@ class ResearchConsoleSourceService:
             if not isinstance(parsed_license, Mapping):
                 raise TypeError("P0 license evidence artifact must be an object")
             license_evidence = parsed_license  # type: ignore[assignment]
-        quarterly_candidate_audit: Mapping[str, Any] | None = None
+        quarterly_candidate_audit: dict[str, Any] | None = None
         candidate_root = self._p0_quarterly_candidate_root
         if candidate_root is not None:
             check_read_cancelled()
@@ -480,6 +514,118 @@ class ResearchConsoleSourceService:
                     ],
                     "errors": [str(exc).split(":", 1)[0]],
                 }
+        directory_audit: dict[str, Any] | None = None
+        directory_root = self._p0_issuer_directory_candidate_root
+        if directory_root is not None:
+            check_read_cancelled()
+            try:
+                directory_audit = audit_issuer_directory_candidate_root(
+                    directory_root
+                ).to_dict()
+            except IssuerDirectoryCandidateAuditError as exc:
+                directory_audit = {
+                    "schema_version": _ISSUER_DIRECTORY_AUDIT_SCHEMA,
+                    "candidate_only": True,
+                    "formal_db_write": False,
+                    "source_acceptance": False,
+                    "gate_credit": False,
+                    "downstream_eligibility": "none",
+                    "resources": [],
+                    "entries": [],
+                    "directory_dates_by_market": {"TWSE": [], "TPEx": []},
+                    "limitations": [
+                        "明確選取的名錄候選未通過離線 manifest／檔案驗證。",
+                        "本次不將名錄候選視為來源接受、Gate credit 或下游可用資料。",
+                    ],
+                    "errors": [str(exc).split(":", 1)[0]],
+                }
+        if (
+            quarterly_candidate_audit is not None
+            and directory_audit is not None
+            and not quarterly_candidate_audit.get("errors")
+            and not directory_audit.get("errors")
+        ):
+            try:
+                quarterly_candidate_audit["issuer_directory_candidate_audit"] = (
+                    directory_audit
+                )
+                quarterly_candidate_audit["coverage_comparison"] = (
+                    build_quarterly_candidate_directory_comparison(
+                        quarterly_audit=quarterly_candidate_audit,
+                        directory_audit=directory_audit,
+                    )
+                )
+            except IssuerDirectoryCandidateAuditError as exc:
+                quarterly_candidate_audit["coverage_comparison"] = {
+                    "schema_version": "baldr.quarterly_candidate_directory_comparison.v1",
+                    "candidate_only": True,
+                    "formal_db_write": False,
+                    "source_acceptance": False,
+                    "gate_credit": False,
+                    "downstream_eligibility": "none",
+                    "comparison_scope": "currently_selected_quarterly_candidate_root_only",
+                    "complete": False,
+                    "summary_by_market": {},
+                    "rows": [],
+                    "limitations": [
+                        "候選資料未通過逐公司名錄對照條件；不顯示部分結果以免誤讀。"
+                    ],
+                    "errors": [str(exc).split(":", 1)[0]],
+                }
+        elif quarterly_candidate_audit is not None and directory_audit is not None:
+            quarterly_candidate_audit["issuer_directory_candidate_audit"] = directory_audit
+            quarterly_candidate_audit["coverage_comparison"] = {
+                "schema_version": "baldr.quarterly_candidate_directory_comparison.v1",
+                "candidate_only": True,
+                "formal_db_write": False,
+                "source_acceptance": False,
+                "gate_credit": False,
+                "downstream_eligibility": "none",
+                "comparison_scope": "currently_selected_quarterly_candidate_root_only",
+                "complete": False,
+                "summary_by_market": {},
+                "rows": [],
+                "limitations": ["名錄候選未通過離線檔案驗證；不顯示比較結果。"],
+                "errors": directory_audit.get("errors", []),
+            }
+        elif quarterly_candidate_audit is None and directory_audit is not None:
+            quarterly_candidate_audit = {
+                "schema_version": _QUARTERLY_CANDIDATE_AUDIT_SCHEMA,
+                "source_id": "pit.quarterly_financials",
+                "candidate_only": True,
+                "formal_db_write": False,
+                "source_acceptance": False,
+                "gate_credit": False,
+                "downstream_eligibility": "none",
+                "overall_state": "not_selected",
+                "summary": {
+                    "resource_count": 0,
+                    "available_resource_count": 0,
+                    "empty_response_resource_count": 0,
+                    "missing_resource_count": 0,
+                    "invalid_resource_count": 0,
+                    "summary_complete": False,
+                    "row_count": None,
+                    "unique_issuer_resource_count": None,
+                    "duplicate_business_key_count": None,
+                },
+                "resources": [],
+                "issuer_directory_candidate_audit": directory_audit,
+                "coverage_comparison": {
+                    "schema_version": "baldr.quarterly_candidate_directory_comparison.v1",
+                    "candidate_only": True,
+                    "formal_db_write": False,
+                    "source_acceptance": False,
+                    "gate_credit": False,
+                    "downstream_eligibility": "none",
+                    "comparison_scope": "currently_selected_quarterly_candidate_root_only",
+                    "complete": False,
+                    "summary_by_market": {},
+                    "rows": [],
+                    "limitations": ["尚未選取季度財報候選目錄；目前只驗證名錄候選。"],
+                    "errors": ["quarterly_candidate_not_selected"],
+                },
+            }
         return self._p0_control_center_service.build(
             candidate_audit=audit,
             license_evidence=license_evidence,

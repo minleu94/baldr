@@ -427,6 +427,37 @@ class ResearchConsoleView(QWidget):
         quarterly_controls.addWidget(self.quarterly_candidate_root_label, stretch=1)
         quarterly_controls.addWidget(self.choose_quarterly_candidate_root_button)
         quarterly_controls.addWidget(self.reset_quarterly_candidate_root_button)
+        directory_controls = QHBoxLayout()
+        self.issuer_directory_candidate_root_label = QLabel()
+        self.issuer_directory_candidate_root_label.setWordWrap(True)
+        self.issuer_directory_candidate_root_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.choose_issuer_directory_candidate_root_button = QPushButton(
+            "選擇公司名錄候選目錄…"
+        )
+        self.choose_issuer_directory_candidate_root_button.setToolTip(
+            "只讀取已封存的 TWSE／TPEx 名錄 manifest 與 CSV；不連網、不匯入、不改檔或授予資格。"
+        )
+        self.choose_issuer_directory_candidate_root_button.clicked.connect(
+            self._choose_issuer_directory_candidate_root
+        )
+        self.reset_issuer_directory_candidate_root_button = QPushButton("還原啟動設定")
+        self.reset_issuer_directory_candidate_root_button.clicked.connect(
+            self._reset_issuer_directory_candidate_root
+        )
+        has_directory_selector = callable(
+            getattr(self.source_service, "set_p0_issuer_directory_candidate_root", None)
+        )
+        self.choose_issuer_directory_candidate_root_button.setEnabled(
+            has_directory_selector
+        )
+        self.reset_issuer_directory_candidate_root_button.setEnabled(
+            has_directory_selector
+        )
+        directory_controls.addWidget(self.issuer_directory_candidate_root_label, stretch=1)
+        directory_controls.addWidget(self.choose_issuer_directory_candidate_root_button)
+        directory_controls.addWidget(self.reset_issuer_directory_candidate_root_button)
         self.quarterly_candidate_summary_label = QLabel(
             "未選擇候選目錄；來源資格維持 none。"
         )
@@ -482,8 +513,11 @@ class ResearchConsoleView(QWidget):
             Qt.TextSelectableByMouse
         )
         self._quarterly_candidate_resources: list[dict[str, Any]] = []
+        self._quarterly_coverage_rows: list[dict[str, Any]] = []
         self._update_quarterly_candidate_root_label()
+        self._update_issuer_directory_candidate_root_label()
         quarterly_panel.layout.addLayout(quarterly_controls)
+        quarterly_panel.layout.addLayout(directory_controls)
         quarterly_panel.layout.addWidget(self.quarterly_candidate_summary_label)
         quarterly_panel.layout.addWidget(self.quarterly_resource_table)
         self.quarterly_resource_next_step_label = QLabel(
@@ -501,6 +535,41 @@ class ResearchConsoleView(QWidget):
         quarterly_panel.layout.addWidget(self.quarterly_row_profile_summary_label)
         quarterly_panel.layout.addWidget(self.quarterly_row_profile_table)
         quarterly_panel.layout.addWidget(self.quarterly_row_profile_detail_label)
+        quarterly_panel.layout.addWidget(QLabel("目前候選與名錄的逐代號差異（僅近時點檔案對照）"))
+        self.quarterly_coverage_summary_label = QLabel(
+            "選取季度候選與公司名錄候選後，才會顯示逐代號對照。"
+        )
+        self.quarterly_coverage_summary_label.setWordWrap(True)
+        quarterly_panel.layout.addWidget(self.quarterly_coverage_summary_label)
+        self.quarterly_coverage_filter = QLineEdit()
+        self.quarterly_coverage_filter.setPlaceholderText("篩選代號、公司名稱或產業代碼…")
+        self.quarterly_coverage_filter.setClearButtonEnabled(True)
+        self.quarterly_coverage_filter.textChanged.connect(
+            self._filter_quarterly_coverage_rows
+        )
+        coverage_filters = QHBoxLayout()
+        self.quarterly_coverage_filter_mode = QComboBox()
+        self.quarterly_coverage_filter_mode.addItems(("只看差異", "顯示全部代號"))
+        self.quarterly_coverage_filter_mode.currentIndexChanged.connect(
+            lambda _index: self._filter_quarterly_coverage_rows(
+                self.quarterly_coverage_filter.text()
+            )
+        )
+        coverage_filters.addWidget(self.quarterly_coverage_filter, stretch=1)
+        coverage_filters.addWidget(self.quarterly_coverage_filter_mode)
+        quarterly_panel.layout.addLayout(coverage_filters)
+        self.quarterly_coverage_table = _table(
+            ("市場", "公司代號", "名錄公司名稱", "目錄產業碼", "檔案對照")
+        )
+        quarterly_panel.layout.addWidget(self.quarterly_coverage_table)
+        self.quarterly_coverage_detail_label = QLabel(
+            "名錄有而目前季報候選未見，不代表未申報或漏抓。"
+        )
+        self.quarterly_coverage_detail_label.setWordWrap(True)
+        self.quarterly_coverage_detail_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        quarterly_panel.layout.addWidget(self.quarterly_coverage_detail_label)
         gates_panel.layout.addWidget(quarterly_panel)
         gates_panel.layout.addWidget(QLabel("Artifact Inspector"))
         gates_panel.layout.addWidget(self.artifact_table)
@@ -977,6 +1046,42 @@ class ResearchConsoleView(QWidget):
             f"目前候選目錄：{root}" if root is not None else "目前候選目錄：未設定"
         )
 
+    def _update_issuer_directory_candidate_root_label(self) -> None:
+        root = getattr(self.source_service, "p0_issuer_directory_candidate_root", None)
+        self.issuer_directory_candidate_root_label.setText(
+            f"目前名錄候選：{root}" if root is not None else "目前名錄候選：未設定"
+        )
+
+    def _choose_issuer_directory_candidate_root(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "選擇已封存的 TWSE／TPEx 公司名錄候選目錄",
+            str(
+                getattr(self.source_service, "p0_issuer_directory_candidate_root", None)
+                or Path.home()
+            ),
+        )
+        if not selected:
+            return
+        setter = getattr(
+            self.source_service, "set_p0_issuer_directory_candidate_root", None
+        )
+        if not callable(setter):
+            return
+        setter(selected)
+        self._update_issuer_directory_candidate_root_label()
+        self.refresh_console()
+
+    def _reset_issuer_directory_candidate_root(self) -> None:
+        setter = getattr(
+            self.source_service, "set_p0_issuer_directory_candidate_root", None
+        )
+        if not callable(setter):
+            return
+        setter(None)
+        self._update_issuer_directory_candidate_root_label()
+        self.refresh_console()
+
     def _choose_quarterly_candidate_root(self) -> None:
         selected = QFileDialog.getExistingDirectory(
             self,
@@ -1031,6 +1136,7 @@ class ResearchConsoleView(QWidget):
             self.quarterly_row_profile_detail_label.setText(
                 "空白只表示 CSV 儲存格為空；不推定缺報、不適用或來源完整性。"
             )
+            self._render_quarterly_coverage_comparison(None)
             return
 
         summary = audit.get("summary")
@@ -1119,6 +1225,144 @@ class ResearchConsoleView(QWidget):
             self.quarterly_row_profile_detail_label.setText(
                 "空白只表示 CSV 儲存格為空；不推定缺報、不適用或來源完整性。"
             )
+        self._render_quarterly_coverage_comparison(audit.get("coverage_comparison"))
+
+    def _render_quarterly_coverage_comparison(self, value: object) -> None:
+        if not isinstance(value, dict):
+            self._quarterly_coverage_rows = []
+            self.quarterly_coverage_summary_label.setText(
+                "選取季度候選與公司名錄候選後，才會顯示逐代號對照。"
+            )
+            self.quarterly_coverage_table.setRowCount(0)
+            self.quarterly_coverage_detail_label.setText(
+                "此對照只描述明選的候選檔，不會推定缺報、漏抓、歷史母體或來源完整。"
+            )
+            return
+        rows = value.get("rows")
+        summaries = value.get("summary_by_market")
+        self._quarterly_coverage_rows = (
+            [item for item in rows if isinstance(item, dict)]
+            if isinstance(rows, list)
+            else []
+        )
+        if not isinstance(summaries, dict) or not summaries:
+            errors = value.get("errors")
+            error_text = _join_blockers(errors) if isinstance(errors, list) else ""
+            self.quarterly_coverage_summary_label.setText(
+                "逐代號對照未完成；目前不顯示部分差異。請確認已選取季度候選與名錄候選，並核對完整性。"
+                + (f" 原因：{error_text}" if error_text else "")
+            )
+        else:
+            summary_parts = []
+            directory_dates = value.get("directory_dates_by_market")
+            quarterly_periods = value.get("quarterly_periods_by_market")
+            quarterly_dates = value.get("quarterly_output_dates_by_market")
+            for market in ("TWSE", "TPEx"):
+                summary = summaries.get(market)
+                if not isinstance(summary, dict):
+                    continue
+                directory_date_values = (
+                    directory_dates.get(market, [])
+                    if isinstance(directory_dates, dict)
+                    else []
+                )
+                period_values = (
+                    quarterly_periods.get(market, [])
+                    if isinstance(quarterly_periods, dict)
+                    else []
+                )
+                quarterly_date_values = (
+                    quarterly_dates.get(market, [])
+                    if isinstance(quarterly_dates, dict)
+                    else []
+                )
+                summary_parts.append(
+                    "{market}：目錄觀測代號 {directory}｜目前候選觀測代號 {candidate}｜兩邊都有 {both}｜"
+                    "名錄有、目前候選未見 {directory_only}｜候選有、名錄未見 {candidate_only}".format(
+                        market=market,
+                        directory=summary.get("directory_issuer_count", "未知"),
+                        candidate=summary.get("quarterly_candidate_issuer_count", "未知"),
+                        both=summary.get("in_both_count", "未知"),
+                        directory_only=summary.get(
+                            "directory_only_in_current_comparison_count", "未知"
+                        ),
+                        candidate_only=summary.get(
+                            "quarterly_candidate_without_directory_match_count", "未知"
+                        ),
+                    )
+                )
+                summary_parts.append(
+                    "  名錄出表日：{directory_dates}｜目前候選期別：{periods}｜季報出表日：{quarterly_dates}".format(
+                        directory_dates="、".join(str(item) for item in directory_date_values)
+                        if isinstance(directory_date_values, list) and directory_date_values
+                        else "未提供",
+                        periods="、".join(str(item) for item in period_values)
+                        if isinstance(period_values, list) and period_values
+                        else "未提供",
+                        quarterly_dates="、".join(str(item) for item in quarterly_date_values)
+                        if isinstance(quarterly_date_values, list) and quarterly_date_values
+                        else "未提供",
+                    )
+                )
+            self.quarterly_coverage_summary_label.setText(
+                "\n".join(summary_parts)
+                + "\n口徑：只比較目前明選的季度候選目錄；名錄與季度 CSV 出表日不同，不是歷史母體。"
+                + (
+                    "\n目前季度候選含空回應、缺檔、無效或未完整 profile；差異只對照已完整解析的候選列。"
+                    if value.get("complete") is not True
+                    else ""
+                )
+            )
+        _set_rows(
+            self.quarterly_coverage_table,
+            (
+                (
+                    row.get("market", "未知"),
+                    row.get("code", "未知"),
+                    row.get("name") or "名錄未提供",
+                    row.get("industry_code") or "未提供",
+                    _quarterly_coverage_state(row.get("comparison_state")),
+                )
+                for row in self._quarterly_coverage_rows
+            ),
+            status_column=4,
+            status_dimension="data",
+        )
+        self._filter_quarterly_coverage_rows(self.quarterly_coverage_filter.text())
+        self.quarterly_coverage_detail_label.setText(
+            "名錄有而目前候選未見，只是這兩份不同日期快照的差異；不代表未申報、漏抓或應申報。"
+            "候選有而目前名錄未見，也可能是日期或 issuer 身分差異。來源接受、Gate 3 與 ML 資格均不變。"
+        )
+
+    def _filter_quarterly_coverage_rows(self, query: str) -> None:
+        normalized = query.strip().casefold()
+        visible_rows = []
+        for row in getattr(self, "_quarterly_coverage_rows", []):
+            if (
+                row.get("comparison_state") == "in_both"
+                and self.quarterly_coverage_filter_mode.currentIndex() == 0
+            ):
+                continue
+            haystack = " ".join(
+                str(row.get(key) or "")
+                for key in ("market", "code", "name", "industry_code", "comparison_state")
+            ).casefold()
+            if not normalized or normalized in haystack:
+                visible_rows.append(
+                    (
+                        row.get("market", "未知"),
+                        row.get("code", "未知"),
+                        row.get("name") or "名錄未提供",
+                        row.get("industry_code") or "未提供",
+                        _quarterly_coverage_state(row.get("comparison_state")),
+                    )
+                )
+        _set_rows(
+            self.quarterly_coverage_table,
+            visible_rows,
+            status_column=4,
+            status_dimension="data",
+        )
 
     def _render_quarterly_candidate_fields(self) -> None:
         row_index = self.quarterly_resource_table.currentRow()
@@ -1392,6 +1636,7 @@ class ResearchConsoleView(QWidget):
             self.quarterly_resource_table,
             self.quarterly_field_table,
             self.quarterly_row_profile_table,
+            self.quarterly_coverage_table,
             self.artifact_table,
             self.learning_table,
         ):
@@ -1441,6 +1686,15 @@ def _quarterly_audit_state(value: object) -> str:
         "partial": "候選資源不完整",
         "empty_response": "全部資源均無資料列",
         "invalid": "稽核無效或讀取失敗",
+        "not_selected": "尚未選取季度候選",
+    }.get(str(value), "未知")
+
+
+def _quarterly_coverage_state(value: object) -> str:
+    return {
+        "in_both": "名錄與目前候選皆有",
+        "directory_only_in_current_comparison": "名錄有／目前候選未見",
+        "quarterly_candidate_without_directory_match": "目前候選有／名錄未見",
     }.get(str(value), "未知")
 
 

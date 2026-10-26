@@ -31,6 +31,7 @@ def _formal_row(**overrides: str) -> dict[str, str]:
         "available_date": "2024-05-11",
         "source": "manual.statement_available_date_mapping",
         "source_version": "statement-availability-2026-06-17",
+        "target_source_version": "",
         "availability_contract_version": FORMAL_AVAILABILITY_CONTRACT_VERSION,
         "evidence_class": "official_announcement",
         "source_hash": f"sha256:{_HASH}",
@@ -58,6 +59,41 @@ def test_load_statement_availability_overrides_preserves_formal_announcement_con
     assert override.revision == 1
     assert override.provenance_mode == "formal_v2"
     assert result.diagnostics == ()
+
+
+def test_mops_mapping_requires_numeric_statement_target_version():
+    row = _formal_row(
+        source="mops.ezsearch.statement_publication",
+        target_source_version="",
+    )
+
+    result = load_statement_availability_overrides([row])
+
+    assert result.overrides == {}
+    assert result.diagnostics[0].code == (
+        "fundamental_statement_availability.target_source_version_missing"
+    )
+
+
+def test_mops_revision_chain_rejects_multiple_numeric_target_versions():
+    first = _formal_row(
+        source="mops.ezsearch.statement_publication",
+        target_source_version="numeric-v1",
+    )
+    second = _formal_row(
+        source="mops.ezsearch.statement_publication",
+        target_source_version="numeric-v2",
+        source_hash=f"sha256:{'b' * 64}",
+        revision="2",
+        parent_revision="1",
+    )
+
+    result = load_statement_availability_overrides([first, second])
+
+    assert result.overrides == {}
+    assert result.diagnostics[-1].code == (
+        "fundamental_statement_availability.target_source_version_ambiguous"
+    )
 
 
 def test_load_statement_availability_overrides_degrades_retroactive_baseline():
@@ -174,6 +210,27 @@ def test_load_statement_availability_overrides_csv_reads_governed_file(tmp_path)
     assert result.overrides[("2330", "income_statement", "2024-Q1")].available_date == date(
         2024, 5, 11
     )
+    assert result.diagnostics == ()
+
+
+def test_load_statement_availability_overrides_csv_keeps_legacy_manual_schema(tmp_path):
+    mapping_file = tmp_path / "legacy_statement_availability.csv"
+    row = _formal_row()
+    legacy_columns = tuple(
+        column for column in STATEMENT_AVAILABILITY_COLUMNS
+        if column != "target_source_version"
+    )
+    mapping_file.write_text(
+        ",".join(legacy_columns)
+        + "\n"
+        + ",".join(row[column] for column in legacy_columns)
+        + "\n",
+        encoding="utf-8-sig",
+    )
+
+    result = load_statement_availability_overrides_csv(mapping_file)
+
+    assert result.overrides[("2330", "income_statement", "2024-Q1")].target_source_version is None
     assert result.diagnostics == ()
 
 

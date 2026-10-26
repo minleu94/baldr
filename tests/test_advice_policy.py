@@ -62,6 +62,7 @@ def test_account_specific_position_cap_does_not_gate_strategy_advice() -> None:
         strategy_status="promoted",
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
         data_quality="OBSERVED",
         execution_feasible=True,
         risk_budget_available=True,
@@ -90,6 +91,34 @@ def test_guided_mode_rejects_incomplete_disclosure_even_when_parameters_are_lock
 
     assert decision.action is AdviceAction.NO_NEW_POSITION
     assert decision.reasons == ("guided_mode_strategy_disclosure_incomplete",)
+
+
+def test_guided_mode_requires_verified_strategy_advice_contract() -> None:
+    decision = AdvicePolicy().decide(
+        mode=AdviceMode.GUIDED,
+        strategy_status="promoted",
+        parameters_locked=True,
+        disclosure_complete=True,
+        data_quality="OBSERVED",
+        execution_feasible=True,
+    )
+
+    assert decision.action is AdviceAction.NO_NEW_POSITION
+    assert decision.reasons == (
+        "guided_mode_strategy_advice_contract_missing_or_unverified",
+    )
+
+
+def test_professional_promoted_strategy_does_not_require_guided_contract_gate() -> None:
+    decision = AdvicePolicy(AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL)).decide(
+        mode=AdviceMode.PROFESSIONAL,
+        strategy_status="promoted",
+        data_quality="OBSERVED",
+        execution_feasible=True,
+    )
+
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ()
 
 
 def test_invalid_or_missing_mode_fails_closed() -> None:
@@ -141,6 +170,7 @@ def test_exact_risk_boundaries_allow_add_candidate() -> None:
         target_weight_bp=1500,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
 
     assert decision.action is AdviceAction.ADD_CANDIDATE
@@ -159,6 +189,7 @@ def test_position_limit_does_not_gate_account_independent_strategy_advice() -> N
         target_weight_bp=1500,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
 
     assert decision.action is AdviceAction.ADD_CANDIDATE
@@ -176,6 +207,7 @@ def test_missing_or_degraded_data_returns_research() -> None:
         risk_budget_available=True,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
     degraded = policy.decide(
         mode=AdviceMode.GUIDED,
@@ -185,6 +217,7 @@ def test_missing_or_degraded_data_returns_research() -> None:
         risk_budget_available=True,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
 
     assert missing.action is AdviceAction.RESEARCH
@@ -202,6 +235,7 @@ def test_execution_infeasible_returns_avoid() -> None:
         risk_budget_available=True,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
 
     assert decision.action is AdviceAction.AVOID
@@ -216,6 +250,7 @@ def test_unknown_execution_feasibility_keeps_candidate_but_is_not_confirmed() ->
         execution_feasible=None,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
 
     assert decision.action is AdviceAction.ADD_CANDIDATE
@@ -231,6 +266,7 @@ def test_unavailable_risk_budget_does_not_gate_strategy_recommendation() -> None
         risk_budget_available=False,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
 
     assert decision.action is AdviceAction.ADD_CANDIDATE
@@ -264,6 +300,7 @@ def test_cash_and_single_position_limits_do_not_gate_strategy_recommendation() -
         target_weight_bp=1500,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
     oversized = policy.decide(
         mode=AdviceMode.GUIDED,
@@ -276,6 +313,7 @@ def test_cash_and_single_position_limits_do_not_gate_strategy_recommendation() -
         target_weight_bp=1501,
         parameters_locked=True,
         disclosure_complete=True,
+        strategy_advice_contract_verified=True,
     )
 
     assert low_cash.action is AdviceAction.ADD_CANDIDATE

@@ -16,6 +16,9 @@ from data_module.fundamental_availability import (
     FundamentalAvailabilityInput,
     resolve_fundamental_availability,
 )
+from data_module.mops_ezsearch_statement_availability import (
+    MOPS_STATEMENT_AVAILABILITY_SOURCE,
+)
 
 
 StatementAvailableDateKey = tuple[str, str, str]
@@ -67,12 +70,43 @@ def parse_statement_rows(
             )
             continue
 
+        availability_value = available_dates.get((stock_code, statement_type, period))
+        if (
+            isinstance(availability_value, StatementAvailabilityOverride)
+            and availability_value.source == MOPS_STATEMENT_AVAILABILITY_SOURCE
+        ):
+            target_source_version = availability_value.target_source_version
+            if not target_source_version:
+                diagnostics.append(
+                    _target_source_version_diagnostic(
+                        "missing",
+                        stock_code,
+                        statement_type,
+                        period,
+                        expected="non-empty numeric statement source_version",
+                        actual=source_version,
+                    )
+                )
+                continue
+            if target_source_version != source_version:
+                diagnostics.append(
+                    _target_source_version_diagnostic(
+                        "mismatch",
+                        stock_code,
+                        statement_type,
+                        period,
+                        expected=target_source_version,
+                        actual=source_version,
+                    )
+                )
+                continue
+
         availability = _resolve_statement_availability(
             stock_code=stock_code,
             statement_type=statement_type,
             period=period,
             as_of_date=as_of_date,
-            availability_value=available_dates.get((stock_code, statement_type, period)),
+            availability_value=availability_value,
             source=source,
         )
         diagnostics.extend(availability.diagnostics)
@@ -96,6 +130,31 @@ def parse_statement_rows(
         )
 
     return StatementItemParseResult(records=tuple(records), diagnostics=tuple(diagnostics))
+
+
+def _target_source_version_diagnostic(
+    outcome: str,
+    stock_code: str,
+    statement_type: str,
+    period: str,
+    *,
+    expected: str,
+    actual: str,
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
+        code=f"fundamental_statement_availability.target_source_version_{outcome}",
+        stock_code=stock_code,
+        message=(
+            "MOPS announcement was not applied because the numeric statement source version "
+            "does not match its explicit target binding; "
+            f"statement_type={statement_type}; period={period}; "
+            f"expected={expected}; actual={actual}"
+        ),
+        kind=SourceDiagnosticKind.STATEMENT_AVAILABILITY,
+        period=period,
+        source_id=MOPS_STATEMENT_AVAILABILITY_SOURCE,
+        source_version=actual,
+    )
 
 
 def _resolve_statement_availability(

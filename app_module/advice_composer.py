@@ -293,6 +293,9 @@ class AdviceComposer:
             strategy_status=strategy_status,
             parameters_locked=parameters_locked,
             disclosure_complete=disclosure_complete,
+            strategy_advice_contract_verified=(
+                advice_contract_snapshot is not None
+            ),
             data_quality=evidence_quality,
             execution_feasible=self._bool_or_none(execution_feasible),
             risk_budget_available=self._bool_or_none(risk_budget_available),

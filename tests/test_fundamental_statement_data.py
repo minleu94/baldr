@@ -75,6 +75,49 @@ def test_parse_statement_rows_builds_normalized_item_with_available_date():
     assert statement_item_quality(record) == FactorQuality.OBSERVED
 
 
+def test_parse_statement_rows_applies_mops_availability_only_to_bound_source_version():
+    row = {
+        "date": "2024-03-31",
+        "stock_id": "2330",
+        "type": "EPS",
+        "value": "2.30",
+        "origin_name": "基本每股盈餘（元）",
+    }
+    override = StatementAvailabilityOverride(
+        stock_code="2330",
+        statement_type="income_statement",
+        period="2024-Q1",
+        as_of_date=date(2024, 3, 31),
+        announced_date=date(2024, 5, 10),
+        available_date=date(2024, 5, 11),
+        source="mops.ezsearch.statement_publication",
+        source_version="mops-event-v1",
+        target_source_version="numeric-v1",
+    )
+
+    matched = parse_statement_rows(
+        [row],
+        statement_type="income_statement",
+        available_dates={("2330", "income_statement", "2024-Q1"): override},
+        source_version="numeric-v1",
+    )
+    mismatched = parse_statement_rows(
+        [row],
+        statement_type="income_statement",
+        available_dates={("2330", "income_statement", "2024-Q1"): override},
+        source_version="numeric-v2",
+    )
+
+    assert len(matched.records) == 1
+    assert matched.diagnostics == ()
+    assert mismatched.records == ()
+    assert mismatched.diagnostics[0].code == (
+        "fundamental_statement_availability.target_source_version_mismatch"
+    )
+    assert "expected=numeric-v1" in mismatched.diagnostics[0].message
+    assert "actual=numeric-v2" in mismatched.diagnostics[0].message
+
+
 def test_parse_statement_rows_reports_invalid_decimal():
     result = parse_statement_rows(
         [

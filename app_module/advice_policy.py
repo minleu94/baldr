@@ -29,6 +29,7 @@ class AdvicePolicy:
         target_weight_bp: int | None = None,
         parameters_locked: bool | None = None,
         disclosure_complete: bool | None = None,
+        strategy_advice_contract_verified: bool | None = None,
     ) -> AdvicePolicyDecision:
         """只判斷策略資格與輸入品質；帳戶欄位保留相容但不參與策略 action。"""
         if not isinstance(mode, AdviceMode) or not isinstance(self._config.mode, AdviceMode):
@@ -50,6 +51,14 @@ class AdvicePolicy:
 
         if execution_feasible is False:
             return AdvicePolicyDecision(AdviceAction.AVOID, ("execution_not_feasible",))
+        if (
+            mode is AdviceMode.GUIDED
+            and strategy_advice_contract_verified is not True
+        ):
+            return AdvicePolicyDecision(
+                AdviceAction.NO_NEW_POSITION,
+                ("guided_mode_strategy_advice_contract_missing_or_unverified",),
+            )
         # risk_budget／current positions／cash／target weight 屬於可選的
         # Portfolio sizing；不得把它們套成策略 Advice 的帳戶前置條件。
         return AdvicePolicyDecision(AdviceAction.ADD_CANDIDATE)

@@ -26,10 +26,12 @@ class StatementAvailabilityValidationResult:
     accepted_count: int
     source_versions: tuple[str, ...]
     diagnostics: tuple[SourceDiagnostic, ...] = ()
+    target_source_versions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_versions", tuple(self.source_versions))
         object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
+        object.__setattr__(self, "target_source_versions", tuple(self.target_source_versions))
 
     def to_markdown(self) -> str:
         return "\n".join(
@@ -39,6 +41,7 @@ class StatementAvailabilityValidationResult:
                 f"- valid: {str(self.valid).lower()}",
                 f"- accepted_count: {self.accepted_count}",
                 f"- source_versions: {', '.join(self.source_versions) or 'none'}",
+                f"- target_source_versions: {', '.join(self.target_source_versions) or 'none'}",
                 f"- diagnostics: {len(self.diagnostics)}",
             ]
         )
@@ -72,6 +75,15 @@ def validate_statement_availability_file(
         accepted_count=len(accepted),
         source_versions=tuple(sorted({item.source_version for item in accepted})),
         diagnostics=tuple(diagnostics),
+        target_source_versions=tuple(
+            sorted(
+                {
+                    item.target_source_version
+                    for item in accepted
+                    if item.target_source_version
+                }
+            )
+        ),
     )
 
 

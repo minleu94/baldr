@@ -29,7 +29,10 @@ from app_module.workbench_dtos import (
     WorkbenchDashboardDTO,
     WorkbenchDailyEvidence,
 )
-from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
+from ui_qt.views.workbench_view import (
+    UnifiedDecisionWorkbenchView,
+    _advice_warning_text,
+)
 
 
 def _app() -> QApplication:
@@ -109,6 +112,12 @@ def test_workbench_renders_advice_dto_without_policy_execution() -> None:
     assert view.advice_recommendation_model.data(feasibility_index, Qt.ToolTipRole) == "原始值：NOT_FEASIBLE"
     assert "Advice 僅呈現已注入 DTO、不執行 Policy" in view.boundary_banner.text()
     assert view.advice_portfolio_model.rowCount() == 1
+    assert _advice_warning_text(
+        "guided_mode_strategy_advice_contract_missing_or_unverified"
+    ) == (
+        "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選；"
+        "請以新的合格回測升版並填妥契約，再選用該新版本執行。"
+    )
     assert view.advice_portfolio_model.data(
         view.advice_portfolio_model.index(0, view.advice_portfolio_model.column_index("target_weight_bp"))
     ) == "0"

@@ -7,7 +7,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import QDate
-from PySide6.QtWidgets import QApplication, QComboBox, QDateEdit, QLabel, QSpinBox, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QDateEdit,
+    QDialog,
+    QDialogButtonBox,
+    QLabel,
+    QSpinBox,
+    QWidget,
+)
 
 import decision_module.strategies  # noqa: F401：載入實際內建策略登記。
 from decision_module.strategies.registry import StrategyRegistry
@@ -145,6 +154,38 @@ def test_rule_card_button_uses_registered_version_without_filling_missing_contra
     assert {"entry", "exit", "cost"}.issubset(set(card["missing"]))
     assert card["performance_status"] == "not_evaluable"
     assert card["fields"]["parameters"]["value"] == view.params
+    view.close()
+
+
+def test_skipping_advice_contract_explains_guided_consequence_and_new_version_path(
+    qapp, monkeypatch
+):
+    view = _BacktestHarness("momentum_aggressive_v1")
+    captured: dict[str, object] = {}
+
+    class CapturingDialog(QDialog):
+        def exec(self):
+            captured["labels"] = tuple(
+                label.text() for label in self.findChildren(QLabel)
+            )
+            captured["buttons"] = tuple(
+                button.text()
+                for box in self.findChildren(QDialogButtonBox)
+                for button in box.buttons()
+            )
+            return 2  # 此路徑模擬使用者選擇略過，而非提交契約。
+
+    monkeypatch.setattr(backtest_view_module, "QDialog", CapturingDialog)
+    should_promote, contract = BacktestView._collect_strategy_advice_contract(view)
+
+    assert should_promote is True
+    assert contract is None
+    text = "\n".join((*captured["labels"], *captured["buttons"]))
+    assert "略過會建立沒有 Advice 契約的版本" in text
+    assert "策略版本的契約欄位只能建立時保存，不能事後補綁" in text
+    assert "該版本也不會輸出 Guided 新增候選" in text
+    assert "新的合格回測升版時填妥契約" in text
+    assert "略過（此版本無 Guided 新增候選）" in captured["buttons"]
     view.close()
 
 

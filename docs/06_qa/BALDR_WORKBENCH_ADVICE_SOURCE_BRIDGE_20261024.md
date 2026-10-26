@@ -1,5 +1,13 @@
 # Workbench Advice 排程候選接線 — 2026-10-24
 
+## 2026-10-26 Guided Advice 缺策略契約時 fail closed
+
+修正一個會讓正式 Guided Advice 在沒有已核驗策略作者契約時仍輸出 `ADD_CANDIDATE` 的決策缺口。Guided 策略需已 promoted、鎖定參數、揭露完整、資料已觀測、執行可行狀態未明確否決，且 Advice 契約來自同一個 canonical verified execution，才允許輸出新增候選。缺少或無法核驗精確版本契約時輸出 `NO_NEW_POSITION`，原因為 `guided_mode_strategy_advice_contract_missing_or_unverified`；Professional 模式不套用此 Guided 契約 Gate，候選仍為 `RESEARCH`。帳戶預算與手動持倉不受影響。
+
+契約快照本身由 `StrategyAdviceContract` 驗證論點、失效條件、持有期間、檢視頻率與 canonical SHA；execution context 再將其綁定 `strategy_version_id`。AdviceComposer 只從 `canonical_payload_and_index_verified` 的 exact read model 取用，legacy、未核驗或缺快照均不算通過。Workbench 將拒絕原因翻成白話；不推測或自動填寫契約內容。
+
+驗收紀錄（2026-10-26）：Windows owned Job 可用 RAM 預檢 24.12 GiB；Job 上限實際讀回 8 GiB committed memory、12 個程序，kill-on-close 與工作區互斥鎖正常。Advice policy/composer/workbench/report 及升版略過提示回歸 **147 passed、1 deselected**；deselected 是會啟動 MainWindow 並讀取 sandbox 外正式 ML research storage 的既有整合測試，sandbox 中設定的 `baldr/research_state` 路徑不存在。更新頁必跑 workbench pytest **93 passed**；全域 mypy、11 個修改 Python 檔 `py_compile`、Feature Document Map 結構檢查均 exit 0。更新頁 validator 使用既有 `BALDR_UPDATE_TAB_QA_LOG_DIR` 將日誌及報告留在隔離目錄，結果 **25 passed／0 failed／4 skipped**。聚焦回歸首次發現 stock report 共用呈現卡露出機器原因碼，已修正共用標籤並重跑通過；升版略過提示也已有回歸，明示舊版本不可補綁及建立新版本所需路徑。收據及原始輸出保存在本機隔離目錄 `.tmp_guided_advice_qa_artifacts/`，未納入正式資料。這些證據只驗證契約 fail-closed 與文案，不代表 Gate 1 完成，也未變更財務資料、Gate 授權或 ML 資格。
+
 ## 2026-10-26 Gate 1 Advice 未知欄位與來源追溯完整性
 
 Workbench Advice 完整性摘要之前把任何非空字串算作已填，造成 `liquidity_state=UNKNOWN`、`execution_feasibility=UNAVAILABLE` 等尚未可判讀的必要狀態從缺件清單消失；必要欄位也漏掉 `source_trace`。現在空字串、`UNKNOWN`、`UNAVAILABLE`、`NOT_PROVIDED`、`N/A`、中文「未知／未提供」都視為待補；tuple/list 逐項檢查。必要欄位加入來源追溯，精確結果 ID 或具體來源／拒絕依據才算有效，單獨來源型別名稱不算。`GATE_FAIL`、`NOT_FEASIBLE`、`MISSING` 等已知負向狀態仍按已知值呈現，不表示正向證據或通過。

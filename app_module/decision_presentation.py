@@ -705,7 +705,10 @@ class DecisionPresentationService:
         if not evidence_confidence:
             evidence_confidence = str(getattr(advice, "evidence_confidence", "") or "")
         reasons = _strings((*advice.why_reasons, advice.entry_thesis))
-        warnings = _strings((*advice.warnings, *advice.refusal_reasons))
+        warnings = tuple(
+            decision_reason_label(item)
+            for item in _strings((*advice.warnings, *advice.refusal_reasons))
+        )
         return DecisionPresentationDTO(
             stock_code=advice.stock_code,
             ranking_score=_decimal(ranking_score),
@@ -725,7 +728,7 @@ class DecisionPresentationService:
             cost_basis=_decimal(cost_basis),
             cost_basis_bp=cost_basis_bp,
             reasons=reasons,
-            risks=_strings(advice.risk_reasons),
+            risks=tuple(decision_reason_label(item) for item in _strings(advice.risk_reasons)),
             invalidation_conditions=_strings(advice.invalidation_conditions),
             decision_date=advice.decision_date,
             data_as_of_date=advice.data_as_of_date,
@@ -1001,6 +1004,18 @@ def _quality_label(value: str) -> str:
         "research": "研究中",
         "unavailable": "不可用",
     }.get(str(value).lower(), str(value) or "未知")
+
+
+def decision_reason_label(value: str) -> str:
+    """將已知 Advice policy reason 轉成白話；未知來源碼原樣保留。"""
+
+    token = str(value or "").strip()
+    return {
+        "guided_mode_strategy_advice_contract_missing_or_unverified": (
+            "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選；"
+            "請以新的合格回測升版並填妥契約，再選用該新版本執行。"
+        ),
+    }.get(token, token or "未提供")
 
 
 def _action_label(value: str) -> str:

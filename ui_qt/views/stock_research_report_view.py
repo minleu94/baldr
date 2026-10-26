@@ -86,6 +86,7 @@ from app_module.stock_research_report_dtos import (
 )
 from app_module.decision_presentation import (
     DecisionPresentationService,
+    decision_reason_label,
     format_decision_presentation,
 )
 from app_module.decision_continuity_controller import DecisionContinuityController
@@ -5081,10 +5082,19 @@ class StockResearchReportView(QWidget):
         for title, values in (
             ("觸發條件／進場論點", (rec.entry_thesis,) if rec.entry_thesis else ()),
             ("支持理由", rec.why_reasons),
-            ("反對證據／政策限制", rec.why_not_reasons),
+            (
+                "反對證據／政策限制",
+                tuple(decision_reason_label(value) for value in rec.why_not_reasons),
+            ),
             ("失效條件", rec.invalidation_conditions),
-            ("主要風險", rec.risk_reasons),
-            ("警告／拒絕理由", (*rec.warnings, *rec.refusal_reasons)),
+            ("主要風險", tuple(decision_reason_label(value) for value in rec.risk_reasons)),
+            (
+                "警告／拒絕理由",
+                tuple(
+                    decision_reason_label(value)
+                    for value in (*rec.warnings, *rec.refusal_reasons)
+                ),
+            ),
         ):
             if values:
                 layout.addWidget(self._wrapped_label(f"{title}：" + "；".join(values)))

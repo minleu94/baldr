@@ -3205,7 +3205,9 @@ class BacktestView(QWidget):
         dialog.setMinimumWidth(620)
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel(
-            "請由策略作者填寫版本化建議依據。這些內容不會由回測績效或推薦理由自動產生。"
+            "請由策略作者填寫版本化建議依據；內容不會由回測績效或推薦理由自動產生。"
+            "略過會建立沒有 Advice 契約的版本；策略版本的契約欄位只能建立時保存，不能事後補綁，該版本也不會輸出 Guided 新增候選。"
+            "若要使用 Guided，請在新的合格回測升版時填妥契約。"
         ))
 
         form = QFormLayout()
@@ -3232,7 +3234,7 @@ class BacktestView(QWidget):
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         skip_button = button_box.addButton(
-            "略過契約並繼續升版",
+            "略過（此版本無 Guided 新增候選）",
             QDialogButtonBox.ButtonRole.ActionRole,
         )
         layout.addWidget(button_box)

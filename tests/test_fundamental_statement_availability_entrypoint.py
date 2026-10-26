@@ -10,7 +10,7 @@ from data_module.fundamental_statement_availability_entrypoint import (
 _HASH = "a" * 64
 _FORMAL_HEADER = (
     "stock_code,statement_type,period,as_of_date,announced_date,available_date,source,"
-    "source_version,availability_contract_version,evidence_class,source_hash,revision,"
+    "source_version,target_source_version,availability_contract_version,evidence_class,source_hash,revision,"
     "parent_revision\n"
 )
 
@@ -25,6 +25,7 @@ def _formal_csv_row(
     available_date: str = "2024-05-11",
     source: str = "manual.statement_available_date_mapping",
     source_version: str = "statement-availability-2026-06-17",
+    target_source_version: str = "",
     evidence_class: str = "official_announcement",
     source_hash: str = f"sha256:{_HASH}",
     revision: str = "1",
@@ -40,6 +41,7 @@ def _formal_csv_row(
             available_date,
             source,
             source_version,
+            target_source_version,
             FORMAL_AVAILABILITY_CONTRACT_VERSION,
             evidence_class,
             source_hash,
@@ -58,6 +60,7 @@ def test_validate_statement_availability_file_accepts_governed_source(tmp_path):
     assert result.valid is True
     assert result.accepted_count == 1
     assert result.diagnostics == ()
+    assert result.target_source_versions == ()
 
 
 def test_validate_statement_availability_file_rejects_local_first_seen_evidence(tmp_path):
@@ -149,6 +152,7 @@ def test_validate_statement_availability_file_accepts_late_official_mops_publica
             available_date="2026-07-28",
             source="mops.ezsearch.statement_publication",
             source_version="mops-ezsearch-statement-publication.v1",
+            target_source_version="financial-data-2025-q4-v2",
         ),
         encoding="utf-8-sig",
     )
@@ -158,3 +162,25 @@ def test_validate_statement_availability_file_accepts_late_official_mops_publica
     assert result.valid is True
     assert result.accepted_count == 1
     assert result.diagnostics == ()
+    assert result.target_source_versions == ("financial-data-2025-q4-v2",)
+    assert "target_source_versions: financial-data-2025-q4-v2" in result.to_markdown()
+
+
+def test_validate_statement_availability_file_rejects_unbound_mops_publication(tmp_path):
+    mapping_file = tmp_path / "fundamental_statement_availability.csv"
+    mapping_file.write_text(
+        _FORMAL_HEADER
+        + _formal_csv_row(
+            source="mops.ezsearch.statement_publication",
+            source_version="mops-ezsearch-statement-publication.v1",
+        ),
+        encoding="utf-8-sig",
+    )
+
+    result = validate_statement_availability_file(mapping_file)
+
+    assert result.valid is False
+    assert result.accepted_count == 0
+    assert result.diagnostics[0].code == (
+        "fundamental_statement_availability.target_source_version_missing"
+    )

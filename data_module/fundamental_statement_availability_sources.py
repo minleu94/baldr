@@ -32,6 +32,7 @@ _BASE_STATEMENT_AVAILABILITY_COLUMNS = (
     "source",
     "source_version",
 )
+_OPTIONAL_STATEMENT_AVAILABILITY_COLUMNS = ("target_source_version",)
 STATEMENT_FORMAL_PROVENANCE_COLUMNS = (
     "availability_contract_version",
     "evidence_class",
@@ -41,6 +42,7 @@ STATEMENT_FORMAL_PROVENANCE_COLUMNS = (
 )
 STATEMENT_AVAILABILITY_COLUMNS = (
     *_BASE_STATEMENT_AVAILABILITY_COLUMNS,
+    *_OPTIONAL_STATEMENT_AVAILABILITY_COLUMNS,
     *STATEMENT_FORMAL_PROVENANCE_COLUMNS,
 )
 STATEMENT_FORMAL_AVAILABILITY_SOURCES = frozenset(
@@ -96,6 +98,7 @@ def load_statement_availability_overrides(
         period = row.get("period", "").strip()
         source = row.get("source", "").strip()
         source_version = row.get("source_version", "").strip()
+        target_source_version = row.get("target_source_version", "").strip() or None
 
         if source in RAW_STATEMENT_SOURCES:
             diagnostics.append(
@@ -107,6 +110,21 @@ def load_statement_availability_overrides(
                         "available_date source; "
                         f"statement_type={statement_type}; period={period}"
                     ),
+                )
+            )
+            continue
+
+        if (
+            source == "mops.ezsearch.statement_publication"
+            and target_source_version is None
+        ):
+            diagnostics.append(
+                _provenance_diagnostic(
+                    "target_source_version_missing",
+                    stock_code,
+                    statement_type,
+                    period,
+                    "MOPS announcement mapping must bind to the numeric statement source_version",
                 )
             )
             continue
@@ -175,6 +193,7 @@ def load_statement_availability_overrides(
             available_date=resolution.available_date,
             source=source,
             source_version=source_version,
+            target_source_version=target_source_version,
             evidence_class=(
                 "retroactive_baseline" if provenance is None else provenance.evidence_class
             ),
@@ -417,6 +436,20 @@ def _select_latest_formal_revision(
 
     if issues:
         return None, tuple(issues)
+
+    target_versions = {
+        candidate.target_source_version
+        for candidate in candidates
+        if candidate.source == "mops.ezsearch.statement_publication"
+    }
+    if len(target_versions) > 1:
+        return None, (
+            (
+                "target_source_version_ambiguous",
+                "MOPS revisions for the same natural key bind to multiple numeric source versions; "
+                f"found={sorted(target_versions)}",
+            ),
+        )
 
     revisions = sorted(by_revision)
     if revisions != list(range(1, len(revisions) + 1)):

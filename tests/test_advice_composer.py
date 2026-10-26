@@ -115,7 +115,7 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
 
     recommendation = result.recommendations[0]
     portfolio = result.portfolio_rows[0]
-    assert recommendation.advice_action is AdviceAction.ADD_CANDIDATE
+    assert recommendation.advice_action is AdviceAction.NO_NEW_POSITION
     assert recommendation.source_trace == ("RecommendationResultDTO", "rec-20260712-001")
     assert recommendation.source_result_id == "rec-20260712-001"
     assert recommendation.source_payload_sha256 is None
@@ -123,9 +123,12 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     assert recommendation.decision_date == "2026-07-12"
     assert recommendation.data_as_of_date == "2026-07-11"
     assert recommendation.why_reasons == ("技術型態完整", "量能支持")
-    assert recommendation.why_not_reasons == ()
+    assert recommendation.why_not_reasons == (
+        "guided_mode_strategy_advice_contract_missing_or_unverified",
+    )
     assert recommendation.risk_reasons == (
         "evidence_freshness_review_required",
+        "guided_mode_strategy_advice_contract_missing_or_unverified",
     )
     assert portfolio.target_weight_bp == 1500
     assert portfolio.current_weight_bp == 500
@@ -172,7 +175,10 @@ def test_composer_projects_only_exact_stock_saved_screening_and_risk_evidence() 
 
     advice = result.recommendations[0]
     assert advice.stock_code == "2330"
-    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
+    assert advice.advice_action is AdviceAction.NO_NEW_POSITION
+    assert advice.why_not_reasons == (
+        "guided_mode_strategy_advice_contract_missing_or_unverified",
+    )
     assert advice.liquidity_state == "UNKNOWN"
     assert advice.source_evidence == (
         "篩選：階段=legacy:technical_gate；結果=通過；資料品質=已觀測",
@@ -360,7 +366,10 @@ def test_strategy_advice_does_not_require_account_budget_or_position_inputs() ->
     )
 
     advice = result.recommendations[0]
-    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
+    assert advice.advice_action is AdviceAction.NO_NEW_POSITION
+    assert advice.why_not_reasons == (
+        "guided_mode_strategy_advice_contract_missing_or_unverified",
+    )
     assert advice.execution_feasibility == "UNKNOWN"
     assert "risk_budget_not_confirmed" not in advice.risk_reasons
     assert "execution_feasibility_not_confirmed" in advice.risk_reasons
@@ -455,7 +464,12 @@ def test_composer_omits_unsafe_source_result_identity() -> None:
 
 def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() -> None:
     from app_module.advice_composer import AdviceComposer
-    from app_module.recommendation.contracts import StrategyAdviceContractSnapshot
+    import hashlib
+    import json
+    from app_module.recommendation.contracts import (
+        RecommendationResultConfigSnapshot,
+        StrategyAdviceContractSnapshot,
+    )
     from app_module.recommendation.queries import RecommendationExecutionReadModel
     from app_module.strategy_advice_contract import StrategyAdviceContract
 
@@ -470,10 +484,27 @@ def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() 
         contract_sha256=contract.contract_sha256,
         contract=contract,
     )
+    config_payload = {
+        "strategy_status": "promoted",
+        "parameters_locked": True,
+        "disclosure_complete": True,
+    }
+    raw_config = json.dumps(
+        config_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    config_snapshot = RecommendationResultConfigSnapshot(
+        raw_result_config_json=raw_config,
+        config_sha256=(
+            "sha256:" + hashlib.sha256(raw_config.encode("utf-8")).hexdigest()
+        ),
+    )
     execution = SimpleNamespace(
         result_id="canonical-advice-contract-result",
         context=SimpleNamespace(
-            result_config_snapshot=None,
+            result_config_snapshot=config_snapshot,
             strategy_identity=SimpleNamespace(strategy_version_id="version-1"),
             advice_contract_snapshot=snapshot,
         ),
@@ -521,6 +552,7 @@ def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() 
         mode=AdviceMode.GUIDED,
     ).recommendations[0]
 
+    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
     assert advice.entry_thesis == contract.thesis
     assert advice.invalidation_conditions == contract.invalidation_conditions
     assert advice.holding_horizon == contract.holding_horizon
@@ -550,6 +582,10 @@ def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() 
         mode=AdviceMode.GUIDED,
     ).recommendations[0]
     assert unverified.entry_thesis == ""
+    assert unverified.advice_action is AdviceAction.NO_NEW_POSITION
+    assert unverified.why_not_reasons == (
+        "guided_mode_strategy_advice_contract_missing_or_unverified",
+    )
     assert unverified.invalidation_conditions == ()
     assert unverified.holding_horizon == ""
     assert unverified.review_cadence == ""
@@ -563,6 +599,10 @@ def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() 
         mode=AdviceMode.GUIDED,
     ).recommendations[0]
     assert legacy.entry_thesis == ""
+    assert legacy.advice_action is AdviceAction.NO_NEW_POSITION
+    assert legacy.why_not_reasons == (
+        "guided_mode_strategy_advice_contract_missing_or_unverified",
+    )
     assert legacy.invalidation_conditions == ()
     assert legacy.holding_horizon == ""
     assert legacy.review_cadence == ""

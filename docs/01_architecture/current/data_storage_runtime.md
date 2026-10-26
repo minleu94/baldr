@@ -42,6 +42,8 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 新來源需保留來源識別、版本、`as_of_date`、`available_date`、quality、missing policy、授權與下游資格。正式決策只消費決策當下可取得且通過來源 gate 的資料；來源候選依 Diagnostics → Shadow → Evidence Review → Accepted Feature 逐步判定。Raw data 不因補算、格式整理或 UI 操作被覆寫。
 
+季度財報 availability mapping 的 `source_version` 識別公告證據版本；MOPS mapping 另須填 `target_source_version`，精確等於欲套用公告日的數值財報來源版本。MOPS 綁定缺失、版本不符或同一公司／報表／期間的修訂鏈指向多個數值版本時，loader／parser fail closed；舊 CSV 及非 MOPS mapping 可省略此欄。這只防止不同版本間誤貼公告日期，不能代替逐列 filing identity、財報內容 hash、單位／口徑或歷史 PIT 證據；季度 mapping 與月營收契約分開。
+
 決策日、資料觀測日、來源可得時間、writer 可得時間、保存時間與預期官方交易日是不同時鐘。`available_at` 由來源或特定 writer contract 定義，後者通常在 artifact／receipt 發布並讀回後才簽發；`persisted_at` 只是保存／排序事實，不能代替官方來源 availability、writer availability 或 PIT 證明。跨日 freshness 應由共用的 market-session cadence／已驗證日曆依同次 operation 明示的 aware cutoff 判斷；歷史 clock 不賦予 current freshness。實際行情日要隨 DTO、snapshot 與 evidence lineage 保存。日曆缺失、未發布、hash 不符或來源日期晚於 cutoff 時保留 unknown／degraded，不借鄰近資料、日曆常識或另一個 provider 補出來源資格。來源 custody／corporate-action 診斷須綁 raw bytes、日期、availability 與行情欄位；方向未知就 fail closed。各 API 欄位語意仍以其 owner contract 為準，不得互換時鐘。
 
 TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確文字正負號，再沿既有 CSV／SQLite 同步及 public report。共用文字契約位於 `data_module/price_change_direction.py`，application 仍由原 import 入口使用 Decimal resolver；資料層不反向依賴 application。非空未知方向保存 `unknown`，不由顏色補值。Raw 首份收據可保留 v1，本次 observation／projection／publication 綁實際 parser；v2 發行與重開均逐列核原 body，舊 v1 不重解釋。來源時間、正式用途及 PIT 資格不因 parser 修復改變，詳[方向版本契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#twse-日價方向文字版本increment128)。

@@ -8,6 +8,14 @@
 
 ## 發現
 
+### 2026-10-26 MOPS 季報公告時間的數值來源版本綁定
+
+季度 availability mapping 新增可選 `target_source_version`；舊 CSV／非 MOPS mapping 可不提供，但 MOPS EZSearch 公告映射必須明確填入數值財報的 `source_version`。MOPS 公告 evidence 的 `source_version` 仍保留原有語義，不充當數值版；同一公司／報表／期間的 MOPS 修訂若綁到不同數值版，loader 拒絕猜測。Parser 僅在 target 與當次數值輸入 `source_version` 完全相等時才套用日期，否則輸出可定位的版本診斷並阻止 backfill apply。這是防止自然鍵誤貼時間的程式護欄，不證明 target 本身的 row-level filing identity，也不填造 MOPS event→財報內容 hash 橋。
+
+受控 Windows Job 驗證：`py_compile` 四個修改後季報 Python 模組通過；`tests/test_fundamental_statement_availability_sources.py`、`tests/test_fundamental_statement_data.py`、`tests/test_fundamental_statement_backfill.py`、`tests/test_fundamental_statement_availability_entrypoint.py` 共 **29 passed**。啟動前可用 RAM 28,814,909,440 bytes；Job 上限 8 GiB／12 processes、kill-on-close；7 個累計程序自然退出、Job active processes 0、exit 0，無強制回收。pytest basetemp 使用本任務隔離可寫路徑，沒有改測試斷言。完整 pytest console log 保存在隔離工作目錄 `C:\Users\archi\.codex\visualizations\2026\10\23\01a16afa-5b3f-7692-a5db-8881433773e9\statement_tests.log`。首輪 temp-root 被 sandbox 拒絕的單一 rename 失敗以指定可寫 basetemp 重跑後消除；測試本身未放寬。
+
+對 2330／2026-Q2，正式 `fundamental_statement_items` 仍為 0 個目標列；公告事件、官方 PDF 與本機 numeric snapshot 的內容 hash custody 尚未唯一橋接，因此本次不產生可解除列數、不改正式 DB、不授予 Gate／PIT 資格。版本字串相等只驗明確綁定契約，不能取代 row-level filing identity／內容 hash 對照。
+
 | Table | Rows | 日期範圍／最新值 | Quality 與來源摘要 |
 |---|---:|---|---|
 | `fundamental_monthly_revenues` | 246,331 | available date 2026-06-17 至 2026-07-15；as-of date 最晚 2026-06-30 | `degraded` 242,651（98.5%）、`observed` 3,680；單一來源 `mops.monthly_revenue_static_snapshot`；3 個 source versions。degraded 242,651 列全都缺 `announced_date`，集中在 2026-06-16 snapshot；3,680 個 observed 列都有公告日。 |
@@ -235,6 +243,14 @@ Owner 已授權把 MOPS 顯示的「公告日期／時間」當作相符公告�
 
 因此，`monthly_revenue_availability_history` 載入靜態 MOPS 報表時改標為 `mops.monthly_revenue_static_report`／`retrospective_static_report_date`；候選 mapping builder 只記一次該市場／月份的診斷，不把此日期建立成 `announced_date` 或 `available_date`。正式月營收仍保持缺公告日，直到取得公司＋月份＋原公告時間的逐筆事件證據；報表靜態日期、available_date 或當前擷取日期不能替代它。
 
+### 2026-10-26 MOPS 2330／2026-Q2 公告至財報 custody 單筆追查
+
+已封存 EZSearch candidate 含 2330／F27／2026-Q2 唯一事件：公告時間 `2026-08-14T13:46:30+08:00`、event hash `42a2b7d7e07d8c4986de69fb98d8d7f9a11a4a89a368095ed70ee71abdf46610`、公告查詢 response SHA `ad8b8a5f33a401347f4fa0a3c36c5f100cd81990c4aa040a03c44d0d643b4286`；事件原件 JSON SHA-256 `30c80bc6d34d69a6d1652a1779e254b7cda053a50a2ee5978899a82f9e26e466`，位於隔離候選 `mops_statement_availability_q2_2026_retry1_20261025`。
+
+後續透過官方[TWSE 電子資料查詢頁](https://doc.twse.com.tw/server-java/t57sb01?co_id=2330&colorchg=1&mtype=A&step=1&year=115)讀到 2330／民國 115 年第二季／IFRSs 合併財報列檔：`202602_2330_AI1.pdf`，9,323,383 bytes，上傳時間 `2026-08-14 13:59:44`，更補正狀態「無」；英文版另列 `202602_2330_AIA.pdf`，1,911,452 bytes，上傳時間 `14:00:15`，更補正狀態亦為「無」。台積電[官方中文版 Q2 財報](https://investor.tsmc.com/sites/ir/financial-report/2026/TSMC%202026Q2%20Consolidated%20Financial%20Statements_C.pdf)封面同為 2330／115 及 114 年第二季合併財報，附註二記載 115-08-11 董事會核准並通過發布。MOPS 公告事件時間比 TWSE 電子檔上傳早 13 分 14 秒；兩個 timestamp 分別表示公告事件與檔案上傳，不合併替代。隔離 PDF `mops-t57-2330-2026q2/202602_2330_AI1.pdf` 本機大小及檔名與官方 listing 相符，SHA-256 `a9c56c17cba6ebd9aaa0579c1e73eea53a14623e62916bbf26a1080107b78a3`；但 10/25 的本機 T57 listing capture receipt 因 DNS 失敗，沒有封存 listing HTML／response bytes。故目前新證據確認了同公司、期間、合併報表種類、申報檔名、刊載大小／時間與未更正狀態，仍未證明本機 PDF 與官方 listing 所指 bytes 完全相同，也未完成 PDF 對 `fundamental_current_observations` 單一 `source_version` 的內容/hash 比對。
+
+正式 `fundamental_statement_items` 對此 2026-Q2 identity 仍為 0 列；正式資料沒有可重算或解除 announcement-only degraded 的目標列。現有 3,864 個 Q2 公告候選與 3 個 current snapshot versions 不因這筆單案身份核對而取得正式版本橋接。未寫正式 DB，正式解除仍為 **0**。下一步需在可取得官方 bytes 的環境保存 T57 listing／PDF 原件和 hash，再把財報完整項目、單位／口徑及某一快照 `source_version` 做唯一比對；不得用自然鍵或同日期外推其餘事件。
+
 
 ### 2026-10-19 最新季度 OpenAPI 候選 readback
 
@@ -248,6 +264,21 @@ Owner 已授權把 MOPS 顯示的「公告日期／時間」當作相符公告�
 
 本次僅作一次無登入、單一公司（2330）、單一日期的 F22 查詢探測；本機 DNS 無法解析 `mopsov.twse.com.tw`，HTTP request 未建立，沒有 response body、receipt 或資料候選。沒有因此建立正式公告日期 mapping。
 
-另查核[富邦歷史 K 線文件](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/historical/candles/)：其市場行情 API 文件列出上市櫃日線最遠可回溯至 2010 年，單次查詢小於一年。它可能提供缺漏日的行情候選，但不是 MOPS 公告時間、公司財報月份或 filing version 的證據。工作區安裝 `fubon-neo` **2.2.8**；不帶任何憑證初始化 `FubonSDK()` 時收到 `ValueError: No such host is known (os error 11001)`，無登入、無歷史 candles endpoint 回應。單筆 2330／2026-10-23 日 K 查詢仍未送出：自動審查拒絕讀取 Windows Credential Manager 並登入真實券商 API，要求先明確確認憑證／登入範圍。沒有讀取任何憑證；行情補值、來源候選及正式解除筆數均為 **0**。目前只待本對話所送出的限定一次性行情試查授權回覆。
+另查核[富邦歷史 K 線文件](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/historical/candles/)：其市場行情 API 文件列出上市櫃日線最遠可回溯至 2010 年，單次查詢小於一年。它可能提供缺漏日的行情候選，但不是 MOPS 公告時間、公司財報月份或 filing version 的證據。工作區安裝 `fubon-neo` **2.2.8**；不帶任何憑證初始化 `FubonSDK()` 時收到 `ValueError: No such host is known (os error 11001)`，無登入、無歷史 candles endpoint 回應。當時的 2330／2026-10-23 查詢尚未送出，且自動審查曾拒絕讀取 Windows Credential Manager 並登入券商 API。此段記錄的是初次試查前狀態；後續依 Owner 要求完成的兩筆行情查詢見下節，該節為較新結果。
 
-結論：F22 與富邦文件各自提供值得後續驗證的候選路徑，但目前前者受 EZSearch 自動採集授權與 DNS 限制，後者受明確登入授權限制；仍未對正式資料產生任何變更，Gate／PIT／ML 資格不變。
+結論：F22 與富邦文件各自提供候選路徑；F22 仍受 EZSearch 自動採集授權與 DNS 限制。富邦歷史 K 線後續已完成單筆試查，但沒有解除正式資料；2.4.0 盤後籌碼端點則尚未實測。正式資料、Gate／PIT／ML 資格不變。
+
+### 2026-10-26 富邦唯讀歷史 K 線單筆試查
+
+依 Owner 要求，只在程式外用既有唯讀行情憑證做兩筆歷史 K 線查詢；沒有讀取或呼叫帳戶、持倉、委託或交易 API，也沒有把券商 API 接入 Baldr。正式 DB、daily CSV、Gate 與 ML 均未寫入或改變。
+
+- 目標查詢 2330／2026-10-23／日 K：API 回 **HTTP 404 Resource Not Found**，沒有行情 payload。既有[TWSE 10/23 單股重核](BALDR_LIVE_MARKET_FRESHNESS_RECHECK_20261024.md#2026-10-26-twse-1023-單股來源重核)也記錄 2330 查詢無資料、月成交頁最新列為 10/22；兩個來源都沒有提供 10/23 行情，尚無證據把它判成可補的交易日缺列。錯誤原始 response body 未留存。
+- 控制查詢 2330／2026-10-22／日 K：成功取得一列，`open=2435`、`high=2435`、`low=2385`、`close=2385`、`volume=29,796,590`、`turnover=71,536,783,195`、`change=-35`。富邦文件說明一般上市櫃日 K 的 volume 單位是股，turnover 單位是元；此控制列只證明 API 對該日期有回應，未與正式 DB 或 TWSE 逐欄對帳。
+- 隔離候選檔：`C:\Users\archi\.codex\visualizations\2026\10\23\01a16afa-5b3f-7692-a5db-8881433773e9\fubon_2330_20261022_control.json`；canonical payload SHA-256 `1a7718812a6aa5612738ebf03511662300247dfff1d06259edc361226a432a99`。10/23 404 沒有被改造成資料列，也沒有保存為原始 response artifact。
+- Fubon 歷史行情 endpoint 因 10/22 控制查詢成功而確認可連線；對 10/23 查詢回 404，正式解除筆數 **0**。後續核對到官方 TWSE 臨時休市公告及已驗證 calendar cache：2026-10-23 因薔琵颱風休市，故這不是應有行情列的交易日缺值，富邦 404 不構成資料源缺漏或可補資料。10/22 控制列仍未與正式 DB／TWSE 逐欄對帳。富邦行情可作 OHLCV／turnover 候選來源，不能填月營收或季報 `announced_date`、公告時間、申報版本、PIT 或授權證據；上述 fundamental 缺口與 Gate／ML 資格不變。休市證據見[TWSE 臨時休市公告與資料日重判](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-25-twse-臨時休市公告接線與資料日重判)。
+
+### 2026-10-26 富邦 2.4.0 盤後籌碼端點能力盤點（未實測）
+
+補查富邦[三大法人買賣超](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/ownership/institutional-trades/)、[集保戶股權分散](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/ownership/tdcc-distribution/)及[董監持股](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/ownership/director-holdings/)官方 API 文件：這些端點分別提供個股日法人買賣、每週（早期每月）集保級距分布、每月董監持股；文件列出的歷史起點分別為 2013 年、2013-07、2017-01，資料來源為 TWSE／TPEx、TDCC 或 MOPS 公開資訊整理。它們不是月營收或財報數值 API。**這些也不是 Baldr 的新 transport 缺口**：repo 已有 TWSE T86／TPEx 三大法人及 TDCC CSV／OpenAPI 路由，另有正式來源 parser／candidate capture（[`p0_source_acquisition_routes.py`](../../data_module/p0_source_acquisition_routes.py)、[`capture_tdcc_shareholding_candidate.py`](../../scripts/capture_tdcc_shareholding_candidate.py)）。Gate blocker 在 available-date／PIT provenance、license／用途、coverage 與 source acceptance，不是沒有下載端點。富邦文件標註上述盤後籌碼方法自 SDK **2.4.0** 起提供；本工作區版本為 **2.2.8**，套件原始檔內沒有這三個方法；官方範例要求登入取得行情權限，故本輪沒有為重複來源升級／登入。
+
+這次沒有升級套件、讀取券商憑證或登入呼叫新端點，遵守 Owner 指定產品不連真實券商帳戶的邊界；因此這只是文件能力盤點，未取得任何新 response／候選列，正式解除仍為 **0 列**。即使未來取得回應，法人 `date` 是交易日、TDCC `date` 是公布基準日、董監 `date` 是資料年月，文件沒有逐列首次公告 timestamp；因此仍須另外核對捕獲／可得時間與正式欄位契約，不能直接消除歷史 PIT、Gate 或 ML blocker。既有 2330／10-23 candles 404 與 10-22 控制查詢結果維持前節記錄。

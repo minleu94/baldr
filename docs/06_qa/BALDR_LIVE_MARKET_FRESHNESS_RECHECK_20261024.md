@@ -121,3 +121,7 @@ canonical runner 使用 `DATA_ROOT=F:\Min\Python\Project\FA_Data`、`OUTPUT_ROOT
 候選擷取器現在會將已辨識的 TWSE「沒有符合條件的資料」回應保存為 `official_no_data_response` receipt／comparison，保留原始 response hash，並明示零官方列、零修正候選、無來源對照，以及正式訓練／promotion 禁止。CLI 用 exit code 3 表示此可稽核無資料結果。無資料 capture ID 會在舊 response ID 後綁定 12 碼代號範圍 hash，避免同日同回應的不同代號查詢互撞；一般有資料收據沿用舊 ID 格式，維持歷史固定路徑相容。下載或解析失敗也會清除本次暫存 body，若工作程序啟動時已存在同名暫存目錄則 fail closed。這不回補 2330／10/23 行情，也不把富邦或其他來源升格為正式來源。
 
 驗證過程中，第一次加入代號 scope hash 時，冒號前綴造成 Windows 路徑無效；第二次雖移除冒號，長測試目錄下仍觸發路徑長度錯誤。改用固定長度純十六進位 scope suffix，並保留一般收據舊 ID。另有一次相容性 assertion 初放在無資料測試、造成 **1 failed／8 passed**；移至正常行情收據測試後，同一聚焦組最終 **10 passed**，四個修改 Python 檔 `py_compile` 通過；另新增 CLI 測試核對 `official_no_data_response` 輸出與 exit code 3。負例確認 no-data comparison 不能被 ML overlay 當成行情列來源。未對正式 DB／CSV 寫入；TWSE source／PIT／Gate／ML 資格不變。
+
+### 2026-10-26 10/23 行情缺列原因更正
+
+本文件 10/25 公開頁交叉核對段落曾因當時尚未讀到臨時休市公告，暫判 10/23 應為交易日；這項判讀已被後續核實的官方臨時休市公告取代。TWSE／TPEx 因薔琵颱風於 2026-10-23 全日休市，官方日曆 sidecar 判定 `twse_temporary_closure_official`；因此 2330／10/23 沒有日 K 是正確的非交易日狀態，不是來源漏傳、資料庫缺列或可由富邦修補的行情缺口。10/22 仍是當週前一個交易日。公告原件 SHA-256 `0ee4c564cac1659a6255e287e20d58bbaa780436bbd7af7e97615b8ca0668fb9`、verified sidecar SHA-256 `39562938315520005bb8242f2cbc0d123f0627ab63d3fc40c303e5fe4947a442`；日曆收據及接線詳[TWSE 臨時休市公告與資料日重判](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-25-twse-臨時休市公告接線與資料日重判)。

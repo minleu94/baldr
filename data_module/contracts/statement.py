@@ -17,6 +17,8 @@ class StatementAvailabilityOverride:
     available_date: date
     source: str
     source_version: str
+    # MOPS 公告必須明確指向套用公告時間的數值財報版本。
+    target_source_version: str | None = None
     evidence_class: str = ""
     source_hash: str = ""
     revision: int = 0

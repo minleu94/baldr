@@ -90,6 +90,32 @@ def test_advice_bp_cost_assumption_is_not_rendered_as_twd_in_stock_report():
         view.close()
 
 
+def test_guided_advice_contract_refusal_is_explained_in_stock_report():
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    reason = "guided_mode_strategy_advice_contract_missing_or_unverified"
+    advice = StockAdviceSnapshotDTO(
+        recommendation=RecommendationAdviceDTO(
+            stock_code="2330",
+            advice_action=AdviceAction.NO_NEW_POSITION,
+            why_not_reasons=(reason,),
+            refusal_reasons=(reason,),
+        )
+    )
+    try:
+        view._render_advice_content(layout, advice)
+        text = "\n".join(label.text() for label in container.findChildren(QLabel))
+        assert "暫不新增" in text
+        assert "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選" in text
+        assert "請以新的合格回測升版並填妥契約" in text
+        assert reason not in text
+    finally:
+        container.close()
+        view.close()
+
+
 def test_theme_member_navigation_requires_resolver_and_saved_snapshot_stays_read_only():
     _app()
     context = ResearchStockContextDTO(

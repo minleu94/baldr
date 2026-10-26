@@ -5251,6 +5251,10 @@ def _advice_warning_text(value: object) -> str:
     known = {
         "evidence_quality_missing": "缺少合格證據，不能產生 Advice。",
         "guided_mode_strategy_not_promoted": "Guided 策略尚未正式採用，不能產生正式 Advice。",
+        "guided_mode_strategy_advice_contract_missing_or_unverified": (
+            "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選；"
+            "請以新的合格回測升版並填妥契約，再選用該新版本執行。"
+        ),
         "risk_budget_unavailable": "缺少已核驗的風險預算，不能提供配置。",
         "execution_feasibility_not_confirmed": "可成交性尚未核實。",
         "promoted_strategy_acceptance_evidence_missing": (

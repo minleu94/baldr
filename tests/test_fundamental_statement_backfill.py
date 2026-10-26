@@ -67,6 +67,31 @@ def test_plan_statement_items_backfill_builds_records(tmp_path):
     assert statement_quality_counts(plan.records) == {"degraded": 1}
 
 
+def test_plan_statement_items_backfill_blocks_unbound_mops_availability(tmp_path):
+    raw_dir = tmp_path / "financial_data"
+    _write_income_statement(raw_dir)
+    availability_file = tmp_path / "statement_availability.csv"
+    availability_file.write_text(
+        "stock_code,statement_type,period,as_of_date,announced_date,available_date,source,source_version\n"
+        "2330,income_statement,2024-Q1,2024-03-31,2024-05-10,2024-05-11,"
+        "mops.ezsearch.statement_publication,mops-event-v1\n",
+        encoding="utf-8-sig",
+    )
+
+    plan = plan_statement_items_backfill(
+        raw_dir=raw_dir,
+        availability_file=availability_file,
+        source_version="financial-data-statements-v1",
+        statement_types=("income_statement",),
+    )
+
+    assert plan.records == ()
+    assert plan.ready_for_apply is False
+    assert plan.diagnostic_summary == {
+        "fundamental_statement_availability.target_source_version_missing": 1
+    }
+
+
 def test_apply_statement_items_backfill_inserts_records_and_backs_up_db(tmp_path):
     raw_dir = tmp_path / "financial_data"
     _write_income_statement(raw_dir)

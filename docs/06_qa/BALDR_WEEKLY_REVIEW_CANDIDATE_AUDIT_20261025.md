@@ -20,6 +20,8 @@
 
 隨後在同一副本產生唯讀週報 `weekly-review-working-copy-20261025/weekly-review-report.md`，SHA-256 為 `2734ad0b7ce113a60e0b7579cce0b6bc9a6576ffa1e7fd192fbf35d280ef615f`。結果為 `coverage_only`、scheduler readiness `not_ready`、`production_scheduler_allowed=false`、`write_performed=false`、action item plan `dry_run=true` 且未建立項目。Blocking gaps 為 `production_scheduler_approval_missing`、`recommendation_persisted_missing`；warnings 包含 liquidity gate、screening matrix、why-not payload 缺件。該週報沒有 review，也沒有建立 history。
 
+同一 working copy 又以 `scripts/run_evidence_pipeline.py --dry-run` 執行 manual pipeline，2026-10-22 decision date／10-19..25 週期，run ID `epr_2ec3e0c93090`。輸出 `manual-evidence-dry-run.md` SHA-256 為 `8b3835e2316dcd012384a1dd847868db9db9ae78f32f0dcb8e88914ce75714a2`。結果為 `overall_status=degraded`、`dry_run=true`、`confirm=false`、0 errors、16,341 warning occurrences；事件 1,085 列被檢查、0 列寫入。Blocking gaps 是 `recommendation_persisted_missing`、`watchlist_trigger_not_ready`、`risk_prompt_not_ready`；來源覆蓋指出缺 `why_not`、liquidity gate 與 screening matrix payload。Forward 結果顯示 9,798 個樣本尚缺未來資料，4 個 summary groups 均 insufficient sample。報告的 outcomes created/updated 數是 dry-run 推演值，不代表 DB 寫入。排程版 dry-run 尚未以隔離路徑完成，Evidence Review dashboard 也未做原生 UI 檢視。
+
 ## 尚缺條件與裁定
 
 依 runbook，完整週 review 尚缺可核對的 scheduled/manual dry-run 與 dashboard 配套、smoke 兩輪完成結果、warnings/blocking gaps 判讀、具名 reviewer 的 reviewed/dismissed/follow-up、action owner，以及 backup/rollback/recovery 演練。既有正式 weekly sidecar 的 17 筆舊列仍是 `recollection_required`；新週候選目前只在隔離 sidecar 的 packet 中可審，尚未 append 到正式 sidecar，也沒有人工審查結論。

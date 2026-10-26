@@ -32,6 +32,8 @@ V2 開發分支產品接受摘要：[BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md](BA
 
 [2026-10-25 Paper 成交 CSV 無效預覽明細](BALDR_PAPER_FILL_IMPORT_PREVIEW_QA_20261025.md)記錄驗證錯因中文分組、列數／行號提示，以及無效 CSV 不寫入 Paper Ledger 的 UI regression。
 
+[2026-10-19..25 Weekly Review 候選複核](BALDR_WEEKLY_REVIEW_CANDIDATE_AUDIT_20261025.md)記錄新週行情候選的列數、16 列官方缺值與覆蓋未知，以及 working-copy smoke timeout、唯讀週報 blockers 和尚未具名審查的界線；沒有追加 history 或 Gate credit。
+
 [10/18後繼題材研究](BALDR_THEME_DAILY_QA_20261018.md)另核每日聚合、首頁／題材／個股返回及Journal原判斷重啟回訪；[研究12回報修正](BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)包含清除、同版顯示均線、原價格筆記刪除與明確一般查詢，完整Gate接受範圍保持。
 
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。

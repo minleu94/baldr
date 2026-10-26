@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-25 Gate 2 新週候選複核：2026-10-19..25 隔離行情候選含 7,859 列／1,987 個觀察股票／4 個交易日，16 列缺 OHLC 有同日官方 `--` 原因，覆蓋母體未知。它尚非 weekly review history。Runbook working-copy smoke 第一輪指出推薦、watchlist／risk snapshot 缺件；兩輪 smoke wrapper 超過 180 秒並遭清理，不能稱 idempotency 通過。隨後唯讀週報為 `coverage_only`、scheduler `not_ready`、`write_performed=false`。仍缺具名 review、dry-run/dashboard 配套、backup/rollback/recovery 與三週真實 history；正式 sidecar、Gate credit 及 production scheduler 均未變。詳[Weekly Review 候選複核](../06_qa/BALDR_WEEKLY_REVIEW_CANDIDATE_AUDIT_20261025.md)。
+
 2026-10-25 Gate 3／4 操作缺口回饋：P0 選取來源明細現在帶出來源特定的可得日、新鮮度、缺件、coverage、retry 政策與 acquisition route 描述，方便沿契約核對證據；不表示路徑已實作或來源已接受。Gate 4 無效 Paper 成交 CSV 則顯示列數、欄位錯因分類與行號，並在失敗時阻止匯入且不寫 Ledger。Gate 3 聚焦測試 182 passed；Gate 4 UI／service 測試 9 passed。兩者皆未重跑全域驗證，GUI 重啟與 Owner UAT 未完成；Gate 4 真實成交、Gate 3 真實來源證據及 Gate credit 仍缺。詳[P0 來源決策 QA](../06_qa/BALDR_P0_DECISION_CLARITY_QA_20261025.md#2026-10-25-後續來源特定契約查核提示)及[Paper CSV 預覽 QA](../06_qa/BALDR_PAPER_FILL_IMPORT_PREVIEW_QA_20261025.md)。
 
 2026-10-25 每日產品清晰度首個切片：Workbench 每日研究候選固定顯示來源、候選資料日、品質、來源提供的要求／降級／缺漏筆數；無候選時也保留披露，全市場分母未提供時明示未知。Update Readiness 表新增「進度／範圍」欄，讓已提供的數量、阻擋原因與下一步各自可讀，無進度欄位時明示未提供。Evidence lane 另外顯示待審收集、需重收、來源不可讀、覆蓋資訊缺件；分類可重疊，Owner 核准不能補出缺件。這是呈現與限量欄位投影修正，不計算覆蓋率、不改資料品質或 Gate 資格。UI 聚焦測試 106 passed，Update validator 25 passed／0 failed／4 skipped，1145 個來源檔 mypy 與 Python 編譯通過；文件結構檢查因既有 `output/` junction 權限拒絕回報外部連結錯誤，新增的功能關聯已登記；未重啟 GUI，Owner UAT 未完成。詳見[Daily／Weekly 披露 QA](../06_qa/BALDR_DAILY_WEEKLY_DISCLOSURE_QA_20261025.md)。後續依序處理週 Evidence 明細／附件流程、來源驗收與其他 Gate，ML 仍在最後。

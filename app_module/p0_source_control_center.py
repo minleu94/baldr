@@ -12,6 +12,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 import json
+import re
 from types import MappingProxyType
 from typing import Any
 
@@ -26,6 +27,9 @@ from data_module.p0_source_acquisition_routes import (
     P0AcquisitionRouteRegistry,
     build_p0_acquisition_route_registry,
 )
+from data_module.formal_monthly_revenue_quality_reader import (
+    FORMAL_MONTHLY_REVENUE_QUALITY_SCHEMA,
+)
 from data_module.source_acceptance_decision_registry import (
     SourceAcceptanceDecisionRevision,
     validate_source_acceptance_decision_revision,
@@ -36,6 +40,8 @@ CONTROL_CENTER_SCHEMA_VERSION = "p0-source-control-center.v1"
 _CANDIDATE_AUDIT_SCHEMA = "p0-candidate-audit.v1"
 _EVIDENCE_AUDIT_SCHEMA = "p0-source-evidence-audit.v1"
 _LICENSE_CAPTURE_SCHEMA = "p0-license-evidence-capture.v1"
+_FORMAL_MONTHLY_REVENUE_QUALITY_SCHEMA = FORMAL_MONTHLY_REVENUE_QUALITY_SCHEMA
+_MONTH_PERIOD_PATTERN = re.compile(r"\d{4}-(0[1-9]|1[0-2])\Z")
 _DECISION_STATUSES = frozenset(
     {"deferred", "rejected", "disabled", "limited", "accepted"}
 )
@@ -364,6 +370,7 @@ class P0SourceControlCenterDTO:
     production_scheduler_allowed: bool = False
     formal_oos_allowed: bool = False
     auto_accept_allowed: bool = False
+    formal_monthly_revenue_quality_json: str | None = None
 
     def __post_init__(self) -> None:
         rows = tuple(self.rows)
@@ -373,6 +380,18 @@ class P0SourceControlCenterDTO:
             raise TypeError("P0 control center rows must be P0SourceControlRow values")
         if self.schema_version != CONTROL_CENTER_SCHEMA_VERSION:
             raise ValueError("unsupported P0 control center schema")
+        if self.formal_monthly_revenue_quality_json is not None:
+            try:
+                formal_monthly_quality = json.loads(
+                    self.formal_monthly_revenue_quality_json
+                )
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    "formal monthly revenue quality must be valid JSON"
+                ) from exc
+            if not isinstance(formal_monthly_quality, Mapping):
+                raise ValueError("formal monthly revenue quality must be an object")
+            _require_formal_monthly_revenue_quality(formal_monthly_quality)
         for name, expected in {
             "read_only": True,
             "writes_allowed": False,
@@ -443,6 +462,11 @@ class P0SourceControlCenterDTO:
             "contract_only_count": self.contract_only_count,
             "downstream_eligible_count": self.downstream_eligible_count,
             "global_blockers": list(self.global_blockers),
+            "formal_monthly_revenue_quality": (
+                json.loads(self.formal_monthly_revenue_quality_json)
+                if self.formal_monthly_revenue_quality_json is not None
+                else None
+            ),
             "boundary": {
                 "read_only": self.read_only,
                 "writes_allowed": self.writes_allowed,
@@ -474,6 +498,7 @@ class P0SourceControlCenterService:
         candidate_audit: Mapping[str, Any] | None = None,
         quarterly_candidate_audit: Mapping[str, Any] | None = None,
         quarterly_announcement_crosswalk: Mapping[str, Any] | None = None,
+        formal_monthly_revenue_quality: Mapping[str, Any] | None = None,
         license_evidence: Mapping[str, Any] | None = None,
         decisions: Iterable[SourceAcceptanceDecisionRevision] = (),
     ) -> P0SourceControlCenterDTO:
@@ -492,6 +517,13 @@ class P0SourceControlCenterService:
         quarterly_announcement_crosswalk_json = (
             _serialize_quarterly_announcement_crosswalk(quarterly_announcement_crosswalk)
             if quarterly_announcement_crosswalk is not None
+            else None
+        )
+        formal_monthly_revenue_quality_json = (
+            _serialize_formal_monthly_revenue_quality(
+                formal_monthly_revenue_quality
+            )
+            if formal_monthly_revenue_quality is not None
             else None
         )
         rows = tuple(
@@ -536,6 +568,7 @@ class P0SourceControlCenterService:
             contract_only_count=contract_only_count,
             downstream_eligible_count=0,
             global_blockers=tuple(sorted(global_blockers)),
+            formal_monthly_revenue_quality_json=formal_monthly_revenue_quality_json,
         )
 
     def _build_row(
@@ -1172,6 +1205,70 @@ def _serialize_quarterly_announcement_crosswalk(
     if not isinstance(payload, Mapping):
         raise TypeError("quarterly announcement crosswalk must be an object")
     _require_quarterly_announcement_crosswalk_boundary(payload)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _require_formal_monthly_revenue_quality(payload: Mapping[str, Any]) -> None:
+    if payload.get("schema_version") != _FORMAL_MONTHLY_REVENUE_QUALITY_SCHEMA:
+        raise ValueError("formal monthly revenue quality schema mismatch")
+    status = payload.get("status")
+    if not isinstance(status, str) or status not in {"observed", "unavailable"}:
+        raise ValueError("formal monthly revenue quality status invalid")
+    if (
+        payload.get("formal_db_write") is not False
+        or payload.get("financial_values_returned") is not False
+    ):
+        raise ValueError("formal monthly revenue quality boundary mismatch")
+    periods = payload.get("periods")
+    if status == "unavailable":
+        if periods is not None:
+            raise ValueError("unavailable monthly revenue quality periods must be unknown")
+    else:
+        if not isinstance(periods, list):
+            raise ValueError("observed monthly revenue quality periods must be an array")
+        period_values: list[str] = []
+        count_fields = (
+            "formal_row_count",
+            "missing_announcement_date_row_count",
+            "distinct_stock_code_count",
+            "distinct_source_version_count",
+        )
+        for item in periods:
+            if not isinstance(item, Mapping):
+                raise ValueError("monthly revenue quality period must be an object")
+            period = item.get("period")
+            if not isinstance(period, str) or _MONTH_PERIOD_PATTERN.fullmatch(period) is None:
+                raise ValueError("monthly revenue quality period is invalid")
+            period_values.append(period)
+            for name in count_fields:
+                count = item.get(name)
+                if type(count) is not int or count < 0:
+                    raise ValueError(
+                        f"monthly revenue quality count invalid: {name}"
+                    )
+        if period_values != sorted(set(period_values)):
+            raise ValueError("monthly revenue quality periods must be uniquely month-sorted")
+    blockers = payload.get("blockers")
+    if not isinstance(blockers, (list, tuple)) or any(
+        not isinstance(item, str) or not item.strip() for item in blockers
+    ):
+        raise ValueError("formal monthly revenue quality blockers invalid")
+    scope = payload.get("scope")
+    expected_scope = (
+        "formal_monthly_revenue_rows_grouped_by_period"
+        if status == "observed"
+        else "unknown"
+    )
+    if scope != expected_scope:
+        raise ValueError("formal monthly revenue quality scope invalid")
+
+
+def _serialize_formal_monthly_revenue_quality(
+    payload: Mapping[str, Any],
+) -> str:
+    if not isinstance(payload, Mapping):
+        raise TypeError("formal monthly revenue quality must be an object")
+    _require_formal_monthly_revenue_quality(payload)
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 

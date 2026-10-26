@@ -183,6 +183,7 @@ def build_quarterly_announcement_crosswalk(
                     "announcement_candidates": matches,
                 }
             )
+        period_summary = _build_period_summary(detail_rows)
         crosswalk_resources.append(
             {
                 "dataset_id": resource.get("dataset_id"),
@@ -192,6 +193,7 @@ def build_quarterly_announcement_crosswalk(
                 "candidate_artifact_sha256": resource.get("sha256"),
                 "row_profiles_complete": profiles_complete,
                 "summary": dict(counts),
+                "period_summary": period_summary,
                 "rows": detail_rows,
             }
         )
@@ -620,6 +622,41 @@ def _windows_are_contiguous(windows: Sequence[tuple[date, date]]) -> bool:
             return False
         previous_end = end
     return True
+
+
+def _build_period_summary(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """按財報期別彙總資源列狀態；計數單位不是唯一公司數。"""
+
+    status_names = (
+        "one_announcement_candidate",
+        "multiple_announcement_candidates",
+        "not_observed_in_selected_windows",
+        "query_window_incomplete",
+        "identity_incomplete",
+    )
+    period_counts: dict[str | None, Counter[str]] = defaultdict(Counter)
+    for row in rows:
+        raw_period = row.get("fiscal_period")
+        period = raw_period if isinstance(raw_period, str) and raw_period else None
+        status = row.get("status")
+        if status not in status_names:
+            continue
+        period_counts[period][str(status)] += 1
+
+    def sort_key(period: str | None) -> tuple[int, str]:
+        return (1, "") if period is None else (0, period)
+
+    return [
+        {
+            "fiscal_period": period,
+            "count_unit": "profile_resource_rows",
+            "profile_row_count": sum(counts.values()),
+            "status_counts": {
+                status: counts.get(status, 0) for status in status_names
+            },
+        }
+        for period, counts in sorted(period_counts.items(), key=lambda item: sort_key(item[0]))
+    ]
 
 
 def _require_quarterly_boundary(payload: Mapping[str, Any]) -> None:

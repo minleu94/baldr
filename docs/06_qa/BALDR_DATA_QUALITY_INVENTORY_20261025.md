@@ -212,3 +212,19 @@ Research Console 已把公告候選與正式季報資料的影響摘要接在同
 以已封存 2026-Q2 一般業季報候選及 2026-07-01 至 2026-09-30 三組 MOPS 候選，在本機正式 DB 做實際 reader readback：狀態 `observed`、公告候選唯一鍵 **3,864**；正式 identity overlap **0**、overlap 範圍正式版本 **0**、項目列 **0**、缺公告日項目列 **0**、精確版本連結 **0**、本次可解除 **0**。缺公告日列為 0 是因為這個期間／候選 identity 沒有對應的正式 `fundamental_statement_items` 列，不代表資料庫其他期間已補齊。Reader blockers 為 `formal_table_has_no_market_column_identity_only_overlap` 與 `candidate_event_to_content_version_bridge_missing`。這與前節實際解除 0 列的結果一致，並讓操作頁可直接呈現原因；沒有回填正式資料或改動來源、Gate、PIT、ML 資格。
 
 QA：公告 reader／crosswalk／P0 Source Control Center／Research Console focused suite **125 passed**；必要 Workbench 回歸 **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,151 source files clean**；9 個變更 Python 檔 `py_compile` 通過。實際資料讀回由 8 GiB／12 process 有界 Windows Job 執行，正常退出、Job 無殘留程序。document-control 對 inventory、QA 索引與 README 的 scoped check **12 features／4 link sources／0 errors**。含 PROJECT_SNAPSHOT／APPLICATION_MANUAL 的較廣檢查仍受既有 `output` junction WinError 5 影響，故不能將它記成通過；兩文件新增內容已同步，本輪未跑原生桌面 GUI 或 Owner UAT。
+
+### 季報公告 crosswalk 增加按財報期別摘要
+
+Research Console 的季報公告候選對照，現在對每個選取 CSV 資源按財報所屬期別分列 `profile_resource_rows` 數，以及唯一候選、多筆歧義、查詢窗口內未觀測、查詢窗口不完整與身份缺漏。統計單位明確是資源列／profile；同一公司在不同資源或期別可能重複，因此不代表唯一公司數。查詢窗口內未觀測只表示所選窗口沒有找到對照候選，不等於未申報。
+
+本切片只聚合已選取的離線候選 crosswalk，不新增公告採集、正式資料讀取或寫入，也不改來源接受、Gate、PIT 或 ML 資格。本輪以合成案例驗證期別排序、狀態分桶、缺期身份及跨資源分開計數，沒有重新讀回實際封存候選，因此這份 QA 不提供本機實際候選的期別分布或新的正式資料解除筆數。
+
+QA：crosswalk 與 Research Console focused tests **55 passed**；必要 Workbench 回歸 **93 passed**；全域 mypy **1,151 source files clean**；修改的 2 個 Python 檔 `py_compile` 通過。`scripts/qa_validate_update_tab.py` 因既有 `output/qa/update_tab/RUN_LOG.txt` junction 權限錯誤未能執行完成；bounded Windows Job 正常退出、無殘留程序。offscreen 合成 UI 測試通過；原生桌面 UI／Owner UAT 及實際封存候選 readback 未執行。
+
+### 正式月營收缺公告日按月份唯讀讀回
+
+Research Console 新增正式月營收按期別的公告日欄位品質摘要。Reader 以 SQLite `mode=ro` 和 `PRAGMA query_only=ON` 讀 `fundamental_monthly_revenues`，只按 `period` 聚合列數、缺公告日列、distinct stock code 與 source version；不取營收欄位，也不載入 availability mapping。
+
+本機正式 DB 讀回 147 個月份，期間為 **2014-04 至 2026-06**，共 **246,331 列**、其中 **242,651 列缺公告日**。145 個月份（**2014-04 至 2026-04**）各月所有正式列都缺公告日；2026-05 的 1,848 列與 2026-06 的 1,832 列均有公告日。資料根期間與 mapping coverage 不應混為一談：先前讀回的 availability 檔只覆蓋 2026-06 的 1,832 個 key，與缺公告日正式列精確 overlap 仍為 0。這次沒有回填／重算正式資料；未將公告日完整解讀成單位、口徑、來源接受或 Gate 完整。
+
+實際只讀讀回由 bounded Windows Job 執行，8 GiB memory／12 process 上限 readback 通過，正常退出且無殘留 PID。Receipt：`C:/Users/archi/.codex/visualizations/2026/10/23/01a16afa-5b3f-7692-a5db-8881433773e9/industry-theme-qa/owned-qa-20261025-8b72bdac6e6e4daea5e4b7da4dbb7433/single_owned_qa_086af2ad67e64b7b995edf2e3adf92f3/receipt.json`，SHA-256 `0ab887fec479114c9440697efc4cde7bea33894b2354c1224276e3634092716`。本切片 reader、P0 DTO/service、crosswalk 與 offscreen UI 整合 focused 執行共 **138 passed**；另有兩個既有 MOPS freshness 測試在 pytest 暫存目錄 `os.replace` 遇到 Windows `WinError 5`，不屬於本次新增資料 reader 路徑。必要 Workbench 回歸 **93 passed**、全域 mypy **1,152 source files clean**、本次修改的 5 個 Python 檔 `py_compile` 通過。Update validator 無法寫入既有 `output/qa/update_tab/RUN_LOG.txt` junction，未完成。額外 shell focused 執行受該 shell Python 缺 PySide6／pytest 套件影響，故不取代 bounded runner 結果。Bounded runner 正常退出且無殘留程序；原生 GUI／Owner UAT 未執行。

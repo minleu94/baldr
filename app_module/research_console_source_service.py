@@ -42,6 +42,10 @@ from data_module.open_data_quarterly_announcement_crosswalk import (
 from data_module.formal_announcement_impact_reader import (
     read_quarterly_announcement_formal_impact,
 )
+from data_module.formal_monthly_revenue_quality_reader import (
+    FORMAL_MONTHLY_REVENUE_QUALITY_SCHEMA,
+    read_formal_monthly_revenue_quality_by_period,
+)
 from data_module.open_data_issuer_directory_candidate_audit import (
     AUDIT_SCHEMA as _ISSUER_DIRECTORY_AUDIT_SCHEMA,
     IssuerDirectoryCandidateAuditError,
@@ -497,6 +501,23 @@ class ResearchConsoleSourceService:
         cancel_callback: Callable[[], bool] | None,
     ) -> P0SourceControlCenterDTO:
         check_read_cancelled()
+        if self._p0_formal_db_path is None:
+            formal_monthly_revenue_quality: Mapping[str, Any] = {
+                "schema_version": FORMAL_MONTHLY_REVENUE_QUALITY_SCHEMA,
+                "status": "unavailable",
+                "periods": None,
+                "blockers": ["formal_monthly_revenue_database_path_not_configured"],
+                "scope": "unknown",
+                "formal_db_write": False,
+                "financial_values_returned": False,
+            }
+        else:
+            formal_monthly_revenue_quality = (
+                read_formal_monthly_revenue_quality_by_period(
+                    self._p0_formal_db_path
+                )
+            )
+        check_read_cancelled()
         audit = (
             _call_provider(self._p0_audit_provider, cancel_callback)
             if self._p0_audit_provider is not None
@@ -739,6 +760,7 @@ class ResearchConsoleSourceService:
             decisions=decisions,
             quarterly_candidate_audit=quarterly_candidate_audit,
             quarterly_announcement_crosswalk=quarterly_announcement_crosswalk,
+            formal_monthly_revenue_quality=formal_monthly_revenue_quality,
         )
 
     @staticmethod

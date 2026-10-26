@@ -136,7 +136,22 @@ def test_announcement_crosswalk_renders_owner_authorized_mops_timestamp():
                         "market": "TWSE",
                         "statement": "balance_sheet",
                         "industry": "general",
+                        "row_profiles_complete": True,
                         "summary": {"one_announcement_candidate": 1},
+                        "period_summary": [
+                            {
+                                "fiscal_period": "2026-Q2",
+                                "count_unit": "profile_resource_rows",
+                                "profile_row_count": 1,
+                                "status_counts": {
+                                    "one_announcement_candidate": 1,
+                                    "multiple_announcement_candidates": 0,
+                                    "not_observed_in_selected_windows": 0,
+                                    "query_window_incomplete": 0,
+                                    "identity_incomplete": 0,
+                                },
+                            }
+                        ],
                         "rows": [
                             {
                                 "issuer_code": "1101",
@@ -167,6 +182,14 @@ def test_announcement_crosswalk_renders_owner_authorized_mops_timestamp():
         "2026-08-12T20:14:11+08:00"
     )
     assert "a" * 64 in view.quarterly_announcement_crosswalk_resource_table.item(0, 3).toolTip()
+    assert view.quarterly_announcement_period_summary_table.rowCount() == 1
+    assert view.quarterly_announcement_period_summary_table.item(0, 0).text() == "2026-Q2"
+    assert view.quarterly_announcement_period_summary_table.item(0, 1).text() == "1"
+    assert view.quarterly_announcement_period_summary_table.item(0, 2).text() == "1"
+    assert "Profile 掃描完整" in view.quarterly_announcement_crosswalk_detail_label.text()
+    view._quarterly_announcement_crosswalk["resources"][0]["row_profiles_complete"] = False
+    view._render_quarterly_announcement_crosswalk_resource()
+    assert "期別計數僅涵蓋目前解析列" in view.quarterly_announcement_crosswalk_detail_label.text()
     assert "正式資料影響狀態：不可用" in view.quarterly_formal_impact_state_label.text()
     assert view.quarterly_formal_impact_table.rowCount() == 7
     assert view.quarterly_formal_impact_table.item(0, 1).text() == "未知"
@@ -274,6 +297,48 @@ def test_formal_impact_observed_preserves_none_as_unknown() -> None:
     assert rows_by_label["精確版本連結數"] == "未知"
     assert rows_by_label["本次公告對照解除列數（reader 回報）"] == "未知"
     assert "Reader blockers：未知" in view.quarterly_formal_impact_blockers_label.text()
+    view.close()
+
+
+def test_formal_monthly_revenue_quality_renders_period_profiles_and_unknowns() -> None:
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+    view._formal_monthly_revenue_quality = {
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "status": "observed",
+        "periods": [
+            {
+                "period": "2026-05",
+                "formal_row_count": 2,
+                "missing_announcement_date_row_count": 1,
+                "distinct_stock_code_count": 2,
+                "distinct_source_version_count": 1,
+            }
+        ],
+        "blockers": [],
+        "scope": "formal_monthly_revenue_rows_grouped_by_period",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+
+    view._render_formal_monthly_revenue_quality()
+
+    assert "已讀回 1 個資料月份" in view.formal_monthly_revenue_quality_state_label.text()
+    assert view.formal_monthly_revenue_quality_table.rowCount() == 1
+    assert [
+        view.formal_monthly_revenue_quality_table.item(0, column).text()
+        for column in range(5)
+    ] == ["2026-05", "2", "1", "2", "1"]
+
+    view._formal_monthly_revenue_quality = {
+        "status": "unavailable",
+        "periods": None,
+        "blockers": ["formal_database_path_not_configured"],
+        "financial_values_returned": False,
+    }
+    view._render_formal_monthly_revenue_quality()
+    assert "不可用／未知" in view.formal_monthly_revenue_quality_state_label.text()
+    assert view.formal_monthly_revenue_quality_table.item(0, 1).text() == "未知"
     view.close()
 
 

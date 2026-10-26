@@ -680,3 +680,77 @@ def test_p0_quarterly_source_service_attaches_read_only_formal_impact(
     assert impact["exact_version_links"] == 0
     assert impact["rows_cleared"] == 0
     assert "candidate_event_to_content_version_bridge_missing" in impact["blockers"]
+
+
+def test_p0_source_service_projects_formal_monthly_quality_at_top_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app_module.research_console_source_service as source_module
+
+    database = tmp_path / "formal-monthly.db"
+    quality = {
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "status": "observed",
+        "periods": [
+            {
+                "period": "2026-01",
+                "formal_row_count": 2,
+                "missing_announcement_date_row_count": 1,
+                "distinct_stock_code_count": 2,
+                "distinct_source_version_count": 1,
+            }
+        ],
+        "blockers": [],
+        "scope": "formal_monthly_revenue_rows_grouped_by_period",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+    captured: dict[str, object] = {}
+
+    def read_quality(path: Path) -> dict[str, object]:
+        captured["path"] = path
+        return quality
+
+    monkeypatch.setattr(
+        source_module,
+        "read_formal_monthly_revenue_quality_by_period",
+        read_quality,
+    )
+    service = ResearchConsoleSourceService(p0_formal_db_path=database)
+
+    center = service._build_p0_source_control_center(None, None)
+    payload = center.to_dict()
+
+    assert captured["path"] == database
+    assert payload["formal_monthly_revenue_quality"] == quality
+    assert all(
+        "formal_monthly_revenue_quality" not in row
+        for row in payload["rows"]
+    )
+
+
+def test_p0_source_service_without_formal_db_keeps_monthly_quality_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app_module.research_console_source_service as source_module
+
+    def unexpected_read(_path: Path) -> dict[str, object]:
+        raise AssertionError("reader must not be called without configured DB path")
+
+    monkeypatch.setattr(
+        source_module,
+        "read_formal_monthly_revenue_quality_by_period",
+        unexpected_read,
+    )
+    center = ResearchConsoleSourceService()._build_p0_source_control_center(None, None)
+
+    quality = center.to_dict()["formal_monthly_revenue_quality"]
+    assert quality == {
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "status": "unavailable",
+        "periods": None,
+        "blockers": ["formal_monthly_revenue_database_path_not_configured"],
+        "scope": "unknown",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }

@@ -67,6 +67,7 @@ def _event(
     statement: str = "balance_sheet",
     period: str = "2026-Q2",
     announced: str = "2026-08-12",
+    available: str = "2026-08-13",
     source_sha: str = "a" * 64,
 ) -> dict[str, str]:
     return {
@@ -75,7 +76,7 @@ def _event(
         "period": period,
         "as_of_date": "2026-06-30",
         "announced_date": announced,
-        "available_date": "2026-08-13",
+        "available_date": available,
         "source": "mops.ezsearch.statement_publication",
         "source_version": "mops-ezsearch-statement-publication.v1",
         "availability_contract_version": "formal-availability.v2",
@@ -237,6 +238,92 @@ def test_duplicate_announcement_candidates_are_kept_ambiguous(tmp_path: Path) ->
     assert row["status"] == "multiple_announcement_candidates"
     assert row["announcement_count"] == 2
     assert row["announcement_timestamp_resolution"] == "ambiguous_candidate_versions"
+
+
+def test_period_summary_is_stable_and_counts_resource_profiles_by_status(
+    tmp_path: Path,
+) -> None:
+    events = [
+        _event(period="2025-Q4", announced="2026-08-12", source_sha="a" * 64),
+        _event(code="2317", period="2026-Q1", announced="2026-08-13", source_sha="a" * 64),
+        _event(
+            code="2317",
+            period="2026-Q1",
+            announced="2026-08-14",
+            available="2026-08-15",
+            source_sha="a" * 64,
+        ),
+    ]
+    root = _announcement_root(
+        tmp_path / "announcements",
+        events=events,
+        query_groups=(
+            ("sii", "F26"),
+            ("sii", "F27"),
+            ("sii", "F28"),
+            ("otc", "F27"),
+            ("otc", "F28"),
+        ),
+    )
+    audit = _quarterly_audit(
+        [
+            {"issuer_code": "2330", "fiscal_period": "2025-Q4"},
+            {"issuer_code": "2317", "fiscal_period": "2026-Q1"},
+            {"issuer_code": "2303", "fiscal_period": "2026-Q2"},
+            {"issuer_code": "bad", "fiscal_period": "invalid-period"},
+        ]
+    )
+    audit["resources"].append(
+        {
+            "dataset_id": "91967",
+            "market": "TPEx",
+            "statement": "balance_sheet",
+            "industry": "general",
+            "artifact": "tpex-quarterly.csv",
+            "sha256": "d" * 64,
+            "state": "available",
+            "row_profiles_complete": True,
+            "row_profiles": [
+                {"issuer_code": "6488", "fiscal_period": "2026-Q3"}
+            ],
+        }
+    )
+
+    result = build_quarterly_announcement_crosswalk(
+        quarterly_audit=audit,
+        announcement_candidate_roots=[root],
+    )
+
+    first_resource_summary = result["resources"][0]["period_summary"]
+    assert [item["fiscal_period"] for item in first_resource_summary] == [
+        "2025-Q4",
+        "2026-Q1",
+        "2026-Q2",
+        None,
+    ]
+    assert first_resource_summary[0] == {
+        "fiscal_period": "2025-Q4",
+        "count_unit": "profile_resource_rows",
+        "profile_row_count": 1,
+        "status_counts": {
+            "one_announcement_candidate": 1,
+            "multiple_announcement_candidates": 0,
+            "not_observed_in_selected_windows": 0,
+            "query_window_incomplete": 0,
+            "identity_incomplete": 0,
+        },
+    }
+    assert first_resource_summary[1]["status_counts"][
+        "multiple_announcement_candidates"
+    ] == 1
+    assert first_resource_summary[2]["status_counts"][
+        "not_observed_in_selected_windows"
+    ] == 1
+    assert first_resource_summary[3]["status_counts"]["identity_incomplete"] == 1
+    second_resource_summary = result["resources"][1]["period_summary"]
+    assert second_resource_summary[0]["fiscal_period"] == "2026-Q3"
+    assert second_resource_summary[0]["profile_row_count"] == 1
+    assert second_resource_summary[0]["status_counts"]["query_window_incomplete"] == 1
 
 
 def test_candidate_boundary_and_projection_csv_are_enforced(tmp_path: Path) -> None:

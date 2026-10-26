@@ -60,6 +60,41 @@ def _license_evidence(*, status: str = "transport_error") -> dict[str, object]:
     }
 
 
+def _formal_monthly_revenue_quality(
+    *, status: str = "observed", periods: object | None = None
+) -> dict[str, object]:
+    if periods is None and status == "observed":
+        periods = [
+            {
+                "period": "2026-01",
+                "formal_row_count": 2,
+                "missing_announcement_date_row_count": 1,
+                "distinct_stock_code_count": 2,
+                "distinct_source_version_count": 1,
+            },
+            {
+                "period": "2026-02",
+                "formal_row_count": 3,
+                "missing_announcement_date_row_count": 0,
+                "distinct_stock_code_count": 3,
+                "distinct_source_version_count": 1,
+            },
+        ]
+    return {
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "status": status,
+        "periods": periods if status == "observed" else None,
+        "blockers": [] if status == "observed" else ["database_unavailable"],
+        "scope": (
+            "formal_monthly_revenue_rows_grouped_by_period"
+            if status == "observed"
+            else "unknown"
+        ),
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+
+
 def test_default_center_is_authoritative_and_fail_closed() -> None:
     center = P0SourceControlCenterService().build()
 
@@ -79,6 +114,77 @@ def test_default_center_is_authoritative_and_fail_closed() -> None:
     assert all(row.downstream_eligibility == "none" for row in center.rows)
     assert all("candidate_audit_not_supplied" in row.blockers for row in center.rows)
     assert all("source_acceptance_decision_missing" in row.blockers for row in center.rows)
+
+
+def test_formal_monthly_revenue_quality_is_top_level_and_optional() -> None:
+    center = P0SourceControlCenterService().build(
+        formal_monthly_revenue_quality=_formal_monthly_revenue_quality()
+    )
+    payload = center.to_dict()
+
+    assert payload["formal_monthly_revenue_quality"] == _formal_monthly_revenue_quality()
+    assert all(
+        "formal_monthly_revenue_quality" not in row.to_dict()
+        for row in center.rows
+    )
+    assert P0SourceControlCenterService().build().to_dict()[
+        "formal_monthly_revenue_quality"
+    ] is None
+    unavailable = _formal_monthly_revenue_quality(status="unavailable")
+    assert P0SourceControlCenterService().build(
+        formal_monthly_revenue_quality=unavailable
+    ).to_dict()["formal_monthly_revenue_quality"] == unavailable
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda item: item.update(schema_version="unknown"), "schema mismatch"),
+        (lambda item: item.update(status="missing"), "status invalid"),
+        (lambda item: item.update(formal_db_write=True), "boundary mismatch"),
+        (lambda item: item.update(financial_values_returned=True), "boundary mismatch"),
+        (
+            lambda item: item.update(status="unavailable", periods=[]),
+            "periods must be unknown",
+        ),
+        (
+            lambda item: item.update(periods=list(reversed(item["periods"]))),
+            "uniquely month-sorted",
+        ),
+        (
+            lambda item: item["periods"].append(dict(item["periods"][0])),
+            "uniquely month-sorted",
+        ),
+        (
+            lambda item: item["periods"][0].update(period="2026-13"),
+            "period is invalid",
+        ),
+        (
+            lambda item: item["periods"][0].update(formal_row_count=-1),
+            "count invalid",
+        ),
+        (
+            lambda item: item["periods"][0].update(
+                missing_announcement_date_row_count=-1
+            ),
+            "count invalid",
+        ),
+        (
+            lambda item: item["periods"][0].update(formal_row_count=True),
+            "count invalid",
+        ),
+    ],
+)
+def test_formal_monthly_revenue_quality_rejects_invalid_boundary_or_counts(
+    mutate, message: str
+) -> None:
+    payload = _formal_monthly_revenue_quality()
+    mutate(payload)
+
+    with pytest.raises(ValueError, match=message):
+        P0SourceControlCenterService().build(
+            formal_monthly_revenue_quality=payload
+        )
 
 
 def test_quarterly_candidate_audit_is_visible_but_cannot_grant_eligibility() -> None:

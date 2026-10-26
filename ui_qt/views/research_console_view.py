@@ -660,6 +660,20 @@ class ResearchConsoleView(QWidget):
         self.quarterly_announcement_crosswalk_detail_label.setTextInteractionFlags(
             Qt.TextSelectableByMouse
         )
+        self.quarterly_announcement_period_summary_table = _table(
+            (
+                "財報期別",
+                "Profile 列數",
+                "單一候選",
+                "多筆歧義",
+                "窗口內未觀測",
+                "查詢窗口不完整",
+                "身份缺漏",
+            )
+        )
+        self.quarterly_announcement_period_summary_table.setAccessibleName(
+            "所選季報資源依財報期別的公告對照摘要"
+        )
         self.quarterly_announcement_crosswalk_resource_table = _table(
             ("公司代碼", "財報期別", "公告對照狀態", "MOPS 公告日時間（台北）", "候選數", "公告 response SHA-256")
         )
@@ -694,9 +708,50 @@ class ResearchConsoleView(QWidget):
             self.quarterly_announcement_crosswalk_detail_label
         )
         announcement_panel.layout.addWidget(
+            QLabel(
+                "以下按財報所屬期別統計所選 CSV 資源的 profile 列；"
+                "窗口內未觀測只表示所選公告查詢窗口沒有找到候選，不代表未申報。"
+            )
+        )
+        announcement_panel.layout.addWidget(
+            self.quarterly_announcement_period_summary_table
+        )
+        announcement_panel.layout.addWidget(
             self.quarterly_announcement_crosswalk_resource_table
         )
         gates_panel.layout.addWidget(announcement_panel)
+        monthly_quality_panel = SectionPanel(
+            "正式月營收公告日品質（按資料期別唯讀彙總）"
+        )
+        self.formal_monthly_revenue_quality_state_label = QLabel(
+            "尚未讀取正式月營收摘要；各月份數字未知。"
+        )
+        self.formal_monthly_revenue_quality_state_label.setWordWrap(True)
+        self.formal_monthly_revenue_quality_table = _table(
+            (
+                "營收資料月份",
+                "正式列數",
+                "缺公告日列數",
+                "公司代碼數",
+                "來源版本數",
+            )
+        )
+        self.formal_monthly_revenue_quality_table.setAccessibleName(
+            "正式月營收按月份公告日期品質摘要"
+        )
+        monthly_quality_panel.layout.addWidget(
+            self.formal_monthly_revenue_quality_state_label
+        )
+        monthly_quality_panel.layout.addWidget(
+            self.formal_monthly_revenue_quality_table
+        )
+        monthly_quality_panel.layout.addWidget(
+            QLabel(
+                "只計正式月營收列、缺公告日期、公司代碼與來源版本；不讀取營收值，"
+                "不載入候選 mapping、不回填或判定 Gate／PIT 資格。"
+            )
+        )
+        gates_panel.layout.addWidget(monthly_quality_panel)
         gates_panel.layout.addWidget(QLabel("Artifact Inspector"))
         gates_panel.layout.addWidget(self.artifact_table)
         layout.addWidget(gates_panel)
@@ -1106,6 +1161,7 @@ class ResearchConsoleView(QWidget):
         control_center = console.source_control_center
         if control_center is None:
             self._control_center_rows: list[dict[str, Any]] = []
+            self._formal_monthly_revenue_quality = None
             self.control_center_detail_label.setText(
                 "沒有可選取的來源治理資料；未知不代表沒有缺口。"
             )
@@ -1115,6 +1171,9 @@ class ResearchConsoleView(QWidget):
             self.control_center_table.setRowCount(0)
         else:
             self._control_center_rows = [row.to_dict() for row in control_center.rows]
+            self._formal_monthly_revenue_quality = control_center.to_dict().get(
+                "formal_monthly_revenue_quality"
+            )
             self.control_center_detail_label.setText(
                 "選取來源查看 Owner 決議、資料／授權／PIT 缺口及下一步。"
             )
@@ -1158,6 +1217,7 @@ class ResearchConsoleView(QWidget):
             )
         self._render_quarterly_candidate_audit()
         self._render_quarterly_announcement_crosswalk()
+        self._render_formal_monthly_revenue_quality()
         _set_rows(
             self.artifact_table,
             ((row.artifact_type, row.artifact_id, row.status, row.citation) for row in console.artifacts),
@@ -1423,9 +1483,63 @@ class ResearchConsoleView(QWidget):
                 "Reader blockers：未知。"
             )
 
+    def _render_formal_monthly_revenue_quality(self) -> None:
+        table = self.formal_monthly_revenue_quality_table
+        table.setRowCount(0)
+        value = getattr(self, "_formal_monthly_revenue_quality", None)
+        if not isinstance(value, dict):
+            self.formal_monthly_revenue_quality_state_label.setText(
+                "正式月營收摘要：未知；沒有可讀回的唯讀聚合結果。"
+            )
+            return
+        status = value.get("status")
+        blockers = value.get("blockers", [])
+        blocker_text = (
+            "；原因：" + "、".join(item for item in blockers if isinstance(item, str))
+            if isinstance(blockers, list) and blockers
+            else ""
+        )
+        if status != "observed" or value.get("financial_values_returned") is not False:
+            self.formal_monthly_revenue_quality_state_label.setText(
+                f"正式月營收摘要：不可用／未知{blocker_text}。"
+            )
+            table.setRowCount(1)
+            for column in range(table.columnCount()):
+                table.setItem(
+                    0,
+                    column,
+                    QTableWidgetItem("—" if column == 0 else "未知"),
+                )
+            return
+        periods = value.get("periods")
+        if not isinstance(periods, list):
+            self.formal_monthly_revenue_quality_state_label.setText(
+                "正式月營收摘要：未知；期別摘要格式無效。"
+            )
+            return
+        self.formal_monthly_revenue_quality_state_label.setText(
+            f"正式月營收摘要：已讀回 {len(periods)} 個資料月份。"
+            "缺公告日列數只反映目前正式表欄位，不代表其他資料品質條件已通過。"
+        )
+        table.setRowCount(len(periods))
+        for row_index, item in enumerate(periods):
+            if not isinstance(item, dict):
+                continue
+            values = (
+                str(item.get("period") or "未知"),
+                str(item.get("formal_row_count", "未知")),
+                str(item.get("missing_announcement_date_row_count", "未知")),
+                str(item.get("distinct_stock_code_count", "未知")),
+                str(item.get("distinct_source_version_count", "未知")),
+            )
+            for column, cell_value in enumerate(values):
+                table.setItem(row_index, column, QTableWidgetItem(cell_value))
+
     def _render_quarterly_announcement_crosswalk_resource(self) -> None:
         table = self.quarterly_announcement_crosswalk_resource_table
         table.setRowCount(0)
+        period_table = self.quarterly_announcement_period_summary_table
+        period_table.setRowCount(0)
         crosswalk = self._quarterly_announcement_crosswalk
         selected = self._selected_quarterly_candidate_resource()
         if crosswalk is None or selected is None:
@@ -1453,18 +1567,44 @@ class ResearchConsoleView(QWidget):
                 "此資源沒有可核對的完整公司／期別 profile；不從部分列推論公告對照。"
             )
             return
+        period_summary = match.get("period_summary", [])
+        if isinstance(period_summary, list):
+            period_table.setRowCount(len(period_summary))
+            for row_index, item in enumerate(period_summary):
+                if not isinstance(item, dict):
+                    continue
+                status_counts = item.get("status_counts", {})
+                if not isinstance(status_counts, dict):
+                    status_counts = {}
+                values = (
+                    str(item.get("fiscal_period") or "未知"),
+                    str(item.get("profile_row_count", "未知")),
+                    str(status_counts.get("one_announcement_candidate", "未知")),
+                    str(status_counts.get("multiple_announcement_candidates", "未知")),
+                    str(status_counts.get("not_observed_in_selected_windows", "未知")),
+                    str(status_counts.get("query_window_incomplete", "未知")),
+                    str(status_counts.get("identity_incomplete", "未知")),
+                )
+                for column, value in enumerate(values):
+                    period_table.setItem(row_index, column, QTableWidgetItem(value))
         profile_rows = match.get("rows", [])
         if not isinstance(profile_rows, list):
             profile_rows = []
         summary = match.get("summary", {})
         if not isinstance(summary, dict):
             summary = {}
+        profiles_complete = match.get("row_profiles_complete") is True
+        completeness_note = (
+            "Profile 掃描完整。"
+            if profiles_complete
+            else "Profile 掃描不完整或未知；期別計數僅涵蓋目前解析列。"
+        )
         self.quarterly_announcement_crosswalk_detail_label.setText(
             f"目前資源：{match.get('market')}／{match.get('statement')}／{match.get('industry')}；"
             f"單一公告候選 {summary.get('one_announcement_candidate', 0)}，"
             f"多筆歧義 {summary.get('multiple_announcement_candidates', 0)}，"
             f"窗口內未觀測 {summary.get('not_observed_in_selected_windows', 0)}，"
-            f"查詢窗口不完整 {summary.get('query_window_incomplete', 0)}。"
+            f"查詢窗口不完整 {summary.get('query_window_incomplete', 0)}。 {completeness_note}"
         )
         table.setRowCount(len(profile_rows))
         for row_index, item in enumerate(profile_rows):

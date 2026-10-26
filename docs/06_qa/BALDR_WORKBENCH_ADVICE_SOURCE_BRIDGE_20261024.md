@@ -147,6 +147,12 @@ Workbench view 聚焦 **53 passed**，必要 `tests/test_ui_qt_update_view_workb
 
 此項改善成熟度資訊可讀性與 fail-closed 顯示，不會填寫成熟度、改 Advice 動作或授予 Gate 1、來源、PIT、Gate 2 或 ML 資格；正式資料未變。
 
+## 2026-10-26 Advice 精確保存來源身份接線
+
+`AdviceComposer` 現把符合安全格式的保存 `result_id` 填入每筆 Advice 的 `source_result_id`，讓 Workbench 可在每日 candidate result／股票／決策日／資料日仍完全吻合時顯示精確來源回查與人工研究決定入口。`source_payload_sha256` 只從 `RecommendationExecutionReadModel` 讀取，必須同時為 `canonical_payload_and_index_verified`、沒有 legacy payload、execution result ID 與 Advice result ID 相同且 hash 為 canonical SHA-256；舊格式／未核驗輸入不帶 hash。Workbench 的既有 snapshot ID 核對保留；Advice payload hash 不替代 daily source snapshot hash，也沒有自動執行人工決定或 writer。
+
+驗證 `tests/test_advice_composer.py` + `tests/test_workbench_advice_contract.py` **42 passed**，含 Composer 產生的實際 Advice 接回 Workbench 後開啟同筆保存結果並啟用人工研究入口，以及 snapshot hash 不會被 payload SHA 代填。必要 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,153 source files clean**；三個變更 Python 檔 `py_compile` 通過。QA 使用單一有界 Windows Job，8 GiB／12 process／kill-on-close，所有 Job 自然結束、remaining 0。QA 文件定向 document-control **12 features／1 link source／0 errors**；Manual／Snapshot 較廣檢查列出 29 條既有 `output/` trial／task 外部連結無法解析，沒有修動本機輸出。原生 GUI、Owner UAT、真實人工決定 writer 未執行；此工程修復不改 Gate 1、Gate 2、來源、PIT 或 ML 資格。
+
 ### 人工研究決定讀回摘要補強
 
 按「讀取／重新讀取同筆決定」成功後，Workbench 將既有狀態碼翻成「尚無人工決定／已納入研究／已略過」，並同列有效研究註記數及下次檢視時間。未知狀態保留原值提示，無效註記數顯示未知；身份衝突與 read error 沿用既有明確失敗摘要。此項只改善明確讀回按鈕的結果文字，沒有在 Advice 選列時同步讀 Journal，也不增加新的 I/O／背景工作或自動保存。

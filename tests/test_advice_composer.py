@@ -117,6 +117,8 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     portfolio = result.portfolio_rows[0]
     assert recommendation.advice_action is AdviceAction.ADD_CANDIDATE
     assert recommendation.source_trace == ("RecommendationResultDTO", "rec-20260712-001")
+    assert recommendation.source_result_id == "rec-20260712-001"
+    assert recommendation.source_payload_sha256 is None
     assert recommendation.stock_name == "台積電"
     assert recommendation.decision_date == "2026-07-12"
     assert recommendation.data_as_of_date == "2026-07-11"
@@ -421,8 +423,34 @@ def test_composer_carries_only_verified_canonical_payload_hash_into_source_trace
         "canonical-advice-result",
         "canonical_payload_sha256:" + "a" * 64,
     )
+    assert advice.source_result_id == "canonical-advice-result"
+    assert advice.source_payload_sha256 == "sha256:" + "a" * 64
+    assert AdviceComposer._verified_source_payload_sha256(
+        read_model, expected_result_id="another-result"
+    ) is None
     assert "must-not-be-exposed" not in advice.source_trace
-    assert type(advice).from_dict(advice.to_dict()).source_trace == advice.source_trace
+    restored = type(advice).from_dict(advice.to_dict())
+    assert restored.source_trace == advice.source_trace
+    assert restored.source_result_id == advice.source_result_id
+    assert restored.source_payload_sha256 == advice.source_payload_sha256
+
+
+def test_composer_omits_unsafe_source_result_identity() -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    source = _recommendation_result()
+    source.result_id = "../unsafe"
+    advice = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+
+    assert advice.source_result_id is None
+    assert advice.source_payload_sha256 is None
 
 
 def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() -> None:

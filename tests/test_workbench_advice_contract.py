@@ -21,6 +21,9 @@ from app_module.advice_dtos import (
     PortfolioAdviceDTO,
     RecommendationAdviceDTO,
 )
+from app_module.advice_composer import AdviceComposer
+from app_module.advice_policy import AdvicePolicy
+from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.workbench_dtos import (
     WorkbenchAccessBoundary,
     WorkbenchDashboardDTO,
@@ -356,6 +359,83 @@ def test_advice_exact_saved_source_button_requires_current_row_identity() -> Non
     assert "payload SHA-256=sha256:" + "a" * 64 in view.advice_source_result_button.toolTip()
     view.advice_source_result_button.click()
     assert opened == [result_id]
+
+
+def test_composed_advice_restores_exact_saved_source_and_manual_research_entry() -> None:
+    _app()
+    result_id = "saved-result-composed-e2e"
+    source = RecommendationResultDTO(
+        result_id=result_id,
+        result_name="每日研究結果",
+        config={},
+        recommendations=[
+            RecommendationDTO(
+                stock_code="2330",
+                stock_name="台積電",
+                close_price=1000,
+                price_change=1,
+                total_score=90,
+                indicator_score=30,
+                pattern_score=30,
+                volume_score=30,
+                recommendation_reasons="策略條件吻合",
+                industry="半導體",
+                regime_match=True,
+            )
+        ],
+    )
+    composed = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        mode=AdviceMode.GUIDED,
+    )
+    row = composed.recommendations[0]
+    assert row.source_result_id == result_id
+    assert row.source_payload_sha256 is None
+
+    base = _dashboard_with_advice()
+    daily = WorkbenchDailyEvidence(
+        status="candidate",
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        headline="候選已保存",
+        next_action="回查保存結果並記錄研究決定",
+        market_summary="",
+        industry_summary="",
+        stock_summary="",
+        watchlist_summary="",
+        portfolio_summary="",
+        candidate_symbols=("2330",),
+        candidate_status="candidate",
+        candidate_result_id=result_id,
+        candidate_source_snapshot_id="snapshot-composed-e2e",
+        candidate_data_date="2026-07-11",
+    )
+    opened: list[str] = []
+    dashboard = replace(base, advice_dashboard=composed, daily_evidence=daily)
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=dashboard,
+        navigate_to_saved_recommendation_callback=lambda selected: opened.append(selected) or True,
+        save_advice_research_decision_callback=lambda action, identity, note: None,
+        auto_refresh=False,
+    )
+
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    assert not view.advice_source_result_button.isHidden()
+    assert view.advice_accept_decision_button.isEnabled()
+    assert view._selected_advice_decision_identity == {
+        "result_id": result_id,
+        "stock_code": "2330",
+        "decision_date": "2026-07-12",
+        "source_snapshot_id": "snapshot-composed-e2e",
+        "source_snapshot_hash": "",
+        "identity_status": "linked",
+    }
+    view.advice_source_result_button.click()
+    assert opened == [result_id]
     view._display_exception_dashboard("source read failed")
     assert view.advice_source_result_button.isHidden()
 
@@ -384,6 +464,7 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
         decision_date="2026-07-12",
         data_as_of_date="2026-07-11",
         source_result_id=result_id,
+        source_payload_sha256="sha256:" + "c" * 64,
     )
     daily = WorkbenchDailyEvidence(
         status="candidate",

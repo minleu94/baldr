@@ -88,11 +88,19 @@ class AdviceComposer:
                 )
 
         warning_values = self._strings(evidence_warnings, "evidence_warnings")
-        source_provenance = self._verified_source_provenance(recommendations)
         current_weights_known = current_weights_bp is not None
         current_weights = self._weights(current_weights_bp or {})
         calibration_by_stock = dict(calibration_by_stock_code or {})
         result_id, config, recommendation_rows, source_trace_kind = self._recommendation_payload(recommendations)
+        source_payload_sha256 = self._verified_source_payload_sha256(
+            recommendations,
+            expected_result_id=result_id,
+        )
+        source_provenance = (
+            (f"canonical_payload_sha256:{source_payload_sha256.removeprefix('sha256:')}",)
+            if source_payload_sha256 is not None
+            else ()
+        )
         # A normal RecommendationService run persists the projection fields on
         # each RecommendationDTO.  Reuse that exact object for portfolio rows
         # as well, so Advice does not require a parallel caller-only mapping.
@@ -192,6 +200,7 @@ class AdviceComposer:
                     calibration=calibration_by_stock.get(recommendation.stock_code),
                     source_trace_kind=source_trace_kind,
                     source_provenance=source_provenance,
+                    source_payload_sha256=source_payload_sha256,
                     source_evidence=source_evidence_by_stock.get(
                         recommendation.stock_code,
                         ("保存結果沒有可核對的同股逐筆篩選／Why Not／流動性證據；不能據此推定沒有反證或風險。",),
@@ -273,6 +282,7 @@ class AdviceComposer:
         calibration: object | None,
         source_trace_kind: str = "RecommendationResultDTO",
         source_provenance: tuple[str, ...] = (),
+        source_payload_sha256: str | None = None,
         source_evidence: tuple[str, ...] = (),
         liquidity_state: str = "UNKNOWN",
         portfolio_sizing_requested: bool = False,
@@ -351,6 +361,8 @@ class AdviceComposer:
             liquidity_state=liquidity_state,
             source_evidence=source_evidence,
             source_trace=source_trace + contract_trace,
+            source_result_id=self._safe_source_result_id(result_id),
+            source_payload_sha256=source_payload_sha256,
             refusal_reasons=decision.reasons,
             **calibration_fields,
         )
@@ -981,17 +993,55 @@ class AdviceComposer:
     ) -> tuple[str, ...]:
         """只沿用 query 已核驗的 canonical payload hash，不提升 legacy hash 資格。"""
 
-        if not isinstance(recommendations, RecommendationExecutionReadModel):
-            return ()
-        if (
-            recommendations.execution is None
-            or recommendations.integrity_basis != "canonical_payload_and_index_verified"
-        ):
-            return ()
-        payload_hash = recommendations.payload_hash
-        if not isinstance(payload_hash, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", payload_hash) is None:
+        payload_hash = AdviceComposer._verified_source_payload_sha256(recommendations)
+        if payload_hash is None:
             return ()
         return (f"canonical_payload_sha256:{payload_hash.removeprefix('sha256:')}",)
+
+    @staticmethod
+    def _verified_source_payload_sha256(
+        recommendations: RecommendationResultDTO | RecommendationExecutionReadModel | Sequence[RecommendationDTO],
+        *,
+        expected_result_id: str | None = None,
+    ) -> str | None:
+        """回傳同一 canonical execution read model 已核驗的 payload hash。"""
+
+        if not isinstance(recommendations, RecommendationExecutionReadModel):
+            return None
+        execution = recommendations.execution
+        if (
+            execution is None
+            or recommendations.legacy_result is not None
+            or recommendations.integrity_basis != "canonical_payload_and_index_verified"
+        ):
+            return None
+        execution_result_id = getattr(execution, "result_id", None)
+        if (
+            not isinstance(execution_result_id, str)
+            or not execution_result_id
+            or execution_result_id.strip() != execution_result_id
+            or (expected_result_id is not None and execution_result_id != expected_result_id)
+        ):
+            return None
+        payload_hash = recommendations.payload_hash
+        if not isinstance(payload_hash, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", payload_hash) is None:
+            return None
+        return payload_hash
+
+    @staticmethod
+    def _safe_source_result_id(result_id: object) -> str | None:
+        """只將符合 Advice DTO 身份契約的保存結果 ID 接回 Advice。"""
+
+        if (
+            type(result_id) is not str
+            or not result_id
+            or result_id in {".", ".."}
+            or result_id.strip() != result_id
+            or len(result_id) > 128
+            or any(character in result_id for character in ("/", "\\", "\x00"))
+        ):
+            return None
+        return result_id
 
     @classmethod
     def _weights(cls, values: Mapping[str, int]) -> dict[str, int]:

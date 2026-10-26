@@ -241,3 +241,13 @@ Owner 已授權把 MOPS 顯示的「公告日期／時間」當作相符公告�
 截至 2026-10-26，repo 已有季度 OpenAPI 最新候選為 `quarterly-openapi-20261019T010111865027Z-19cecc8bee1f483493329969f441c91b`（2026-10-19 UTC 擷取），位於 `output/mops_quarterly_openapi_research/`。終端狀態為 `completed_with_review_items`；唯讀 terminal readback 驗證 26 份 request receipt、3,962 筆數值原始列與 3,954 筆 preview 列。24 個 endpoint 中，16 個為 `observed_row_array`、6 個為 `key_review_required`、2 個為 `schema_review_required`；8 筆待審列未進 preview。16 個可解析 endpoint 的報表期別均為 2026-Q2。preview 的欄位空值計數合計 31,001（欄位值缺漏數，不是公司列數）；這是候選觀測，不代表正式品質清除或全市場 coverage。
 
 該 run 將 `available_at` 留空、`formal_pit_eligible=false`、`issuer_coverage_complete=false`；endpoint 的 `Date`／`出表日期` 不被視為逐列公告時間。官方 OpenAPI catalog 與 Open Data 季報頁提供路由、欄位與季度期別資訊，但不足以確認一般金額單位、合併／個別報表 basis、逐列首次可得時間或修訂版本歷史。相關證據與限制見[季度 OpenAPI 擷取 QA](SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md)及[來源採用與季度目錄 QA](FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md)；官方來源包括 [TWSE OpenAPI catalog](https://openapi.twse.com.tw/v1/swagger.json)、[TPEx OpenAPI catalog](https://www.tpex.org.tw/openapi/swagger.json)、[TWSE 季報資料集 94831](https://data.gov.tw/dataset/94831)與[TPEx 季報資料集 91967](https://data.gov.tw/dataset/91967)。因此該批資料仍為隔離研究候選，沒有正式 DB 寫入、source acceptance、Gate credit 或 ML 資格變更。
+
+### 2026-10-26 F22 與富邦 API 來源可用性盤點
+
+為確認能否補到正式月營收公告日，查核 [MOPS 官方公告快易查](https://mopsov.twse.com.tw/mops/web/ezsearch)：頁面列有 F22「月營業收入」，並標示資料區間自民國 102 年起；這個頁面資訊表示歷史範圍可能涵蓋正式資料庫 2014-04 起的缺公告日月份，但尚未證實其查詢 API 回應如何標示公司、月別與時間，也未建立可用候選。既有 `mops_ezsearch_statement_availability` adapter 只接受季度財報 F26–F29。依上方「來源授權邊界」，EZSearch 自動擷取授權未被證實，不得以這項功能列表擴大自動採集。
+
+本次僅作一次無登入、單一公司（2330）、單一日期的 F22 查詢探測；本機 DNS 無法解析 `mopsov.twse.com.tw`，HTTP request 未建立，沒有 response body、receipt 或資料候選。沒有因此建立正式公告日期 mapping。
+
+另查核[富邦歷史 K 線文件](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/historical/candles/)：其市場行情 API 文件列出上市櫃日線最遠可回溯至 2010 年，單次查詢小於一年。它可能提供缺漏日的行情候選，但不是 MOPS 公告時間、公司財報月份或 filing version 的證據。單筆 2330／2026-10-23 日 K 查詢尚未送出：本機執行環境的自動審查拒絕讀取 Windows Credential Manager 並登入真實券商 API，理由是尚未收到明確的憑證／登入授權。這次拒絕前沒有讀取任何憑證或呼叫富邦 API；因此行情補值、來源候選及正式解除筆數均為 **0**。
+
+結論：F22 與富邦文件各自提供值得後續驗證的候選路徑，但目前前者受 EZSearch 自動採集授權與 DNS 限制，後者受明確登入授權限制；仍未對正式資料產生任何變更，Gate／PIT／ML 資格不變。

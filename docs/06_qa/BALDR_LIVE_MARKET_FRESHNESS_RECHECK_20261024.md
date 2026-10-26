@@ -101,3 +101,23 @@ canonical runner 使用 `DATA_ROOT=F:\Min\Python\Project\FA_Data`、`OUTPUT_ROOT
 2026-10-25 03:23（Asia/Taipei）重新查閱官方公開頁：TWSE 2026/10 FMTQIK 月報目前最後一筆為 10/22；TWSE 個股 2330 的 2026/10 月日成交報表亦列至 10/22。TWSE 2026 市場開休市表列 10/26 為 10/25 週日的補假，沒有列 10/23 為休市日；TPEx 10/22 公告一項處置期間自 10/23 起算五個營業日，並註明遇休市等情況順延。依官方日曆與公告，10/23 應維持交易日判讀；這是交叉來源支持的判讀，不是 10/23 成交列證據。
 
 公開頁面：TWSE [2026/10 大盤每日交易報表](https://www.twse.com.tw/en/exchangeReport/FMTQIK?date=&response=html)、[市場開休市日期](https://wwwc.twse.com.tw/zh/trading/holiday.html)、[2330 2026/10 個股日成交資訊](https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261001&stockNo=2330&response=json)；TPEx [8358 處置公告](https://www.tpex.org.tw/www/zh-tw/bulletin/disposal?code=8358&endDate=2026%2F10%2F29&id=&order=date&response=html&startDate=2026%2F07%2F01&type=code)。目前可讀到的 TWSE 報表沒有 10/23 列，且 TWSE／TPEx 10/23 行情缺失仍無可驗證解釋；因此資料尾日維持已證實的 10/22，沒有改成休市、沒有補值，也沒有寫入正式資料。
+
+## 2026-10-26 TWSE 10/23 單股來源重核
+
+本次只查 TWSE 2026-10-23 的 2330，不把單股結果外推成全市場。既有 `scripts/capture_twse_historical_daily.py` 對官方 MI_INDEX `type=ALL` 執行一次唯讀候選擷取；回應 body 的 `stat` 為「很抱歉，沒有符合條件的資料!」，因此工具在建立完整 receipt／comparison 前停止。原始 gzip response（87 bytes）留在隔離 scratch，SHA-256 `f1c24c086621954aff00ef11810356d3ae9864892cba694d267499356ff867ad`。capture Job exit 1 是官方回應無資料，不是成功 capture；Job active process 0、handle／lock 已關閉、source pins 前後相同，無正式資料寫入。
+
+同日另唯讀查看 TWSE 官方 2330 2026-10 月個股成交頁：`stat=OK`、15 列，最後日期 10/22，沒有 10/23 列（[官方 STOCK_DAY 回應](https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20261001&stockNo=2330&response=json)）。Formal SQLite `mode=ro`／`PRAGMA query_only=ON` 精確查 `daily_prices` 的 2330／20261023，結果 0 列；`daily_price/20261023.csv` 不存在。唯讀回讀 Job exit 0、Job active process 0、source pins 前後相同。
+
+隔離執行收據位於 `C:\Users\archi\.codex\visualizations\2026\10\23\01a16afa-5b3f-7692-a5db-8881433773e9\owned-validation\`：MI_INDEX probe `receipt.json` SHA-256 `f83450739919b7535156e51e57ac675c3eb775eb9a6f37c3376c7759d57fa2f7`、`stdout.log` SHA-256 `8dfe4227242b9a5ee4bba2af9225b4103c732d61c522a4b2e9f09903de754e25`；formal readback `receipt.json` SHA-256 `78bf5bedada4c09e0c58e82138854fa596986b5a5c48551648958a7759c8cde41`、`stdout.log` SHA-256 `3caef3def6815c47d4326f65ce756d326c6d10ab4608767559cc9bd4ac84be3`。這只確認 2330 在已查端點與正式資料中的 10/23 缺列，尚未找到可驗證的缺源原因，也未證明任何替代來源可補成正式資料。
+
+
+### 2026-10-26 TWSE endpoint 最新重試
+
+候選擷取器補強後，使用隔離的合成空 SQLite／CSV source，再對 TWSE MI_INDEX 以 8 秒 timeout 重查 2330／2026-10-23；本機 DNS 在取得 HTTP response 前回 `NameResolutionError`（`www.twse.com.tw`），程序 exit 1。這是傳輸失敗，不是官方無資料回應；本次沒有 response、receipt 或 comparison，因此先前已捕獲的官方無資料 response 仍是最後一份來源 body 證據。檢查 scratch candidate root 為 0 個 `.capture-*` 暫存目錄、0 receipt、0 comparison；Formal DB／CSV 未讀寫。
+
+
+### 無資料診斷保存與安全驗證
+
+候選擷取器現在會將已辨識的 TWSE「沒有符合條件的資料」回應保存為 `official_no_data_response` receipt／comparison，保留原始 response hash，並明示零官方列、零修正候選、無來源對照，以及正式訓練／promotion 禁止。CLI 用 exit code 3 表示此可稽核無資料結果。無資料 capture ID 會在舊 response ID 後綁定 12 碼代號範圍 hash，避免同日同回應的不同代號查詢互撞；一般有資料收據沿用舊 ID 格式，維持歷史固定路徑相容。下載或解析失敗也會清除本次暫存 body，若工作程序啟動時已存在同名暫存目錄則 fail closed。這不回補 2330／10/23 行情，也不把富邦或其他來源升格為正式來源。
+
+驗證過程中，第一次加入代號 scope hash 時，冒號前綴造成 Windows 路徑無效；第二次雖移除冒號，長測試目錄下仍觸發路徑長度錯誤。改用固定長度純十六進位 scope suffix，並保留一般收據舊 ID。另有一次相容性 assertion 初放在無資料測試、造成 **1 failed／8 passed**；移至正常行情收據測試後，同一聚焦組最終 **10 passed**，四個修改 Python 檔 `py_compile` 通過；另新增 CLI 測試核對 `official_no_data_response` 輸出與 exit code 3。負例確認 no-data comparison 不能被 ML overlay 當成行情列來源。未對正式 DB／CSV 寫入；TWSE source／PIT／Gate／ML 資格不變。

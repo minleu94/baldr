@@ -5,10 +5,12 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
 import data_module.twse_historical_daily_capture as capture_module
+import scripts.capture_twse_historical_daily as capture_cli
 from data_module.twse_historical_daily_capture import (
     TwseHistoricalCaptureError,
     capture_twse_historical_daily,
@@ -158,6 +160,9 @@ def test_capture_persists_official_wire_receipt_and_33_style_comparison(
         output_root=output,
     )
 
+    assert result.capture_id == (
+        f"twse-mi-index-{_DATE.replace('-', '')}-all-{result.response_sha256[7:23]}"
+    )
     assert result.candidate_count == 1
     assert result.response_path.read_bytes()[:2] == b"\x1f\x8b"
     receipt, comparison = load_twse_capture(result.capture_directory)
@@ -244,3 +249,122 @@ def test_capture_rejects_official_response_missing_requested_symbol(
             symbols=_SYMBOLS,
             output_root=tmp_path / "repo-output",
         )
+
+
+def test_capture_persists_official_no_data_as_non_price_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sqlite_path, canonical_dir, _ = _build_sources(tmp_path)
+    output = tmp_path / "repo-output"
+    monkeypatch.setattr(
+        capture_module.requests,
+        "Session",
+        lambda: _FakeSession({"stat": "很抱歉，沒有符合條件的資料!"}),
+    )
+
+    result = capture_twse_historical_daily(
+        sqlite_path=sqlite_path,
+        canonical_daily_price_dir=canonical_dir,
+        date_value=_DATE,
+        symbols=_SYMBOLS,
+        output_root=output,
+    )
+
+    receipt, comparison = load_twse_capture(result.capture_directory)
+    assert result.status == "official_no_data_response"
+    assert result.candidate_count == 0
+    assert receipt["status"] == "official_no_data_response"
+    assert receipt["official_payload"]["requested_symbols_present"] is False
+    assert comparison["status"] == "official_no_data_response"
+    assert comparison["verification"]["source_no_data"] is True
+    assert comparison["verification"]["official_requested_rows_present"] is False
+    assert comparison["verification"]["correction_candidate_count"] == 0
+    assert comparison["rows"] == []
+    assert result.response_path.read_bytes()[:2] == b"\x1f\x8b"
+    assert not list(output.glob(".capture-*"))
+
+    second = capture_twse_historical_daily(
+        sqlite_path=sqlite_path,
+        canonical_daily_price_dir=canonical_dir,
+        date_value=_DATE,
+        symbols=_SYMBOLS,
+        output_root=output,
+    )
+    assert second.capture_directory == result.capture_directory
+    assert second.receipt_path.read_bytes() == result.receipt_path.read_bytes()
+    assert second.comparison_path.read_bytes() == result.comparison_path.read_bytes()
+
+    different_scope = capture_twse_historical_daily(
+        sqlite_path=sqlite_path,
+        canonical_daily_price_dir=canonical_dir,
+        date_value=_DATE,
+        symbols=("3017",),
+        output_root=output,
+    )
+    assert different_scope.response_sha256 == result.response_sha256
+    assert different_scope.capture_directory != result.capture_directory
+    _, different_comparison = load_twse_capture(different_scope.capture_directory)
+    assert different_comparison["requested_symbols"] == ["3017"]
+
+
+def test_capture_cleans_partial_temporary_response_when_download_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sqlite_path, canonical_dir, _ = _build_sources(tmp_path)
+    output = tmp_path / "repo-output"
+
+    def _fail_after_partial_write(**kwargs) -> None:
+        response_path = kwargs["response_path"]
+        response_path.write_bytes(b"partial-response")
+        raise TwseHistoricalCaptureError("synthetic download failure")
+
+    monkeypatch.setattr(capture_module, "_download_wire_response", _fail_after_partial_write)
+    with pytest.raises(TwseHistoricalCaptureError, match="synthetic download failure"):
+        capture_twse_historical_daily(
+            sqlite_path=sqlite_path,
+            canonical_daily_price_dir=canonical_dir,
+            date_value=_DATE,
+            symbols=_SYMBOLS,
+            output_root=output,
+        )
+
+    assert not list(output.glob(".capture-*"))
+
+
+def test_capture_cli_returns_dedicated_exit_code_for_official_no_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = SimpleNamespace(
+        capture_id="capture-no-data",
+        status="official_no_data_response",
+        capture_directory=tmp_path / "capture",
+        response_path=tmp_path / "capture" / "response.json.gz",
+        receipt_path=tmp_path / "capture" / "receipt.json",
+        comparison_path=tmp_path / "capture" / "comparison.json",
+        response_sha256="sha256:" + "a" * 64,
+        comparison_hash="sha256:" + "b" * 64,
+        candidate_count=0,
+    )
+    monkeypatch.setattr(capture_cli, "capture_twse_historical_daily", lambda **_kwargs: result)
+
+    exit_code = capture_cli.main(
+        [
+            "--sqlite",
+            str(tmp_path / "source.sqlite"),
+            "--daily-price-dir",
+            str(tmp_path / "daily_price"),
+            "--date",
+            _DATE,
+            "--symbol",
+            "3017",
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert exit_code == 3
+    assert json.loads(capsys.readouterr().out)["status"] == "official_no_data_response"

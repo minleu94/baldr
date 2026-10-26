@@ -24,7 +24,7 @@
 
 [10/25 Workbench Advice 空結果判讀修正](BALDR_WORKBENCH_ADVICE_EMPTY_STATE_20261025.md)：帶警告與無警告的空 Advice DTO 現在分開說明，已知診斷碼摘要白話化、原始警告仍完整可查；UI 聚焦及共用 QA 通過，Gate／來源資格不變。
 
-[10/24 正式市場資料新鮮度重核與 bounded recovery](BALDR_LIVE_MARKET_FRESHNESS_RECHECK_20261024.md)：技指已用受驗證的 D→F 磁碟代號映射更新至 10/22，canonical receipt passed、computation evidence verified；SQLite 增量略過全歷史 aggregate。整體 runner `passed_with_warnings`，因 10/23 TAIEX／industry 無可用來源列；formal-source／historical-PIT eligibility 仍 false。
+[10/24 正式市場資料新鮮度重核與 bounded recovery](BALDR_LIVE_MARKET_FRESHNESS_RECHECK_20261024.md)：技指已用受驗證的 D→F 磁碟代號映射更新至 10/22，canonical receipt passed、computation evidence verified；SQLite 增量略過全歷史 aggregate。2026-10-26 再查 TWSE 2330／10/23，MI_INDEX 無資料、STOCK_DAY 最後 10/22，正式 SQLite／CSV 亦無該列；只核一檔，不外推全市場。擷取器現會保存不可晉升的官方無資料診斷收據，不能形成行情列或 ML overlay 證據。整體 runner `passed_with_warnings`，因 10/23 TAIEX／industry 無可用來源列；formal-source／historical-PIT eligibility 仍 false。
 
 10/25 官方公開頁交叉核對仍只見行情列至 10/22；開休市日曆與 TPEx 營業日公告支持保留 10/23 交易日判讀，但未證明缺源原因，詳同份新鮮度收據。
 

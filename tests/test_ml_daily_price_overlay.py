@@ -197,3 +197,35 @@ def test_overlay_binds_official_historical_capture_without_enabling_training(
     assert payload["promotion_eligible"] is False
     rows = overlay_rows(output)
     assert all(row["official_row"]["close"] == "95" for row in rows)
+
+
+def test_overlay_rejects_official_no_data_diagnostic_as_price_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database, csv_root, symbols = _fixture_sources(tmp_path)
+    monkeypatch.setattr(
+        capture_module.requests,
+        "Session",
+        lambda: _FakeSession({"stat": "很抱歉，沒有符合條件的資料!"}),
+    )
+    capture = capture_twse_historical_daily(
+        sqlite_path=database,
+        canonical_daily_price_dir=csv_root,
+        date_value="20260520",
+        symbols=symbols,
+        output_root=tmp_path / "official-no-data-capture",
+    )
+
+    with pytest.raises(
+        DailyPriceOverlayError,
+        match="does not verify every canonical candidate row",
+    ):
+        build_daily_price_overlay(
+            sqlite_path=database,
+            canonical_daily_price_dir=csv_root,
+            date_value="20260520",
+            symbols=symbols,
+            official_capture_comparison_path=capture.comparison_path,
+            output_path=tmp_path / "output" / "no-data-overlay.json",
+        )

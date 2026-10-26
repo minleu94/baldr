@@ -31,6 +31,7 @@ _SHA256_PREFIX = "sha256:"
 _UTC = timezone.utc
 _MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 _CHUNK_BYTES = 1 << 20
+_OFFICIAL_NO_DATA_STATUSES = {"很抱歉，沒有符合條件的資料!"}
 _REQUIRED_FIELDS = (
     "證券代號",
     "證券名稱",
@@ -59,6 +60,7 @@ class TwseHistoricalCaptureResult:
     response_sha256: str
     comparison_hash: str
     candidate_count: int
+    status: str = "official_historical_response_research_candidate"
 
 
 def _canonical_json(value: object) -> str:
@@ -253,6 +255,12 @@ def _stock_table(
     return tuple(result)
 
 
+def _is_official_no_data(payload: Mapping[str, Any]) -> bool:
+    """只辨識目前已觀測到的官方無資料回覆；其他狀態仍 fail closed。"""
+
+    return payload.get("stat") in _OFFICIAL_NO_DATA_STATUSES
+
+
 def _decode_response(raw: bytes, *, content_encoding: str | None) -> bytes:
     encoding = (content_encoding or "").lower()
     if "gzip" in encoding or raw.startswith(b"\x1f\x8b"):
@@ -303,6 +311,14 @@ def _atomic_write_json(path: Path, value: Mapping[str, Any]) -> None:
         path,
         (_canonical_json(dict(value)) + "\n").encode("utf-8"),
     )
+
+
+def _cleanup_temporary_capture(response_path: Path) -> None:
+    response_path.unlink(missing_ok=True)
+    try:
+        response_path.parent.rmdir()
+    except OSError:
+        pass
 
 
 def _required_hash(value: object, *, field_name: str) -> str:
@@ -459,11 +475,20 @@ def _source_file_reference(path: Path, *, output_root: Path) -> dict[str, Any]:
     }
 
 
-def _capture_id(date_iso: str, request_type: str, wire_hash: str) -> str:
-    return (
+def _capture_id(
+    date_iso: str,
+    request_type: str,
+    wire_hash: str,
+    symbols: Sequence[str] | None = None,
+) -> str:
+    capture_id = (
         f"twse-mi-index-{date_iso.replace('-', '')}-"
         f"{request_type.lower()}-{wire_hash[7:23]}"
     )
+    if symbols is None:
+        return capture_id
+    scope_hash = _payload_hash(list(symbols))[7:19]
+    return f"{capture_id}-{scope_hash}"
 
 
 def _load_existing_receipt(path: Path) -> dict[str, Any] | None:
@@ -622,6 +647,149 @@ def _build_receipt(
     return body
 
 
+def _persist_official_no_data_capture(
+    *,
+    date_iso: str,
+    request_type: str,
+    symbols: tuple[str, ...],
+    output_root: Path,
+    metadata: Mapping[str, Any],
+    raw_bytes: bytes,
+    decoded_bytes: bytes,
+    raw_payload: Mapping[str, Any],
+) -> TwseHistoricalCaptureResult:
+    """保存明確的官方無資料回覆；不建立價格列或修正候選。"""
+
+    wire_hash = _hash_bytes(raw_bytes)
+    capture_id = _capture_id(date_iso, request_type, wire_hash, symbols)
+    capture_directory = output_root / "runs" / capture_id
+    capture_directory.mkdir(parents=True, exist_ok=True)
+    response_path = capture_directory / "response.json.gz"
+    _atomic_write_bytes(response_path, raw_bytes)
+
+    receipt_path = capture_directory / "receipt.json"
+    receipt = _load_existing_receipt(receipt_path)
+    if receipt is None:
+        receipt_body: dict[str, Any] = {
+            "schema_version": CAPTURE_SCHEMA_VERSION,
+            "status": "official_no_data_response",
+            "source": "TWSE",
+            "endpoint": TWSE_MI_INDEX_ENDPOINT,
+            "date": date_iso,
+            "request_type": request_type,
+            "request": {
+                "source_url": metadata["source_url"],
+                "parameters": metadata["request_parameters"],
+                "headers": metadata["request_headers"],
+            },
+            "response": {
+                "http_status": metadata["http_status"],
+                "content_type": metadata["content_type"],
+                "content_encoding": metadata["content_encoding"],
+                "response_headers": metadata["response_headers"],
+                "wire_bytes": metadata["wire_response_bytes"],
+                "wire_sha256": wire_hash,
+                "decoded_bytes": metadata["decoded_response_bytes"],
+                "decoded_sha256": _hash_bytes(decoded_bytes),
+                "path": str(response_path.resolve()),
+            },
+            "capture_timing": {
+                "request_started_at_utc": metadata["request_started_at_utc"],
+                "response_completed_at_utc": metadata["response_completed_at_utc"],
+                "historical_decision_time_available": False,
+                "quality_known_at": metadata["response_completed_at_utc"],
+            },
+            "official_payload": {
+                "stat": raw_payload.get("stat"),
+                "payload_sha256": _payload_hash(raw_payload),
+                "stock_row_count": 0,
+                "requested_symbols": list(symbols),
+                "requested_symbols_present": False,
+            },
+            "source_files": {},
+            "safety": {
+                "read_only": True,
+                "labels_mutated": False,
+                "formal_training_allowed": False,
+                "promotion_eligible": False,
+                "historical_retroactive_filtering_allowed": False,
+            },
+        }
+        receipt_body["receipt_hash"] = _payload_hash(receipt_body)
+        _atomic_write_json(receipt_path, receipt_body)
+        receipt = receipt_body
+    if (
+        receipt.get("status") != "official_no_data_response"
+        or receipt.get("response", {}).get("wire_sha256") != wire_hash
+    ):
+        raise TwseHistoricalCaptureError("existing no-data receipt binding mismatch")
+
+    comparison_path = capture_directory / "comparison.json"
+    if not comparison_path.exists():
+        comparison_body: dict[str, Any] = {
+            "schema_version": COMPARISON_SCHEMA_VERSION,
+            "status": "official_no_data_response",
+            "source": "TWSE",
+            "endpoint": TWSE_MI_INDEX_ENDPOINT,
+            "date": date_iso,
+            "requested_symbols": list(symbols),
+            "capture": {
+                "capture_id": capture_id,
+                "capture_directory": str(capture_directory.resolve()),
+                "response_path": str(response_path.resolve()),
+                "response_sha256": wire_hash,
+                "response_bytes": len(raw_bytes),
+                "decoded_response_sha256": _hash_bytes(decoded_bytes),
+                "receipt_path": str(receipt_path.resolve()),
+                "receipt_hash": receipt["receipt_hash"],
+                "captured_at_utc": receipt["capture_timing"][
+                    "response_completed_at_utc"
+                ],
+                "historical_decision_time_available": False,
+            },
+            "source_files": {},
+            "verification": {
+                "requested_symbol_count": len(symbols),
+                "official_row_count": 0,
+                "official_requested_rows_present": False,
+                "source_no_data": True,
+                "official_matches_sqlite_count": None,
+                "official_matches_current_canonical_count": None,
+                "official_matches_historical_backup_count": None,
+                "correction_candidate_count": 0,
+            },
+            "rows": [],
+            "safety": {
+                "read_only": True,
+                "labels_mutated": False,
+                "formal_training_allowed": False,
+                "promotion_eligible": False,
+                "historical_retroactive_filtering_allowed": False,
+            },
+        }
+        comparison_body["comparison_hash"] = _payload_hash(comparison_body)
+        _atomic_write_json(comparison_path, comparison_body)
+
+    receipt, comparison = load_twse_capture(capture_directory)
+    if (
+        comparison.get("status") != "official_no_data_response"
+        or tuple(comparison.get("requested_symbols") or ()) != symbols
+        or comparison.get("capture", {}).get("response_sha256") != wire_hash
+    ):
+        raise TwseHistoricalCaptureError("existing no-data comparison binding mismatch")
+    return TwseHistoricalCaptureResult(
+        capture_directory=capture_directory,
+        response_path=response_path,
+        receipt_path=receipt_path,
+        comparison_path=comparison_path,
+        capture_id=capture_id,
+        response_sha256=wire_hash,
+        comparison_hash=str(comparison["comparison_hash"]),
+        candidate_count=0,
+        status="official_no_data_response",
+    )
+
+
 def capture_twse_historical_daily(
     *,
     sqlite_path: Path,
@@ -661,25 +829,40 @@ def capture_twse_historical_daily(
         else _safe_source_path(historical_backup_path, output_root=output)
     )
 
-    # Capture into a temporary run directory first; the final directory is
-    # content-addressed by the response hash and therefore reusable.
+    # Empty responses bind symbol scope because their body contains no row identity.
     temporary = output / f".capture-{os.getpid()}"
-    temporary.mkdir(parents=True, exist_ok=True)
+    if temporary.exists():
+        raise TwseHistoricalCaptureError("temporary capture path already exists")
+    temporary.mkdir(parents=True, exist_ok=False)
     temporary_response = temporary / "response.json.gz"
-    metadata, raw_bytes, decoded_bytes = _download_wire_response(
-        date_iso=date_iso,
-        request_type=normalized_type,
-        timeout_seconds=timeout_seconds,
-        response_path=temporary_response,
-    )
-    raw_payload, _ = _read_json_payload(
-        decoded_bytes,
-        content_encoding=None,
-    )
-    official_rows = _stock_table(
-        raw_payload,
-        requested_symbols=set(normalized_symbols),
-    )
+    try:
+        metadata, raw_bytes, decoded_bytes = _download_wire_response(
+            date_iso=date_iso,
+            request_type=normalized_type,
+            timeout_seconds=timeout_seconds,
+            response_path=temporary_response,
+        )
+        raw_payload, _ = _read_json_payload(
+            decoded_bytes,
+            content_encoding=None,
+        )
+        if _is_official_no_data(raw_payload):
+            return _persist_official_no_data_capture(
+                date_iso=date_iso,
+                request_type=normalized_type,
+                symbols=normalized_symbols,
+                output_root=output,
+                metadata=metadata,
+                raw_bytes=raw_bytes,
+                decoded_bytes=decoded_bytes,
+                raw_payload=raw_payload,
+            )
+        official_rows = _stock_table(
+            raw_payload,
+            requested_symbols=set(normalized_symbols),
+        )
+    finally:
+        _cleanup_temporary_capture(temporary_response)
     official_by_symbol = {str(row["symbol"]): row for row in official_rows}
     missing = sorted(set(normalized_symbols) - set(official_by_symbol))
     if missing:
@@ -688,16 +871,16 @@ def capture_twse_historical_daily(
         )
 
     wire_hash = _hash_bytes(raw_bytes)
-    capture_id = _capture_id(date_iso, normalized_type, wire_hash)
+    capture_id = _capture_id(
+        date_iso,
+        normalized_type,
+        wire_hash,
+    )
     capture_directory = output / "runs" / capture_id
     capture_directory.mkdir(parents=True, exist_ok=True)
     response_path = capture_directory / "response.json.gz"
     _atomic_write_bytes(response_path, raw_bytes)
-    temporary_response.unlink(missing_ok=True)
-    try:
-        temporary.rmdir()
-    except OSError:
-        pass
+    _cleanup_temporary_capture(temporary_response)
 
     sqlite_rows = _read_sqlite_rows(
         sqlite_source,

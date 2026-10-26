@@ -2,7 +2,8 @@
 
 此入口只允許建立 repo output 下的 candidate evidence；不寫入 DATA_ROOT、
 SQLite、daily CSV、feature 或 label。指定日期是歷史回補，擷取完成時間不會
-被宣告為原決策時點的可得時間。
+被宣告為原決策時點的可得時間。官方明確回覆無資料時會保存獨立診斷收據並
+以 exit code 3 結束；它不是有效價格列或修正候選。
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "capture_id": result.capture_id,
+                "status": result.status,
                 "capture_directory": str(result.capture_directory.resolve()),
                 "response_path": str(result.response_path.resolve()),
                 "receipt_path": str(result.receipt_path.resolve()),
@@ -63,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             sort_keys=True,
         )
     )
-    return 0
+    return 3 if result.status == "official_no_data_response" else 0
 
 
 if __name__ == "__main__":

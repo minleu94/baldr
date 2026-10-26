@@ -5278,7 +5278,11 @@ def _advice_contract_completeness(item: object) -> str:
     missing = tuple(
         label
         for name, label in required_fields
-        if not _has_advice_contract_value(getattr(item, name, None))
+        if not (
+            _has_advice_source_trace(item)
+            if name == "source_trace"
+            else _has_advice_contract_value(getattr(item, name, None))
+        )
     )
     if not missing:
         return "Advice 必要欄位：目前均有可判讀值與來源追溯；仍須依來源、品質與 Gate 判讀。"
@@ -5307,6 +5311,21 @@ def _has_advice_contract_value(value: object) -> bool:
             _has_advice_contract_value(item) for item in value
         )
     return value is not None
+
+
+def _has_advice_source_trace(item: object) -> bool:
+    """來源型別名稱本身不算追溯；需有結果 ID 或具體來源／拒絕依據。"""
+
+    if _has_advice_contract_value(getattr(item, "source_result_id", None)):
+        return True
+    trace = getattr(item, "source_trace", None)
+    values = trace if isinstance(trace, (tuple, list)) else (trace,)
+    generic_kinds = {"recommendationresultdto", "recommendationexecution"}
+    return any(
+        _has_advice_contract_value(value)
+        and str(value).strip().casefold() not in generic_kinds
+        for value in values
+    )
 
 
 def _format_detail_body(item) -> str:

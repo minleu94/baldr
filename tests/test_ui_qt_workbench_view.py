@@ -113,6 +113,18 @@ def test_advice_contract_completeness_treats_unknown_states_and_empty_trace_as_m
     assert "UNKNOWN／UNAVAILABLE 不算完成" in summary
 
 
+def test_advice_contract_completeness_rejects_source_kind_without_identity() -> None:
+    summary = _advice_contract_completeness(
+        RecommendationAdviceDTO(
+            stock_code="2330",
+            advice_action=AdviceAction.RESEARCH,
+            source_trace=("RecommendationResultDTO",),
+        )
+    )
+
+    assert "來源追溯" in summary
+
+
 def test_advice_contract_completeness_accepts_known_negative_states_with_trace() -> None:
     summary = _advice_contract_completeness(
         RecommendationAdviceDTO(

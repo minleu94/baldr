@@ -2,9 +2,9 @@
 
 ## 2026-10-26 Gate 1 Advice 未知欄位與來源追溯完整性
 
-Workbench Advice 完整性摘要之前把任何非空字串算作已填，造成 `liquidity_state=UNKNOWN`、`execution_feasibility=UNAVAILABLE` 等尚未可判讀的必要狀態從缺件清單消失；必要欄位也漏掉 `source_trace`。現在空字串、`UNKNOWN`、`UNAVAILABLE`、`NOT_PROVIDED`、`N/A`、中文「未知／未提供」都視為待補；tuple/list 逐項檢查。必要欄位加入來源追溯。Known negative states such as `GATE_FAIL`、`NOT_FEASIBLE`、`MISSING` remain known values and are shown as such, not as successful evidence.
+Workbench Advice 完整性摘要之前把任何非空字串算作已填，造成 `liquidity_state=UNKNOWN`、`execution_feasibility=UNAVAILABLE` 等尚未可判讀的必要狀態從缺件清單消失；必要欄位也漏掉 `source_trace`。現在空字串、`UNKNOWN`、`UNAVAILABLE`、`NOT_PROVIDED`、`N/A`、中文「未知／未提供」都視為待補；tuple/list 逐項檢查。必要欄位加入來源追溯，精確結果 ID 或具體來源／拒絕依據才算有效，單獨來源型別名稱不算。`GATE_FAIL`、`NOT_FEASIBLE`、`MISSING` 等已知負向狀態仍按已知值呈現，不表示正向證據或通過。
 
-回歸案例涵蓋未知流動性、不可用成交狀態、空來源追溯，以及所有欄位有已知值（含負向結果）和追溯的完整 Advice。詳細選列仍提醒欄位有值不代表來源或 Gate 合格。受控 Windows Job：Advice Composer **30 passed**、Workbench view **52 passed**、必要 Workbench UI **93 passed**、Update validator **25 passed／0 failed／4 skipped**、全域 mypy **1,153 source files，無錯誤**，5 個修改 Python 檔 `py_compile` 通過。Advice QA 文件 document-control check 通過（12 features／1 link source／0 errors）；Manual／Snapshot 檢查受既有 `output` junction 的 WinError 5 阻擋。Job receipt SHA-256 `88e7e11b84d0653acd16e1a571b5368b08bdeb6838658d6e187d61b27318ca91`，exit 0、剩餘程序 0，kill-on-close／8 GiB／12 程序限制讀回通過，無強制清理。原始收據及 validator 輸出留在授權 scratch `industry-theme-qa/owned-qa-20261025-8b72bdac6e6e4daea5e4b7da4dbb7433/single_owned_qa_25c5bef6b05c49bd8f57c18a2c3166b4/`。
+回歸案例涵蓋未知流動性、不可用成交狀態、空來源追溯、只有泛型來源類別而無身份，以及所有欄位有已知值（含負向結果）和具體追溯的完整 Advice。詳細選列仍提醒欄位有值不代表來源或 Gate 合格。受控 Windows Job：Advice Composer **30 passed**、Workbench view **53 passed**、必要 Workbench UI **93 passed**、Update validator **25 passed／0 failed／4 skipped**、全域 mypy **1,153 source files，無錯誤**，5 個修改 Python 檔 `py_compile` 通過。Advice QA 文件 document-control check 通過（12 features／1 link source／0 errors）；Manual／Snapshot 檢查受既有 `output` junction 的 WinError 5 阻擋。Job receipt SHA-256 `7dbbc0c121f68d172e62484bf8ead32ae0adcdca7f686a64c774332566fcf388`，exit 0、剩餘程序 0，kill-on-close／8 GiB／12 程序限制讀回通過，無強制清理。原始收據及 validator 輸出留在授權 scratch `industry-theme-qa/owned-qa-20261025-8b72bdac6e6e4daea5e4b7da4dbb7433/single_owned_qa_abadb682580c486d842dd63d1f4b5c9f/`。
 
 ## 2026-10-26 Gate 1 Advice 流動性 Gate 投影
 

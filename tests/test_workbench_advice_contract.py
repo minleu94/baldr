@@ -416,14 +416,22 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
             return readback_result[0]
         return SimpleNamespace(success=True, readback_verified=True, message="測試讀回成功")
 
-    def state(identity: dict[str, str], *, status: str = "linked", conflict: str = "") -> object:
+    def state(
+        identity: dict[str, str],
+        *,
+        status: str = "linked",
+        conflict: str = "",
+        decision_status: str = "skipped",
+        active_note_count: int = 0,
+        next_review_at: str = "",
+    ) -> object:
         return SimpleNamespace(
             identity=SimpleNamespace(**{**identity, "identity_status": status}),
             read_error="",
             identity_conflict_reason=conflict,
-            decision_status="skipped",
-            active_note_count=0,
-            next_review_at="",
+            decision_status=decision_status,
+            active_note_count=active_note_count,
+            next_review_at=next_review_at,
         )
 
     view = UnifiedDecisionWorkbenchView(
@@ -433,6 +441,7 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
     )
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
     assert view.advice_skip_decision_button.isEnabled()
+    assert "讀取" in view.advice_readback_decision_button.text()
     assert "hash 未提供" in view.advice_research_decision_status.text()
     view.advice_skip_decision_button.click()
     assert saved == [(
@@ -450,10 +459,19 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
     assert "已保存並讀回核對" in view.advice_research_decision_status.text()
     assert "不建立交易或 fill" in view.advice_research_decision_status.text()
     expected_identity = saved[0][1]
-    readback_result.append(state(expected_identity))
+    readback_result.append(
+        state(
+            expected_identity,
+            active_note_count=2,
+            next_review_at="2026-07-20T09:30:00+08:00",
+        )
+    )
     view.advice_readback_decision_button.click()
     assert saved[-1][0] == "readback"
     assert "同筆狀態已讀回" in view.advice_research_decision_status.text()
+    assert "目前人工決定=已略過" in view.advice_research_decision_status.text()
+    assert "研究註記=2 筆" in view.advice_research_decision_status.text()
+    assert "下次檢視=2026-07-20T09:30:00+08:00" in view.advice_research_decision_status.text()
 
     readback_result[0] = state(
         expected_identity,

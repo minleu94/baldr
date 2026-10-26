@@ -116,3 +116,11 @@ Workbench Advice／Professional 研究候選列表改以五欄直接呈現標的
 Final 受控驗證：Advice／Workbench 聚焦組（排除上述兩項因 sandbox 根目錄 no-follow 檢查而無法完成的 MainWindow journey）**88 passed**；必要 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,150 個來源檔無錯**；本輪修改 Python 檔 `py_compile` 通過。所有驗證在同一個有資源上限的 Windows Job 序列執行，最後 exit 0、剩餘程序 0、無強制清理。首輪與環境阻擋的失敗仍留在授權 scratch，沒有刪改。
 
 此人工研究入口只記錄納入研究、略過或註記，經既有 continuity writer/readback 核對結果；不建立交易／成交，不連接真實帳戶，不以 Advice payload hash 假扮 snapshot hash。正式資料、Advice／Gate 資格均未改。原生 GUI 與 Owner UAT 尚未執行；兩項 MainWindow journey 的 sandbox 限制也仍待可讀取合法研究根的環境重驗。
+
+### 人工研究決定讀回摘要補強
+
+按「讀取／重新讀取同筆決定」成功後，Workbench 將既有狀態碼翻成「尚無人工決定／已納入研究／已略過」，並同列有效研究註記數及下次檢視時間。未知狀態保留原值提示，無效註記數顯示未知；身份衝突與 read error 沿用既有明確失敗摘要。此項只改善明確讀回按鈕的結果文字，沒有在 Advice 選列時同步讀 Journal，也不增加新的 I/O／背景工作或自動保存。
+
+已更新 `tests/test_workbench_advice_contract.py`，驗證略過狀態、兩筆註記與台北時區下次檢視時間同屏可見。受控 Windows Job 結果：`tests/test_workbench_advice_contract.py` + `tests/test_ui_qt_workbench_view.py` **60 passed**；必要 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,150 個來源檔無錯**；兩個修改 Python 檔 `py_compile` 通過。Job exit 0、剩餘程序 0、無強制清理。validator 報告留在授權 scratch `industry-theme-qa/mrd00866/logs/VALIDATION_REPORT.md`，受控收據 hash 為 `27b98c2c785d12c5c6ff420b1a064e667cd25469215e919c7b44f2c40448af10`。
+
+原生 GUI／Owner UAT 與資料／Gate／ML 資格仍未驗收或改動；兩項既有 MainWindow 全旅程也仍受 sandbox no-follow 研究根 WinError 5 阻擋，詳見前一段收據。此切片不宣稱人工可讀性已由 Owner 接受。

@@ -632,7 +632,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_accept_decision_button = QPushButton("記錄已納入研究")
         self.advice_skip_decision_button = QPushButton("記錄略過")
         self.advice_note_decision_button = QPushButton("新增研究註記")
-        self.advice_readback_decision_button = QPushButton("重新讀取同筆決定")
+        self.advice_readback_decision_button = QPushButton("讀取／重新讀取同筆決定")
         decision_buttons = (
             self.advice_accept_decision_button,
             self.advice_skip_decision_button,
@@ -4115,12 +4115,31 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 )
             else:
                 failure_detail = ""
-            message = (
-                f"目前狀態={getattr(result, 'decision_status', 'unknown')}；"
-                f"研究註記={getattr(result, 'active_note_count', 0)} 筆；"
-                f"下次檢視={getattr(result, 'next_review_at', '') or '未設定'}"
-                if success else failure_detail
-            )
+            if success:
+                decision_status = str(
+                    getattr(result, "decision_status", "") or ""
+                ).strip()
+                decision_status_text = {
+                    "unrecorded": "尚無人工決定",
+                    "accepted": "已納入研究",
+                    "skipped": "已略過",
+                }.get(decision_status, f"未知（{decision_status or '未提供'}）")
+                note_count = getattr(result, "active_note_count", None)
+                note_count_text = (
+                    str(note_count)
+                    if type(note_count) is int and note_count >= 0
+                    else "未知"
+                )
+                next_review_at = str(
+                    getattr(result, "next_review_at", "") or ""
+                ).strip() or "未設定"
+                message = (
+                    f"目前人工決定={decision_status_text}；"
+                    f"研究註記={note_count_text} 筆；"
+                    f"下次檢視={next_review_at}"
+                )
+            else:
+                message = failure_detail
         else:
             message = str(getattr(result, "message", result or "研究決定已送出；讀回狀態未知。"))
             verified = bool(getattr(result, "readback_verified", False))

@@ -18,7 +18,7 @@ Workbench 總覽首屏的「今日策略建議」直接呈現既有 Advice 與 P
 
 選取 Advice／Professional 研究候選列時，若 Workbench 已將該列的保存 `result_id` 與目前有效的每日 read model 核對一致，判讀卡會提供「回查這筆保存推薦結果」。按下後開啟 Recommendation 頁的 exact 保存結果；頁面載入失敗時會留在原頁，不自動改選其他結果。canonical 已核驗 payload 另在按鈕提示顯示 SHA-256；legacy exact 結果可能沒有 canonical hash。缺少可信 ID、股票／決策日／資料日不符、來源 stale 或拒絕列時不顯示此按鈕。回查只協助核對原始欄位，不補 Advice 缺值、不解除資格 Gate。
 
-同一 Advice 列也可明確記錄「已納入研究」、「略過」或新增研究註記。只有 result ID、股票、決策日與當日來源 snapshot ID 都和目前有效 read model 對齊時才啟用；snapshot hash 未由 Workbench DTO 提供時會留空並明示，不以 Advice payload hash 代替。寫入沿用 append-only 研究 continuity；畫面分開顯示保存與讀回核對狀態。此操作只記錄人工研究決定，不建立交易或 fill；實際持倉／成交仍由使用者在「我的投資」手動維護。
+同一 Advice 列也可明確記錄「已納入研究」、「略過」或新增研究註記。只有 result ID、股票、決策日與當日來源 snapshot ID 都和目前有效 read model 對齊時才啟用；snapshot hash 未由 Workbench DTO 提供時會留空並明示，不以 Advice payload hash 代替。按「讀取／重新讀取同筆決定」可核對目前是否已納入研究／略過、有效註記數與下次檢視時間；讀回失敗或身份衝突會顯示原因。寫入沿用 append-only 研究 continuity；畫面分開顯示保存與讀回核對狀態。此操作只記錄人工研究決定，不建立交易或 fill；實際持倉／成交仍由使用者在「我的投資」手動維護。
 
 Workbench 不會要求連接真實帳戶，也不會因缺少帳戶或風險預算而阻擋策略研究建議。持倉及交易使用「我的投資」中的手動記錄流程維護。Portfolio「配置研究封存」的 Paper snapshot 背景顯示是可選的唯讀研究參考，不是 Advice 輸入、個人配置依據或策略建議的前置步驟；來源日／決策日或可得時鐘不符時，背景金額與持倉會清除。
 

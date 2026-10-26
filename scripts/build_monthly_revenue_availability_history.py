@@ -39,8 +39,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stock-code", default=None)
     parser.add_argument("--raw-dir", type=Path, default=None)
     parser.add_argument("--source-json-dir", type=Path, default=None)
-    parser.add_argument("--mops-html-dir", type=Path, default=None)
-    parser.add_argument("--mops-static", action="store_true")
+    parser.add_argument(
+        "--mops-html-dir",
+        type=Path,
+        default=None,
+        help="讀取靜態歷史報表；整份報表的出表日期不作公司公告時間或歷史可得日",
+    )
+    parser.add_argument(
+        "--mops-static",
+        action="store_true",
+        help="取得靜態歷史報表；報表級出表日期不會建立公告可得日 mapping",
+    )
     parser.add_argument("--pit-csv", type=Path, default=None)
     parser.add_argument("--pit-source", default=TEJ_PIT_HISTORY_SOURCE)
     parser.add_argument("--pit-source-version", default="")

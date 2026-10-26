@@ -1282,10 +1282,12 @@
         "data_module/official_trading_calendar_cache.py",
         "data_module/opendata_monthly_revenue.py",
         "data_module/mops_monthly_revenue_history.py",
+        "data_module/monthly_revenue_availability_history.py",
         "data_module/monthly_revenue_revision_archive.py",
         "data_module/monthly_revenue_use_policy.py",
         "data_module/monthly_revenue_qualification_binding.py",
         "scripts/monthly_revenue_archive.py",
+        "scripts/build_monthly_revenue_availability_history.py",
         "data_module/fundamental_read_archived_copy_contract_v2.py",
         "data_module/fundamental_read_snapshot_cohort_v2.py",
         "data_module/fundamental_read_snapshot_daily_v2.py",
@@ -1355,6 +1357,7 @@
         "tests/test_official_trading_calendar_cache.py",
         "tests/test_opendata_monthly_revenue.py",
         "tests/test_mops_monthly_revenue_history.py",
+        "tests/test_monthly_revenue_availability_history.py",
         "tests/test_monthly_revenue_revision_archive.py",
         "tests/test_monthly_revenue_use_policy.py",
         "tests/test_monthly_revenue_qualification_binding.py",
@@ -1509,7 +1512,11 @@
         "tests/test_twse_daily_price_sqlite_publication.py",
         "tests/test_ml_prospective_daily_price_capture.py",
         "tests/test_excluded_daily_price_revision.py",
-        "tests/test_formal_technical_raw_alias_writer_context.py"
+        "tests/test_formal_technical_raw_alias_writer_context.py",
+        "scripts/build_monthly_revenue_availability_history.py",
+        "tests/test_formal_monthly_revenue_quality_reader.py",
+        "tests/test_open_data_quarterly_announcement_crosswalk.py",
+        "tests/test_monthly_revenue_availability_history.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -1517,6 +1524,7 @@
         "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
         "docs/00_core/PROJECT_SNAPSHOT.md",
         "docs/01_architecture/current/data_storage_runtime.md",
+        "docs/07_guides/MONTHLY_REVENUE_RESEARCH_PIPELINE.md",
         "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
       ]
     },

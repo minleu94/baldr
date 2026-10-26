@@ -365,6 +365,42 @@ def test_build_history_rows_rejects_unreasonably_late_availability() -> None:
     )
 
 
+def test_build_history_does_not_treat_static_report_date_as_announcement() -> None:
+    result = build_historical_monthly_revenue_availability(
+        official_rows_by_market={
+            "twse": [
+                {
+                    "資料年月": "2024-04",
+                    "公司代號": "2330",
+                    "出表日期": "2024-05-10",
+                    "__availability_source": history.MOPS_STATIC_REPORT_SOURCE,
+                    "__availability_evidence_kind": "retrospective_static_report_date",
+                },
+                {
+                    "資料年月": "2024-04",
+                    "公司代號": "2317",
+                    "出表日期": "2024-05-10",
+                    "__availability_source": history.MOPS_STATIC_REPORT_SOURCE,
+                    "__availability_evidence_kind": "retrospective_static_report_date",
+                },
+            ],
+        },
+        raw_periods={("2330", "2024-04"), ("2317", "2024-04")},
+        start_period="2024-04",
+        end_period="2024-04",
+        markets=("twse",),
+        fetch_date=date(2026, 10, 26),
+    )
+
+    assert result.rows == []
+    assert result.missing_availability_count == 2
+    assert result.fetched_periods == ("2024-04",)
+    assert result.diagnostics_by_source == {"twse": 1}
+    assert result.diagnostics[0].code == (
+        "monthly_revenue_availability.static_report_date_not_announcement"
+    )
+
+
 def test_parse_mops_html_uses_page_level_announcement_date() -> None:
     html = """
     <html><body>
@@ -503,8 +539,9 @@ def test_load_official_rows_for_markets_reads_mops_static_reports(monkeypatch) -
             "資料年月": "2024-04",
             "公司代號": "2330",
             "出表日期": "2024-05-10",
-            "__availability_source": "mops.monthly_revenue_announcement",
-            "__source_version_prefix": "mops-t05st10-ifrs",
+            "__availability_source": history.MOPS_STATIC_REPORT_SOURCE,
+            "__source_version_prefix": "mops-static-monthly-report",
+            "__availability_evidence_kind": "retrospective_static_report_date",
         }
     ]
 

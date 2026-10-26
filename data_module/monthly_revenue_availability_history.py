@@ -37,6 +37,7 @@ from data_module.monthly_revenue_availability_builder import (
 TWSE_HISTORY_SOURCE = "twse.monthly_revenue_announcement"
 TPEX_HISTORY_SOURCE = "tpex.monthly_revenue_announcement"
 MOPS_HISTORY_SOURCE = "mops.monthly_revenue_announcement"
+MOPS_STATIC_REPORT_SOURCE = "mops.monthly_revenue_static_report"
 TEJ_PIT_HISTORY_SOURCE = "tej.monthly_revenue_announcement_pit"
 TWSE_HISTORY_SOURCE_VERSION_PREFIX = "twse-openapi-t187ap05-l"
 TPEX_HISTORY_SOURCE_VERSION_PREFIX = "tpex-openapi-mopsfin-t187ap05-o"
@@ -270,6 +271,7 @@ def build_historical_monthly_revenue_availability(
     diagnostics: list[SourceDiagnostic] = []
     diagnostics_by_source: dict[str, int] = {}
     seen_keys: set[RawRevenuePeriod] = set()
+    static_report_date_diagnostics: set[tuple[str, str]] = set()
     duplicate_mapping_rows = 0
     fetched_periods: set[str] = set()
 
@@ -313,6 +315,26 @@ def build_historical_monthly_revenue_availability(
             if period not in requested_period_set:
                 continue
             fetched_periods.add(period)
+
+            if (
+                official_row.get("__availability_evidence_kind")
+                == "retrospective_static_report_date"
+                or source == MOPS_STATIC_REPORT_SOURCE
+            ):
+                report_period = (market, period)
+                if report_period not in static_report_date_diagnostics:
+                    diagnostics.append(
+                        _diagnostic(
+                            "monthly_revenue_availability.static_report_date_not_announcement",
+                            market,
+                            row_stock_code,
+                            "report-level MOPS 出表日期 is a retrospective report observation, "
+                            "not a company-period announcement timestamp",
+                        )
+                    )
+                    diagnostics_by_source[market] = diagnostics_by_source.get(market, 0) + 1
+                    static_report_date_diagnostics.add(report_period)
+                continue
 
             announced_text = str(official_row.get("出表日期", "")).strip()
             if not announced_text:
@@ -663,8 +685,9 @@ def _load_mops_html_rows(
             period=period,
         )
         for row in parsed_rows:
-            row["__availability_source"] = MOPS_HISTORY_SOURCE
-            row["__source_version_prefix"] = MOPS_HISTORY_SOURCE_VERSION_PREFIX
+            row["__availability_source"] = MOPS_STATIC_REPORT_SOURCE
+            row["__source_version_prefix"] = "mops-static-monthly-report"
+            row["__availability_evidence_kind"] = "retrospective_static_report_date"
         rows.extend(parsed_rows)
         diagnostics.extend(parse_diagnostics)
     return rows, tuple(diagnostics)
@@ -698,8 +721,9 @@ def _load_mops_static_rows(
             period=period,
         )
         for row in parsed_rows:
-            row["__availability_source"] = MOPS_HISTORY_SOURCE
-            row["__source_version_prefix"] = MOPS_HISTORY_SOURCE_VERSION_PREFIX
+            row["__availability_source"] = MOPS_STATIC_REPORT_SOURCE
+            row["__source_version_prefix"] = "mops-static-monthly-report"
+            row["__availability_evidence_kind"] = "retrospective_static_report_date"
         rows.extend(parsed_rows)
         diagnostics.extend(parse_diagnostics)
     return rows, tuple(diagnostics)

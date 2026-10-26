@@ -22,6 +22,8 @@ Owner 已授兩具名OpenData來源全部研究用途；此頁說明新Source的
 
 `redirect_chain_v1`依官方POST→popup→HTML流程，`direct_static_v1`只做靜態URL取得；模式由caller明選，失敗不自動fallback、不重試、不繞challenge。每次讀取以八秒期限的剩餘時間設socket timeout並檢查monotonic；HTTP程式庫內部若遭slow-trickle header／trailer，這不是已證明的八秒硬wall-clock上限，執行時仍須外層owned Job期限。逐跳／合計原件及收據都有byte上限。新capture收據保留實際HTTP、Transfer-Encoding、EOF及經HTTP高層transfer decoding的entity bytes或觀測前綴；沒有完整EOF的前綴不能當完整response SHA。先前誤讀底層wire framing的失敗收據保持原貌，不回頭剝標記重封成功原件。
 
+MOPS 靜態月報頁首的「出表日期」屬整份報表的日期觀測，不是每家公司、每月份的原始公告 timestamp。靜態報表可能在多年後重出或更新；capture 會記錄 `availability_at=null`、`retrospective_capture_only`、`historical_pit_eligible=false`。不能把它傳給歷史公告 mapping builder 當 `announced_date`／`available_date`。只有具公司、月份與原始公告時間的公告事件資料，才可建立月營收公告候選；Owner 對公告 timestamp 的授權不改變靜態報表欄位語意。
+
 `next_cursor`只代表尚未嘗試的後續chunk；失敗項仍列在failures，不因游標前進而算取得。續接時帶同range／plan SHA及`--cursor <next_cursor>`，另用新目錄／report，原失敗資料保持。退出碼2或`data_status=capture_failed`都不能當成功。MOPS歷史授權／單位與PIT仍獨立核，捕獲成功也不自動成金融輸入。
 
 已成功保存的單一歷史capture，可用另外固定的artifact SHA匯入候選歸檔；reader會重核三跳、entity bytes與逐列原件，不把取得成功當用途接受：

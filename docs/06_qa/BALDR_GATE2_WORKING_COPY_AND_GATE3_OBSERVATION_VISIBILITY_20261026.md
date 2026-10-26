@@ -41,6 +41,8 @@ Task Scheduler 的 2026-10-25 weekly collection 上次因 core process timeout �
 
 正式 `twstock.db` 的 `mode=ro` query-plan 複核回報 `MULTI-INDEX OR`，compact 與 ISO 兩個分支都 `SEARCH daily_prices USING COVERING INDEX idx_daily_prices_date (日期>? AND 日期<?)`；只有分組用 `TEMP B-TREE`。這證實 WHERE 不再全掃日期索引。正式 DB 僅供此 query plan 開啟，未讀行情列或執行寫入。
 
+後續以核准的唯讀權限重跑 PROJECT_SNAPSHOT 單檔 document-control check：**12 features／1 link source／0 errors**。先前 27 個 `output/` junction `WinError 5` 是 sandbox 存取限制，並非失效連結；此檢查不修改文件或外部產物。
+
 ## 2026-10-26 隔離 Gate 2 recovery rehearsal 工具
 
 新增 `scripts/rehearse_weekly_review_recovery.py`，供人工以既有非正式 weekly-review working-copy DB 與 approval projection 執行可重複的備份／還原演練。它拒絕正式 `twstock.db` 路徑、來源檔 reparse point、非空 WAL／rollback journal、正式／輸出根底下或與來源重疊的 scratch、無效 projection schema，以及 `formal_credit_authorized=true`。只有全新 scratch 根目錄可寫入；source DB、WAL、journal 與 projection 都做前後 hash 讀回。實際 Scheduler 不會被呼叫或停用，disable-first 僅在 scratch 模擬。故障注入後工具把備份還原成新檔，保留故障副本，核對 SQLite `quick_check`、週報 ID／hash／期間摘要及 projection bytes／record count。

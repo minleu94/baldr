@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -9,6 +10,7 @@ import pytest
 from app_module.evidence_weekly_approval_input import (
     APPROVAL_STATUS,
     build_weekly_approval_input,
+    read_verified_official_receipt,
     render_markdown,
     validate_output_path,
 )
@@ -164,5 +166,48 @@ def test_output_path_cannot_overwrite_sidecar_or_missing_parent(tmp_path: Path) 
         validate_output_path(
             tmp_path / "missing" / "packet.json",
             sidecar_path=sidecar_path,
+        )
+
+
+def test_receipt_preview_requires_containment_and_matching_hash(tmp_path: Path) -> None:
+    authorized_root = tmp_path / "output"
+    receipt_path = authorized_root / "scheduled" / "receipt.json"
+    receipt_path.parent.mkdir(parents=True)
+    raw = b'{"status":"captured"}\n'
+    receipt_path.write_bytes(raw)
+    expected = "sha256:" + hashlib.sha256(raw).hexdigest()
+
+    result = read_verified_official_receipt(authorized_root, receipt_path, expected)
+
+    assert result["sha256"] == expected
+    assert result["text"] == raw.decode("utf-8")
+    assert result["byte_count"] == len(raw)
+
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(raw)
+    with pytest.raises(ValueError, match="outside"):
+        read_verified_official_receipt(authorized_root, outside, expected)
+
+    receipt_path.write_bytes(b'{"status":"tampered"}\n')
+    with pytest.raises(ValueError, match="does not match"):
+        read_verified_official_receipt(authorized_root, receipt_path, expected)
+
+
+def test_receipt_preview_rejects_invalid_hash_and_oversize(tmp_path: Path) -> None:
+    authorized_root = tmp_path / "output"
+    authorized_root.mkdir()
+    receipt_path = authorized_root / "receipt.json"
+    receipt_path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed"):
+        read_verified_official_receipt(authorized_root, receipt_path, "sha256:bad")
+
+    expected = "sha256:" + hashlib.sha256(b"{}").hexdigest()
+    with pytest.raises(ValueError, match="size limit"):
+        read_verified_official_receipt(
+            authorized_root,
+            receipt_path,
+            expected,
+            max_bytes=1,
         )
 

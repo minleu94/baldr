@@ -35,6 +35,61 @@ def _sha256_file(path: Path) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def read_verified_official_receipt(
+    authorized_root: str | Path,
+    receipt_path: str | Path,
+    expected_sha256: str,
+    *,
+    max_bytes: int = 256 * 1024,
+) -> dict[str, Any]:
+    """Read one receipt only after root containment and content hash checks.
+
+    The returned text is the exact byte sequence that was hashed. This helper
+    never follows a path outside the configured root and never opens a file
+    whose recorded hash is absent or malformed.
+    """
+
+    if not isinstance(expected_sha256, str) or not expected_sha256.startswith("sha256:"):
+        raise ValueError("official receipt SHA-256 is missing or malformed")
+    expected_digest = expected_sha256.removeprefix("sha256:")
+    if len(expected_digest) != 64 or any(char not in "0123456789abcdef" for char in expected_digest.lower()):
+        raise ValueError("official receipt SHA-256 is missing or malformed")
+    if max_bytes <= 0:
+        raise ValueError("maximum receipt size must be positive")
+
+    # strict=False still canonicalizes existing symlinks/reparse points. On
+    # Windows sandbox roots, strict=True can fail querying directory metadata
+    # even when the same file can be opened; existence is checked below.
+    root = Path(authorized_root).expanduser().resolve(strict=False)
+    if not root.is_dir():
+        raise ValueError("authorized receipt root is not a directory")
+    candidate = Path(receipt_path).expanduser().resolve(strict=False)
+    if not candidate.is_relative_to(root) or candidate == root:
+        raise ValueError("official receipt path is outside the authorized root")
+    if not candidate.is_file():
+        raise ValueError("official receipt is not a regular file")
+    if candidate.stat().st_size > max_bytes:
+        raise ValueError("official receipt exceeds the preview size limit")
+
+    with candidate.open("rb") as handle:
+        raw = handle.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise ValueError("official receipt exceeds the preview size limit")
+    actual = "sha256:" + sha256(raw).hexdigest()
+    if actual.casefold() != expected_sha256.casefold():
+        raise ValueError("official receipt SHA-256 does not match the recorded hash")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("official receipt is not valid UTF-8 text") from exc
+    return {
+        "path": str(candidate),
+        "sha256": actual,
+        "byte_count": len(raw),
+        "text": text,
+    }
+
+
 def _read_only_connection(path: Path) -> sqlite3.Connection:
     if not path.exists():
         raise FileNotFoundError(str(path))

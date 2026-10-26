@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QGroupBox, QProgressBar,
     QTextEdit, QRadioButton, QButtonGroup,
     QDateEdit, QMessageBox, QFormLayout, QSpinBox, QLineEdit,
-    QListWidget, QStackedWidget, QFrame, QCalendarWidget, QGridLayout,
+    QListWidget, QStackedWidget, QFrame, QCalendarWidget, QGridLayout, QComboBox,
     QScrollArea, QSizePolicy, QBoxLayout, QAbstractItemView, QHeaderView,
     QTableWidget, QTableWidgetItem, QDialog
 )
@@ -42,7 +42,10 @@ from app_module.program_readiness_projection import (
     load_program_readiness,
     project_program_readiness,
 )
-from app_module.evidence_weekly_approval_input import build_weekly_approval_input
+from app_module.evidence_weekly_approval_input import (
+    build_weekly_approval_input,
+    read_verified_official_receipt,
+)
 from data_module.source_acceptance_decision_registry import parse_source_acceptance_decisions
 from data_module.monthly_revenue_snapshot_selection import (
     select_latest_monthly_revenue_snapshot,
@@ -458,6 +461,7 @@ class UpdateView(QWidget):
             return fallback.expanduser().resolve() if fallback is not None else None
 
         output_root_path = Path(output_root) if output_root is not None else None
+        self.weekly_receipt_root = output_root_path
         self.data_update_status_path = _status_path(
             data_update_status_path,
             output_root_path / "scheduled" / "data_update_quick" / "latest_status.json"
@@ -3540,6 +3544,12 @@ class UpdateView(QWidget):
         layout = QVBoxLayout(dialog)
         detail = QTextEdit(dialog)
         detail.setReadOnly(True)
+        receipt_picker = QComboBox(dialog)
+        receipt_picker.setEnabled(False)
+        receipt_picker.addItem("沒有可核驗的官方收據")
+        receipt_status = QTextEdit(dialog)
+        receipt_status.setReadOnly(True)
+        receipt_status.setMaximumHeight(180)
         if self.weekly_collection_sidecar_path is None:
             detail.setPlainText(
                 "未設定 weekly collection sidecar 路徑。\n"
@@ -3552,6 +3562,24 @@ class UpdateView(QWidget):
                     include_failed=False,
                 )
                 detail.setPlainText(format_weekly_collection_details(packet))
+                receipt_choices: list[tuple[str, str, str]] = []
+                for record in packet.get("records", []):
+                    coverage = record.get("collection_payload", {}).get("source_coverage", {})
+                    for example in coverage.get("integrity_examples", [])[:5]:
+                        receipt_path = example.get("official_receipt_path")
+                        receipt_hash = example.get("official_receipt_sha256")
+                        if isinstance(receipt_path, str) and isinstance(receipt_hash, str):
+                            label = (
+                                f"{example.get('date', '日期未知')} / "
+                                f"{example.get('symbol', '代碼未知')} / "
+                                f"{example.get('classification', '分類未知')}"
+                            )
+                            receipt_choices.append((label, receipt_path, receipt_hash))
+                if receipt_choices:
+                    receipt_picker.clear()
+                    for label, path, digest in receipt_choices[:50]:
+                        receipt_picker.addItem(label, (path, digest))
+                    receipt_picker.setEnabled(True)
             except Exception as exc:
                 detail.setPlainText(
                     "無法唯讀載入 weekly collection 明細。\n"
@@ -3559,6 +3587,40 @@ class UpdateView(QWidget):
                     "請確認 sidecar 存在且可讀；本畫面不會建立或修改它。"
                 )
         layout.addWidget(detail)
+        layout.addWidget(QLabel("官方原始收據（先驗證授權根目錄與 SHA-256）", dialog))
+        layout.addWidget(receipt_picker)
+
+        def _preview_verified_receipt() -> None:
+            selected = receipt_picker.currentData()
+            if not isinstance(selected, tuple) or len(selected) != 2:
+                receipt_status.setPlainText("此候選沒有可用的收據路徑與 hash。")
+                return
+            if self.weekly_receipt_root is None:
+                receipt_status.setPlainText("未設定授權的 output_root，拒絕開啟收據。")
+                return
+            try:
+                verified = read_verified_official_receipt(
+                    self.weekly_receipt_root,
+                    selected[0],
+                    selected[1],
+                )
+            except Exception as exc:
+                receipt_status.setPlainText(
+                    f"收據未開啟：{type(exc).__name__}: {exc}"
+                )
+                return
+            receipt_status.setPlainText(
+                f"已核驗 SHA-256：{verified['sha256']}\n"
+                f"大小：{verified['byte_count']} bytes\n"
+                f"路徑：{verified['path']}\n\n{verified['text']}"
+            )
+
+        receipt_button = QPushButton("核驗並預覽收據", dialog)
+        receipt_button.setProperty("variant", "secondary")
+        receipt_button.setEnabled(receipt_picker.isEnabled())
+        receipt_button.clicked.connect(_preview_verified_receipt)
+        layout.addWidget(receipt_button)
+        layout.addWidget(receipt_status)
         close_button = QPushButton("關閉", dialog)
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button)

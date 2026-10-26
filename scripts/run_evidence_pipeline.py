@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,7 @@ from app_module.evidence_pipeline_runner import EvidencePipelineRunner, write_pi
 from app_module.evidence_pipeline_runner_dtos import EvidencePipelineRunRequest
 from app_module.forward_outcome_context import resolve_canonical_evidence_release_root
 from app_module.paper_decision_desk_evidence_source import PaperDecisionDeskEvidenceSource
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from data_module.config import TWStockConfig
 from data_module.ml_storage_capacity import (
     acquire_heavy_chain_reservation,
@@ -47,6 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-production-db-confirm", action="store_true")
     parser.add_argument("--data-root")
     parser.add_argument("--output-root")
+    parser.add_argument(
+        "--recommendation-source-root",
+        help="read-only canonical output root for saved recommendation artifacts; defaults to --output-root",
+    )
     parser.add_argument(
         "--paper-evidence-operation-root",
         help=(
@@ -143,6 +149,11 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     return 2
         paper_source = None
+        recommendation_queries = None
+        if args.recommendation_source_root:
+            recommendation_queries = build_recommendation_execution_queries(
+                SimpleNamespace(output_root=Path(args.recommendation_source_root))
+            )
         if bool(args.paper_evidence_operation_root) != bool(args.paper_evidence_health_baseline):
             parser.error(
                 "--paper-evidence-operation-root and "
@@ -166,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
             config,
             db_path=args.db_path,
             paper_evidence_source=paper_source,
+            recommendation_queries=recommendation_queries,
         ).run(request)
     except ValueError as exc:
         parser.error(str(exc))

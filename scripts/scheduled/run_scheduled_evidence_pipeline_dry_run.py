@@ -54,9 +54,11 @@ PIPELINE_TIMEOUT_SECONDS = 600
 
 def _scheduled_recommendation_binding(
     output_root: Path, *, decision_date: str, observed_at: datetime,
+    recommendation_source_root: Path | None = None,
 ) -> dict[str, Any]:
     """只讀驗證當日排程快照的精確 canonical 身份，不猜 mixed 最新結果。"""
-    path = output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    source_root = recommendation_source_root or output_root
+    path = source_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
     raw = path.read_bytes()
     payload = json.loads(raw.decode("utf-8"))
     if not isinstance(payload, dict):
@@ -66,7 +68,7 @@ def _scheduled_recommendation_binding(
         or payload.get("decision_date") != decision_date
         or payload.get("writes_recommendation_result") is not True
         or payload.get("writes_evidence_db") is not False
-        or Path(str(payload.get("output_root", ""))).resolve() != output_root.resolve()
+        or Path(str(payload.get("output_root", ""))).resolve() != source_root.resolve()
     ):
         raise ValueError("scheduled_recommendation_status_identity_mismatch")
     if payload.get("status") != "passed":
@@ -79,7 +81,7 @@ def _scheduled_recommendation_binding(
     result_id = payload.get("result_id")
     if not isinstance(result_id, str) or not result_id.strip():
         raise ValueError("scheduled_recommendation_result_id_missing")
-    queries = build_recommendation_execution_queries(SimpleNamespace(output_root=output_root))
+    queries = build_recommendation_execution_queries(SimpleNamespace(output_root=source_root))
     read_model = queries.get(result_id)
     if read_model is None or canonical_scheduled_decision_date(read_model) != decision_date:
         raise ValueError("scheduled_recommendation_canonical_identity_mismatch")
@@ -703,6 +705,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Scheduled evidence pipeline dry-run wrapper.")
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument(
+        "--recommendation-source-root",
+        type=Path,
+        help="read-only canonical output root for recommendation/freshness artifacts; defaults to --output-root",
+    )
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--sources", default="all")
     parser.add_argument("--validation-decision-date", help="Controlled read-only replay of an existing bound scheduled result; never changes its clocks")
@@ -830,6 +837,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.dry_run:
         raise SystemExit("scheduled evidence wrapper requires --dry-run")
     output_root = Path(args.output_root)
+    recommendation_source_root = args.recommendation_source_root or output_root
+    if args.validation_decision_date and recommendation_source_root.resolve() != output_root.resolve():
+        source_resolved = recommendation_source_root.resolve()
+        output_resolved = output_root.resolve()
+        if source_resolved == output_resolved or source_resolved in output_resolved.parents or output_resolved in source_resolved.parents:
+            raise ValueError("controlled replay source and output roots must be disjoint")
     run_root = output_root / "scheduled" / "evidence_pipeline_dry_run"
     report_root = run_root / "reports"
     run_root.mkdir(parents=True, exist_ok=True)
@@ -848,6 +861,11 @@ def main(argv: list[str] | None = None) -> int:
     today_key = decision_date.replace("-", "")
     run_stamp = run_now.strftime("%Y%m%d_%H%M%S_%f")
     status_path = args.status_path or (run_root / "latest_status.json")
+    if args.validation_decision_date and args.recommendation_source_root is not None:
+        output_resolved = output_root.resolve()
+        status_resolved = status_path.resolve()
+        if status_resolved != output_resolved and output_resolved not in status_resolved.parents:
+            raise ValueError("controlled replay status path must stay inside output root")
     status_path.parent.mkdir(parents=True, exist_ok=True)
     log_path = run_root / f"{run_stamp}_evidence_pipeline_dry_run.log"
     artifact_output_root = (
@@ -858,12 +876,15 @@ def main(argv: list[str] | None = None) -> int:
         report_root = status_path.parent / "reports"
         report_root.mkdir(parents=True, exist_ok=True)
     report_path = report_root / f"{today_key}_{run_stamp}_evidence_pipeline_dry_run.md"
-    freshness_status_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    freshness_status_path = recommendation_source_root / "scheduled" / "data_freshness" / "latest_status.json"
     recommendation_binding = None
     if args.bind_scheduled_recommendation:
         try:
             recommendation_binding = _scheduled_recommendation_binding(
-                output_root, decision_date=decision_date, observed_at=run_now,
+                output_root,
+                decision_date=decision_date,
+                observed_at=run_now,
+                recommendation_source_root=recommendation_source_root,
             )
         except Exception as error:  # noqa: BLE001 - 不退回猜測 latest 或舊快照
             upstream_not_ready = isinstance(error, ValueError) and str(error) in {
@@ -903,14 +924,23 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     paper_operation_root = Path(
         args.paper_evidence_operation_root
-        or (REPO_ROOT / "output" / "paper_execution_eod_replay")
+        or (
+            artifact_output_root / "paper_execution_eod_replay"
+            if args.validation_decision_date and args.recommendation_source_root is not None
+            else REPO_ROOT / "output" / "paper_execution_eod_replay"
+        )
     )
+    if args.validation_decision_date and args.recommendation_source_root is not None:
+        scratch_resolved = output_root.resolve()
+        paper_resolved = paper_operation_root.resolve()
+        if paper_resolved != scratch_resolved and scratch_resolved not in paper_resolved.parents:
+            raise ValueError("controlled replay Paper operation root must stay inside output root")
     paper_health_baseline = Path(
         args.paper_evidence_health_baseline
         or (
-            output_root / "position_health" / "latest.json"
+            recommendation_source_root / "position_health" / "latest.json"
             if args.refresh_paper_health
-            else output_root / "position_health" / "baseline_20260712.json"
+            else recommendation_source_root / "position_health" / "baseline_20260712.json"
         )
     )
     paper_status_path = (
@@ -929,6 +959,24 @@ def main(argv: list[str] | None = None) -> int:
         / "paper_portfolio_isolated"
         / "latest_status.json"
     )
+    controlled_scratch_root = output_root.resolve()
+    if args.validation_decision_date and args.recommendation_source_root is not None:
+        controlled_write_paths = []
+        if args.refresh_paper_health and args.paper_evidence_health_status_path:
+            controlled_write_paths.append(Path(args.paper_evidence_health_status_path))
+        if args.evaluate_position_health_transition and args.paper_health_thesis_registry:
+            controlled_write_paths.append(Path(args.paper_health_thesis_registry))
+        if args.produce_position_health_sources and args.paper_health_source_output:
+            controlled_write_paths.append(Path(args.paper_health_source_output))
+        if args.bind_forward_thesis:
+            if args.forward_candidate_root:
+                controlled_write_paths.append(Path(args.forward_candidate_root))
+            if args.forward_paper_candidate_root:
+                controlled_write_paths.append(Path(args.forward_paper_candidate_root))
+        for candidate in controlled_write_paths:
+            resolved = candidate.resolve()
+            if resolved != controlled_scratch_root and controlled_scratch_root not in resolved.parents:
+                raise ValueError("controlled replay write paths must stay inside output root")
     forward_candidate_root = Path(
         args.forward_candidate_root
         or REPO_ROOT / "output" / "forward_position_thesis"
@@ -1025,11 +1073,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         quick_status_path = Path(
             args.paper_health_quick_status_path
-            or output_root / "scheduled" / "data_update_quick" / "latest_status.json"
+            or recommendation_source_root / "scheduled" / "data_update_quick" / "latest_status.json"
         )
         source_freshness_path = Path(
             args.paper_health_freshness_status_path
-            or output_root / "scheduled" / "data_freshness" / "latest_status.json"
+            or recommendation_source_root / "scheduled" / "data_freshness" / "latest_status.json"
         )
         try:
             paper_health_source = PositionHealthMarketSourceProducer(
@@ -1201,6 +1249,8 @@ def main(argv: list[str] | None = None) -> int:
         args.data_root,
         "--output-root",
         args.output_root,
+        "--recommendation-source-root",
+        str(recommendation_source_root),
         "--sources",
         args.sources,
         "--report-output",

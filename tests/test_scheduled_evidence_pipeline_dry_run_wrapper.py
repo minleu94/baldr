@@ -80,6 +80,18 @@ def test_binding_uses_exact_canonical_id_not_mixed_latest(tmp_path, monkeypatch)
     assert binding["status_sha256"].startswith("sha256:")
 
 
+def test_binding_reads_canonical_source_root_separately_from_output_root(tmp_path, monkeypatch):
+    now, path, _payload, _model = _binding_fixture(tmp_path / "canonical", monkeypatch)
+    binding = run_scheduled_evidence_pipeline_dry_run._scheduled_recommendation_binding(
+        tmp_path / "scratch",
+        decision_date="2026-09-29",
+        observed_at=now,
+        recommendation_source_root=tmp_path / "canonical",
+    )
+    assert binding["result_id"] == "canonical-same-day"
+    assert binding["status_path"] == str(path.resolve())
+
+
 def test_blocked_snapshot_has_status_diagnostic_without_lowering_binding_gate(tmp_path, monkeypatch):
     now, path, payload, _ = _binding_fixture(tmp_path, monkeypatch)
     payload["status"] = "blocked"
@@ -1314,6 +1326,78 @@ def test_controlled_validation_health_artifacts_are_separate_from_canonical(tmp_
         assert Path(item["output_dir"]).is_relative_to(qa/"controlled_runs")
     assert not (canonical/"position_health_transition").exists()
     assert captured["health"]["as_of_date"].isoformat()=="2026-09-29"
+
+
+def test_controlled_replay_keeps_all_wrapper_outputs_outside_canonical_source(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    canonical = tmp_path / "canonical"
+    scratch = tmp_path / "scratch"
+    now, _status, _payload, _reader = _binding_fixture(canonical, monkeypatch)
+    monkeypatch.setattr(runner, "scheduled_now", lambda: now)
+    captured = {}
+
+    def child(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=json.dumps({"overall_status": "degraded", "warnings_count": 0,
+                               "warning_counts": {}, "errors_count": 0,
+                               "blocking_gaps": [], "source_coverage": {}}),
+        )
+
+    monkeypatch.setattr(subprocess, "run", child)
+    status_path = scratch / "controlled-status.json"
+    assert runner.main([
+        "--dry-run", "--bind-scheduled-recommendation",
+        "--validation-decision-date", "2026-09-29",
+        "--recommendation-source-root", str(canonical),
+        "--output-root", str(scratch), "--status-path", str(status_path),
+        "--data-root", str(tmp_path / "data"), "--db-path", str(tmp_path / "market.db"),
+    ]) == 0
+
+    command = captured["command"]
+    assert command[command.index("--output-root") + 1] == str(scratch)
+    assert command[command.index("--recommendation-source-root") + 1] == str(canonical)
+    assert Path(command[command.index("--paper-evidence-operation-root") + 1]).is_relative_to(scratch)
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert payload["recommendation_binding"]["status_path"].startswith(str(canonical))
+    assert (scratch / "scheduled" / "evidence_pipeline_dry_run").is_dir()
+    assert not (canonical / "scheduled" / "evidence_pipeline_dry_run").exists()
+
+
+def test_controlled_replay_rejects_overlapping_source_and_output_roots(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    canonical = tmp_path / "canonical"
+    now, _status, _payload, _reader = _binding_fixture(canonical, monkeypatch)
+    monkeypatch.setattr(runner, "scheduled_now", lambda: now)
+    with pytest.raises(ValueError, match="must be disjoint"):
+        runner.main([
+            "--dry-run", "--bind-scheduled-recommendation",
+            "--validation-decision-date", "2026-09-29",
+            "--recommendation-source-root", str(canonical),
+            "--output-root", str(canonical / "scratch"),
+            "--status-path", str(tmp_path / "status.json"),
+            "--data-root", str(tmp_path / "data"), "--db-path", str(tmp_path / "market.db"),
+        ])
+
+
+def test_controlled_replay_rejects_paper_operation_root_outside_scratch(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    canonical = tmp_path / "canonical"
+    scratch = tmp_path / "scratch"
+    now, _status, _payload, _reader = _binding_fixture(canonical, monkeypatch)
+    monkeypatch.setattr(runner, "scheduled_now", lambda: now)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("child must not start"))
+    with pytest.raises(ValueError, match="Paper operation root must stay inside output root"):
+        runner.main([
+            "--dry-run", "--bind-scheduled-recommendation",
+            "--validation-decision-date", "2026-09-29",
+            "--recommendation-source-root", str(canonical),
+            "--output-root", str(scratch), "--status-path", str(scratch / "status.json"),
+            "--paper-evidence-operation-root", str(canonical / "paper-operation"),
+            "--data-root", str(tmp_path / "data"), "--db-path", str(tmp_path / "market.db"),
+        ])
 
 
 @pytest.mark.parametrize("errors,user_required,expected_exit", [(1,False,2),(0,True,0),(0,False,0)])

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -59,6 +61,43 @@ def test_build_event_hash_is_stable_for_reordered_json_fields(tmp_path):
 
     assert first == second
     assert first.startswith("sha256:")
+
+
+def test_build_event_hash_normalizes_nested_dates_and_decimal_exactly(tmp_path):
+    service = EvidenceEventService(EvidenceEventRepository(_config(tmp_path)))
+    common = {
+        "event_date": "2026-06-01",
+        "decision_date": "2026-06-01",
+        "symbol": "2330",
+        "event_type": EvidenceEventType.RECOMMENDATION_INCLUDED,
+        "source_type": "recommendation_result",
+        "source_id": "rec-001",
+        "source_snapshot_id": "snapshot-001",
+        "reason_codes": (),
+        "why_not_codes": (),
+        "risk_codes": (),
+        "strategy_version_id": "",
+        "profile_id": "",
+        "run_id": "",
+    }
+    typed = service.build_event_hash(
+        **common,
+        metadata={
+            "as_of": date(2026, 6, 1),
+            "capture": {"at": datetime(2026, 6, 1, tzinfo=timezone.utc)},
+            "exact": Decimal("0.100"),
+        },
+    )
+    normalized = service.build_event_hash(
+        **common,
+        metadata={
+            "as_of": "2026-06-01",
+            "capture": {"at": "2026-06-01T00:00:00+00:00"},
+            "exact": "0.100",
+        },
+    )
+
+    assert typed == normalized
 
 
 def test_record_event_fails_closed_when_required_fields_missing(tmp_path):

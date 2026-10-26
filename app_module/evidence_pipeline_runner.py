@@ -141,12 +141,14 @@ class EvidencePipelineRunner:
         clock: Any | None = None,
         run_id_factory: Any | None = None,
         paper_evidence_source: PaperDecisionDeskEvidenceSource | None = None,
+        recommendation_queries: Any | None = None,
     ) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
         self.clock = clock or (lambda: datetime.now(timezone.utc).replace(microsecond=0))
         self.run_id_factory = run_id_factory or (lambda: f"epr_{uuid4().hex[:12]}")
         self.paper_evidence_source = paper_evidence_source
+        self.recommendation_queries = recommendation_queries
         self._transient_decision_desk_snapshot: StoredDecisionDeskSnapshot | None = None
         self._invocation_at: datetime | None = None
 
@@ -370,7 +372,11 @@ class EvidencePipelineRunner:
         )
 
     def _source_coverage(self, request: EvidencePipelineRunRequest) -> dict[str, Any]:
-        return EvidenceSourceCoverageService(self.config, db_path=self.db_path).inspect(
+        return EvidenceSourceCoverageService(
+            self.config,
+            db_path=self.db_path,
+            recommendation_queries=self.recommendation_queries,
+        ).inspect(
             decision_date=request.decision_date,
             result_id=request.result_id,
         ).to_dict()
@@ -692,7 +698,9 @@ class EvidencePipelineRunner:
     ) -> dict[str, Any]:
         importers: dict[str, Any] = {
             "recommendation": RecommendationEvidenceImporter(
-                build_recommendation_execution_queries(self.config)
+                self.recommendation_queries
+                if self.recommendation_queries is not None
+                else build_recommendation_execution_queries(self.config)
             ),
         }
         snapshot_repository = DecisionDeskSnapshotRepository(

@@ -74,6 +74,49 @@ def _seed_recommendation(
     return RecommendationRepository(config).save_result(result)
 
 
+def test_runner_uses_explicit_read_only_recommendation_queries_for_coverage_and_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app_module import evidence_pipeline_runner as runner_module
+
+    config = _config(tmp_path)
+    queries = object()
+    runner = EvidencePipelineRunner(config, recommendation_queries=queries)
+    request = EvidencePipelineRunRequest(decision_date="2026-07-01", result_id="exact-result")
+    observed: dict[str, object] = {}
+
+    class Coverage:
+        def __init__(self, config_arg, *, db_path, recommendation_queries):
+            observed["coverage_queries"] = recommendation_queries
+
+        def inspect(self, *, decision_date, result_id):
+            observed["coverage_result_id"] = result_id
+            return SimpleNamespace(to_dict=lambda: {"scheduler_readiness": "not_ready"})
+
+    class Importer:
+        def __init__(self, query_arg):
+            observed["capture_queries"] = query_arg
+
+    class SnapshotRepository:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def latest_before_or_on(self, decision_date):
+            return None
+
+    monkeypatch.setattr(runner_module, "EvidenceSourceCoverageService", Coverage)
+    monkeypatch.setattr(runner_module, "RecommendationEvidenceImporter", Importer)
+    monkeypatch.setattr(runner_module, "DecisionDeskSnapshotRepository", SnapshotRepository)
+    monkeypatch.setattr(runner, "_transient_snapshot_for_request", lambda _request: None)
+
+    runner._source_coverage(request)
+    runner._build_importers(request, dry_run=True)
+
+    assert observed["coverage_queries"] is queries
+    assert observed["capture_queries"] is queries
+    assert observed["coverage_result_id"] == "exact-result"
+
+
 def test_runner_defaults_to_dry_run_and_does_not_write_events_or_outcomes(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _seed_market_db(config)

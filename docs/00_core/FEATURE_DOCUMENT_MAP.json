@@ -1499,7 +1499,11 @@
         "app_module/workbench_source_service.py",
         "app_module/daily_operations_status.py",
         "app_module/daily_operations_receipts.py",
+        "app_module/evidence_pipeline_runner.py",
+        "app_module/evidence_event_service.py",
         "scripts/audit_daily_operations.py",
+        "scripts/run_evidence_pipeline.py",
+        "scripts/scheduled/run_scheduled_evidence_pipeline_dry_run.py",
         "runtime/repository_output.py"
       ],
       "tests": [
@@ -1514,6 +1518,9 @@
         "tests/test_decision_date_semantics_regression.py",
         "tests/test_daily_operations_status.py",
         "tests/test_daily_operations_receipts.py",
+        "tests/test_evidence_pipeline_runner.py",
+        "tests/test_evidence_event_service.py",
+        "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py",
         "tests/test_repository_output_boundary.py"
       ],
       "manual": [
@@ -1529,6 +1536,13 @@
         "app_module/storage_overview.py",
         "app_module/daily_operations_receipts.py",
         "tests/test_daily_operations_receipts.py",
+        "app_module/evidence_pipeline_runner.py",
+        "app_module/evidence_event_service.py",
+        "scripts/run_evidence_pipeline.py",
+        "scripts/scheduled/run_scheduled_evidence_pipeline_dry_run.py",
+        "tests/test_evidence_pipeline_runner.py",
+        "tests/test_evidence_event_service.py",
+        "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py",
         "app_module/daily_operations_status.py",
         "scripts/audit_daily_operations.py",
         "tests/test_daily_operations_status.py",
@@ -1555,7 +1569,10 @@
         "docs/07_guides/APPLICATION_MANUAL.md",
         "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
         "docs/00_core/PROJECT_SNAPSHOT.md",
-        "docs/01_architecture/current/data_storage_runtime.md"
+        "docs/01_architecture/current/data_storage_runtime.md",
+        "docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md",
+        "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md",
+        "docs/06_qa/BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md"
       ]
     },
     {

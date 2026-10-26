@@ -4,6 +4,8 @@
 
 ## 近期營運與測試收據
 
+[10/25 Scheduled Evidence 受控 Replay 路徑隔離](BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md)：正式 recommendation 唯讀綁定與 scratch 輸出分離通過；乾跑為 `degraded`，0 errors／20 warnings、0 event writes，未形成 weekly review 或 Gate credit。
+
 [10/25 MOPS Q2 PIT availability 補件](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-25-mops-q2-pit-availability-補件)：bounded EZSearch 捕獲 718 個有效 availability projection，P0 季報來源從 machine missing 變為 candidate verified；仍是 research-only，未核准財報數值用途或 downstream。
 
 [10/24 TPEx＋TWSE coverage 校正及 10/23 P0 probe](BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md#2026-10-23-最近應有交易日-13-source-bounded-refresh)：月營收兩來源各為 `limited`，coverage 893/893 與 1086/1086；最近應有交易日的 13-source probe 為 10 degraded／3 missing，合併投影為 2 limited／11 blocked_provenance、0 accepted、0 downstream。

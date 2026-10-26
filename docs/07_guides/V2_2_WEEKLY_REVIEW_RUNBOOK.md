@@ -31,6 +31,14 @@
 
 若 working-copy 已存在，工具不覆蓋它；先記錄既有副本來源與 hash，再交由人工決定是否另建新的隔離副本。此步驟不啟用 scheduler，也不對 source DB 寫入。
 2. 讀取當週 freshness、source coverage、scheduled dry-run / manual dry-run 與 Evidence Review dashboard。記錄 warning、blocking gap、degraded reason 與資料品質。
+
+若要在隔離工作區檢查既有正式推薦快照，可用受控 replay 將來源與輸出根分開。`--recommendation-source-root` 只讀取 canonical recommendation、freshness 與相關來源；`--output-root` 和 `--status-path` 必須指向與來源根完全分離的 scratch。`--db-path` 使用上述 working-copy DB，`--data-root` 使用 working-copy 資料根。受控 replay 不會改寫來源，也不構成人工 review、scheduler approval 或 Gate credit：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\scheduled\run_scheduled_evidence_pipeline_dry_run.py --dry-run --bind-scheduled-recommendation --validation-decision-date <YYYY-MM-DD> --recommendation-source-root <canonical-output-root> --output-root <isolated-scratch-root> --status-path <isolated-scratch-root>\scheduled-replay\latest_status.json --data-root <working-copy-data-root> --db-path <working-copy-db>
+```
+
+來源與輸出根重疊時工具會拒絕受控 replay。不要複製或編輯 `latest_status.json` 來改變 `output_root` 身分；需保留來源原 bytes、status hash 及 replay 收據。
 3. 先產生唯讀週報；不得帶 `--save-history` 或 `--confirm-action-items`：
 
 ```powershell

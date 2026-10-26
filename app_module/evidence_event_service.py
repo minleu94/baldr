@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 import hashlib
 from typing import Any, Iterable
 from uuid import uuid4
@@ -286,7 +287,30 @@ class EvidenceEventService:
             return {}
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be a JSON object")
-        return dict(sorted(metadata.items(), key=lambda item: str(item[0])))
+        return {
+            str(key): _normalize_metadata_value(value)
+            for key, value in sorted(metadata.items(), key=lambda item: str(item[0]))
+        }
+
+
+def _normalize_metadata_value(value: Any) -> Any:
+    """把 metadata 中常見的日期與 Decimal 轉成穩定 JSON 葉節點。"""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("evidence metadata Decimal 必須是有限值")
+        return str(value)
+    if isinstance(value, dict):
+        return {
+            str(key): _normalize_metadata_value(item)
+            for key, item in sorted(value.items(), key=lambda entry: str(entry[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_normalize_metadata_value(item) for item in value]
+    return value
 
 
 def utc_timestamp() -> str:

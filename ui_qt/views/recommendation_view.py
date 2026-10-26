@@ -3753,7 +3753,9 @@ class RecommendationView(QWidget):
         """創建結果面板"""
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        # 結果在窄版研究區由外層 scroll area 承接，不能讓所有控制項的
+        # sizeHint 把整個面板最小寬度鎖死，否則 390px 視窗無法重排。
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         layout.setSpacing(10)
 
         context_header = QHBoxLayout()

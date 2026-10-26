@@ -55,6 +55,8 @@ from ui_qt.models.workbench_table_models import (
 from ui_qt.views.workbench_view import (
     UnifiedDecisionWorkbenchView,
     WORKBENCH_TONES,
+    _advice_contract_completeness,
+    _localize_workbench_text,
     _workbench_tone,
 )
 from ui_qt.views.research_console_view import ResearchConsoleView
@@ -75,6 +77,22 @@ def test_evidence_subtab_hosts_read_only_research_console() -> None:
     evidence_page = view.subtabs.widget(2)
     assert isinstance(evidence_page, ResearchConsoleView)
     assert evidence_page.visible_text().count("formal_oos_allowed = False") == 1
+
+
+def test_workbench_localizes_verified_advice_payload_hash_label() -> None:
+    localized = _localize_workbench_text("canonical_payload_sha256:" + "a" * 64)
+
+    assert localized == "已核驗保存結果 payload SHA-256：" + "a" * 64
+
+
+def test_advice_detail_lists_missing_required_contract_fields_without_filling_them() -> None:
+    summary = _advice_contract_completeness(
+        RecommendationAdviceDTO(stock_code="2330", advice_action=AdviceAction.RESEARCH)
+    )
+
+    assert "Advice 必要欄位待補：成立理由、信心層級" in summary
+    assert "資料日" in summary
+    assert "不可由分數或空白推定" in summary
 
 
 def _dashboard_with_replay() -> WorkbenchDashboardDTO:

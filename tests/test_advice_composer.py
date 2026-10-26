@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -127,6 +128,94 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     assert portfolio.weight_gap_bp == 1000
     assert portfolio.source_trace == ("PortfolioConstructionResult", "rec-20260712-001")
     assert result.warnings == ("evidence_freshness_review_required",)
+
+
+def test_composer_carries_only_verified_canonical_payload_hash_into_source_trace() -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.recommendation.queries import RecommendationExecutionReadModel
+
+    execution = SimpleNamespace(
+        result_id="canonical-advice-result",
+        context=SimpleNamespace(result_config_snapshot=None, strategy_identity=None),
+        decision=SimpleNamespace(
+            regime="Trend",
+            items=(
+                SimpleNamespace(
+                    stock_code="2330",
+                    stock_name="台積電",
+                    close_price=Decimal("1000"),
+                    price_change=Decimal("1"),
+                    rule_score=Decimal("90"),
+                    indicator_score=Decimal("30"),
+                    pattern_score=Decimal("30"),
+                    volume_score=Decimal("30"),
+                    reason_text="test evidence",
+                    reasons=(),
+                    industry="半導體",
+                    regime_match=True,
+                    score_percentile_bp=None,
+                    eligible_universe_size=None,
+                    ranking_method=None,
+                    threshold_mode=None,
+                ),
+            ),
+        ),
+        ml_receipt_refs=(),
+    )
+    read_model = RecommendationExecutionReadModel(
+        execution=execution,
+        label="canonical result",
+        notes=None,
+        persisted_at=None,
+        payload_hash="sha256:" + "a" * 64,
+        artifact_location="must-not-be-exposed",
+        integrity_basis="canonical_payload_and_index_verified",
+    )
+
+    result = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=read_model,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    )
+
+    advice = result.recommendations[0]
+    assert advice.source_trace == (
+        "RecommendationExecution",
+        "canonical-advice-result",
+        "canonical_payload_sha256:" + "a" * 64,
+    )
+    assert "must-not-be-exposed" not in advice.source_trace
+    assert type(advice).from_dict(advice.to_dict()).source_trace == advice.source_trace
+
+
+@pytest.mark.parametrize(
+    ("payload_hash", "integrity_basis"),
+    [
+        ("sha256:" + "z" * 64, "canonical_payload_and_index_verified"),
+        ("sha256:" + "a" * 64, "legacy_read_time_hash_only"),
+        ("sha256:" + "a" * 64, "legacy_trusted_hash_verified"),
+    ],
+)
+def test_composer_omits_untrusted_or_invalid_source_hash(
+    payload_hash: str, integrity_basis: str
+) -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.recommendation.queries import RecommendationExecutionReadModel
+
+    read_model = RecommendationExecutionReadModel(
+        execution=object(),
+        label="result",
+        notes=None,
+        persisted_at=None,
+        payload_hash=payload_hash,
+        artifact_location="private-path",
+        integrity_basis=integrity_basis,  # type: ignore[arg-type]
+    )
+
+    assert AdviceComposer._verified_source_provenance(read_model) == ()
 
 
 def test_composer_keeps_missing_current_weight_as_diagnostic_without_inventing_position() -> None:

@@ -3743,10 +3743,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
         compact_reasons_text = full_reasons_text
         if len(compact_reasons_text) > 150:
             compact_reasons_text = compact_reasons_text[:147] + "…（完整理由見下方共用證據詳情）"
+        contract_completeness = _advice_contract_completeness(item)
         card_text = (
             "所選建議判讀\n"
             f"層級：{'Professional 研究候選（不屬於正式 Advice）' if is_candidate else '配置列' if is_portfolio_row else '正式 Advice'}｜"
             f"動作：{action_label}（原碼：{action_raw or '未提供'}）\n"
+            f"{contract_completeness}\n"
             f"原理由／論點：{compact_reasons_text}\n"
             f"適用期間：{presentation.horizon or '未提供'}｜"
             f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供'}\n"
@@ -4772,6 +4774,7 @@ def _localize_workbench_text(text: str) -> str:
         "research evidence only": "僅供研究證據使用",
         "does not replace real weekly or multi-day scheduler gates": "不可取代真實每週或多日排程 gate",
         "Recommendations source uses only persisted results": "推薦來源只使用已保存結果",
+        "canonical_payload_sha256:": "已核驗保存結果 payload SHA-256：",
         "Forward outcomes are capped by replay_data_as_of_date": "forward outcome 受 replay_data_as_of_date 限制",
         "Production scheduler remains separate and is not enabled by this replay": "正式排程器與 replay 分離，且不會被 replay 啟用",
         "Phase 0 weekly history": "Phase 0 每週歷史",
@@ -4817,6 +4820,47 @@ def _advice_warning_text(value: object) -> str:
         "verified_recommendation_read_missing": "當日候選缺少通過身分核對的保存結果。",
     }
     return known.get(raw, raw or "未提供警告內容。")
+
+
+def _advice_contract_completeness(item: object) -> str:
+    """把 Advice 契約的空欄位列成缺件，絕不以顯示提示代填資料。"""
+
+    required_fields = (
+        ("why_reasons", "成立理由"),
+        ("confidence_tier", "信心層級"),
+        ("evidence_tier", "證據層級"),
+        ("holding_horizon", "適用期間"),
+        ("entry_thesis", "進場論點"),
+        ("invalidation_conditions", "失效條件"),
+        ("market_regime", "市場狀態"),
+        ("strategy_version", "策略版本"),
+        ("liquidity_state", "流動性狀態"),
+        ("execution_feasibility", "可成交性"),
+        ("data_quality", "資料品質"),
+        ("decision_date", "決策日"),
+        ("data_as_of_date", "資料日"),
+    )
+    missing = tuple(
+        label
+        for name, label in required_fields
+        if not _has_advice_contract_value(getattr(item, name, None))
+    )
+    if not missing:
+        return "Advice 必要欄位：目前欄位均有值；仍須依來源、品質與 Gate 判讀。"
+    return (
+        "Advice 必要欄位待補：" + "、".join(missing)
+        + "。\n下一步：回查原推薦與策略設定，補上可追溯值；不可由分數或空白推定。"
+    )
+
+
+def _has_advice_contract_value(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (tuple, list)):
+        return bool(value) and all(
+            not isinstance(item, str) or bool(item.strip()) for item in value
+        )
+    return value is not None
 
 
 def _format_detail_body(item) -> str:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any, Mapping, Sequence
 
 from app_module.advice_dtos import (
@@ -85,6 +86,7 @@ class AdviceComposer:
                 )
 
         warning_values = self._strings(evidence_warnings, "evidence_warnings")
+        source_provenance = self._verified_source_provenance(recommendations)
         current_weights_known = current_weights_bp is not None
         current_weights = self._weights(current_weights_bp or {})
         calibration_by_stock = dict(calibration_by_stock_code or {})
@@ -166,6 +168,7 @@ class AdviceComposer:
                     market_regime=self._string_or_empty(config.get("market_regime") or config.get("regime")),
                     calibration=calibration_by_stock.get(recommendation.stock_code),
                     source_trace_kind=source_trace_kind,
+                    source_provenance=source_provenance,
                 )
                 for recommendation in recommendation_rows
             )
@@ -236,6 +239,7 @@ class AdviceComposer:
         market_regime: str,
         calibration: object | None,
         source_trace_kind: str = "RecommendationResultDTO",
+        source_provenance: tuple[str, ...] = (),
     ) -> RecommendationAdviceDTO:
         decision = self._policy.decide(
             mode=mode,
@@ -256,6 +260,7 @@ class AdviceComposer:
         source_trace = (
             (source_trace_kind,)
             + ((str(result_id),) if result_id else ())
+            + source_provenance
             + tuple(calibration_fields.pop("_source_trace", ()))
         )
         risk_reasons = self._recommendation_risk_reasons(
@@ -752,6 +757,24 @@ class AdviceComposer:
                 "RecommendationExecution",
             )
         return "", {}, tuple(recommendations), "RecommendationResultDTO"
+
+    @staticmethod
+    def _verified_source_provenance(
+        recommendations: RecommendationResultDTO | RecommendationExecutionReadModel | Sequence[RecommendationDTO],
+    ) -> tuple[str, ...]:
+        """只沿用 query 已核驗的 canonical payload hash，不提升 legacy hash 資格。"""
+
+        if not isinstance(recommendations, RecommendationExecutionReadModel):
+            return ()
+        if (
+            recommendations.execution is None
+            or recommendations.integrity_basis != "canonical_payload_and_index_verified"
+        ):
+            return ()
+        payload_hash = recommendations.payload_hash
+        if not isinstance(payload_hash, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", payload_hash) is None:
+            return ()
+        return (f"canonical_payload_sha256:{payload_hash.removeprefix('sha256:')}",)
 
     @classmethod
     def _weights(cls, values: Mapping[str, int]) -> dict[str, int]:

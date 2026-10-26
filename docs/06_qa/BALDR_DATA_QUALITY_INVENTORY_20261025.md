@@ -62,4 +62,11 @@ Decision Desk 現有的唯讀市場資料可見性列新增 `fundamental_stateme
 - 2026-09-01..30 同樣以 7 天窗口擷取，27 個成功查詢、3 個官方明確無資料，取得 123 筆事件／projection row；0 failed、0 invalid，30 個 custody component 並完成 readback。候選目錄：`mops_statement_availability_q2_2026_sep_candidate_20261025`。
 - 2026-10-01..05 六個查詢均為官方明確無資料，沒有公告事件；工具依來源狀態輸出 `unavailable` 候選，不能解讀為查詢失敗或缺漏資料。候選目錄：`mops_statement_availability_q2_2026_oct_candidate_20261025`。
 
-以上仍是隔離研究候選：`formal_oos_allowed=false`、`formal_credit_authorized=false`、`production_blend_alpha_bp=0`。公告候選不能單獨證明舊報表內容正確、完整 coverage 或授權，也未執行正式回填。對 8 月 candidate 的早期對照曾見到 1,976 個 Q2 statement stock 中 109 個本機鍵沒有相符公告、另 10 個候選代碼在本機無對應列；9 月結果增加 123 個較晚事件，尚未完成將兩月候選逐報表種類與本機鍵重新合併的獨立 read-only 對照，故此處不宣稱 109 筆已被解釋或已補齊。
+以上仍是隔離研究候選：`formal_oos_allowed=false`、`formal_credit_authorized=false`、`production_blend_alpha_bp=0`。公告候選不能單獨證明舊報表內容正確、完整 coverage 或授權，也未執行正式回填。將 8、9 月 mapping 按 response hash 回連 query manifest 的市場，再按市場／股票／報表種類對照本機 `fundamental_current_observations` 的 2026-Q2 current statement keys，唯讀結果如下：
+
+| Market | Statement type | Current keys | Candidate keys | Matched | Current without event | Candidate without current row |
+|---|---|---:|---:|---:|---:|---:|
+| TWSE | balance sheet / income / cash flows（各類相同） | 1,084 | 1,049 | 1,037 | 47 | 12 |
+| TPEx | balance sheet / income / cash flows（各類相同） | 891 | 852 | 849 | 42 | 3 |
+
+合計 1,975 個本機股票身份中仍有 89 檔（TWSE 47、TPEx 42）沒有對應的 8–9 月候選公告；另有 15 個候選股票代碼（TWSE 12、TPEx 3）沒有本機 Q2 current-observation 對應列。差異對三種報表類型一致。這是候選資料與本機 current observation 的鍵覆蓋，不是對 MOPS 全市場／其他期間的完整 coverage 證明，也未驗證報表值、授權、歷史 PIT 或正式 `fundamental_statement_items` 的逐列正確性。這些缺口應留在研究／Gate 3 人工審查，不得因公告匹配就批次補回正式資料。

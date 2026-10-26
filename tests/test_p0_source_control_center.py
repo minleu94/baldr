@@ -118,6 +118,113 @@ def test_quarterly_candidate_audit_is_visible_but_cannot_grant_eligibility() -> 
             P0SourceControlCenterService().build(quarterly_candidate_audit=unsafe)
 
 
+def test_quarterly_formal_impact_is_projected_with_read_only_boundary() -> None:
+    crosswalk: dict[str, object] = {
+        "schema_version": "baldr.quarterly_announcement_crosswalk.v1",
+        "candidate_only": True,
+        "formal_db_write": False,
+        "source_acceptance": False,
+        "gate_credit": False,
+        "downstream_eligibility": "none",
+        "status": "available",
+        "resources": [],
+        "formal_impact": {
+            "schema_version": "baldr.quarterly_announcement_formal_impact.v1",
+            "status": "observed",
+            "candidate_unique_keys": 3,
+            "formal_identity_overlap": 2,
+            "formal_version_count": 4,
+            "formal_item_rows": 10,
+            "missing_announcement_date_rows": 5,
+            "exact_version_links": 0,
+            "rows_cleared": 0,
+            "blockers": ["candidate_event_to_content_version_bridge_missing"],
+            "identity_scope": "identity_only",
+            "financial_values_returned": False,
+            "formal_db_write": False,
+        },
+    }
+
+    center = P0SourceControlCenterService().build(
+        quarterly_announcement_crosswalk=crosswalk
+    )
+    row = next(
+        item.to_dict()
+        for item in center.rows
+        if item.source_id == "pit.quarterly_financials"
+    )
+
+    assert row["quarterly_announcement_crosswalk"] == crosswalk
+    assert row["downstream_eligibility"] == "none"
+    assert center.downstream_eligible_count == 0
+
+
+def test_quarterly_formal_impact_cannot_claim_cleared_rows() -> None:
+    crosswalk: dict[str, object] = {
+        "schema_version": "baldr.quarterly_announcement_crosswalk.v1",
+        "candidate_only": True,
+        "formal_db_write": False,
+        "source_acceptance": False,
+        "gate_credit": False,
+        "downstream_eligibility": "none",
+        "status": "available",
+        "resources": [],
+        "formal_impact": {
+            "schema_version": "baldr.quarterly_announcement_formal_impact.v1",
+            "status": "observed",
+            "candidate_unique_keys": 1,
+            "formal_identity_overlap": 1,
+            "formal_version_count": 1,
+            "formal_item_rows": 4,
+            "missing_announcement_date_rows": 4,
+            "exact_version_links": 0,
+            "rows_cleared": 4,
+            "blockers": [],
+            "identity_scope": "identity_only",
+            "financial_values_returned": False,
+            "formal_db_write": False,
+        },
+    }
+
+    with pytest.raises(ValueError, match="cannot claim version links or cleared rows"):
+        P0SourceControlCenterService().build(
+            quarterly_announcement_crosswalk=crosswalk
+        )
+
+
+def test_not_evaluated_quarterly_formal_impact_cannot_claim_clearance() -> None:
+    crosswalk: dict[str, object] = {
+        "schema_version": "baldr.quarterly_announcement_crosswalk.v1",
+        "candidate_only": True,
+        "formal_db_write": False,
+        "source_acceptance": False,
+        "gate_credit": False,
+        "downstream_eligibility": "none",
+        "status": "available",
+        "resources": [],
+        "formal_impact": {
+            "schema_version": "baldr.quarterly_announcement_formal_impact.v1",
+            "status": "not_evaluated",
+            "candidate_unique_keys": 0,
+            "formal_identity_overlap": None,
+            "formal_version_count": None,
+            "formal_item_rows": None,
+            "missing_announcement_date_rows": None,
+            "exact_version_links": 1,
+            "rows_cleared": 1,
+            "blockers": ["no_unique_announcement_candidate_keys"],
+            "identity_scope": "identity_only",
+            "financial_values_returned": False,
+            "formal_db_write": False,
+        },
+    }
+
+    with pytest.raises(ValueError, match="must keep formal counts unknown"):
+        P0SourceControlCenterService().build(
+            quarterly_announcement_crosswalk=crosswalk
+        )
+
+
 def test_source_rows_expose_contract_specific_freshness_and_route_availability() -> None:
     center = P0SourceControlCenterService().build()
     tdcc = next(row for row in center.rows if row.source_id == "tdcc_shareholding")

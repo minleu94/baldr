@@ -18,7 +18,7 @@
 
 - [2026-10-26 產業卡與人工研究決定 UI 增量](BALDR_INDUSTRY_LEADER_CARDS_20261025.md#首屏法人淨額分布增量2026-10-25-root-驗證)、[Workbench Advice 收據](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-workbench-advice-人工研究決定入口)：題材法人家數分布、精確 Advice 人工研究記錄及其 sandbox／Owner UAT 限制；不建立交易或連線帳戶。
 
-- [2026-10-25 本機資料品質唯讀盤點](BALDR_DATA_QUALITY_INVENTORY_20261025.md)：fundamental 資料現況、Open Data 季報候選及 MOPS 公告時間 crosswalk；原始 DB 以唯讀核查，不能由 candidate matches 推成正式資料資格。
+- [2026-10-25 本機資料品質唯讀盤點](BALDR_DATA_QUALITY_INVENTORY_20261025.md)：fundamental 資料現況、Open Data 季報候選及 MOPS 公告時間 crosswalk；含[2026-10-26 Research Console 公告候選正式資料影響讀回](BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-research-console-公告候選正式資料影響讀回)。原始 DB 以唯讀核查，不能由 candidate matches 推成正式資料資格。
 
 > 本目錄保存日期化驗收、調查與交接證據。它們描述各自的範圍與時間點；目前專案狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，產品操作請看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。主題相同不代表證據可互換，舊報告中的待辦也不自動成為目前待辦。
 

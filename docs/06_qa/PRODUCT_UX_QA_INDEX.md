@@ -32,6 +32,8 @@ V2 開發分支產品接受摘要：[BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md](BA
 
 [2026-10-25 P0 來源決策清晰度](BALDR_P0_DECISION_CLARITY_QA_20261025.md)記錄已決議來源不再被要求重複輸入決策，並在 Update／Research Console 明示選取列的決策與剩餘證據缺口；不授予來源接受或下游資格。
 
+[2026-10-26 Research Console 公告候選正式資料影響](BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-research-console-公告候選正式資料影響讀回)把候選數、正式 identity overlap、缺公告日項目列、精確版本連結及解除數放在同一頁呈現；實際 Q2 正式 overlap 與解除均為 0，明確保留內容版本橋接缺口，不推定資料已補齊。
+
 [2026-10-25 weekly collection 明細](BALDR_WEEKLY_COLLECTION_DETAIL_QA_20261025.md)記錄 Update 內可唯讀展開既有週收集的期間、來源 hash、coverage、品質發現與完整性例子；新增官方收據先做 output_root containment、大小與 SHA-256 核驗再預覽，不核准、不寫 sidecar，也不授 Gate credit。
 
 [2026-10-25 P0 來源特定契約查核提示](BALDR_P0_DECISION_CLARITY_QA_20261025.md#2026-10-25-後續來源特定契約查核提示)記錄各來源可得日、新鮮度、缺件、coverage、retry 政策及已登錄 acquisition route 的唯讀呈現；政策不是來源證據或接受決議。

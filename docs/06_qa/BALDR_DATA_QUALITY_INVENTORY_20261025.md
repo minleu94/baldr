@@ -204,3 +204,11 @@ Owner 已授權把 MOPS 顯示的公告日期與時間直接作為對應公告�
 - `fundamental_monthly_revenues` 有 242,651 列缺公告日；現有 1,832 個月營收 availability key 與缺公告日正式 DB key 的精確公司／月份交集為 **0**。沒有各舊月份對應公告時，不拿 2026-Q2 或其他月份時間代填；實際解除 **0 列**。
 
 以上正式 DB 均以唯讀方式檢查，本輪未寫入或重算正式資料。公告匹配候選不能視為 quality projector 已接受的事件映射；要安全解除品質，仍需取得具報表內容版本關聯的公告證據，或 source acceptance 審核建立該連結。MOPS EZSearch endpoint 使用授權、季度 CSV 金額單位／basis、歷史 PIT、舊月營收逐月公告以及其他缺值仍未解。原始 crosswalk 摘要、候選 hash 與唯讀查詢值由 bounded QA runner 產生，詳[本輪公告時間及圖卡 QA](BALDR_INDUSTRY_LEADER_CARDS_20261025.md)。
+
+### 2026-10-26 Research Console 公告候選正式資料影響讀回
+
+Research Console 已把公告候選與正式季報資料的影響摘要接在同一公告對照區。Reader 以唯讀 SQLite 開啟設定資料庫，只查 `fundamental_statement_items` 的公司／報表／期間聚合：版本數、項目列數與缺公告日列數；不選取財務值、不寫 DB。正式表沒有 market 欄，因此 overlap 僅為 identity-only；MOPS 候選事件亦沒有正式 `source_version`／內容 hash 橋接，精確版本連結與公告對照可解除列數不會由身份相同推算。
+
+以已封存 2026-Q2 一般業季報候選及 2026-07-01 至 2026-09-30 三組 MOPS 候選，在本機正式 DB 做實際 reader readback：狀態 `observed`、公告候選唯一鍵 **3,864**；正式 identity overlap **0**、overlap 範圍正式版本 **0**、項目列 **0**、缺公告日項目列 **0**、精確版本連結 **0**、本次可解除 **0**。缺公告日列為 0 是因為這個期間／候選 identity 沒有對應的正式 `fundamental_statement_items` 列，不代表資料庫其他期間已補齊。Reader blockers 為 `formal_table_has_no_market_column_identity_only_overlap` 與 `candidate_event_to_content_version_bridge_missing`。這與前節實際解除 0 列的結果一致，並讓操作頁可直接呈現原因；沒有回填正式資料或改動來源、Gate、PIT、ML 資格。
+
+QA：公告 reader／crosswalk／P0 Source Control Center／Research Console focused suite **125 passed**；必要 Workbench 回歸 **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,151 source files clean**；9 個變更 Python 檔 `py_compile` 通過。實際資料讀回由 8 GiB／12 process 有界 Windows Job 執行，正常退出、Job 無殘留程序。document-control 對 inventory、QA 索引與 README 的 scoped check **12 features／4 link sources／0 errors**。含 PROJECT_SNAPSHOT／APPLICATION_MANUAL 的較廣檢查仍受既有 `output` junction WinError 5 影響，故不能將它記成通過；兩文件新增內容已同步，本輪未跑原生桌面 GUI 或 Owner UAT。

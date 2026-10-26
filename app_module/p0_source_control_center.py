@@ -1097,6 +1097,64 @@ def _require_quarterly_announcement_crosswalk_boundary(
     for key, value in expected.items():
         if payload.get(key) != value:
             raise ValueError(f"quarterly announcement crosswalk boundary mismatch: {key}")
+    formal_impact = payload.get("formal_impact")
+    if formal_impact is None:
+        return
+    if not isinstance(formal_impact, Mapping):
+        raise ValueError("quarterly formal impact must be an object")
+    if formal_impact.get("schema_version") != "baldr.quarterly_announcement_formal_impact.v1":
+        raise ValueError("quarterly formal impact schema mismatch")
+    if formal_impact.get("status") not in {"observed", "unavailable", "not_evaluated"}:
+        raise ValueError("quarterly formal impact status invalid")
+    if (
+        formal_impact.get("formal_db_write") is not False
+        or formal_impact.get("financial_values_returned") is not False
+    ):
+        raise ValueError("quarterly formal impact boundary mismatch")
+    counts = (
+        "candidate_unique_keys",
+        "formal_identity_overlap",
+        "formal_version_count",
+        "formal_item_rows",
+        "missing_announcement_date_rows",
+        "exact_version_links",
+        "rows_cleared",
+    )
+    status = formal_impact["status"]
+    for name in counts:
+        value = formal_impact.get(name)
+        if value is None:
+            if status == "observed":
+                raise ValueError(f"observed quarterly formal impact missing count: {name}")
+            continue
+        if type(value) is not int or value < 0:
+            raise ValueError(f"quarterly formal impact count invalid: {name}")
+    if status == "unavailable" and any(formal_impact.get(name) is not None for name in counts):
+        raise ValueError("unavailable quarterly formal impact must keep counts unknown")
+    if status == "not_evaluated" and (
+        formal_impact.get("candidate_unique_keys") != 0
+        or any(
+            formal_impact.get(name) is not None
+            for name in counts
+            if name != "candidate_unique_keys"
+        )
+    ):
+        raise ValueError("not-evaluated quarterly formal impact must keep formal counts unknown")
+    if status != "observed" and any(
+        formal_impact.get(name) not in (None, 0)
+        for name in ("exact_version_links", "rows_cleared")
+    ):
+        raise ValueError("non-observed quarterly formal impact cannot claim links or cleared rows")
+    if status == "observed" and (
+        formal_impact.get("exact_version_links") != 0
+        or formal_impact.get("rows_cleared") != 0
+    ):
+        raise ValueError("quarterly formal impact cannot claim version links or cleared rows")
+    blockers = formal_impact.get("blockers")
+    if not isinstance(blockers, (list, tuple)) or any(
+        not isinstance(item, str) or not item.strip() for item in blockers
+    ):
+        raise ValueError("quarterly formal impact blockers invalid")
 
 
 def _serialize_quarterly_candidate_audit(

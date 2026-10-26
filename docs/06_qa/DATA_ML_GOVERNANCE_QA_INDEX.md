@@ -1,6 +1,7 @@
 # 資料、ML 與來源治理 QA 索引
 
 - [季報逐資源／逐欄位及公司期別候選稽核（2026-10-26）](BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-p0-季報逐資源逐欄位唯讀稽核接線)：P0 Source Control Center 可明選封存候選目錄並唯讀驗 hash、資源狀態、欄位缺漏與 issuer-period profile；candidate-only，不授來源接受、Gate 或 ML 資格。
+- [公告候選正式資料影響讀回（2026-10-26）](BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-research-console-公告候選正式資料影響讀回)：Research Console 顯示 Q2 公告候選與正式季報 identity overlap、版本／缺日列、精確連結及解除數；實讀 3,864 候選、0 正式 overlap、0 解除，缺內容版本橋接，唯讀且不授 Gate／ML 資格。
 
 - [季報候選與公司名錄差異可見性（2026-10-26）](BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-季報候選與公司名錄差異可見性)：雙市場名錄候選與目前選取季度候選逐代號近時點檔案對照；差異只做診斷，不推定歷史分母或申報缺件。
 

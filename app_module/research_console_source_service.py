@@ -39,6 +39,9 @@ from data_module.open_data_quarterly_announcement_crosswalk import (
     QuarterlyAnnouncementCrosswalkError,
     build_quarterly_announcement_crosswalk,
 )
+from data_module.formal_announcement_impact_reader import (
+    read_quarterly_announcement_formal_impact,
+)
 from data_module.open_data_issuer_directory_candidate_audit import (
     AUDIT_SCHEMA as _ISSUER_DIRECTORY_AUDIT_SCHEMA,
     IssuerDirectoryCandidateAuditError,
@@ -150,6 +153,7 @@ class ResearchConsoleSourceService:
         p0_decision_provider: P0DecisionProvider | None = None,
         p0_decision_path: str | Path | None = None,
         p0_quarterly_candidate_root: str | Path | None = None,
+        p0_formal_db_path: str | Path | None = None,
         p0_issuer_directory_candidate_root: str | Path | None = None,
         p0_mops_announcement_candidate_roots: Sequence[str | Path] | str | None = None,
         clock: ClockProvider | None = None,
@@ -191,6 +195,11 @@ class ResearchConsoleSourceService:
             else None
         )
         self._p0_quarterly_candidate_root_default = self._p0_quarterly_candidate_root
+        self._p0_formal_db_path = (
+            Path(p0_formal_db_path).expanduser()
+            if p0_formal_db_path is not None
+            else None
+        )
         configured_directory_root = (
             p0_issuer_directory_candidate_root
             if p0_issuer_directory_candidate_root is not None
@@ -603,6 +612,15 @@ class ResearchConsoleSourceService:
                     ],
                     "errors": [str(exc).split(":", 1)[0]],
                 }
+        if quarterly_announcement_crosswalk is not None:
+            check_read_cancelled()
+            quarterly_announcement_crosswalk["formal_impact"] = (
+                read_quarterly_announcement_formal_impact(
+                    crosswalk=quarterly_announcement_crosswalk,
+                    database_path=self._p0_formal_db_path,
+                )
+            )
+            check_read_cancelled()
         directory_audit: dict[str, Any] | None = None
         directory_root = self._p0_issuer_directory_candidate_root
         if directory_root is not None:

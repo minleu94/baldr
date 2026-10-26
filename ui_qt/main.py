@@ -2402,6 +2402,7 @@ class MainWindow(QMainWindow):
                     p0_audit_path=self._p0_source_audit_path(),
                     p0_license_evidence_path=self._p0_license_evidence_path(),
                     p0_decision_path=self._p0_source_decision_path(),
+                    p0_formal_db_path=getattr(self.config, "db_file", None),
                 )
                 workbench_view = UnifiedDecisionWorkbenchView(
                     source_service=self.workbench_source_service,

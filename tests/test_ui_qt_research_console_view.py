@@ -167,6 +167,113 @@ def test_announcement_crosswalk_renders_owner_authorized_mops_timestamp():
         "2026-08-12T20:14:11+08:00"
     )
     assert "a" * 64 in view.quarterly_announcement_crosswalk_resource_table.item(0, 3).toolTip()
+    assert "正式資料影響狀態：不可用" in view.quarterly_formal_impact_state_label.text()
+    assert view.quarterly_formal_impact_table.rowCount() == 7
+    assert view.quarterly_formal_impact_table.item(0, 1).text() == "未知"
+    view.close()
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_state"),
+    (("unavailable", "不可用"), ("not_evaluated", "尚未評估")),
+)
+def test_formal_impact_unavailable_or_unevaluated_keeps_all_counts_unknown(
+    status: str, expected_state: str,
+) -> None:
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+
+    view._render_quarterly_formal_impact(
+        {
+            "status": status,
+            "candidate_unique_keys": 12,
+            "formal_identity_overlap": 12,
+            "formal_version_count": 3,
+            "missing_announcement_date_rows": 9,
+            "exact_version_links": 2,
+            "rows_cleared": 2,
+            "blockers": [],
+        }
+    )
+
+    assert expected_state in view.quarterly_formal_impact_state_label.text()
+    assert view.quarterly_formal_impact_table.rowCount() == 7
+    assert all(
+        view.quarterly_formal_impact_table.item(row, 1).text() == "未知"
+        for row in range(view.quarterly_formal_impact_table.rowCount())
+    )
+    assert "不足以判定沒有阻擋" in view.quarterly_formal_impact_blockers_label.text()
+    view.close()
+
+
+def test_formal_impact_observed_renders_reader_counts_without_inference() -> None:
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+    view._render_quarterly_formal_impact(
+        {
+            "status": "observed",
+            "candidate_unique_keys": 3864,
+            "formal_identity_overlap": 3810,
+            "formal_version_count": 3,
+            "formal_item_rows": 5000,
+            "missing_announcement_date_rows": 3700,
+            "exact_version_links": 0,
+            "rows_cleared": 0,
+            "blockers": ["正式資料版本未建立精確連結"],
+        }
+    )
+
+    table = view.quarterly_formal_impact_table
+    rows_by_label = {
+        table.item(row, 0).text(): table.item(row, 1).text()
+        for row in range(table.rowCount())
+    }
+    assert "狀態：已讀回" in view.quarterly_formal_impact_state_label.text()
+    assert rows_by_label["候選唯一鍵"] == "3,864"
+    assert rows_by_label["正式同公司／報表／期間 identity overlap"] == "3,810"
+    assert rows_by_label["identity overlap 的正式版本數"] == "3"
+    assert rows_by_label["identity overlap 的正式財報項目列"] == "5,000"
+    assert rows_by_label["identity overlap 上正式缺公告日項目列"] == "3,700"
+    assert rows_by_label["精確版本連結數"] == "0"
+    assert rows_by_label["本次公告對照解除列數（reader 回報）"] == "0"
+    assert "正式資料版本未建立精確連結" in view.quarterly_formal_impact_blockers_label.text()
+    boundary = view.quarterly_formal_impact_boundary_label.text()
+    assert "identity overlap，不代表同版本連結" in boundary
+    assert "唯讀、不回填正式資料" in boundary
+    assert "候選數不推導正式解除筆數" in boundary
+    view.close()
+
+
+def test_formal_impact_observed_preserves_none_as_unknown() -> None:
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+    view._render_quarterly_formal_impact(
+        {
+            "status": "observed",
+            "candidate_unique_keys": 10,
+            "formal_identity_overlap": None,
+            "formal_version_count": 0,
+            "formal_item_rows": None,
+            "missing_announcement_date_rows": None,
+            "exact_version_links": None,
+            "rows_cleared": None,
+            "blockers": None,
+        }
+    )
+
+    table = view.quarterly_formal_impact_table
+    rows_by_label = {
+        table.item(row, 0).text(): table.item(row, 1).text()
+        for row in range(table.rowCount())
+    }
+    assert rows_by_label["候選唯一鍵"] == "10"
+    assert rows_by_label["正式同公司／報表／期間 identity overlap"] == "未知"
+    assert rows_by_label["identity overlap 的正式版本數"] == "0"
+    assert rows_by_label["identity overlap 的正式財報項目列"] == "未知"
+    assert rows_by_label["identity overlap 上正式缺公告日項目列"] == "未知"
+    assert rows_by_label["精確版本連結數"] == "未知"
+    assert rows_by_label["本次公告對照解除列數（reader 回報）"] == "未知"
+    assert "Reader blockers：未知" in view.quarterly_formal_impact_blockers_label.text()
     view.close()
 
 

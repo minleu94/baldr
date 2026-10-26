@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -589,3 +590,93 @@ def test_mops_capture_failure_projection_is_degraded(tmp_path: Path) -> None:
         row for row in console.sources if row.source_id == "pit.quarterly_financials"
     )
     assert mops_source.status == "degraded"
+
+
+def test_p0_quarterly_source_service_attaches_read_only_formal_impact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app_module.research_console_source_service as source_module
+    from data_module.open_data_quarterly_announcement_crosswalk import AUDIT_SCHEMA
+
+    database = tmp_path / "formal.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE fundamental_statement_items (
+                stock_code TEXT NOT NULL,
+                statement_type TEXT NOT NULL,
+                period TEXT NOT NULL,
+                announced_date TEXT,
+                source_version TEXT NOT NULL,
+                item_code TEXT NOT NULL
+            )
+            """
+        )
+    crosswalk = {
+        "schema_version": AUDIT_SCHEMA,
+        "candidate_only": True,
+        "formal_db_write": False,
+        "source_acceptance": False,
+        "gate_credit": False,
+        "downstream_eligibility": "none",
+        "status": "available",
+        "resources": [
+            {
+                "market": "TWSE",
+                "statement": "income_statement",
+                "rows": [
+                    {
+                        "issuer_code": "2330",
+                        "fiscal_period": "2026-Q2",
+                        "status": "one_announcement_candidate",
+                        "announcement_timestamp_resolution": "unique_candidate_timestamp",
+                        "announcement_count": 1,
+                        "announcement_candidates": [
+                            {
+                                "announcement_at": "2026-08-14T14:00:00+08:00",
+                                "event_sha256": "a" * 64,
+                                "source_sha256": "b" * 64,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        source_module,
+        "audit_quarterly_candidate_root",
+        lambda _root: type("Audit", (), {"to_dict": lambda self: {"errors": []}})(),
+    )
+    monkeypatch.setattr(
+        source_module, "build_quarterly_announcement_crosswalk", lambda **_kwargs: crosswalk
+    )
+
+    def capture_build(_service: object, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        source_module.P0SourceControlCenterService, "build", capture_build
+    )
+    service = ResearchConsoleSourceService(
+        p0_quarterly_candidate_root=tmp_path,
+        p0_mops_announcement_candidate_roots=(tmp_path,),
+        p0_formal_db_path=database,
+    )
+
+    service._build_p0_source_control_center(None, None)
+
+    projected = captured["quarterly_announcement_crosswalk"]
+    assert isinstance(projected, dict)
+    impact = projected["formal_impact"]
+    assert impact["status"] == "observed"
+    assert impact["candidate_unique_keys"] == 1
+    assert impact["formal_identity_overlap"] == 0
+    assert impact["formal_item_rows"] == 0
+    assert impact["missing_announcement_date_rows"] == 0
+    assert impact["exact_version_links"] == 0
+    assert impact["rows_cleared"] == 0
+    assert "candidate_event_to_content_version_bridge_missing" in impact["blockers"]

@@ -621,6 +621,35 @@ class ResearchConsoleView(QWidget):
             "需同時選取季報 CSV 與公告候選；目前不推定公告缺漏或資料可得。"
         )
         self.quarterly_announcement_crosswalk_summary_label.setWordWrap(True)
+        self.quarterly_formal_impact_state_label = QLabel(
+            "正式資料影響：尚未讀取；各計數未知。"
+        )
+        self.quarterly_formal_impact_state_label.setObjectName(
+            "QuarterlyFormalImpactState"
+        )
+        self.quarterly_formal_impact_state_label.setWordWrap(True)
+        self.quarterly_formal_impact_table = _table(
+            ("正式資料影響指標", "Reader 回讀值")
+        )
+        self.quarterly_formal_impact_table.setAccessibleName(
+            "季報公告候選對照的正式資料影響摘要"
+        )
+        self.quarterly_formal_impact_blockers_label = QLabel(
+            "正式資料 blockers：未知。"
+        )
+        self.quarterly_formal_impact_blockers_label.setWordWrap(True)
+        self.quarterly_formal_impact_blockers_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.quarterly_formal_impact_boundary_label = QLabel(
+            "同公司／報表／期間只表示 identity overlap，不代表同版本連結；"
+            "沒有精確版本連結時不可解除。此彙總唯讀、不回填正式資料；"
+            "候選數不推導正式解除筆數。"
+        )
+        self.quarterly_formal_impact_boundary_label.setWordWrap(True)
+        self.quarterly_formal_impact_boundary_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
         self.quarterly_announcement_crosswalk_table = _table(
             ("市場", "報表", "CSV profile 數", "單一公告候選", "多筆／歧義", "選取窗口未觀測", "查詢窗口不完整", "身份缺漏")
         )
@@ -639,6 +668,19 @@ class ResearchConsoleView(QWidget):
         announcement_panel.layout.addLayout(announcement_controls)
         announcement_panel.layout.addWidget(
             self.quarterly_announcement_crosswalk_summary_label
+        )
+        announcement_panel.layout.addWidget(
+            QLabel("正式資料影響（僅顯示 reader 回讀值）")
+        )
+        announcement_panel.layout.addWidget(
+            self.quarterly_formal_impact_state_label
+        )
+        announcement_panel.layout.addWidget(self.quarterly_formal_impact_table)
+        announcement_panel.layout.addWidget(
+            self.quarterly_formal_impact_blockers_label
+        )
+        announcement_panel.layout.addWidget(
+            self.quarterly_formal_impact_boundary_label
         )
         announcement_panel.layout.addWidget(self.quarterly_announcement_crosswalk_table)
         announcement_panel.layout.addWidget(
@@ -1264,9 +1306,11 @@ class ResearchConsoleView(QWidget):
             self.quarterly_announcement_crosswalk_detail_label.setText(
                 "選取季報資源並明選一個或多個公告候選後，才會顯示有限窗口對照。"
             )
+            self._render_quarterly_formal_impact(None)
             return
 
         crosswalk = self._quarterly_announcement_crosswalk
+        self._render_quarterly_formal_impact(crosswalk.get("formal_impact"))
         state = str(crosswalk.get("status", "unknown"))
         start = crosswalk.get("query_window_start") or "未知"
         end = crosswalk.get("query_window_end") or "未知"
@@ -1312,6 +1356,72 @@ class ResearchConsoleView(QWidget):
             status_column=-1,
         )
         self._render_quarterly_announcement_crosswalk_resource()
+
+    def _render_quarterly_formal_impact(self, value: object) -> None:
+        """只呈現 reader 提供的正式資料影響，不由候選數推算解除量。"""
+
+        impact = value if isinstance(value, dict) else {}
+        status = str(impact.get("status", "unavailable") or "unavailable")
+        status_labels = {
+            "observed": "已讀回",
+            "unavailable": "不可用",
+            "not_evaluated": "尚未評估",
+        }
+        status_text = status_labels.get(status, f"未知（{status}）")
+        self.quarterly_formal_impact_state_label.setText(
+            f"正式資料影響狀態：{status_text}。"
+        )
+
+        metric_specs = (
+            ("候選唯一鍵", "candidate_unique_keys"),
+            ("正式同公司／報表／期間 identity overlap", "formal_identity_overlap"),
+            ("identity overlap 的正式版本數", "formal_version_count"),
+            ("identity overlap 的正式財報項目列", "formal_item_rows"),
+            ("identity overlap 上正式缺公告日項目列", "missing_announcement_date_rows"),
+            ("精確版本連結數", "exact_version_links"),
+            ("本次公告對照解除列數（reader 回報）", "rows_cleared"),
+        )
+        observed = status == "observed"
+        rows = []
+        for label, key in metric_specs:
+            count = impact.get(key) if observed else None
+            display_count = (
+                f"{count:,}"
+                if type(count) is int and count >= 0
+                else "未知"
+            )
+            rows.append((label, display_count))
+        table = self.quarterly_formal_impact_table
+        table.setRowCount(len(rows))
+        for row_index, values in enumerate(rows):
+            for column_index, value_text in enumerate(values):
+                cell = QTableWidgetItem(value_text)
+                cell.setToolTip(value_text)
+                table.setItem(row_index, column_index, cell)
+        ensure_visible_rows(table, len(metric_specs))
+
+        blockers = impact.get("blockers")
+        if isinstance(blockers, (list, tuple)) and all(
+            isinstance(item, str) for item in blockers
+        ):
+            blocker_items = tuple(item.strip() for item in blockers if item.strip())
+            if blocker_items:
+                blocker_text = "；".join(blocker_items)
+                self.quarterly_formal_impact_blockers_label.setText(
+                    "Reader blockers：" + blocker_text
+                )
+            elif observed:
+                self.quarterly_formal_impact_blockers_label.setText(
+                    "Reader blockers：未回報（不代表來源接受或 Gate 通過）。"
+                )
+            else:
+                self.quarterly_formal_impact_blockers_label.setText(
+                    "Reader blockers：未知；目前狀態不足以判定沒有阻擋。"
+                )
+        else:
+            self.quarterly_formal_impact_blockers_label.setText(
+                "Reader blockers：未知。"
+            )
 
     def _render_quarterly_announcement_crosswalk_resource(self) -> None:
         table = self.quarterly_announcement_crosswalk_resource_table

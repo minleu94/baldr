@@ -71,3 +71,13 @@ Decision Desk 現有的唯讀市場資料可見性列新增 `fundamental_stateme
 | TPEx | balance sheet / income / cash flows（各類相同） | 891 | 888 | 885 | 6 | 3 |
 
 合計 1,975 個 MOPS current HTML 子集股票身份中，1,969 檔有 7–9 月候選公告，仍有 6 檔 TPEx 股票未命中；TWSE 1,084 檔全數命中。另有 15 個候選股票代碼（TWSE 12、TPEx 3）沒有該子集的本機 Q2 對應列。差異對三種報表類型一致。這個比對只涵蓋 2026-07-01..09-30 公告查詢窗及 2026-06-30 的 MOPS current HTML 子集，不代表 MOPS 全市場／其他期間完整 coverage，也未驗證報表值、授權、歷史 PIT 或正式 `fundamental_statement_items` 的逐列正確性。這些結果應留在研究／Gate 3 人工審查，不得因公告匹配就批次補回正式資料。
+
+### 來源授權邊界與後續採集路徑
+
+2026-10-25 重新查核官方條款後，現有 MOPS EZSearch 自動採集路徑的授權範圍仍未證實。證交所網站使用條款第 6 節限制未經同意的自動化下載，第 8 節將已授權政府資料開放平台提供的資料列為例外；條款文字是否適用到獨立的 `mopsov.twse.com.tw` EZSearch 端點，現有證據不能裁定。因此：
+
+- 已捕獲的 MOPS EZSearch 原件與逐筆 custody 繼續留在隔離候選中，僅作為既有研究觀測；不回填正式 DB、不給 source acceptance／Gate credit，也不再以新一輪自動擷取擴大這批資料，直到取得可指向該端點、該用途的明確授權或官方文件。
+- 政府資料開放平台逐一列出的資料集具有自己的授權與下載資源。例如 [上市公司每月營業收入彙總表（18420）](https://data.gov.tw/dataset/18420) 列示政府資料開放授權條款第 1 版、免費，且提供該資料集的 CSV 資源。這項授權只支援該目錄資料集及其列明資源的評估，不能推廣成所有 MOPS／OpenAPI 端點的通用授權；它也不會自行補上金額單位、逐筆首次可得時間、歷史修訂、季度表單覆蓋或 PIT 契約。
+- 既有季度 OpenAPI collector 曾完成 24 個數值 endpoint 的隔離研究擷取，原始回應與 review items 已有 2026-10-01 QA 紀錄。該批資料標記一般金額 `unit_unknown`、`available_at=null`，含 8 個未納入 preview 的 key/schema review 列，且不含現金流量表／權益變動表；不能因此視為完整季度來源或正式可用。後續若要再採集，應先確認該精確 OpenAPI／目錄資源的授權與使用條款，再把它當成獨立來源建立候選，不可把它改名或合併成 MOPS EZSearch。
+
+本節記錄目前可核驗的來源範圍與工程採集守則，不作法律裁定。官方依據：[TWSE 使用條款](https://wwwc.twse.com.tw/zh/terms/use.html)；[data.gov.tw 18420](https://data.gov.tw/dataset/18420)。

@@ -95,7 +95,22 @@ def test_candidate_root_is_audited_and_rendered_without_granting_eligibility(
     assert "candidate-only" in visible
     assert "無 Gate credit" in visible
     assert "115" not in visible
-    assert "營收" in view.quarterly_field_table.item(0, 0).text()
+    revenue_row = next(
+        row
+        for row in range(view.quarterly_field_table.rowCount())
+        if view.quarterly_field_table.item(row, 0).text() == "營收"
+    )
+    revenue_rate = view.quarterly_field_table.cellWidget(revenue_row, 3)
+    assert revenue_rate is not None
+    assert revenue_rate.format() == "50.0%"
+    assert "1／有效 CSV 列 2" in revenue_rate.toolTip()
+    eps_row = next(
+        row
+        for row in range(view.quarterly_field_table.rowCount())
+        if view.quarterly_field_table.item(row, 0).text() == "EPS"
+    )
+    assert view.quarterly_field_table.cellWidget(eps_row, 3).format() == "0.0%"
+    assert "placeholder" in view.quarterly_field_table.horizontalHeaderItem(4).text()
     assert view.quarterly_resource_table.item(0, 4).text() == "候選檔可解析"
     view.quarterly_row_profile_filter.setText("2330")
     profile_row = next(
@@ -113,6 +128,8 @@ def test_candidate_root_is_audited_and_rendered_without_granting_eligibility(
     assert "2330 台積電" in details
     assert "N/A: 1" in details
     assert "空白語意、申報義務與 PIT 均未判定" in details
+    view.quarterly_row_profile_filter.clear()
+    assert "目前顯示 2／輸出 2／掃描 2" in view.quarterly_row_profile_summary_label.text()
     view.quarterly_row_profile_filter.setText("2317")
     profile_row = next(
         row

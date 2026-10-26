@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QProgressBar,
     QToolButton,
     QScrollArea,
     QTableWidget,
@@ -439,7 +440,9 @@ class ResearchConsoleView(QWidget):
         self.quarterly_resource_table.itemSelectionChanged.connect(
             self._render_quarterly_candidate_row_profiles
         )
-        self.quarterly_field_table = _table(("原始財務欄位", "空白", "非空", "placeholder"))
+        self.quarterly_field_table = _table(
+            ("原始財務欄位", "空白", "非空", "CSV 空白率", "placeholder")
+        )
         self.quarterly_row_profile_filter = QLineEdit()
         self.quarterly_row_profile_filter.setPlaceholderText(
             "篩選公司代碼、名稱或財報期別…"
@@ -1123,12 +1126,43 @@ class ResearchConsoleView(QWidget):
                     field.get("field_name", "unknown"),
                     _display(field.get("blank_count")),
                     _display(field.get("nonblank_count")),
+                    _quarterly_blank_rate_text(
+                        field.get("blank_count"), field.get("nonblank_count")
+                    ),
                     _placeholder_counts(field.get("known_placeholder_counts")),
                 )
                 for field in counts if isinstance(field, dict)
             ),
             status_column=-1,
         )
+        for field_row, field in enumerate(
+            item for item in counts if isinstance(item, dict)
+        ):
+            blank_count = field.get("blank_count")
+            nonblank_count = field.get("nonblank_count")
+            bar = QProgressBar()
+            bar.setRange(0, 1000)
+            rate_tenths = _quarterly_blank_rate_tenths(blank_count, nonblank_count)
+            if rate_tenths is None:
+                bar.setValue(0)
+                bar.setFormat("N/A")
+            else:
+                bar.setValue(rate_tenths)
+                bar.setFormat(f"{rate_tenths // 10}.{rate_tenths % 10}%")
+            field_name = field.get("field_name", "unknown")
+            denominator = (
+                blank_count + nonblank_count
+                if isinstance(blank_count, int)
+                and not isinstance(blank_count, bool)
+                and isinstance(nonblank_count, int)
+                and not isinstance(nonblank_count, bool)
+                else None
+            )
+            bar.setToolTip(
+                f"{field_name}：空白儲存格 {blank_count}／有效 CSV 列 {denominator if denominator is not None else '未知'}。"
+                "此比例只描述候選 CSV 的空白儲存格；空白語意未定，不判為缺報或不適用。"
+            )
+            self.quarterly_field_table.setCellWidget(field_row, 3, bar)
 
     def _selected_quarterly_candidate_resource(self) -> dict[str, Any] | None:
         row_index = self.quarterly_resource_table.currentRow()
@@ -1253,11 +1287,24 @@ class ResearchConsoleView(QWidget):
             else ""
         )
         if needle:
-            self.quarterly_row_profile_summary_label.setText(
+            summary = (
                 f"篩選後顯示 {visible}／表格 {table.rowCount()} 個 key；"
                 f"輸出 {total_profiles}／掃描 {scanned_count} 個 key{truncation}。"
                 "公司／期別列不等於市場 coverage。"
             )
+        else:
+            complete = (
+                resource is not None
+                and resource.get("row_profiles_complete") is True
+                and resource.get("row_profiles_truncated") is not True
+            )
+            completeness = "完整列出已解析 key" if complete else "不宣稱完整"
+            summary = (
+                f"目前顯示 {visible}／輸出 {total_profiles}／掃描 {scanned_count} 個公司—期別 key；"
+                f"表格依空白儲存格數由高到低；{completeness}{truncation}。"
+                "列數是 CSV 中有完整 issuer／年度／季別鍵的觀察，不是市場分母。"
+            )
+        self.quarterly_row_profile_summary_label.setText(summary)
 
     def _render_selected_quarterly_row_profile(self) -> None:
         row_index = self.quarterly_row_profile_table.currentRow()
@@ -1418,6 +1465,27 @@ def _placeholder_total(value: object) -> int | str:
     if not isinstance(value, dict):
         return "未知"
     return sum(count for count in value.values() if isinstance(count, int))
+
+
+def _quarterly_blank_rate_tenths(blank_count: object, nonblank_count: object) -> int | None:
+    if (
+        not isinstance(blank_count, int)
+        or isinstance(blank_count, bool)
+        or blank_count < 0
+        or not isinstance(nonblank_count, int)
+        or isinstance(nonblank_count, bool)
+        or nonblank_count < 0
+    ):
+        return None
+    denominator = blank_count + nonblank_count
+    if denominator == 0:
+        return None
+    return (blank_count * 1000 + denominator // 2) // denominator
+
+
+def _quarterly_blank_rate_text(blank_count: object, nonblank_count: object) -> str:
+    tenths = _quarterly_blank_rate_tenths(blank_count, nonblank_count)
+    return "N/A" if tenths is None else f"{tenths // 10}.{tenths % 10}%"
 
 
 def _set_rows(

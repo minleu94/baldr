@@ -39,6 +39,8 @@ from ui_qt.views.research_console_view import (
     _set_rows,
     _learning_next_step,
     _learning_record_summary,
+    _quarterly_blank_rate_text,
+    _quarterly_blank_rate_tenths,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
 import ui_qt.views.research_console_view as research_console_view_module
@@ -49,6 +51,20 @@ def app() -> QApplication:
     if instance is None:
         instance = QApplication(sys.argv)
     return instance
+
+
+@pytest.mark.parametrize(
+    ("blank_count", "nonblank_count", "expected_text", "expected_tenths"),
+    ((0, 4, "0.0%", 0), (2, 2, "50.0%", 500), (4, 0, "100.0%", 1000), (0, 0, "N/A", None)),
+)
+def test_quarterly_csv_blank_rate_uses_safe_integer_denominator(
+    blank_count: int,
+    nonblank_count: int,
+    expected_text: str,
+    expected_tenths: int | None,
+) -> None:
+    assert _quarterly_blank_rate_text(blank_count, nonblank_count) == expected_text
+    assert _quarterly_blank_rate_tenths(blank_count, nonblank_count) == expected_tenths
 
 
 @pytest.mark.parametrize(

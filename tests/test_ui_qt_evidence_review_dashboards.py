@@ -334,16 +334,27 @@ def test_scheduled_status_view_shows_readable_blockers_and_safe_next_steps() -> 
         pipeline_blocking_gaps=("watchlist_trigger_not_ready", "risk_prompt_not_ready"),
         pipeline_warnings_count=20,
         source_coverage_warnings=("source_freshness_degraded:market.relative_strength",),
+        source_qualification_required=True,
+        source_qualification_gaps=(
+            "fundamental.monthly_revenues",
+            "fundamental.quarterly_statements",
+        ),
+        paper_evidence_source_status="not_configured_for_controlled_replay",
     )
     view = ScheduledEvidenceStatusView(source, auto_refresh=False, async_refresh=False)
 
     view.refresh_status()
 
     text = view.action_label.text()
-    assert text.startswith("主要缺口與下一步\n2 項阻擋")
+    assert text.startswith("主要缺口與下一步\n2 項 pipeline 阻擋")
     assert "檢查 Watchlist pool 與其行情新鮮度／品質" in text
     assert "不要手動補候選" in text
     assert "breadth、relative strength/liquidity、sector rotation" in text
+    assert "2 項來源資格缺件" in text
+    assert "月營收（fundamental.monthly_revenues）" in text
+    assert "不會自動接受資料來源" in text
+    assert "沒有檢查 Paper state/status" in text
+    assert "不代表正式帳戶資料缺件" in text
     assert "watchlist_trigger_not_ready" in view.detail_panel.toPlainText()
 
 

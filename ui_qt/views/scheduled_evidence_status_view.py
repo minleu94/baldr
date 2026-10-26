@@ -564,6 +564,8 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
         f"- evidence progress next action: {status.evidence_progress_next_action or '無'}",
         f"- evidence progress receipt: {status.evidence_progress_status_path or '未提供'}",
         f"- blocking gaps: {_join(status.pipeline_blocking_gaps)}",
+        f"- source qualification gaps: {_join(status.source_qualification_gaps)}",
+        f"- Paper evidence source status: {status.paper_evidence_source_status or '未提供'}",
         f"- evidence/trading boundary: {'ok' if boundary_ok else 'needs review'}",
         (
             "- recommendation result write: "
@@ -649,19 +651,43 @@ def _pipeline_action_summary(status: ScheduledEvidenceStatus) -> str:
             "Forward dashboard service 不可用；先恢復服務讀取，再判讀 maturity 或 scheduler readiness。"
         ),
     }
+    source_names = {
+        "fundamental.monthly_revenues": "月營收",
+        "fundamental.quarterly_statements": "季財報",
+        "fundamental.current_monthly_observations": "當前月份觀測",
+        "fundamental.current_statement_observations": "當前財報觀測",
+        "fundamental.statement_availability_map": "財報公告可得性映射",
+    }
     gaps = tuple(dict.fromkeys(status.pipeline_blocking_gaps))
-    if not gaps and status.evidence_status in {"", "missing", "unknown"}:
+    source_gaps = tuple(dict.fromkeys(status.source_qualification_gaps))
+    paper_source_status = status.paper_evidence_source_status
+    if not gaps and not source_gaps and status.evidence_status in {"", "missing", "unknown"}:
         return "狀態未知；尚無可信的 pipeline blocker 清單。"
-    if not gaps:
+    if not gaps and not source_gaps and paper_source_status is None:
         text = "未提供 pipeline blocking gaps；這不等於 Evidence／Gate 已通過。"
         warning_count = status.pipeline_warnings_count
         if warning_count:
             text += f" 仍有 {warning_count} 個 warning occurrences，請看下方 warning 明細。"
         return text
-    lines = [f"{len(gaps)} 項阻擋；需逐項補來源或品質證據，不能略過 Gate："]
+    lines = [f"{len(gaps)} 項 pipeline 阻擋；需逐項補來源或品質證據，不能略過 Gate："] if gaps else []
+    if paper_source_status == "not_configured_for_controlled_replay":
+        lines.append("本次受控 replay 未設定 Paper source，因此沒有檢查 Paper state/status；這不代表正式帳戶資料缺件，也不代表 Gate 通過。")
+    elif paper_source_status == "read_only_source_configured":
+        lines.append("本次有指定唯讀 Paper source；此設定本身不代表 Paper 證據或來源資格已通過。")
+    elif paper_source_status:
+        lines.append(f"Paper evidence input 狀態：{paper_source_status}；請以原始 receipt 核對其意義。")
     lines.extend(f"• {explanations.get(gap, f'{gap}：原始診斷未登錄處理說明，保留原碼供查核。')}" for gap in gaps[:4])
     if len(gaps) > 4:
         lines.append(f"另有 {len(gaps) - 4} 項，見下方原始 blocker 明細。")
+    if source_gaps:
+        lines.append(f"另有 {len(source_gaps)} 項來源資格缺件：")
+        lines.extend(
+            f"• {source_names.get(source_id, source_id)}（{source_id}）仍需來源特定的可得時間、品質、授權、PIT 與 coverage 證據。"
+            for source_id in source_gaps[:5]
+        )
+        if len(source_gaps) > 5:
+            lines.append(f"另有 {len(source_gaps) - 5} 項來源資格缺件，見下方原始清單。")
+        lines.append("機器候選或 Owner 的全面清障授權不會自動接受資料來源。")
     return "\n".join(lines)
 
 

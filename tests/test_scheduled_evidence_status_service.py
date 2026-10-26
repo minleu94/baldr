@@ -160,6 +160,29 @@ def test_scheduled_status_keeps_optional_forward_gap_out_of_core_classification(
     assert status.machine_status_classification == "machine_verified"
 
 
+def test_scheduled_status_reads_source_qualification_gaps_from_evidence_receipt(tmp_path: Path) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    status_path = output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json"
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    payload["source_qualification_required"] = True
+    payload["source_qualification_gaps"] = [
+        "fundamental.monthly_revenues",
+        "fundamental.quarterly_statements",
+    ]
+    payload["paper_evidence_input"] = {"status": "not_configured_for_controlled_replay"}
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    status = ScheduledEvidenceStatusService(_Config(output_root)).load_latest()
+
+    assert status.source_qualification_required is True
+    assert status.source_qualification_gaps == (
+        "fundamental.monthly_revenues",
+        "fundamental.quarterly_statements",
+    )
+    assert status.paper_evidence_source_status == "not_configured_for_controlled_replay"
+
+
 def test_scheduled_status_preserves_last_known_good_when_latest_payload_breaks(tmp_path: Path) -> None:
     output_root = tmp_path / "output"
     _write_minimal_scheduled_statuses(output_root)

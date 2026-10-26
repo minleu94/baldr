@@ -146,6 +146,9 @@ class ScheduledEvidenceStatus:
     recommendation_cohort_quality_missing_count: int | None = None
     recommendation_cohort_quality_degraded_count: int | None = None
     recommendation_cohort_classifications: tuple[tuple[str, int], ...] = ()
+    source_qualification_required: bool = False
+    source_qualification_gaps: tuple[str, ...] = ()
+    paper_evidence_source_status: str | None = None
 
     @property
     def has_production_write_risk(self) -> bool:
@@ -275,6 +278,10 @@ class ScheduledEvidenceStatusService:
         freshness = _read_json(freshness_path, diagnostics)
         recommendation = _read_json(recommendation_path, diagnostics)
         evidence = _read_json(evidence_path, diagnostics)
+        paper_evidence_input_raw = evidence.get("paper_evidence_input")
+        paper_evidence_input = (
+            paper_evidence_input_raw if isinstance(paper_evidence_input_raw, dict) else {}
+        )
         # The outcome producer was added after the existing three scheduled
         # payloads.  Its first absence is an honest source gap, but it must
         # not invalidate a previously observable freshness/recommendation/
@@ -451,6 +458,9 @@ class ScheduledEvidenceStatusService:
             freshness_warnings=_tuple_of_str(freshness.get("warnings")),
             freshness_errors=_tuple_of_str(freshness.get("errors")),
             source_coverage_warnings=_tuple_of_str(evidence.get("source_coverage_warnings")),
+            source_qualification_required=_bool_or_none(evidence.get("source_qualification_required")) is True,
+            source_qualification_gaps=_tuple_of_str(evidence.get("source_qualification_gaps")),
+            paper_evidence_source_status=_str_or_none(paper_evidence_input.get("status")),
             pipeline_diagnostic_codes=_tuple_of_str(evidence.get("pipeline_diagnostic_codes")),
             pipeline_blocking_gaps=_tuple_of_str(evidence.get("pipeline_blocking_gaps")),
             pipeline_overall_status=_str_or_none(evidence.get("pipeline_overall_status")),

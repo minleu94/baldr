@@ -52,3 +52,11 @@ Evidence Review 的「每日排程證據狀態」頁新增「主要缺口與下�
 
 - Qt offscreen UI focused tests：**2 passed**，覆蓋已知 blocker 摘要、安全下一步與原始診斷保留。
 - 此處未執行原生 GUI 重啟、不同螢幕尺寸視覺檢視或 Owner UAT；卡片尚需在實際 Evidence Review 頁確認版面。
+
+## Follow-up：顯示來源資格缺件
+
+受控 receipt 中的 `source_qualification_gaps` 與 Paper input status 原先未進入 `ScheduledEvidenceStatus` read model，因此 UI 無法直接列出 fundamental qualification gaps，也可能把「本次未設定 Paper root」誤解成正式 Paper 資料不存在。現在狀態服務會保留 qualification flag/source ID 與 Paper input status；摘要卡可列出已知中文名稱及原 ID、要求逐來源補 publication/availability、quality、license、PIT 與 coverage 證據，並明示 Paper 未設定時本次沒有檢查 state/status。來源候選不會因此自動接受，卡片仍明確保留 Gate 邊界。
+
+- status receipt read-model 測試與 UI 摘要／原始明細測試：**3 passed**。
+- 全域 mypy：`Success: no issues found in 1145 source files`；`git diff --check` 與 Feature Map JSON 解析：通過。
+- 不改來源資料、資格判定或 Gate readiness；無原始 receipt 時維持未知／未提供。

@@ -81,6 +81,43 @@ def test_default_center_is_authoritative_and_fail_closed() -> None:
     assert all("source_acceptance_decision_missing" in row.blockers for row in center.rows)
 
 
+def test_quarterly_candidate_audit_is_visible_but_cannot_grant_eligibility() -> None:
+    payload: dict[str, object] = {
+        "schema_version": "baldr.open_data_quarterly_candidate_audit.v1",
+        "source_id": "pit.quarterly_financials",
+        "candidate_only": True,
+        "formal_db_write": False,
+        "source_acceptance": False,
+        "gate_credit": False,
+        "downstream_eligibility": "none",
+        "overall_state": "available",
+        "summary": {"resource_count": 1},
+        "resources": [],
+        "limitations": [],
+    }
+    center = P0SourceControlCenterService().build(quarterly_candidate_audit=payload)
+    row = next(
+        item.to_dict()
+        for item in center.rows
+        if item.source_id == "pit.quarterly_financials"
+    )
+    assert row["quarterly_candidate_audit"] == payload
+    assert row["downstream_eligibility"] == "none"
+    assert center.accepted_count == 0
+    assert center.downstream_eligible_count == 0
+
+    for key, unsafe_value in (
+        ("candidate_only", False),
+        ("formal_db_write", True),
+        ("source_acceptance", True),
+        ("gate_credit", True),
+        ("downstream_eligibility", "eligible"),
+    ):
+        unsafe = {**payload, key: unsafe_value}
+        with pytest.raises(ValueError, match="quarterly candidate boundary"):
+            P0SourceControlCenterService().build(quarterly_candidate_audit=unsafe)
+
+
 def test_source_rows_expose_contract_specific_freshness_and_route_availability() -> None:
     center = P0SourceControlCenterService().build()
     tdcc = next(row for row in center.rows if row.source_id == "tdcc_shareholding")

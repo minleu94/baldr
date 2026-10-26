@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-26 P0 季報候選欄位缺漏可見性：Research Evidence 的 P0 Source Control Center 可明選一個一般業或產業 CSV 候選目錄，唯讀驗 manifest／檔案 SHA 並顯示逐資源、逐財務欄位空白／非空／placeholder 計數。對目前 4 一般業與 19 產業封存候選重算為 3,962 列、31,077 空白、66,631 非空、0 重複業務鍵；產業 7 份為空回應。只代表單次候選結構，空白意義、授權涵蓋、歷史 PIT、coverage 與來源接受仍未解；Gate 3／ML 狀態不變。詳[逐欄位 QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-p0-季報逐資源逐欄位唯讀稽核接線)。
+
 2026-10-26 Gate 2／Gate 3 可見性增量：Evidence Review 可切換至 `LEGACY_COMPAT` 下既有、非正式的 working-copy DB；週報列表與 Owner hash 重查讀同一副本，唯讀、不建 schema，Owner projection 仍獨立。Decision Desk 新增 current observations 的 SQL 彙總可見性，包含市場／來源版本／基準與 available-at 計數，明示 research-only 與 PIT 未驗證。聚焦 150 passed、Workbench 93 passed、validator 25／0／4、mypy 1,147 檔 clean、15 個修改 Python 檔 compile 通過。未執行原生 GUI／實際 Owner UAT，未觸碰正式 DB、未接受來源、未授 Gate／ML credit。詳[工作副本與現況觀測 QA](../06_qa/BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md)。
 
 2026-10-26 Gate 2 週報 Owner 覆核入口：Evidence Review 歷史詳情顯示週報 SHA-256；已設定 `WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH` 時，可由 Owner 自我聲明姓名／角色、填理由並確認後，以 append-only 寫入 hash 綁定的外部 JSON projection。重複週期、hash 漂移及正式 SQLite 路徑會被拒絕，projection 固定不授 formal credit。聚焦測試 86 passed、Update Workbench 93 passed、validator 25/0/4、mypy 1,146 檔 clean、修改檔 compile 通過；尚未由真正 Owner 執行覆核，沒有寫正式 DB 或真實 projection。Gate 2 三週／三操作日、backup／rollback／recovery 與 scheduler 獨立 approval 仍未完成；Gate 3／ML 狀態不變。詳[Owner 覆核入口 QA](../06_qa/BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md)。

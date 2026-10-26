@@ -108,6 +108,8 @@ MOPS saved-capture producer 已沿 `UpdateService` 的明確 root／scope／acce
 
 TWSE 月營收 JSON preparation 是獨立 source／parser／schema，保留官方原件與單股／期別 target；date-only 可計具名批次小時，單位缺官方強錨時只出 shadow／diagnostics 原值、不借 MOPS 千元轉換或接受資格。既有完整原件可唯讀重用驗 parser，但原候選收據／時間政策不能覆寫；跨程序一致與新線上取得完整度各自判定。
 
+Research Console 的季報候選欄位稽核由 `ResearchConsoleSourceService` 對呼叫端明選的一個目錄呼叫 `data_module/open_data_quarterly_candidate_audit.py`；只讀 capture manifest 收錄的 resource bytes，驗安全旗標、封套 SHA/readback、實檔 SHA、CSV 格式與欄位計數。P0 Source Control Center 僅展示序列化後的 candidate-only audit，服務端固定拒絕 source acceptance／Gate credit／downstream eligibility。選擇根目錄是單次 UI state，預設由 `P0_QUARTERLY_CANDIDATE_ROOT` 注入；沒有抓取、DB reader/writer、schema 建立或 cell-value 投影。
+
 | 資料類型 | 讀取／寫入責任 | 身份與安全邊界 |
 |---|---|---|
 | 市場資料 SQLite | `data_module/` reader／provider 與受控更新服務 | 唯讀查詢採 SQLite `mode=ro`、`query_only`；正式 writer 走明示更新／migration path |

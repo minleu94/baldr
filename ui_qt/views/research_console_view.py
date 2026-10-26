@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QFileDialog,
     QGridLayout,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
@@ -101,6 +104,10 @@ _STATUS_LABELS = {
     "stale": "過期",
     "recorded": "已記錄",
     "research_only_estimated_cost": "研究限定／估計成本",
+    "candidate_file_parsed": "候選檔可解析",
+    "candidate_empty_response": "候選回應無資料列",
+    "candidate_file_missing": "候選檔缺失",
+    "candidate_file_invalid": "候選檔驗證失敗",
     "research_shadow": "研究影子",
     "waiting_for_formal_inputs": "等待正式輸入",
     "formal_input_missing": "缺正式輸入",
@@ -392,6 +399,50 @@ class ResearchConsoleView(QWidget):
         control_panel.layout.addWidget(self.control_center_table)
         control_panel.layout.addWidget(self.control_center_detail_label)
         gates_panel.layout.addWidget(control_panel)
+        quarterly_panel = SectionPanel("季度財報 CSV 欄位缺漏（研究候選）")
+        self.quarterly_candidate_root_label = QLabel()
+        self.quarterly_candidate_root_label.setWordWrap(True)
+        self.quarterly_candidate_root_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        quarterly_controls = QHBoxLayout()
+        self.choose_quarterly_candidate_root_button = QPushButton(
+            "選擇 CSV 候選目錄…"
+        )
+        self.choose_quarterly_candidate_root_button.setToolTip(
+            "只讀取已封存的候選 manifest 與 CSV；不連網、不匯入或修改檔案，也不接受來源。"
+        )
+        self.choose_quarterly_candidate_root_button.clicked.connect(
+            self._choose_quarterly_candidate_root
+        )
+        self.reset_quarterly_candidate_root_button = QPushButton("還原啟動設定")
+        self.reset_quarterly_candidate_root_button.clicked.connect(
+            self._reset_quarterly_candidate_root
+        )
+        has_candidate_selector = callable(
+            getattr(self.source_service, "set_p0_quarterly_candidate_root", None)
+        )
+        self.choose_quarterly_candidate_root_button.setEnabled(has_candidate_selector)
+        self.reset_quarterly_candidate_root_button.setEnabled(has_candidate_selector)
+        quarterly_controls.addWidget(self.quarterly_candidate_root_label, stretch=1)
+        quarterly_controls.addWidget(self.choose_quarterly_candidate_root_button)
+        quarterly_controls.addWidget(self.reset_quarterly_candidate_root_button)
+        self.quarterly_candidate_summary_label = QLabel(
+            "未選擇候選目錄；來源資格維持 none。"
+        )
+        self.quarterly_candidate_summary_label.setWordWrap(True)
+        self.quarterly_resource_table = _table(
+            ("市場", "報表", "產業", "Dataset／Artifact", "候選檔狀態", "列數", "逐檔唯一公司", "空白／非空（含 placeholder）／其中 placeholder", "SHA-256")
+        )
+        self.quarterly_resource_table.itemSelectionChanged.connect(
+            self._render_quarterly_candidate_fields
+        )
+        self.quarterly_field_table = _table(("原始財務欄位", "空白", "非空", "placeholder"))
+        self._quarterly_candidate_resources: list[dict[str, Any]] = []
+        self._update_quarterly_candidate_root_label()
+        quarterly_panel.layout.addLayout(quarterly_controls)
+        quarterly_panel.layout.addWidget(self.quarterly_candidate_summary_label)
+        quarterly_panel.layout.addWidget(self.quarterly_resource_table)
+        quarterly_panel.layout.addWidget(self.quarterly_field_table)
+        gates_panel.layout.addWidget(quarterly_panel)
         gates_panel.layout.addWidget(QLabel("Artifact Inspector"))
         gates_panel.layout.addWidget(self.artifact_table)
         layout.addWidget(gates_panel)
@@ -851,6 +902,7 @@ class ResearchConsoleView(QWidget):
                 status_column=2,
                 status_dimension="qualification",
             )
+        self._render_quarterly_candidate_audit()
         _set_rows(
             self.artifact_table,
             ((row.artifact_type, row.artifact_id, row.status, row.citation) for row in console.artifacts),
@@ -859,6 +911,163 @@ class ResearchConsoleView(QWidget):
         )
         if self.learning_projection_service is not None and not self._async_refresh:
             self._refresh_learning_projection()
+
+    def _update_quarterly_candidate_root_label(self) -> None:
+        root = getattr(self.source_service, "p0_quarterly_candidate_root", None)
+        self.quarterly_candidate_root_label.setText(
+            f"目前候選目錄：{root}" if root is not None else "目前候選目錄：未設定"
+        )
+
+    def _choose_quarterly_candidate_root(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "選擇已封存的季度財報 CSV 候選目錄",
+            str(getattr(self.source_service, "p0_quarterly_candidate_root", None) or Path.home()),
+        )
+        if not selected:
+            return
+        set_candidate_root = getattr(
+            self.source_service, "set_p0_quarterly_candidate_root", None
+        )
+        if not callable(set_candidate_root):
+            return
+        set_candidate_root(selected)
+        self._update_quarterly_candidate_root_label()
+        self.refresh_console()
+
+    def _reset_quarterly_candidate_root(self) -> None:
+        set_candidate_root = getattr(
+            self.source_service, "set_p0_quarterly_candidate_root", None
+        )
+        if not callable(set_candidate_root):
+            return
+        set_candidate_root(None)
+        self._update_quarterly_candidate_root_label()
+        self.refresh_console()
+
+    def _render_quarterly_candidate_audit(self) -> None:
+        rows = getattr(self, "_control_center_rows", [])
+        source_row = next(
+            (
+                row
+                for row in rows
+                if row.get("source_id") == "pit.quarterly_financials"
+            ),
+            None,
+        )
+        audit = source_row.get("quarterly_candidate_audit") if source_row else None
+        if not isinstance(audit, dict):
+            self._quarterly_candidate_resources = []
+            self.quarterly_candidate_summary_label.setText(
+                "未載入候選資料。此處只顯示研究候選；來源資格與下游 eligibility 維持 none。"
+            )
+            self.quarterly_resource_table.setRowCount(0)
+            self.quarterly_field_table.setRowCount(0)
+            return
+
+        summary = audit.get("summary")
+        summary = summary if isinstance(summary, dict) else {}
+        resources = audit.get("resources")
+        self._quarterly_candidate_resources = [
+            item for item in resources if isinstance(item, dict)
+        ] if isinstance(resources, list) else []
+        blank_total = 0
+        nonblank_total = 0
+        placeholder_total = 0
+        for resource in self._quarterly_candidate_resources:
+            field_counts = resource.get("field_counts")
+            if not isinstance(field_counts, list):
+                continue
+            for field in field_counts:
+                if not isinstance(field, dict):
+                    continue
+                blank = field.get("blank_count")
+                nonblank = field.get("nonblank_count")
+                placeholders = field.get("known_placeholder_counts")
+                if isinstance(blank, int):
+                    blank_total += blank
+                if isinstance(nonblank, int):
+                    nonblank_total += nonblank
+                if isinstance(placeholders, dict):
+                    placeholder_total += sum(
+                        value for value in placeholders.values()
+                        if isinstance(value, int)
+                    )
+        errors = audit.get("errors")
+        error_text = f"｜驗證錯誤：{_join_blockers(errors)}" if isinstance(errors, list) and errors else ""
+        self.quarterly_candidate_summary_label.setText(
+            "稽核狀態：{state}｜資源：{resources}（CSV 可解析 {available}、空回應 {empty}、缺檔 {missing}、無效 {invalid}）｜"
+            "資料列：{rows}｜重複業務鍵：{duplicates}｜空白／非空（含 placeholder）／其中已知 placeholder：{blank}／{nonblank}／{placeholder}\n"
+            "邊界：candidate-only、僅結構與儲存格計數；不推定空白語意、coverage、PIT、授權或來源接受；不寫正式 DB、無 Gate credit、下游資格 none{errors}".format(
+                state=_quarterly_audit_state(audit.get("overall_state")),
+                resources=summary.get("resource_count", "未知"),
+                available=summary.get("available_resource_count", "未知"),
+                empty=summary.get("empty_response_resource_count", "未知"),
+                missing=summary.get("missing_resource_count", "未知"),
+                invalid=summary.get("invalid_resource_count", "未知"),
+                rows=summary.get("row_count", "未知"),
+                duplicates=summary.get("duplicate_business_key_count", "未知"),
+                blank=blank_total,
+                nonblank=nonblank_total,
+                placeholder=placeholder_total,
+                errors=error_text,
+            )
+        )
+        _set_rows(
+            self.quarterly_resource_table,
+            (
+                (
+                    resource.get("market", "unknown"),
+                    resource.get("statement", "unknown"),
+                    resource.get("industry", "unknown"),
+                    f"{resource.get('dataset_id', 'unknown')}／{resource.get('artifact') or 'artifact missing'}",
+                    _quarterly_candidate_state(resource.get("state")),
+                    _display(resource.get("row_count")),
+                    _display(resource.get("unique_issuer_count")),
+                    _quarterly_resource_cell_summary(resource),
+                    _short_hash(resource.get("sha256")),
+                )
+                for resource in self._quarterly_candidate_resources
+            ),
+            status_column=4,
+            status_dimension="data",
+        )
+        for row_index, resource in enumerate(self._quarterly_candidate_resources):
+            artifact_item = self.quarterly_resource_table.item(row_index, 3)
+            if artifact_item is not None:
+                artifact_item.setToolTip(str(resource.get("artifact") or "未提供 artifact"))
+            hash_item = self.quarterly_resource_table.item(row_index, 8)
+            if hash_item is not None:
+                hash_item.setToolTip(str(resource.get("sha256") or "沒有已驗證的實檔 SHA-256"))
+        if self._quarterly_candidate_resources:
+            self.quarterly_resource_table.selectRow(0)
+        else:
+            self.quarterly_field_table.setRowCount(0)
+
+    def _render_quarterly_candidate_fields(self) -> None:
+        row_index = self.quarterly_resource_table.currentRow()
+        resources = getattr(self, "_quarterly_candidate_resources", [])
+        if row_index < 0 or row_index >= len(resources):
+            self.quarterly_field_table.setRowCount(0)
+            return
+        resource = resources[row_index]
+        counts = resource.get("field_counts")
+        if not isinstance(counts, list):
+            self.quarterly_field_table.setRowCount(0)
+            return
+        _set_rows(
+            self.quarterly_field_table,
+            (
+                (
+                    field.get("field_name", "unknown"),
+                    _display(field.get("blank_count")),
+                    _display(field.get("nonblank_count")),
+                    _placeholder_counts(field.get("known_placeholder_counts")),
+                )
+                for field in counts if isinstance(field, dict)
+            ),
+            status_column=-1,
+        )
 
     def _render_selected_control_center_details(self) -> None:
         row_index = self.control_center_table.currentRow()
@@ -879,6 +1088,8 @@ class ResearchConsoleView(QWidget):
             self.gate_table,
             self.source_table,
             self.control_center_table,
+            self.quarterly_resource_table,
+            self.quarterly_field_table,
             self.artifact_table,
             self.learning_table,
         ):
@@ -905,6 +1116,63 @@ def _table(headers: tuple[str, ...]) -> QTableWidget:
             header_item.setToolTip(header_item.text())
     ensure_visible_rows(table, 5)
     return table
+
+
+def _short_hash(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        return "未驗證"
+    return value[:12] + "…"
+
+
+def _quarterly_candidate_state(value: object) -> str:
+    return {
+        "available": "candidate_file_parsed",
+        "empty_response": "candidate_empty_response",
+        "missing": "candidate_file_missing",
+        "invalid": "candidate_file_invalid",
+    }.get(str(value), "unknown")
+
+
+def _quarterly_audit_state(value: object) -> str:
+    return {
+        "available": "結構盤點完成（可能含空回應）",
+        "partial": "候選資源不完整",
+        "empty_response": "全部資源均無資料列",
+        "invalid": "稽核無效或讀取失敗",
+    }.get(str(value), "未知")
+
+
+def _quarterly_resource_cell_summary(resource: dict[str, Any]) -> str:
+    counts = resource.get("field_counts")
+    if not isinstance(counts, list):
+        return "—"
+    blank = nonblank = placeholder = 0
+    for item in counts:
+        if not isinstance(item, dict):
+            continue
+        blank_value = item.get("blank_count")
+        nonblank_value = item.get("nonblank_count")
+        if isinstance(blank_value, int):
+            blank += blank_value
+        if isinstance(nonblank_value, int):
+            nonblank += nonblank_value
+        placeholder_values = item.get("known_placeholder_counts")
+        if isinstance(placeholder_values, dict):
+            placeholder += sum(
+                value for value in placeholder_values.values()
+                if isinstance(value, int)
+            )
+    return f"{blank}／{nonblank}／{placeholder}"
+
+
+def _placeholder_counts(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return "0"
+    return "、".join(
+        f"{token}: {count}"
+        for token, count in sorted(value.items())
+        if isinstance(token, str) and isinstance(count, int)
+    ) or "0"
 
 
 def _set_rows(

@@ -55,6 +55,10 @@ Track B研究資料判讀補充：Legacy託管徽章不等於歷史PIT資格；�
 
 ## V2分支與本機技術候選
 
+在「決策工作台 → 研究證據」的「P0 Data Source Control Center」下方，可按「選擇 CSV 候選目錄…」查看已封存季度財報候選的逐資源與逐欄位計數。每次只選一個目錄；一般業、產業候選各自選取。畫面核對 manifest 與檔案 SHA，列出 CSV 可解析／空回應／缺檔／無效、有效財報列與重複鍵，選資源後可看各原始財務欄位空白、非空及已知 placeholder 數；placeholder 是非空值的一部分。它只讀 capture manifest 收錄的檔案，不連網、不匯入或保存；「CSV 可解析」只表示檔案結構可讀，不能當成 coverage、空白語意、available-at／PIT、授權或來源接受。所有候選仍 `candidate-only`、沒有 Gate credit、下游資格為 none。未設定目錄時可用 `P0_QUARTERLY_CANDIDATE_ROOT` 作啟動預設，或在畫面明選；「還原啟動設定」回到本次啟動預設，不會持久保存 UI 選擇。雜湊或格式無效時依畫面原因檢查原始 manifest／CSV，修復只能建立新的候選 capture，不能改寫既存原件。詳[季報逐欄 QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-p0-季報逐資源逐欄位唯讀稽核接線)。
+
+在「決策工作台 → 研究證據」的「P0 Data Source Control Center」下方，可按「選擇 CSV 候選目錄…」查看已封存季度財報候選的逐資源與逐欄位計數。每次只選一個目錄；一般業、產業候選各自選取。畫面核對 manifest 與檔案 SHA，列出 CSV 可解析／空回應／缺檔／無效、有效財報列與重複鍵，選資源後可看各原始財務欄位空白、非空及已知 placeholder 數。它只讀 capture manifest 收錄的檔案，不連網、不匯入或保存；「CSV 可解析」只表示檔案結構可讀，不能當成 coverage、空白語意、available-at／PIT、授權或來源接受。所有候選仍 `candidate-only`、沒有 Gate credit、下游資格為 none。未設定目錄時可用 `P0_QUARTERLY_CANDIDATE_ROOT` 作啟動預設，或在畫面明選；「還原啟動設定」回到本次啟動預設，不會持久保存 UI 選擇。雜湊或格式無效時依畫面原因檢查原始 manifest／CSV，修復只能建立新的候選 capture，不能改寫既存原件。詳[季報逐欄 QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-p0-季報逐資源逐欄位唯讀稽核接線)。
+
 後繼 M130 原始碼：當回測圖表走 Matplotlib 備援路徑且 Windows 有可解析的繁中字型時，權益、回撤、交易報酬和持有天數圖的中文標題、軸與圖例可正常閱讀；買賣點提示中的中文理由亦可讀。負值刻度保留數值字形後備。若系統缺候選字型，仍可能顯缺字；固定舊 EXE 未包含此改動。隔離合成正常 Main 的四圖已驗，正式 run、實際滑鼠提示與 Owner UAT 尚未驗收。詳[研究與回測手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)。
 
 後繼 M129 原始碼：回測或 Portfolio 權益曲線若使用 Matplotlib 備援圖，把游標移到買賣點可看原日期、價格、股數與交易結果；提示框跟隨深色圖表配色。這只是閱讀對比修正，不改買賣結果、報酬或台股行情漲跌色義。隔離元件合成畫面已驗，固定舊 EXE 與正式 run 尚未驗收；詳[研究與回測手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)。

@@ -170,3 +170,11 @@ TWSE 共採資產負債表／綜合損益表各五個產業資源；TPEx 採目�
 抽查 TWSE 一般業及金融業資產負債表[資料集 94831](https://data.gov.tw/dataset/94831)、[資料集 94829](https://data.gov.tw/dataset/94829)：目錄列有年度、季別、公司代號與財報欄位，標示每三月更新、免費及政府資料開放授權條款第 1 版；股數欄有標明「單位：股」，但目錄沒有說明財報金額單位，也沒有清楚宣告合併／個別 basis。94831 詮釋資料更新時間為 2023-07-25，94829 為 2026-06-30，這些是目錄 metadata 時間，不能當成逐列可得時間。
 
 目前隔離候選每檔的有效列都只有同一個 `出表日期=1151026`；原件 HTTP `Last-Modified` 是整份 CSV 的 response metadata。兩者都不能證明每家公司每個欄位的首次公告時間或後續修訂時序。這一批只有單次 current snapshot，沒有歷史版本可比較，因此無法由候選自身產生 row-level available-at、修訂鏈或 point-in-time 歷史。這些是來源契約缺口，不以 `出表日期`、HTTP `Last-Modified` 或當前值推定；若找不到有授權的歷史原件／公告時間來源，該來源仍不得拿來作歷史回測或 ML 特徵。
+
+### 2026-10-26 P0 季報逐資源／逐欄位唯讀稽核接線
+
+P0「研究證據 → P0 Data Source Control Center」新增使用者明選候選目錄後的離線 CSV 稽核。一次只讀一個目錄；一般業與產業資源分別選取，不合併根目錄或資源。稽核支援目前兩種 capture manifest schema，核對 manifest 安全旗標、逐筆 HTTP／readback 收據、檔案 SHA-256、資源路徑與 CSV 結構，再按市場／報表／產業／資料集逐項呈現有效列、重複業務鍵、欄位空白／非空及精確已知 placeholder 計數。表格不輸出財務儲存格值；目錄選擇只在本次執行有效，啟動預設可由 `P0_QUARTERLY_CANDIDATE_ROOT` 設定。未連網、不匯入、不建立 DB／schema，也不把讀取結果保存成產品資料。
+
+以現有封存的兩個 scratch 根目錄做唯讀重算：一般業 4/4 CSV 可解析，產業資源 12/19 可解析、7/19 是空回應，23 項中缺檔 0、驗證無效 0；可解析列共 3,962 個「報表 × 公司」財報列，`(公司代號, 年度, 季別)` 重複鍵 0。逐欄彙總 31,077 空白、66,631 非空（placeholder 已包含在非空內），檢查的 `-`、`--`、`N/A`、`NA`、`null`、`NULL` token 為 0。這些與前節原內容稽核結果一致；行數不是唯一公司總數或全市場 coverage，跨報表欄位合計也不是統一 schema。空白語意、未申報與不適用仍未知；`available` 在 UI 只譯為「候選檔可解析」，不表示資料源可用或接受。
+
+在 P0 Source Control Center 的 PIT quarterly row 可查看稽核摘要；選資源可看原始財務欄位計數及實檔 SHA 完整提示。欄位表的 placeholder 是非空值子集，不應與非空相加。壞目錄會顯示明確 invalid 原因並維持 candidate-only 邊界。無論計數結果如何，`source_acceptance=false`、`gate_credit=false`、`downstream_eligibility=none`。最終驗證為稽核／來源中心／Research Console focused 105 passed、強制 Workbench 93 passed、Update validator 25 passed／0 failed／4 skipped、全域 mypy 1,148 檔 clean、8 個修改 Python 檔 `py_compile` 通過；Feature Map／code path 與 QA／架構文件 check 通過。Snapshot／Manual link check 仍被既有 `output` junction 的 WinError 5 阻擋，列出的都是舊 trial／task 輸出連結，沒有新稽核章節錯誤。原生桌面 Owner UAT 未執行；沒有改變來源接受、Gate 3、正式回測或 ML 狀態。兩個候選目錄 parser 完整 readback 摘要在 task scratch `quarterly-audit-qa/real-candidate-readback-v3.log`。

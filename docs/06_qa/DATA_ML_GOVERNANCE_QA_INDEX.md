@@ -1,5 +1,7 @@
 # 資料、ML 與來源治理 QA 索引
 
+- [季報逐資源／逐欄位候選稽核（2026-10-26）](BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-p0-季報逐資源逐欄位唯讀稽核接線)：P0 Source Control Center 可明選封存候選目錄並唯讀驗 hash、資源狀態與欄位缺漏；candidate-only，不授來源接受、Gate 或 ML 資格。
+
 - [Gate 2 working-copy 與 Gate 3 現況觀測可見性（2026-10-26）](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md)：週報歷史可選既有唯讀 working-copy；current observations 以分組 SQL 計數呈現且維持 research-only。未驗收來源授權、PIT、coverage、Gate 或 ML 資格。
 
 - [本機資料品質唯讀盤點（2026-10-25）](BALDR_DATA_QUALITY_INVENTORY_20261025.md)：確認 fundamental 表有實際資料但多數 `degraded`／日期偏舊，並在 Decision Desk 顯示季報列數、期間、可用日與 research-only 邊界；未接受來源，也未完成 coverage、PIT、license 或完整 key-collision 驗證。

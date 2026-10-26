@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+import json
 from types import MappingProxyType
 from typing import Any
 
@@ -182,12 +183,23 @@ class P0SourceControlRow:
     evidence_requirements: tuple[str, ...] = _REQUIRED_EVIDENCE
     source_contract_requirements: tuple[str, ...] = ()
     owner_actions: tuple[str, ...] = ()
+    quarterly_candidate_audit_json: str | None = None
 
     def __post_init__(self) -> None:
         if self.source_id not in P0_SOURCE_IDS:
             raise ValueError(f"unknown P0 source: {self.source_id}")
         if self.downstream_eligibility != "none":
             raise ValueError("P0 control center cannot grant downstream eligibility")
+        if self.quarterly_candidate_audit_json is not None:
+            if self.source_id != "pit.quarterly_financials":
+                raise ValueError("quarterly candidate audit can only attach to PIT financials")
+            try:
+                quarterly_audit = json.loads(self.quarterly_candidate_audit_json)
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("quarterly candidate audit must be valid JSON") from exc
+            if not isinstance(quarterly_audit, Mapping):
+                raise ValueError("quarterly candidate audit must be an object")
+            _require_quarterly_candidate_boundary(quarterly_audit)
         for name in (
             "observed_rows",
             "accepted_rows",
@@ -304,6 +316,11 @@ class P0SourceControlRow:
             "evidence_requirements": list(self.evidence_requirements),
             "source_contract_requirements": list(self.source_contract_requirements),
             "owner_actions": list(self.owner_actions),
+            "quarterly_candidate_audit": (
+                json.loads(self.quarterly_candidate_audit_json)
+                if self.quarterly_candidate_audit_json is not None
+                else None
+            ),
         }
 
 
@@ -437,6 +454,7 @@ class P0SourceControlCenterService:
         self,
         *,
         candidate_audit: Mapping[str, Any] | None = None,
+        quarterly_candidate_audit: Mapping[str, Any] | None = None,
         license_evidence: Mapping[str, Any] | None = None,
         decisions: Iterable[SourceAcceptanceDecisionRevision] = (),
     ) -> P0SourceControlCenterDTO:
@@ -447,12 +465,20 @@ class P0SourceControlCenterService:
             else {}
         )
         decision_items = _normalize_decisions(decisions)
+        quarterly_audit_json = (
+            _serialize_quarterly_candidate_audit(quarterly_candidate_audit)
+            if quarterly_candidate_audit is not None
+            else None
+        )
         rows = tuple(
             self._build_row(
                 contract,
                 audit_items.get(contract.source_id),
                 license_items,
                 decision_items.get(contract.source_id),
+                quarterly_audit_json
+                if contract.source_id == "pit.quarterly_financials"
+                else None,
             )
             for contract in self._registry.list()
         )
@@ -491,6 +517,7 @@ class P0SourceControlCenterService:
         audit: Mapping[str, Any] | None,
         license_items: Mapping[str, Mapping[str, Any]],
         decision: SourceAcceptanceDecisionRevision | None,
+        quarterly_candidate_audit_json: str | None,
     ) -> P0SourceControlRow:
         audit_status = _text(audit.get("audit_status")) if audit else "not_supplied"
         machine_status = _text(audit.get("machine_status")) if audit else "not_observed"
@@ -651,6 +678,7 @@ class P0SourceControlCenterService:
                 self._route_registry.for_source(contract.source_id),
             ),
             owner_actions=owner_actions,
+            quarterly_candidate_audit_json=quarterly_candidate_audit_json,
         )
 
 
@@ -1009,6 +1037,30 @@ def _require_boundary(payload: Mapping[str, Any], expected: Mapping[str, object]
     for key, value in expected.items():
         if payload.get(key) != value:
             raise ValueError(f"P0 audit boundary mismatch: {key}")
+
+
+def _require_quarterly_candidate_boundary(payload: Mapping[str, Any]) -> None:
+    expected = {
+        "schema_version": "baldr.open_data_quarterly_candidate_audit.v1",
+        "source_id": "pit.quarterly_financials",
+        "candidate_only": True,
+        "formal_db_write": False,
+        "source_acceptance": False,
+        "gate_credit": False,
+        "downstream_eligibility": "none",
+    }
+    for key, value in expected.items():
+        if payload.get(key) != value:
+            raise ValueError(f"quarterly candidate boundary mismatch: {key}")
+
+
+def _serialize_quarterly_candidate_audit(
+    payload: Mapping[str, Any],
+) -> str:
+    if not isinstance(payload, Mapping):
+        raise TypeError("quarterly candidate audit must be an object")
+    _require_quarterly_candidate_boundary(payload)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _governance_status(

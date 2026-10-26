@@ -7,6 +7,7 @@ import inspect as pyinspect
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -27,6 +28,11 @@ from app_module.sqlite_read_only import (
 from app_module.p0_source_control_center import (
     P0SourceControlCenterDTO,
     P0SourceControlCenterService,
+)
+from data_module.open_data_quarterly_candidate_audit import (
+    AUDIT_SCHEMA as _QUARTERLY_CANDIDATE_AUDIT_SCHEMA,
+    QuarterlyCandidateAuditError,
+    audit_quarterly_candidate_root,
 )
 from data_module.source_acceptance_decision_registry import (
     SourceAcceptanceDecisionRevision,
@@ -112,6 +118,7 @@ class ResearchConsoleSourceService:
         p0_license_evidence_path: str | Path | None = None,
         p0_decision_provider: P0DecisionProvider | None = None,
         p0_decision_path: str | Path | None = None,
+        p0_quarterly_candidate_root: str | Path | None = None,
         clock: ClockProvider | None = None,
         max_projection_age: timedelta = _DEFAULT_MAX_PROJECTION_AGE,
     ) -> None:
@@ -140,11 +147,34 @@ class ResearchConsoleSourceService:
         self._p0_decision_path = (
             Path(p0_decision_path).resolve() if p0_decision_path is not None else None
         )
+        configured_candidate_root = (
+            p0_quarterly_candidate_root
+            if p0_quarterly_candidate_root is not None
+            else os.environ.get("P0_QUARTERLY_CANDIDATE_ROOT")
+        )
+        self._p0_quarterly_candidate_root = (
+            Path(configured_candidate_root).expanduser().resolve()
+            if configured_candidate_root
+            else None
+        )
+        self._p0_quarterly_candidate_root_default = self._p0_quarterly_candidate_root
         self._p0_control_center_service = P0SourceControlCenterService()
         if max_projection_age <= timedelta(0):
             raise ValueError("max_projection_age must be positive")
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._max_projection_age = max_projection_age
+
+    @property
+    def p0_quarterly_candidate_root(self) -> Path | None:
+        return self._p0_quarterly_candidate_root
+
+    def set_p0_quarterly_candidate_root(self, path: str | Path | None) -> None:
+        """設定本次執行要唯讀檢查的候選目錄；不保存設定或改寫輸入。"""
+
+        if path is None or not str(path).strip():
+            self._p0_quarterly_candidate_root = self._p0_quarterly_candidate_root_default
+            return
+        self._p0_quarterly_candidate_root = Path(path).expanduser().resolve()
 
     def inspect(
         self,
@@ -411,10 +441,50 @@ class ResearchConsoleSourceService:
             if not isinstance(parsed_license, Mapping):
                 raise TypeError("P0 license evidence artifact must be an object")
             license_evidence = parsed_license  # type: ignore[assignment]
+        quarterly_candidate_audit: Mapping[str, Any] | None = None
+        candidate_root = self._p0_quarterly_candidate_root
+        if candidate_root is not None:
+            check_read_cancelled()
+            try:
+                quarterly_candidate_audit = audit_quarterly_candidate_root(
+                    candidate_root
+                ).to_dict()
+                quarterly_candidate_audit["source_id"] = "pit.quarterly_financials"
+            except QuarterlyCandidateAuditError as exc:
+                # Keep a failed explicit candidate selection visible while
+                # preserving the same candidate-only boundary as valid audits.
+                quarterly_candidate_audit = {
+                    "schema_version": _QUARTERLY_CANDIDATE_AUDIT_SCHEMA,
+                    "source_id": "pit.quarterly_financials",
+                    "candidate_only": True,
+                    "formal_db_write": False,
+                    "source_acceptance": False,
+                    "gate_credit": False,
+                    "downstream_eligibility": "none",
+                    "overall_state": "invalid",
+                    "summary": {
+                        "resource_count": 0,
+                        "available_resource_count": 0,
+                        "empty_response_resource_count": 0,
+                        "missing_resource_count": 0,
+                        "invalid_resource_count": 0,
+                        "summary_complete": False,
+                        "row_count": None,
+                        "unique_issuer_resource_count": None,
+                        "duplicate_business_key_count": None,
+                    },
+                    "resources": [],
+                    "limitations": [
+                        "明確選取的候選目錄無法通過離線 manifest／檔案驗證。",
+                        "本次未把內容視為來源接受、Gate credit 或下游可用資料。",
+                    ],
+                    "errors": [str(exc).split(":", 1)[0]],
+                }
         return self._p0_control_center_service.build(
             candidate_audit=audit,
             license_evidence=license_evidence,
             decisions=decisions,
+            quarterly_candidate_audit=quarterly_candidate_audit,
         )
 
     @staticmethod

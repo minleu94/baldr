@@ -39,6 +39,8 @@
 ```
 
 來源與輸出根重疊時工具會拒絕受控 replay。不要複製或編輯 `latest_status.json` 來改變 `output_root` 身分；需保留來源原 bytes、status hash 及 replay 收據。
+
+受控 replay 不會把 scratch 中找不到 Paper snapshot/status 解讀為正式 Paper 帳戶缺件。若已有明確綁定、唯讀的 Paper state，另傳 `--paper-evidence-source-root <paper-source-root>`；state/status 由該根讀取，replay 產物仍留在 scratch。若未提供，收據會標成 `not_configured_for_controlled_replay`，代表本次沒有檢查 Paper 輸入，不代表 Gate 通過。不得用複製到 scratch 的資料冒充已綁定來源。
 3. 先產生唯讀週報；不得帶 `--save-history` 或 `--confirm-action-items`：
 
 ```powershell

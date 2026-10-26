@@ -723,6 +723,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="isolated repository output root containing Paper snapshot state",
     )
     parser.add_argument(
+        "--paper-evidence-source-root",
+        type=Path,
+        help="read-only Paper state/status source root; controlled replays require this explicit binding",
+    )
+    parser.add_argument(
         "--paper-evidence-ledger-db",
         help="Paper trade ledger SQLite used to prove cross-date position continuity",
     )
@@ -838,11 +843,17 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("scheduled evidence wrapper requires --dry-run")
     output_root = Path(args.output_root)
     recommendation_source_root = args.recommendation_source_root or output_root
-    if args.validation_decision_date and recommendation_source_root.resolve() != output_root.resolve():
+    if args.validation_decision_date:
         source_resolved = recommendation_source_root.resolve()
         output_resolved = output_root.resolve()
-        if source_resolved == output_resolved or source_resolved in output_resolved.parents or output_resolved in source_resolved.parents:
+        if source_resolved != output_resolved and (
+            source_resolved in output_resolved.parents or output_resolved in source_resolved.parents
+        ):
             raise ValueError("controlled replay source and output roots must be disjoint")
+        if args.paper_evidence_source_root is not None:
+            paper_source_resolved = args.paper_evidence_source_root.resolve()
+            if paper_source_resolved == output_resolved or paper_source_resolved in output_resolved.parents or output_resolved in paper_source_resolved.parents:
+                raise ValueError("controlled replay Paper source and output roots must be disjoint")
     run_root = output_root / "scheduled" / "evidence_pipeline_dry_run"
     report_root = run_root / "reports"
     run_root.mkdir(parents=True, exist_ok=True)
@@ -1256,13 +1267,29 @@ def main(argv: list[str] | None = None) -> int:
         "--report-output",
         str(report_path),
         "--json-output",
-        "--paper-evidence-operation-root",
-        str(paper_operation_root),
-        "--paper-evidence-health-baseline",
-        str(paper_health_baseline),
-        "--paper-evidence-status-path",
-        str(paper_status_path),
     ]
+    controlled_replay = args.validation_decision_date is not None
+    if args.paper_evidence_source_root is not None:
+        paper_source_root = args.paper_evidence_source_root.resolve()
+        command.extend((
+            "--paper-evidence-source-root",
+            str(paper_source_root),
+            "--paper-evidence-health-baseline",
+            str(paper_health_baseline),
+            "--paper-evidence-status-path",
+            str(Path(args.paper_evidence_status_path).resolve())
+            if args.paper_evidence_status_path
+            else str(paper_source_root / "scheduled" / "paper_portfolio_daily" / "latest_status.json"),
+        ))
+    elif not controlled_replay:
+        command.extend((
+            "--paper-evidence-operation-root",
+            str(paper_operation_root),
+            "--paper-evidence-health-baseline",
+            str(paper_health_baseline),
+            "--paper-evidence-status-path",
+            str(paper_status_path),
+        ))
     if recommendation_binding is not None:
         command.extend(("--result-id", recommendation_binding["result_id"]))
     pipeline_execution_error = None
@@ -1422,6 +1449,22 @@ def main(argv: list[str] | None = None) -> int:
         "pipeline_timeout_seconds": PIPELINE_TIMEOUT_SECONDS,
         "recommendation_binding": recommendation_binding,
         "controlled_validation": args.validation_decision_date is not None,
+        "paper_evidence_input": {
+            "status": (
+                "read_only_source_configured"
+                if args.paper_evidence_source_root is not None
+                else "not_configured_for_controlled_replay"
+                if controlled_replay
+                else "legacy_operation_root"
+            ),
+            "source_root": (
+                str(args.paper_evidence_source_root.resolve())
+                if args.paper_evidence_source_root is not None
+                else None
+            ),
+            "read_only": True,
+            "formal_credit": False,
+        },
         "decision_timezone": "Asia/Taipei",
         "exit_code": wrapper_exit_code,
         "checked_at": run_now.isoformat(timespec="seconds"),

@@ -61,6 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--paper-evidence-source-root",
+        help="read-only Paper state/status root, separated from this run's operation/output root",
+    )
+    parser.add_argument(
         "--paper-evidence-health-baseline",
         help="explicit position-health baseline JSON used by scheduled evidence",
     )
@@ -154,19 +158,22 @@ def main(argv: list[str] | None = None) -> int:
             recommendation_queries = build_recommendation_execution_queries(
                 SimpleNamespace(output_root=Path(args.recommendation_source_root))
             )
-        if bool(args.paper_evidence_operation_root) != bool(args.paper_evidence_health_baseline):
+        paper_source_root = args.paper_evidence_source_root or args.paper_evidence_operation_root
+        if bool(paper_source_root) != bool(args.paper_evidence_health_baseline):
             parser.error(
-                "--paper-evidence-operation-root and "
+                "a Paper evidence source root and "
                 "--paper-evidence-health-baseline must be supplied together"
             )
-        if args.paper_evidence_operation_root and args.paper_evidence_health_baseline:
-            operation_root = Path(args.paper_evidence_operation_root).resolve()
+        if args.paper_evidence_source_root and args.paper_evidence_operation_root:
+            parser.error("--paper-evidence-source-root and --paper-evidence-operation-root are mutually exclusive")
+        if paper_source_root and args.paper_evidence_health_baseline:
+            source_root = Path(paper_source_root).resolve()
             paper_source = PaperDecisionDeskEvidenceSource(
-                state_db_path=operation_root / "paper_portfolio" / "paper_portfolio.sqlite",
+                state_db_path=source_root / "paper_portfolio" / "paper_portfolio.sqlite",
                 status_path=(
                     Path(args.paper_evidence_status_path).resolve()
                     if args.paper_evidence_status_path
-                    else operation_root
+                    else source_root
                     / "scheduled"
                     / "paper_portfolio_daily"
                     / "latest_status.json"

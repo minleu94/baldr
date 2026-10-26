@@ -1521,6 +1521,7 @@
         "tests/test_evidence_pipeline_runner.py",
         "tests/test_evidence_event_service.py",
         "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py",
+        "tests/test_run_evidence_pipeline_cli.py",
         "tests/test_repository_output_boundary.py"
       ],
       "manual": [
@@ -1543,6 +1544,7 @@
         "tests/test_evidence_pipeline_runner.py",
         "tests/test_evidence_event_service.py",
         "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py",
+        "tests/test_run_evidence_pipeline_cli.py",
         "app_module/daily_operations_status.py",
         "scripts/audit_daily_operations.py",
         "tests/test_daily_operations_status.py",

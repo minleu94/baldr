@@ -37,3 +37,11 @@
 ## Gate 界線
 
 這份收據證明受控 scheduled dry-run 能綁定正式推薦，同時把 Evidence Pipeline 產物導向隔離 scratch。它是一次性 controlled replay，不是自然排程、weekly human review、Evidence Review dashboard 驗收、backup／rollback／recovery 演練或 Gate 2 history。沒有新增正式 weekly sidecar、Owner／reviewer 決定、source acceptance 或 Gate credit；source qualification、freshness、Paper input 與 dashboard 缺口仍待處理。
+
+## Follow-up：Paper 唯讀輸入根分離
+
+回查發現上一輪 controlled replay 把 Paper state/status 指向空 scratch operation root，因此 `Paper research snapshot/status missing` 只證明該隔離目錄沒有資料，不能推論正式帳戶輸入也缺件。wrapper 現新增 `--paper-evidence-source-root`：指定時由子流程唯讀讀取該根下的 Paper state/status；輸出根仍是 scratch，且來源根不得與 scratch 重疊。未指定時，controlled receipt 明確標示 `not_configured_for_controlled_replay`，不再把空 scratch 傳給 importer。這不代表正式 Paper source 已綁定，也不降低任何 readiness／Gate 條件。
+
+- 新增 Paper source/scratch 分離、未設定 disclosure、來源根重疊拒絕、舊 operation root 保護及 child CLI source path 測試：**5 passed**。
+- 修改的兩個 CLI 與兩個測試檔 `py_compile`：通過；全域 mypy：`Success: no issues found in 1145 source files`。
+- 完整 wrapper＋CLI 回歸執行：**31 passed、31 failed**。失敗可見 Windows sandbox pytest temp 下 terminal receipt 路徑回 `FileNotFoundError`，及 exit-effectiveness hard-link 案例回 `PermissionError [WinError 5]`；因此不將整套回歸記為通過。5 個新增／關聯 focused tests 在同一受控 Job 下全部通過。

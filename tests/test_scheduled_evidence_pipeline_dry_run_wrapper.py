@@ -1359,11 +1359,60 @@ def test_controlled_replay_keeps_all_wrapper_outputs_outside_canonical_source(tm
     command = captured["command"]
     assert command[command.index("--output-root") + 1] == str(scratch)
     assert command[command.index("--recommendation-source-root") + 1] == str(canonical)
-    assert Path(command[command.index("--paper-evidence-operation-root") + 1]).is_relative_to(scratch)
+    assert "--paper-evidence-operation-root" not in command
+    assert "--paper-evidence-source-root" not in command
     payload = json.loads(status_path.read_text(encoding="utf-8"))
     assert payload["recommendation_binding"]["status_path"].startswith(str(canonical))
+    assert payload["paper_evidence_input"] == {
+        "status": "not_configured_for_controlled_replay",
+        "source_root": None,
+        "read_only": True,
+        "formal_credit": False,
+    }
     assert (scratch / "scheduled" / "evidence_pipeline_dry_run").is_dir()
     assert not (canonical / "scheduled" / "evidence_pipeline_dry_run").exists()
+
+
+def test_controlled_replay_reads_paper_from_explicit_source_and_keeps_outputs_in_scratch(tmp_path, monkeypatch):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    canonical = tmp_path / "canonical"
+    paper_source = tmp_path / "paper-source"
+    scratch = tmp_path / "scratch"
+    now, _status, _payload, _reader = _binding_fixture(canonical, monkeypatch)
+    monkeypatch.setattr(runner, "scheduled_now", lambda: now)
+    captured = {}
+
+    def child(command, **kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=json.dumps({"overall_status": "degraded", "warnings_count": 0,
+                               "warning_counts": {}, "errors_count": 0,
+                               "blocking_gaps": [], "source_coverage": {}}),
+        )
+
+    monkeypatch.setattr(subprocess, "run", child)
+    status_path = scratch / "controlled-status.json"
+    assert runner.main([
+        "--dry-run", "--bind-scheduled-recommendation",
+        "--validation-decision-date", "2026-09-29",
+        "--recommendation-source-root", str(canonical),
+        "--paper-evidence-source-root", str(paper_source),
+        "--output-root", str(scratch), "--status-path", str(status_path),
+        "--data-root", str(tmp_path / "data"), "--db-path", str(tmp_path / "market.db"),
+    ]) == 0
+
+    command = captured["command"]
+    assert command[command.index("--paper-evidence-source-root") + 1] == str(paper_source.resolve())
+    assert command[command.index("--paper-evidence-status-path") + 1] == str(
+        paper_source / "scheduled" / "paper_portfolio_daily" / "latest_status.json"
+    )
+    assert command[command.index("--output-root") + 1] == str(scratch)
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert payload["paper_evidence_input"]["status"] == "read_only_source_configured"
+    assert payload["paper_evidence_input"]["source_root"] == str(paper_source.resolve())
+    assert payload["paper_evidence_input"]["formal_credit"] is False
 
 
 def test_controlled_replay_rejects_overlapping_source_and_output_roots(tmp_path, monkeypatch):

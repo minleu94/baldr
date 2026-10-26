@@ -488,7 +488,7 @@ M149 後，在「市場探索 → 市場總覽 → 每日決策 → 總覽」可
 
 排程排錯時先核 exact run／日期／root／hash，再核是否達到成功條件。Evidence 的 `scheduled_recommendation_status_not_passed:blocked` 表示推薦身分可辨但整體狀態未通過，pipeline仍不啟動；真正身分錯誤另列identity mismatch。日曆 `refreshed` 要讀同次刷新後終態，不能借刷新前inspection。Paper官方NULL open只允許原來源、原執行日內的有界retry；跨日仍保留missed session，不能用後日價格補成交。ML Forward shared-lock preflight尚未啟動時沒有maturity cutoff，但parent仍失敗；G9/H20終態核驗失敗或逾時不能當自然累積成功。操作與具名驗收見[雙報告修正QA](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)及[排程運維](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
 
-受控 Evidence dry-run 可用 `--recommendation-source-root <canonical-output-root>` 綁定原推薦快照，同時把 `--output-root` 與 `--status-path` 指向互不重疊的 scratch；工作資料庫與 `--data-root` 仍使用 working-copy。來源根是唯讀輸入，輸出根會建立 run、report、receipt 與 dry-run scratch。來源與輸出根重疊時命令拒絕執行；不得複製或改寫來源 `latest_status.json` 以通過身分驗證。這項驗證只提供該次 dry-run 證據，不會建立人工 review、scheduler approval 或 Gate credit。完整步驟見[每週 Evidence Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md#3-每週固定操作順序)。
+受控 Evidence dry-run 可用 `--recommendation-source-root <canonical-output-root>` 綁定原推薦快照，同時把 `--output-root` 與 `--status-path` 指向互不重疊的 scratch；工作資料庫與 `--data-root` 仍使用 working-copy。來源根是唯讀輸入，輸出根會建立 run、report、receipt 與 dry-run scratch。來源與輸出根重疊時命令拒絕執行；不得複製或改寫來源 `latest_status.json` 以通過身分驗證。需要納入 Paper 證據時，另以 `--paper-evidence-source-root <paper-source-root>` 指定唯讀輸入；未指定時，receipt 會明示本次 `not_configured_for_controlled_replay`，不把空 scratch 誤標成正式 Paper 缺件。這項驗證只提供該次 dry-run 證據，不會建立人工 review、scheduler approval 或 Gate credit。完整步驟見[每週 Evidence Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md#3-每週固定操作順序)。
 
 <details>
 <summary>舊手冊書籤與日期化工程補充（按需展開）</summary>

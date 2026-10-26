@@ -143,3 +143,52 @@ def test_cli_stdout_survives_cp1252_console_with_chinese_summary(
     assert exit_code == 0
     assert payload["diagnostics"] == ["持倉警示"]
     assert "\\u6301\\u5009\\u8b66\\u793a" in raw_output
+
+
+def test_cli_uses_explicit_paper_source_root_for_read_only_inputs(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakePaperSource:
+        def __init__(self, **kwargs: object) -> None:
+            captured["paper_source"] = kwargs
+
+    class DummySummary:
+        def to_dict(self) -> dict[str, object]:
+            return {"dry_run": True, "overall_status": "degraded"}
+
+    class DummyRunner:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            captured["runner"] = kwargs
+
+        def run(self, request: object) -> DummySummary:
+            return DummySummary()
+
+    source_root = tmp_path / "paper-source"
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(run_evidence_pipeline, "PaperDecisionDeskEvidenceSource", FakePaperSource)
+    monkeypatch.setattr(run_evidence_pipeline, "EvidencePipelineRunner", DummyRunner)
+
+    exit_code = run_evidence_pipeline.main([
+        "--decision-date", "2026-07-04",
+        "--db-path", str(tmp_path / "market.db"),
+        "--data-root", str(tmp_path / "data"),
+        "--output-root", str(tmp_path / "output"),
+        "--paper-evidence-source-root", str(source_root),
+        "--paper-evidence-health-baseline", str(baseline),
+        "--dry-run",
+    ])
+
+    assert exit_code == 0
+    paper_source = captured["paper_source"]
+    assert isinstance(paper_source, dict)
+    assert paper_source["state_db_path"] == (
+        source_root.resolve() / "paper_portfolio" / "paper_portfolio.sqlite"
+    )
+    assert paper_source["status_path"] == (
+        source_root.resolve() / "scheduled" / "paper_portfolio_daily" / "latest_status.json"
+    )
+    assert paper_source["health_baseline_path"] == baseline.resolve()
+    runner_kwargs = captured["runner"]
+    assert isinstance(runner_kwargs, dict)
+    assert runner_kwargs["paper_evidence_source"] is not None

@@ -4,7 +4,7 @@
 
 2026-10-25 Decision Desk 市場資料可見性補上季財報項目唯讀 aggregate：依決策日過濾後顯示列數、股票數、最新觀測期間與可用日；資料已標 degraded 時明示降級，eligibility 維持 research_only，PIT 與 license／coverage 資格不會由資料存在推定。再補月營收／季報公告日缺漏數量揭露；Service/UI focused tests 61 passed、Workbench 93 passed、Update validator 25 passed／0 failed／4 skipped、全域 mypy 1,145 檔無錯及變更 Python py_compile 通過。原生 GUI 與 Owner UAT 未完成。結果記錄於[資料品質盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#follow-up決策台季財報可見性)。
 
-2026-10-25 MOPS 季報公告證據以隔離候選方式擷取：2026-08 30/30 查詢成功、5,724 事件；2026-09 27 成功／3 官方無資料、123 事件；2026-10-01..05 六個官方無資料。8–9 月候選按市場／股票／報表類型與本機 Q2 current-observation 對照後，TWSE 1,084 檔中 47 檔、TPEx 891 檔中 42 檔仍缺公告候選；另 15 個候選代碼沒有本機 Q2 對應列。原始 response custody 均完成 readback。候選沒有寫正式 DB，不授予 OOS／Gate credit，仍待 coverage、使用授權與 PIT 審查。詳[資料品質盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#official-announcement-evidence-capture-attempt)。
+2026-10-25 MOPS 季報公告證據以隔離候選方式擷取：2026-07 24 成功／6 官方無資料、288 事件；2026-08 30/30 成功、5,724 事件；2026-09 27 成功／3 官方無資料、123 事件；2026-10-01..05 六個官方無資料。7–9 月候選與 MOPS current HTML 子集對照後，TWSE 1,084 檔全數命中，TPEx 891 檔中 6 檔未命中；另 15 個候選代碼沒有該子集的本機 Q2 對應列。原始 response custody 均完成 readback。候選沒有寫正式 DB，不授予 OOS／Gate credit，仍待 coverage、使用授權與 PIT 審查。詳[資料品質盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#official-announcement-evidence-capture-attempt)。
 
 2026-10-25 Evidence blocker 卡再補 source qualification 明細：每日排程狀態 read model 現保留 receipt 的 qualification flag 與 source ID；卡片可逐項列出月營收、季財報等資格缺件及其原始 ID，並提示需逐來源核對 availability／quality／license／PIT／coverage。這只改善缺件呈現，不接受來源或改 Gate。測試結果見[Scheduled Evidence Replay 隔離 QA](../06_qa/BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md#follow-up顯示來源資格缺件)。
 

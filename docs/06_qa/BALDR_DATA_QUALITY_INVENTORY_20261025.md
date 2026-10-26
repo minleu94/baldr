@@ -58,6 +58,7 @@ Decision Desk 現有的唯讀市場資料可見性列新增 `fundamental_stateme
 以既有唯讀 MOPS announcement collector 查詢 2026-Q2 TWSE／TPEx F26–F28 公告，分別保留原始成功 response custody 與 mapping，所有產物都在使用者 visualization scratch；沒有寫正式資料庫、沒有來源接受或 Gate credit。
 
 - 初次 sandbox 擷取因 DNS `NameResolutionError` 產生 `unavailable` 收據；單一 31 天查詢則碰到 MOPS 1,000 列上限，因此不採用該次結果。
+- 2026-07-01..31 以 7 天窗口擷取，24 個成功查詢、6 個官方明確無資料，產生 288 筆公告事件／projection row；0 failed、0 invalid，30 個 custody component 並完成 readback。候選目錄：`mops_statement_availability_q2_2026_jul_candidate_20261025`。
 - 2026-08-01..31 以 7 天窗口、一次 retry 重跑後 30/30 查詢成功，產生 5,724 筆公告事件／projection row；0 failed、0 invalid、0 duplicate，30 個 custody component 並完成 readback。候選目錄：`mops_statement_availability_q2_2026_retry1_20261025`。
 - 2026-09-01..30 同樣以 7 天窗口擷取，27 個成功查詢、3 個官方明確無資料，取得 123 筆事件／projection row；0 failed、0 invalid，30 個 custody component 並完成 readback。候選目錄：`mops_statement_availability_q2_2026_sep_candidate_20261025`。
 - 2026-10-01..05 六個查詢均為官方明確無資料，沒有公告事件；工具依來源狀態輸出 `unavailable` 候選，不能解讀為查詢失敗或缺漏資料。候選目錄：`mops_statement_availability_q2_2026_oct_candidate_20261025`。
@@ -66,7 +67,7 @@ Decision Desk 現有的唯讀市場資料可見性列新增 `fundamental_stateme
 
 | Market | Statement type | Current keys | Candidate keys | Matched | Current without event | Candidate without current row |
 |---|---|---:|---:|---:|---:|---:|
-| TWSE | balance sheet / income / cash flows（各類相同） | 1,084 | 1,049 | 1,037 | 47 | 12 |
-| TPEx | balance sheet / income / cash flows（各類相同） | 891 | 852 | 849 | 42 | 3 |
+| TWSE | balance sheet / income / cash flows（各類相同） | 1,084 | 1,096 | 1,084 | 0 | 12 |
+| TPEx | balance sheet / income / cash flows（各類相同） | 891 | 888 | 885 | 6 | 3 |
 
-合計 1,975 個本機股票身份中仍有 89 檔（TWSE 47、TPEx 42）沒有對應的 8–9 月候選公告；另有 15 個候選股票代碼（TWSE 12、TPEx 3）沒有本機 Q2 current-observation 對應列。差異對三種報表類型一致。這是候選資料與本機 current observation 的鍵覆蓋，不是對 MOPS 全市場／其他期間的完整 coverage 證明，也未驗證報表值、授權、歷史 PIT 或正式 `fundamental_statement_items` 的逐列正確性。這些缺口應留在研究／Gate 3 人工審查，不得因公告匹配就批次補回正式資料。
+合計 1,975 個 MOPS current HTML 子集股票身份中，1,969 檔有 7–9 月候選公告，仍有 6 檔 TPEx 股票未命中；TWSE 1,084 檔全數命中。另有 15 個候選股票代碼（TWSE 12、TPEx 3）沒有該子集的本機 Q2 對應列。差異對三種報表類型一致。這個比對只涵蓋 2026-07-01..09-30 公告查詢窗及 2026-06-30 的 MOPS current HTML 子集，不代表 MOPS 全市場／其他期間完整 coverage，也未驗證報表值、授權、歷史 PIT 或正式 `fundamental_statement_items` 的逐列正確性。這些結果應留在研究／Gate 3 人工審查，不得因公告匹配就批次補回正式資料。

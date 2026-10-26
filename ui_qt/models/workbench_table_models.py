@@ -211,6 +211,7 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
     COLUMNS = (
         ("stock_code", "標的"),
         ("advice_action", "動作"),
+        ("confidence_tier", "決策信心"),
         ("quick_reasons", "支持／反證"),
         ("primary_risk", "主要風險"),
         ("evidence_status", "資料與執行狀態"),
@@ -252,11 +253,20 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
             if role == Qt.AccessibleTextRole:
                 return detail
             return None
-        if field_name not in {"advice_action", "data_quality", "execution_feasibility"}:
+        if field_name not in {
+            "advice_action",
+            "confidence_tier",
+            "data_quality",
+            "execution_feasibility",
+        }:
             return super().data(index, role)
         raw = getattr(row, field_name, None)
         raw_text = raw.value if isinstance(raw, Enum) else str(raw or "").strip()
-        label = _advice_display_label(field_name, raw_text)
+        label = (
+            _advice_display_label(field_name, raw_text)
+            if field_name != "confidence_tier"
+            else _confidence_tier_label(raw_text)
+        )
         if role == Qt.DisplayRole:
             return label
         if role == Qt.ToolTipRole:
@@ -302,6 +312,17 @@ def _advice_display_label(field_name: str, raw_value: str) -> str:
     return maps[field_name].get(raw_value.upper(), raw_value)
 
 
+def _confidence_tier_label(raw_value: str) -> str:
+    if not raw_value:
+        return "未提供"
+    return {
+        "HIGH": "高",
+        "MEDIUM": "中",
+        "LOW": "低",
+        "UNAVAILABLE": "不可用",
+    }.get(raw_value.upper(), raw_value)
+
+
 def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[str, str]:
     """在建議列展示短摘要，完整欄位仍可由提示與選列詳情核對。"""
 
@@ -338,10 +359,19 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
     )
     if feasibility.startswith("原狀態："):
         feasibility = feasibility.removeprefix("原狀態：")
+    liquidity_state = str(row.liquidity_state or "").strip().upper()
+    liquidity_label = {
+        "GATE_FAIL": "未通過",
+        "UNKNOWN": "未知",
+    }.get(liquidity_state, liquidity_state or "未知")
     data_date = str(row.data_as_of_date or "").strip() or "未知"
-    display = f"{quality}｜成交：{feasibility}｜資料日：{data_date}"
+    display = (
+        f"{quality}｜流動性 Gate：{liquidity_label}｜"
+        f"成交：{feasibility}｜資料日：{data_date}"
+    )
     detail = (
-        f"資料品質：{quality}\n可成交性：{feasibility}\n"
+        f"資料品質：{quality}\n流動性 Gate：{liquidity_label}（原始值：{liquidity_state or '未提供'}）\n"
+        f"可成交性：{feasibility}\n"
         f"決策日：{str(row.decision_date or '').strip() or '未知'}\n"
         f"資料日：{data_date}"
     )

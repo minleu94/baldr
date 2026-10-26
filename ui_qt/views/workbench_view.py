@@ -3887,6 +3887,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         contract_completeness = _advice_contract_completeness(item)
         source_evidence = tuple(getattr(item, "source_evidence", ()) or ())
         source_evidence_text = "；".join(source_evidence) if source_evidence else "未提供"
+        liquidity_raw = str(getattr(item, "liquidity_state", "") or "").strip().upper()
+        liquidity_label = {"GATE_FAIL": "未通過", "UNKNOWN": "未知"}.get(
+            liquidity_raw, liquidity_raw or "未知"
+        )
         card_text = (
             "所選建議判讀\n"
             f"層級：{'Professional 研究候選（不屬於正式 Advice）' if is_candidate else '配置列' if is_portfolio_row else '正式 Advice'}｜"
@@ -3896,6 +3900,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"校準適用期間：{presentation.horizon or '未提供'}｜"
             f"策略持有期間：{presentation.holding_horizon or '未提供'}｜"
             f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}｜"
+            f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）｜"
             f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供'}\n"
             f"失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}"
             f"\n保存來源逐股證據：{_compact_advice_text(source_evidence_text)}"
@@ -3919,11 +3924,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"完整風險：{full_risks_text}\n"
             f"完整失效條件：{full_invalidation_text}\n"
             f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}\n"
+            f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）\n"
             f"保存來源逐股證據：{source_evidence_text}"
         )
         self.advice_selection_card.setAccessibleDescription(
             f"{card_text}\n完整原始理由／論點：{full_reasons_text}\n"
             f"完整風險：{full_risks_text}\n完整失效條件：{full_invalidation_text}\n"
+            f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）\n"
             f"保存來源逐股證據：{source_evidence_text}"
         )
         self.advice_selection_card.setVisible(True)
@@ -4436,6 +4443,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         fixed_widths = {
             "stock_code": 76,
             "advice_action": 136,
+            "confidence_tier": 100,
             "primary_risk": 220,
             "evidence_status": 248,
         }
@@ -5265,6 +5273,7 @@ def _advice_contract_completeness(item: object) -> str:
         ("data_quality", "資料品質"),
         ("decision_date", "決策日"),
         ("data_as_of_date", "資料日"),
+        ("source_trace", "來源追溯"),
     )
     missing = tuple(
         label
@@ -5272,19 +5281,30 @@ def _advice_contract_completeness(item: object) -> str:
         if not _has_advice_contract_value(getattr(item, name, None))
     )
     if not missing:
-        return "Advice 必要欄位：目前欄位均有值；仍須依來源、品質與 Gate 判讀。"
+        return "Advice 必要欄位：目前均有可判讀值與來源追溯；仍須依來源、品質與 Gate 判讀。"
     return (
         "Advice 必要欄位待補：" + "、".join(missing)
-        + "。\n下一步：回查原推薦與策略設定，補上可追溯值；不可由分數或空白推定。"
+        + "。\n下一步：回查原推薦與策略設定，取得可追溯的已知值；UNKNOWN／UNAVAILABLE 不算完成，也不可由分數或空白推定。"
     )
 
 
 def _has_advice_contract_value(value: object) -> bool:
     if isinstance(value, str):
-        return bool(value.strip())
+        normalized = value.strip().casefold()
+        return normalized not in {
+            "",
+            "unknown",
+            "unavailable",
+            "not provided",
+            "not_provided",
+            "n/a",
+            "na",
+            "未知",
+            "未提供",
+        }
     if isinstance(value, (tuple, list)):
         return bool(value) and all(
-            not isinstance(item, str) or bool(item.strip()) for item in value
+            _has_advice_contract_value(item) for item in value
         )
     return value is not None
 

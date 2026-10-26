@@ -90,6 +90,7 @@ def test_composer_preserves_dates_and_returns_no_new_position_for_missing_eviden
     assert result.decision_date == "2026-07-12"
     assert result.data_as_of_date == "2026-07-12"
     assert result.recommendations[0].advice_action is AdviceAction.NO_NEW_POSITION
+    assert result.recommendations[0].liquidity_state == "UNKNOWN"
     assert result.recommendations[0].source_trace == ("AdviceComposer.refusal",)
     assert result.recommendations[0].why_not_reasons == (
         "evidence_quality_missing",
@@ -170,11 +171,63 @@ def test_composer_projects_only_exact_stock_saved_screening_and_risk_evidence() 
     advice = result.recommendations[0]
     assert advice.stock_code == "2330"
     assert advice.advice_action is AdviceAction.ADD_CANDIDATE
+    assert advice.liquidity_state == "UNKNOWN"
     assert advice.source_evidence == (
         "篩選：階段=legacy:technical_gate；結果=通過；資料品質=已觀測",
     )
     assert "1101" not in " ".join(advice.source_evidence)
     assert "2201" not in " ".join(advice.source_evidence)
+
+
+def test_composer_projects_only_observed_same_stock_liquidity_gate_failure() -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    source = _recommendation_result()
+    source.liquidity_gate_payload_json = [
+        {
+            "stock_code": "2330",
+            "status": "fail",
+            "quality": "observed",
+            "reason_codes": ["low_liquidity"],
+            "threshold_name": "min_liquidity",
+        }
+    ]
+    advice = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+    assert advice.liquidity_state == "GATE_FAIL"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [{"stock_code": "2330", "status": "degraded", "quality": "observed", "reason_codes": ["low_liquidity"]}],
+        [{"stock_code": "2330", "status": "fail", "quality": "estimated", "reason_codes": ["low_liquidity"]}],
+        [
+            {"stock_code": "2330", "status": "fail", "quality": "observed", "reason_codes": ["low_liquidity"]},
+            {"stock_code": "2330", "status": "fail", "quality": "observed", "reason_codes": ["low_liquidity"]},
+        ],
+    ],
+)
+def test_composer_keeps_untrusted_liquidity_payload_unknown(payload) -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    source = _recommendation_result()
+    source.liquidity_gate_payload_json = payload
+    advice = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+    assert advice.liquidity_state == "UNKNOWN"
 
 
 def test_advice_source_evidence_round_trips_and_missing_stays_explicit() -> None:

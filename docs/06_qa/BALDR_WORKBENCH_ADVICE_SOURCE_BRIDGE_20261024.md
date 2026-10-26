@@ -1,5 +1,27 @@
 # Workbench Advice 排程候選接線 — 2026-10-24
 
+## 2026-10-26 Gate 1 Advice 未知欄位與來源追溯完整性
+
+Workbench Advice 完整性摘要之前把任何非空字串算作已填，造成 `liquidity_state=UNKNOWN`、`execution_feasibility=UNAVAILABLE` 等尚未可判讀的必要狀態從缺件清單消失；必要欄位也漏掉 `source_trace`。現在空字串、`UNKNOWN`、`UNAVAILABLE`、`NOT_PROVIDED`、`N/A`、中文「未知／未提供」都視為待補；tuple/list 逐項檢查。必要欄位加入來源追溯。Known negative states such as `GATE_FAIL`、`NOT_FEASIBLE`、`MISSING` remain known values and are shown as such, not as successful evidence.
+
+回歸案例涵蓋未知流動性、不可用成交狀態、空來源追溯，以及所有欄位有已知值（含負向結果）和追溯的完整 Advice。詳細選列仍提醒欄位有值不代表來源或 Gate 合格。受控 Windows Job：Advice Composer **30 passed**、Workbench view **52 passed**、必要 Workbench UI **93 passed**、Update validator **25 passed／0 failed／4 skipped**、全域 mypy **1,153 source files，無錯誤**，5 個修改 Python 檔 `py_compile` 通過。Advice QA 文件 document-control check 通過（12 features／1 link source／0 errors）；Manual／Snapshot 檢查受既有 `output` junction 的 WinError 5 阻擋。Job receipt SHA-256 `88e7e11b84d0653acd16e1a571b5368b08bdeb6838658d6e187d61b27318ca91`，exit 0、剩餘程序 0，kill-on-close／8 GiB／12 程序限制讀回通過，無強制清理。原始收據及 validator 輸出留在授權 scratch `industry-theme-qa/owned-qa-20261025-8b72bdac6e6e4daea5e4b7da4dbb7433/single_owned_qa_25c5bef6b05c49bd8f57c18a2c3166b4/`。
+
+## 2026-10-26 Gate 1 Advice 流動性 Gate 投影
+
+`AdviceComposer` 以前未填 `RecommendationAdviceDTO.liquidity_state`，所以必要欄位檢查和列表都無法呈現保存推薦中的逐股流動性排除。現在只從同一 `result_id` 的已保存流動性負向 payload 投影：單一同股列必須有 liquidity reason／threshold、`status=fail` 且 `quality=observed` 才標 `GATE_FAIL`。缺列、重複列、品質／狀態不足、其他股票或來源 ID 不符都標 `UNKNOWN`，絕不從負向專用 payload 推論 Gate 通過。
+
+Workbench Advice 列表與選取判讀卡顯示「流動性 Gate：未通過／未知」並保留原始狀態；Advice DTO 仍只表示負向 Gate 證據，不能替代流動性數值或交易可成交性。回歸案例覆蓋同股 observed fail、跨股票隔離、降級／估算及重複列。受控 Windows Job：Advice Composer **30 passed**、Workbench view **50 passed**、必要 Workbench UI **93 passed**、Update validator **25 passed／0 failed／4 skipped**、全域 mypy **1,153 source files，無錯誤**，5 個修改 Python 檔 `py_compile` 通過。Advice QA 文件的 document-control check 通過（12 features／1 link source／0 errors）；Manual／Snapshot 的 check 仍被既有 `output` junction 存取拒絕（WinError 5）阻擋。Job receipt SHA-256 `d8f9e5e034975b3865284fe0036041bf58c1c9316b63926ebe53d795ea6b8fbd`，exit 0、剩餘程序 0，kill-on-close／8 GiB／12 程序限制讀回通過，無強制清理。原始收據及 validator 輸出留在授權 scratch `industry-theme-qa/owned-qa-20261025-8b72bdac6e6e4daea5e4b7da4dbb7433/single_owned_qa_d3c3e3dfad4e4fffb707096d8c6eb30b/`。
+
+此可見性修正沒有寫正式資料、解除資料品質缺漏、授予 Gate 1、來源、PIT 或 ML 資格，也未呼叫券商 API。富邦官方 Market Data 文件所列為台股即時／歷史市場資料；該 API 文件沒有 MOPS 公告時間或財報版本配對欄位，無法補本輪公告橋接缺件。正式財報公告映射仍須依每一報表期間使用相應公告，不能以行情 API 取代。
+
+## 2026-10-26 Advice 列決策信心欄
+
+Workbench Advice／Professional 研究候選表新增「決策信心」欄，直接投影 `RecommendationAdviceDTO.confidence_tier`。常見 high／medium／low 顯示為高／中／低，缺值顯示「未提供」，欄位提示保留原始值。此欄與選列詳情的「證據信心」分開，不推導或補寫資料。
+
+回歸案例覆蓋缺值與 medium 顯示、欄名及原始值提示。受控 Windows Job：`tests/test_ui_qt_workbench_view.py` **50 passed**、必要 `tests/test_ui_qt_update_view_workbench.py` **93 passed**、Update validator **25 passed／0 failed／4 skipped**、全域 mypy **1,153 source files，無錯誤**，三個修改 Python 檔 `py_compile` 通過。Job receipt SHA-256 `631314900ddff2e4da3b96095362d257754bbdfa2d5000277aa366ef3f0b6e0f`，exit 0、剩餘程序 0，kill-on-close／8 GiB／12 程序限制讀回通過，無強制清理。原始收據及 validator 輸出留在授權 scratch `industry-theme-qa/owned-qa-20261025-8b72bdac6e6e4daea5e4b7da4dbb7433/single_owned_qa_bc41ee47cca4419d972024162eb11e76/`。
+
+此項只改善已存在信心欄位的可見性，不補資料或改推薦計算、來源／Gate／PIT／ML 資格；原生 GUI 與 Owner UAT 未執行。
+
 ## 修改
 
 `DailyInvestmentJourneyService` 保留既有 `build()` 回傳契約，另提供單次讀取的 read-model 伴隨結果。WorkBench Source 只在每日旅程確認當日候選、保存結果身份、日期與 cohort 後，才把同一份 verified read model 注入 `AdviceDashboardDTO`。

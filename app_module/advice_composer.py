@@ -166,6 +166,10 @@ class AdviceComposer:
                 recommendations,
                 expected_result_id=result_id,
             )
+            liquidity_state_by_stock = self._liquidity_state_by_stock(
+                recommendations,
+                expected_result_id=result_id,
+            )
             recommendation_advice = tuple(
                 self._recommendation_advice(
                     recommendation,
@@ -191,6 +195,10 @@ class AdviceComposer:
                     source_evidence=source_evidence_by_stock.get(
                         recommendation.stock_code,
                         ("保存結果沒有可核對的同股逐筆篩選／Why Not／流動性證據；不能據此推定沒有反證或風險。",),
+                    ),
+                    liquidity_state=liquidity_state_by_stock.get(
+                        recommendation.stock_code,
+                        "UNKNOWN",
                     ),
                     portfolio_sizing_requested=portfolio_result is not None,
                     advice_contract_snapshot=advice_contract_snapshot,
@@ -266,6 +274,7 @@ class AdviceComposer:
         source_trace_kind: str = "RecommendationResultDTO",
         source_provenance: tuple[str, ...] = (),
         source_evidence: tuple[str, ...] = (),
+        liquidity_state: str = "UNKNOWN",
         portfolio_sizing_requested: bool = False,
         advice_contract_snapshot: StrategyAdviceContractSnapshot | None = None,
     ) -> RecommendationAdviceDTO:
@@ -339,6 +348,7 @@ class AdviceComposer:
             ),
             review_cadence=contract.review_cadence if contract is not None else "",
             execution_feasibility=self._feasibility_text(execution_feasible),
+            liquidity_state=liquidity_state,
             source_evidence=source_evidence,
             source_trace=source_trace + contract_trace,
             refusal_reasons=decision.reasons,
@@ -429,11 +439,81 @@ class AdviceComposer:
         }
 
     @staticmethod
+    def _liquidity_state_by_stock(
+        recommendations: RecommendationResultDTO | RecommendationExecutionReadModel | Sequence[RecommendationDTO],
+        *,
+        expected_result_id: str,
+    ) -> dict[str, str]:
+        """只投影同一保存結果中可核驗的負向流動性門檻，不推論通過。"""
+
+        try:
+            if isinstance(recommendations, RecommendationResultDTO):
+                projection: Mapping[str, object] = {
+                    "result_id": recommendations.result_id,
+                    "liquidity_gate_payload_json": recommendations.liquidity_gate_payload_json,
+                }
+            elif isinstance(recommendations, RecommendationExecutionReadModel):
+                projection = saved_recommendation_capture_projection(recommendations)
+            else:
+                return {}
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return {}
+        if projection.get("result_id") != expected_result_id:
+            return {}
+
+        rows = projection.get("liquidity_gate_payload_json")
+        if not isinstance(rows, (tuple, list)):
+            return {}
+        by_stock: dict[str, list[Mapping[str, object]]] = {}
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            stock_code = row.get("stock_code")
+            if type(stock_code) is str and stock_code.strip():
+                by_stock.setdefault(stock_code, []).append(row)
+
+        states: dict[str, str] = {}
+        for stock_code, stock_rows in by_stock.items():
+            if len(stock_rows) != 1:
+                states[stock_code] = "UNKNOWN"
+                continue
+            row = stock_rows[0]
+            reason_codes = row.get("reason_codes", row.get("exclusion_reason_codes", ()))
+            if reason_codes is None:
+                reason_codes = ()
+            if not isinstance(reason_codes, (tuple, list)) or any(
+                type(code) is not str for code in reason_codes
+            ):
+                states[stock_code] = "UNKNOWN"
+                continue
+            reason_text = " ".join(reason_codes).lower()
+            threshold_name = row.get("threshold_name", "")
+            if type(threshold_name) is not str:
+                states[stock_code] = "UNKNOWN"
+                continue
+            has_liquidity_basis = (
+                "liquidity" in reason_text or "liquidity" in threshold_name.lower()
+            )
+            status = row.get("status")
+            quality = row.get("quality")
+            states[stock_code] = (
+                "GATE_FAIL"
+                if (
+                    has_liquidity_basis
+                    and status == "fail"
+                    and quality == "observed"
+                )
+                else "UNKNOWN"
+            )
+        return states
+
+    @staticmethod
     def _refusal_recommendation(decision_date: str, data_as_of_date: str, warnings: tuple[str, ...]) -> RecommendationAdviceDTO:
         return RecommendationAdviceDTO(
             stock_code="",
             advice_action=AdviceAction.NO_NEW_POSITION,
             data_quality="MISSING",
+            liquidity_state="UNKNOWN",
             warnings=warnings,
             decision_date=decision_date,
             data_as_of_date=data_as_of_date,

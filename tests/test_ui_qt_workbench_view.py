@@ -92,7 +92,51 @@ def test_advice_detail_lists_missing_required_contract_fields_without_filling_th
 
     assert "Advice 必要欄位待補：成立理由、信心層級" in summary
     assert "資料日" in summary
+    assert "來源追溯" in summary
     assert "不可由分數或空白推定" in summary
+
+
+def test_advice_contract_completeness_treats_unknown_states_and_empty_trace_as_missing() -> None:
+    summary = _advice_contract_completeness(
+        RecommendationAdviceDTO(
+            stock_code="2330",
+            advice_action=AdviceAction.RESEARCH,
+            liquidity_state="UNKNOWN",
+            execution_feasibility="UNAVAILABLE",
+            source_trace=(),
+        )
+    )
+
+    assert "流動性狀態" in summary
+    assert "可成交性" in summary
+    assert "來源追溯" in summary
+    assert "UNKNOWN／UNAVAILABLE 不算完成" in summary
+
+
+def test_advice_contract_completeness_accepts_known_negative_states_with_trace() -> None:
+    summary = _advice_contract_completeness(
+        RecommendationAdviceDTO(
+            stock_code="2330",
+            advice_action=AdviceAction.AVOID,
+            why_reasons=("observed_gate_failure",),
+            confidence_tier="low",
+            evidence_tier="insufficient",
+            data_quality="MISSING",
+            strategy_version="v2.1",
+            decision_date="2026-10-26",
+            data_as_of_date="2026-10-25",
+            holding_horizon="5 sessions",
+            entry_thesis="觀察候選條件",
+            invalidation_conditions=("close_below_support",),
+            review_cadence="daily",
+            market_regime="neutral",
+            liquidity_state="GATE_FAIL",
+            execution_feasibility="NOT_FEASIBLE",
+            source_trace=("RecommendationResultDTO", "result-123"),
+        )
+    )
+
+    assert "目前均有可判讀值與來源追溯" in summary
 
 
 def test_advice_does_not_require_account_connection_or_offer_account_source_gate() -> None:
@@ -1203,6 +1247,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
                 advice_action=AdviceAction.NO_NEW_POSITION,
                 why_not_reasons=("evidence_quality_missing",),
                 data_quality="MISSING",
+                liquidity_state="UNKNOWN",
                 execution_feasibility="NOT_FEASIBLE",
             ),
         ),
@@ -1216,7 +1261,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert view.advanced_overview_layout.indexOf(view.advice_panel) == -1
     assert not view.advanced_workbench_panel.isAncestorOf(view.advice_panel)
     assert view.paper_account_context_label.isHidden()
-    assert view.advice_recommendation_model.columnCount() == 7
+    assert view.advice_recommendation_model.columnCount() == 8
     assert view.advice_recommendation_table.isColumnHidden(
         view.advice_recommendation_model.column_index("data_quality")
     )
@@ -1230,6 +1275,16 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     )
     assert view.advice_recommendation_model.data(action_index) == "暫不新增部位"
     assert view.advice_recommendation_model.data(action_index, Qt.ToolTipRole) == "原始值：NO_NEW_POSITION"
+    confidence_index = view.advice_recommendation_model.index(
+        0, view.advice_recommendation_model.column_index("confidence_tier")
+    )
+    assert view.advice_recommendation_model.headerData(
+        confidence_index.column(), Qt.Horizontal
+    ) == "決策信心"
+    assert view.advice_recommendation_model.data(confidence_index) == "未提供"
+    assert view.advice_recommendation_model.data(
+        confidence_index, Qt.ToolTipRole
+    ) == "原始值：未知"
     stock_index = view.advice_recommendation_model.index(
         0, view.advice_recommendation_model.column_index("stock_code")
     )
@@ -1254,7 +1309,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
         0, view.advice_recommendation_model.column_index("evidence_status")
     )
     assert view.advice_recommendation_model.data(status_index) == (
-        "缺漏｜成交：不可成交｜資料日：未知"
+        "缺漏｜流動性 Gate：未知｜成交：不可成交｜資料日：未知"
     )
     assert "決策日：未知" in view.advice_recommendation_model.data(
         status_index, Qt.ToolTipRole
@@ -1265,6 +1320,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert "正式 Advice" in view.advice_selection_card.text()
     assert "evidence_quality_missing" in view.advice_selection_card.text()
     assert "失效條件：未提供" in view.advice_selection_card.text()
+    assert "流動性 Gate：未知（原始值：UNKNOWN）" in view.advice_selection_card.text()
     assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
     assert view.advice_recommendation_model.rowCount() == 1
 
@@ -1280,10 +1336,12 @@ def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> N
             RecommendationAdviceDTO(
                 stock_code="2330",
                 advice_action=AdviceAction.RESEARCH,
+                confidence_tier="medium",
                 why_reasons=("research_gate_passed", "volume_confirmation"),
                 why_not_reasons=("price_current_session_missing", "source_not_fresh"),
                 risk_reasons=("position_limit_review", "low_liquidity_review"),
                 data_quality="PARTIAL",
+                liquidity_state="UNKNOWN",
                 decision_date="2026-07-06",
                 data_as_of_date="2026-07-03",
                 execution_feasibility="UNKNOWN",
@@ -1298,12 +1356,20 @@ def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> N
     quick_index = model.index(0, model.column_index("quick_reasons"))
     risk_index = model.index(0, model.column_index("primary_risk"))
     status_index = model.index(0, model.column_index("evidence_status"))
+    confidence_index = model.index(0, model.column_index("confidence_tier"))
 
     assert model.data(quick_index).startswith("支持：符合研究條件（另 1 項）｜反證：")
     assert "缺少當日價格" in model.data(quick_index, Qt.ToolTipRole)
     assert model.data(risk_index) == "持倉限制待覆核（另 1 項）"
-    assert model.data(status_index) == "部分資料｜成交：未知｜資料日：2026-07-03"
+    assert model.data(status_index) == (
+        "部分資料｜流動性 Gate：未知｜成交：未知｜資料日：2026-07-03"
+    )
+    assert "流動性 Gate：未知（原始值：UNKNOWN）" in model.data(
+        status_index, Qt.ToolTipRole
+    )
     assert "決策日：2026-07-06" in model.data(status_index, Qt.ToolTipRole)
+    assert model.data(confidence_index) == "中"
+    assert model.data(confidence_index, Qt.ToolTipRole) == "原始值：medium"
 
 
 def test_workbench_shows_stock_name_only_when_saved_result_identity_is_bound() -> None:

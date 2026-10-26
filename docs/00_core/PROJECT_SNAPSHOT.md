@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-26 Advice 帳戶來源缺件導覽：當 Advice 原警告明示沒有同一決策日帳戶持倉／現金／風險預算時，Workbench 顯示直達 Portfolio「配置研究封存」的按鈕；Main 會切到既有精確來源選擇 tab。這僅提供明確選取帳戶、策略版本與 Health 收據的下一步，不自動接入或核准來源、不計算風險預算；當日資料與配置答案仍未連成端到端。聚焦 66 passed、Workbench 93 passed、Update validator 25／0／4、mypy 1,149 檔 clean、4 個修改 Python 檔 compile 通過。未執行原生 GUI／Owner UAT／真實 checkpoint 選取；Gate 1、來源、PIT、ML 資格不變。詳[Advice 帳戶來源導覽 QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-advice-帳戶來源導覽)。
+
 2026-10-26 Gate 1 Advice 必要欄位缺口提示：選取 Workbench Advice／研究候選列時，判讀卡依 DTO 顯示仍空白的必要欄位，提示回查推薦來源與策略設定；不從分數補理由，且空的 Policy why-not／risk 集合不會一律當成缺件。聚焦 68 passed、Workbench 93 passed、Update validator 25／0／4、mypy 1,149 檔 clean、4 個修改 Python 檔 compile 通過。這只提高缺漏可見性，沒有補來源值；正式樣本完整性、自然資料、Gate 1、正式來源、PIT、ML 與 Owner UAT 狀態不變。詳[Advice 必要欄位 QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-advice-必要欄位缺口提示)。
 
 2026-10-26 Gate 1 Advice 保存證據追溯：canonical Recommendation read model 在 integrity basis 已核驗且 SHA-256 格式有效時，Advice 來源追溯會帶出 payload hash；Workbench 明確標示為已核驗保存結果 payload SHA-256。缺失／格式錯誤與 legacy hash 不會被提升成 canonical 已核驗證據，也不會輸出 artifact 路徑。聚焦 67 passed、Workbench 93 passed、Update validator 25／0／4、mypy 1,149 檔 clean、4 個修改 Python 檔 compile 通過。此項只改善來源回查，不補資料／帳戶輸入或改策略計算；Gate 1、正式來源、PIT、ML 與 Owner UAT 狀態不變。詳[Advice hash 追溯 QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-advice-保存來源-hash-追溯)。

@@ -95,6 +95,30 @@ def test_advice_detail_lists_missing_required_contract_fields_without_filling_th
     assert "不可由分數或空白推定" in summary
 
 
+def test_advice_missing_account_warning_opens_explicit_portfolio_source_flow() -> None:
+    app()
+    navigations: list[str] = []
+    view = UnifiedDecisionWorkbenchView(
+        auto_refresh=False,
+        navigate_to_portfolio_callback=lambda: navigations.append("portfolio"),
+    )
+    view._set_advice_state(
+        "NO_NEW_POSITION",
+        "risk_budget_unavailable",
+        warnings=("未載入同一決策日的帳戶持倉、現金與風險預算，因此不提供配置或加碼判斷。",),
+    )
+    view.show()
+    app().processEvents()
+
+    assert not view.advice_account_source_button.isHidden()
+    QTest.mouseClick(view.advice_account_source_button, Qt.MouseButton.LeftButton)
+    assert navigations == ["portfolio"]
+
+    view._set_advice_state("NO_NEW_POSITION", "risk_budget_unavailable")
+    assert view.advice_account_source_button.isHidden()
+    view.close()
+
+
 def _dashboard_with_replay() -> WorkbenchDashboardDTO:
     return WorkbenchDashboardDTO(
         as_of_date=date(2026, 7, 6),

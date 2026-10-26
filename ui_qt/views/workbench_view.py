@@ -526,6 +526,19 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_warning_status.setObjectName("adviceWarningStatus")
         self.advice_warning_status.setTextFormat(Qt.PlainText)
         self.advice_warning_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.advice_account_source_button = QPushButton(
+            "前往持倉管理選擇 Paper 帳戶與 checkpoint"
+        )
+        self.advice_account_source_button.setObjectName("adviceAccountSourceButton")
+        self.advice_account_source_button.setProperty("variant", "secondary")
+        self.advice_account_source_button.setToolTip(
+            "開啟「配置研究封存」明選策略 Paper 帳戶、版本與 Health 收據。"
+            "此處只導覽；選取不會自動注入或認可 Advice，也不會推算風險預算。"
+        )
+        self.advice_account_source_button.clicked.connect(
+            self._open_portfolio_account_source
+        )
+        self.advice_account_source_button.hide()
         self.advice_recommendation_table = self._make_table(self.advice_recommendation_model)
         self.advice_candidate_table = self._make_table(self.advice_candidate_model)
         self.advice_portfolio_table = self._make_table(self.advice_portfolio_model)
@@ -561,6 +574,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         advice_panel.layout.addWidget(self.advice_summary)
         advice_panel.layout.addWidget(self.advice_warning_status)
+        advice_panel.layout.addWidget(self.advice_account_source_button)
         advice_panel.layout.addWidget(self.advice_recommendation_table)
         self.advice_candidate_label = QLabel("Professional 研究候選（不屬於正式 Advice）")
         advice_panel.layout.addWidget(self.advice_candidate_label)
@@ -3472,6 +3486,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         warnings: tuple[str, ...] = (),
     ):
         self._clear_advice_presentation_selection()
+        self._update_advice_account_source_action(warnings)
         self.advice_recommendation_model.set_rows(())
         self.advice_candidate_model.set_rows(())
         self.advice_portfolio_model.set_rows(())
@@ -3652,6 +3667,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             if advice.warnings
             else "原警告：無原警告回報；這不代表沒有風險。"
         )
+        self._update_advice_account_source_action(tuple(advice.warnings))
         self.advice_recommendation_model.set_rows(visible_formal_rows)
         self.advice_candidate_model.set_rows(candidate_rows)
         self.advice_portfolio_model.set_rows(portfolio_rows)
@@ -3700,6 +3716,22 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _toggle_advice_lineage(self, expanded: bool) -> None:
         del expanded
         self._render_advice_presentation_detail()
+
+    def _update_advice_account_source_action(self, warnings: tuple[str, ...]) -> None:
+        """只在來源明確回報缺少帳戶輸入時提供相應導覽。"""
+
+        needs_account_source = any(
+            "未載入同一決策日的帳戶持倉、現金與風險預算" in warning
+            for warning in warnings
+        )
+        self.advice_account_source_button.setVisible(
+            needs_account_source and callable(self.navigate_to_portfolio_callback)
+        )
+
+    def _open_portfolio_account_source(self) -> None:
+        callback = self.navigate_to_portfolio_callback
+        if callable(callback):
+            callback()
 
     def _show_advice_row_presentation(self, model, row: int) -> None:
         """在 Workbench 直接展示共用 DTO；無法適配時 fail closed。"""

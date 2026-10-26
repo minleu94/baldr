@@ -42,3 +42,9 @@ canonical `RecommendationExecutionReadModel` 的 payload hash 只有在 query re
 選取 Advice／研究候選列時，判讀卡會列出 Advice 契約中為空的必要欄位，以及回查推薦來源與策略設定的下一步。顯示只檢查 DTO 已有值，不計算、不補理由、不把空欄當安全結論；`why_not_reasons` 與 `risk_reasons` 的空集合可表示無對應 Policy 原因，因此不會被一律判為缺件。這只能讓缺漏更容易被看到，不能代替真實來源填值或正式樣本 100% completeness Gate。
 
 新增 UI 案例驗證：`tests/test_advice_composer.py` 與 `tests/test_ui_qt_workbench_view.py` 合計 **68 passed**；強制 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,149 source files，無錯誤**；4 個修改 Python 檔 `py_compile` 通過。受控 runner 日誌位於 scratch `quarterly-coverage-qa/advice-completeness-focused.log`、`advice-completeness-workbench.log`、`advice-completeness-validator.log`、`advice-completeness-mypy.log` 與 `advice-completeness-pycompile.log`。原生 GUI 與 Owner UAT 未執行，Gate 1／來源／PIT／ML 狀態不變。
+
+## 2026-10-26 Advice 帳戶來源導覽
+
+當 Advice 原警告明確指出缺少同一決策日帳戶持倉／現金／風險預算時，Workbench 提供導覽按鈕直達 Portfolio「配置研究封存」來源選擇頁；Main 會切到該 tab，方便使用者明選策略 Paper 帳戶、版本與 Health 收據。此按鈕只改善下一步導覽，不把被選來源自動接入 Advice，也不授正式資格或推算 risk budget。專案任務初始化因 repo `output/` Junction 在此 sandbox 無法讀取，未建立 task.json；程式／測試工作繼續在既有 checkout 進行。
+
+`tests/test_ui_qt_workbench_view.py` 與 `tests/test_ui_qt_workbench_portfolio_health_navigation.py` 合計 **66 passed**，涵蓋缺帳戶警告按鈕的顯示／callback，以及 Main 直達「配置研究封存」tab；強制 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,149 source files，無錯誤**；修改的 4 個 Python 檔 `py_compile` 通過。QA 收據 `document_control check` 通過；Manual／Snapshot 檢查仍只被既有 `output/` Junction 外部引用拒絕讀取擋住。受控 runner 日誌位於 scratch `quarterly-coverage-qa/paper-account-navigation-focused.log`、`paper-account-navigation-workbench.log`、`paper-account-navigation-validator.log`、`paper-account-navigation-mypy.log` 與 `paper-account-navigation-pycompile.log`。原生 GUI、Owner UAT 與真實 checkpoint 選取未執行；帳戶資料尚未接線，Gate 1／正式來源／PIT／ML 狀態不變。

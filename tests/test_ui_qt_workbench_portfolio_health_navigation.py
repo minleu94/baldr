@@ -331,6 +331,29 @@ def test_generic_portfolio_navigation_remains_available_without_position_callbac
     assert view._open_selected_position_health() is False
 
 
+def test_workbench_missing_account_action_opens_portfolio_research_source_tab() -> None:
+    events: list[tuple[object, ...]] = []
+
+    class Tabs:
+        def count(self) -> int:
+            return 2
+
+        def tabText(self, index: int) -> str:
+            return ("Paper Portfolio", "配置研究封存")[index]
+
+        def setCurrentIndex(self, index: int) -> None:
+            events.append(("tab", index))
+
+    host = SimpleNamespace(
+        _select_main_workspace=lambda name: events.append(("workspace", name)),
+        portfolio_view=SimpleNamespace(portfolio_detail_tabs=Tabs()),
+    )
+
+    MainWindow._open_workbench_portfolio(host)
+
+    assert events == [("workspace", "portfolio"), ("tab", 1)]
+
+
 class _StatusBarStub:
     def __init__(self, events: list[tuple[object, ...]]) -> None:
         self.events = events

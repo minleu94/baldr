@@ -2028,6 +2028,14 @@ class MainWindow(QMainWindow):
 
     def _open_workbench_portfolio(self) -> None:
         self._select_main_workspace("portfolio")
+        view = getattr(self, "portfolio_view", None)
+        tabs = getattr(view, "portfolio_detail_tabs", None)
+        if tabs is None:
+            return
+        for index in range(tabs.count()):
+            if tabs.tabText(index) == "配置研究封存":
+                tabs.setCurrentIndex(index)
+                return
 
     def _open_workbench_saved_recommendation(self, result_id: str) -> bool:
         """由一般工作台明選原保存結果；不建立每日決策返回脈絡。"""

@@ -372,6 +372,121 @@ def test_composer_carries_only_verified_canonical_payload_hash_into_source_trace
     assert type(advice).from_dict(advice.to_dict()).source_trace == advice.source_trace
 
 
+def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.recommendation.contracts import StrategyAdviceContractSnapshot
+    from app_module.recommendation.queries import RecommendationExecutionReadModel
+    from app_module.strategy_advice_contract import StrategyAdviceContract
+
+    contract = StrategyAdviceContract(
+        thesis="策略作者明示的趨勢延續論點",
+        invalidation_conditions=("收盤跌破策略界線",),
+        holding_horizon="10 個交易日",
+        review_cadence="每個交易日收盤後",
+    )
+    snapshot = StrategyAdviceContractSnapshot(
+        strategy_version_id="version-1",
+        contract_sha256=contract.contract_sha256,
+        contract=contract,
+    )
+    execution = SimpleNamespace(
+        result_id="canonical-advice-contract-result",
+        context=SimpleNamespace(
+            result_config_snapshot=None,
+            strategy_identity=SimpleNamespace(strategy_version_id="version-1"),
+            advice_contract_snapshot=snapshot,
+        ),
+        decision=SimpleNamespace(
+            regime="Trend",
+            items=(
+                SimpleNamespace(
+                    stock_code="2330",
+                    stock_name="台積電",
+                    close_price=Decimal("1000"),
+                    price_change=Decimal("1"),
+                    rule_score=Decimal("90"),
+                    indicator_score=Decimal("30"),
+                    pattern_score=Decimal("30"),
+                    volume_score=Decimal("30"),
+                    reason_text="保存的規則理由",
+                    reasons=(),
+                    industry="半導體",
+                    regime_match=True,
+                    score_percentile_bp=None,
+                    eligible_universe_size=None,
+                    ranking_method=None,
+                    threshold_mode=None,
+                ),
+            ),
+        ),
+        ml_receipt_refs=(),
+    )
+    read_model = RecommendationExecutionReadModel(
+        execution=execution,
+        label="verified canonical result",
+        notes=None,
+        persisted_at=None,
+        payload_hash="sha256:" + "a" * 64,
+        artifact_location="private-path",
+        integrity_basis="canonical_payload_and_index_verified",
+    )
+
+    advice = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=read_model,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+
+    assert advice.entry_thesis == contract.thesis
+    assert advice.invalidation_conditions == contract.invalidation_conditions
+    assert advice.holding_horizon == contract.holding_horizon
+    assert advice.review_cadence == contract.review_cadence
+    assert advice.source_trace[-3:] == (
+        "strategy_advice_contract:",
+        "version-1",
+        contract.contract_sha256,
+    )
+    assert type(advice).from_dict(advice.to_dict()) == advice
+
+    unverified_read_model = RecommendationExecutionReadModel(
+        execution=execution,
+        label="legacy-only hash verification",
+        notes=None,
+        persisted_at=None,
+        payload_hash="sha256:" + "a" * 64,
+        artifact_location="private-path",
+        integrity_basis="legacy_read_time_hash_only",
+    )
+    unverified = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=unverified_read_model,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+    assert unverified.entry_thesis == ""
+    assert unverified.invalidation_conditions == ()
+    assert unverified.holding_horizon == ""
+    assert unverified.review_cadence == ""
+
+    legacy = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=_recommendation_result(),
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+    assert legacy.entry_thesis == ""
+    assert legacy.invalidation_conditions == ()
+    assert legacy.holding_horizon == ""
+    assert legacy.review_cadence == ""
+
+
 @pytest.mark.parametrize(
     ("payload_hash", "integrity_basis"),
     [

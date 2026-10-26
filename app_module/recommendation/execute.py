@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from copy import copy, deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -46,6 +46,7 @@ from app_module.recommendation.contracts import (
     ReferenceKind,
     Request,
     SnapshotCohort,
+    StrategyAdviceContractSnapshot,
     StrategyConfigIdentity,
     UniversePolicyIdentity,
     UniverseSnapshotIdentity,
@@ -187,6 +188,7 @@ def execute_recommendation(
     as_of_date: str | date | None = None,
     universe: list[str] | None = None,
     result_id: str | None = None,
+    advice_contract_snapshot: StrategyAdviceContractSnapshot | None = None,
     historical_research: bool = False,
     select_latest_available_cutoff: bool = False,
     request_config_snapshot: RecommendationConfigSnapshot | None = None,
@@ -212,6 +214,12 @@ def execute_recommendation(
         request_config_snapshot
     ) is not RecommendationConfigSnapshot:
         raise TypeError("request_config_snapshot 必須是 RecommendationConfigSnapshot")
+    if advice_contract_snapshot is not None and type(
+        advice_contract_snapshot
+    ) is not StrategyAdviceContractSnapshot:
+        raise TypeError(
+            "advice_contract_snapshot 必須是 StrategyAdviceContractSnapshot 或 None"
+        )
     if postprocess_callback is not None and request_config_snapshot is None:
         raise ValueError(
             "postprocess_callback 必須搭配原 caller RecommendationConfigSnapshot"
@@ -519,6 +527,7 @@ def execute_recommendation(
             postprocess_facts=postprocess_facts,
             body_result=body_result,
             max_stocks=max_stocks,
+            advice_contract_snapshot=advice_contract_snapshot,
         )
 
     if capture_sink is not None:
@@ -942,6 +951,7 @@ def _build_execution(
     compatibility_snapshot: LegacyCompatibilitySnapshot | None = None,
     post_calibration_handoff: RecommendationPostCalibrationHandoffV1,
     max_stocks: int,
+    advice_contract_snapshot: StrategyAdviceContractSnapshot | None = None,
 ) -> RecommendationExecution:
     body_context = body_result.context if body_result is not None else None
     if compatibility_snapshot is not None and type(
@@ -981,6 +991,24 @@ def _build_execution(
             else None
         )
     )
+    if advice_contract_snapshot is not None and status is ExecutionStatus.COMPLETED:
+        if strategy_identity is None:
+            raise ValueError(
+                "advice_contract_snapshot requires a captured strategy identity"
+            )
+        if (
+            strategy_identity.strategy_version_id is not None
+            and strategy_identity.strategy_version_id
+            != advice_contract_snapshot.strategy_version_id
+        ):
+            raise ValueError(
+                "advice_contract_snapshot version does not match the captured strategy identity"
+            )
+        # 版本連結是獨立身份欄位；不把 Advice 文字或版本 id 塞入計算設定／設定雜湊。
+        strategy_identity = replace(
+            strategy_identity,
+            strategy_version_id=advice_contract_snapshot.strategy_version_id,
+        )
     universe_identity = (
         body_context.universe_identity
         if body_context is not None
@@ -1096,6 +1124,11 @@ def _build_execution(
             else None
         ),
         strategy_identity=strategy_identity,
+        advice_contract_snapshot=(
+            advice_contract_snapshot
+            if status is ExecutionStatus.COMPLETED
+            else None
+        ),
         universe_identity=universe_identity,
         snapshot_cohort=(
             postprocess_facts.snapshot_cohort

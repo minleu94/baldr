@@ -196,13 +196,13 @@ def legacy_history_event_projection(
 ) -> dict[str, object]:
     """讀取明確支援的 event-only 歷史，不補造缺值。
 
-    支援的保存格式 revision 為 1、2。為延續既有讀取語意，已知 v1 欄位缺漏時
+    支援的保存格式 revision 為 1、2、3。為延續既有讀取語意，已知舊版欄位缺漏時
     保留為 ``None``；未知欄位、重複 event 與格式錯誤的容器一律拒絕。
     """
 
-    if type(schema_revision) is not int or schema_revision not in {1, 2}:
+    if type(schema_revision) is not int or schema_revision not in {1, 2, 3}:
         raise NegativeEvidenceProjectionError(
-            "event-only history 只支援 execution schema revision 1/2"
+            "event-only history 只支援 execution schema revision 1/2/3"
         )
     matches = tuple(
         event

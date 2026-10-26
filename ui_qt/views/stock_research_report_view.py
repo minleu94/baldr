@@ -5075,7 +5075,7 @@ class StockResearchReportView(QWidget):
             f"分類：{rec.classification.value}\n"
             f"資料品質：{rec.data_quality or '—'}\n"
             f"決策日：{rec.decision_date or '—'}｜資料日：{rec.data_as_of_date or '—'}\n"
-            f"適用期間：{rec.holding_horizon or '未提供'}"
+            f"適用期間：{rec.holding_horizon or '未提供'}｜檢視頻率：{rec.review_cadence or '未提供'}"
         )
         layout.addWidget(self._wrapped_label(text))
         for title, values in (

@@ -13,6 +13,7 @@ from app_module.recommendation.contracts import (
     ExecutionStatus,
     RecommendationConfigSnapshot,
     RecommendationExecution,
+    StrategyAdviceContractSnapshot,
 )
 from app_module.recommendation.execute import execute_recommendation
 
@@ -52,10 +53,23 @@ class RecommendationExecutionRequest:
     max_stocks: int = 200
     top_n: int = 50
     universe: tuple[str, ...] | None = None
+    advice_contract_snapshot: StrategyAdviceContractSnapshot | None = None
     config_snapshot: RecommendationConfigSnapshot = field(init=False)
 
     def __post_init__(self) -> None:
         config = deepcopy(self.config)
+        if self.advice_contract_snapshot is not None:
+            if type(self.advice_contract_snapshot) is not StrategyAdviceContractSnapshot:
+                raise TypeError(
+                    "advice_contract_snapshot 必須是 StrategyAdviceContractSnapshot 或 None"
+                )
+            expected_profile_id = (
+                f"strategy_version:{self.advice_contract_snapshot.strategy_version_id}"
+            )
+            if config.get("profile_id") != expected_profile_id:
+                raise ValueError(
+                    "advice_contract_snapshot 必須符合本次精確選取的策略版本 Profile"
+                )
         if self.universe is not None:
             if not self.universe or len(self.universe) > 200 or any(not re.fullmatch(r"[0-9]{4,6}", code) for code in self.universe):
                 raise ValueError("指定研究範圍必須為1至200個有效股票代碼")
@@ -118,6 +132,7 @@ class RecommendationExecutionRequest:
             max_stocks=self.max_stocks,
             top_n=self.top_n,
             request_config_snapshot=self.config_snapshot,
+            advice_contract_snapshot=self.advice_contract_snapshot,
             cancel=cancellation_callback,
             progress=use_case_progress,
             **({"universe": list(self.universe)} if self.universe is not None else {}),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from dataclasses import replace
 from decimal import Decimal
 import hashlib
 from inspect import Parameter, signature
@@ -41,11 +42,13 @@ from app_module.recommendation.contracts import (
     SnapshotCohortCoverage,
     SnapshotCohortCoverageStatus,
     SUPPORTED_EXECUTION_SCHEMA_REVISIONS,
+    StrategyAdviceContractSnapshot,
     StrategyConfigIdentity,
     UniversePolicyIdentity,
     UniverseSnapshotIdentity,
     VersionReference,
 )
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from data_module.contracts.market import SourceRef
 from decision_module.recommendation.contracts import (
     CandidateAssessment,
@@ -116,7 +119,6 @@ def _strategy_identity() -> StrategyConfigIdentity:
         SCHEDULED_RECOMMENDATION_STRATEGY_VERSION_ID,
         build_strategy_config_identity,
     )
-
     payload = build_strategy_config_identity(
         {"entry_threshold": "0.0100"}, max_stocks=3, top_n=2
     )
@@ -128,6 +130,21 @@ def _strategy_identity() -> StrategyConfigIdentity:
         strategy_config_spec_json=json.dumps(
             payload["strategy_config_spec"], ensure_ascii=False
         ),
+    )
+
+
+def _advice_contract_snapshot() -> StrategyAdviceContractSnapshot:
+    strategy_identity = _strategy_identity()
+    contract = StrategyAdviceContract(
+        thesis="突破整理後，趨勢延續條件仍成立",
+        invalidation_conditions=("收盤跌破整理區下緣",),
+        holding_horizon="20 個交易日",
+        review_cadence="每 5 個交易日",
+    )
+    return StrategyAdviceContractSnapshot(
+        strategy_version_id=str(strategy_identity.strategy_version_id),
+        contract_sha256=contract.contract_sha256,
+        contract=contract,
     )
 
 
@@ -458,15 +475,15 @@ def test_r009_all_contract_fields_round_trip_and_keep_opaque_result_id() -> None
 
 
 def test_r009_current_contract_revision_is_explicitly_supported() -> None:
-    assert EXECUTION_SCHEMA_REVISION == 2
-    assert SUPPORTED_EXECUTION_SCHEMA_REVISIONS == (1, 2)
+    assert EXECUTION_SCHEMA_REVISION == 3
+    assert SUPPORTED_EXECUTION_SCHEMA_REVISIONS == (1, 2, 3)
     raw = encode_execution(_execution())
 
-    assert _document(raw)["schema_revision"] == 2
+    assert _document(raw)["schema_revision"] == 3
     assert decode_execution(raw).result_id == _execution().result_id
     envelope = decode_execution_envelope(raw)
     assert envelope.schema_version == "recommendation-execution.v1"
-    assert envelope.schema_revision == 2
+    assert envelope.schema_revision == 3
     assert envelope.payload_hash == _document(raw)["payload_hash"]
     assert envelope.raw_payload == raw
     assert envelope.raw_payload_sha256 == "sha256:" + hashlib.sha256(raw).hexdigest()
@@ -534,6 +551,52 @@ def test_r009_missing_optional_uses_contract_default_without_rewriting_input() -
     assert historical_variant == preserved_bytes
 
 
+def test_r009_rev2_context_without_advice_snapshot_decodes_as_none() -> None:
+    document = _document(encode_execution(_execution()))
+    document["schema_revision"] = 2
+    context_fields = document["payload"]["fields"]["context"]["fields"]
+    context_fields.pop("advice_contract_snapshot", None)
+
+    decoded = decode_execution(_rehash(document))
+
+    assert decoded.context.advice_contract_snapshot is None
+
+
+def test_r009_advice_contract_snapshot_round_trips_and_is_bound_to_version() -> None:
+    execution = _execution()
+    snapshot = _advice_contract_snapshot()
+    with_snapshot = replace(
+        execution,
+        context=replace(execution.context, advice_contract_snapshot=snapshot),
+    )
+
+    raw = encode_execution(with_snapshot)
+    decoded = decode_execution(raw)
+    context_wire = _document(raw)["payload"]["fields"]["context"]["fields"]
+
+    assert context_wire["advice_contract_snapshot"]["$record"] == (
+        "recommendation.strategy-advice-contract-snapshot.v1"
+    )
+    assert decoded.context.advice_contract_snapshot == snapshot
+    assert decoded.context.advice_contract_snapshot.contract.contract_sha256 == (
+        snapshot.contract_sha256
+    )
+
+    wrong_version = StrategyAdviceContractSnapshot(
+        strategy_version_id="different-version",
+        contract_sha256=snapshot.contract_sha256,
+        contract=snapshot.contract,
+    )
+    with pytest.raises(ValueError, match="必須符合 strategy_identity"):
+        replace(execution.context, advice_contract_snapshot=wrong_version)
+    with pytest.raises(ValueError, match="必須符合快照中的作者契約"):
+        StrategyAdviceContractSnapshot(
+            strategy_version_id=snapshot.strategy_version_id,
+            contract_sha256="sha256:" + "0" * 64,
+            contract=snapshot.contract,
+        )
+
+
 def test_r009_rev1_fixture_decodes_without_rewriting_source_or_calling_writer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -578,6 +641,7 @@ def test_r009_rev1_fixture_decodes_without_rewriting_source_or_calling_writer(
     assert decoded.context.snapshot_cohort is None
     assert decoded.context.evidence_identity is None
     assert decoded.context.result_config_snapshot is None
+    assert decoded.context.advice_contract_snapshot is None
     assert decoded.decision is not None
     legacy_item = decoded.decision.items[0]
     assert legacy_item.close_price is None
@@ -594,7 +658,7 @@ def test_r009_rev1_fixture_decodes_without_rewriting_source_or_calling_writer(
     ("field", "value", "message"),
     (
         ("schema_revision", 0, "schema_revision"),
-        ("schema_revision", 3, "schema_revision"),
+        ("schema_revision", 4, "schema_revision"),
         ("schema_version", "recommendation-execution.v2", "schema_version"),
     ),
 )

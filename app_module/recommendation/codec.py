@@ -39,12 +39,14 @@ from app_module.recommendation.contracts import (
     SnapshotCohort,
     SnapshotCohortCoverage,
     SnapshotCohortCoverageStatus,
+    StrategyAdviceContractSnapshot,
     StrategyConfigIdentity,
     UniversePolicyIdentity,
     UniverseSnapshotIdentity,
     VersionReference,
     schema_version,
 )
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from data_module.contracts.market import SourceRef
 from decision_module.recommendation.contracts import (
     CandidateAssessment,
@@ -86,6 +88,8 @@ _RECORD_IDS: dict[type[object], str] = {
     RecommendationConfigSnapshot: "recommendation.config-snapshot.v1",
     RecommendationResultConfigSnapshot: "recommendation.result-config-snapshot.v1",
     StrategyConfigIdentity: "recommendation.strategy-config-identity.v1",
+    StrategyAdviceContractSnapshot: "recommendation.strategy-advice-contract-snapshot.v1",
+    StrategyAdviceContract: "recommendation.strategy-advice-contract.v1",
     UniversePolicyIdentity: "recommendation.universe-policy-identity.v1",
     UniverseSnapshotIdentity: "recommendation.universe-snapshot-identity.v1",
     RecommendationUniverseIdentity: "recommendation.universe-identity.v1",

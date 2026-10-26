@@ -101,6 +101,7 @@ class RecommendationAdviceDTO:
     holding_horizon: str = ""
     entry_thesis: str = ""
     invalidation_conditions: tuple[str, ...] = ()
+    review_cadence: str = ""
     market_regime: str = ""
     liquidity_state: str = ""
     execution_feasibility: str = ""
@@ -192,6 +193,7 @@ class RecommendationAdviceDTO:
             "holding_horizon": self.holding_horizon,
             "entry_thesis": self.entry_thesis,
             "invalidation_conditions": list(self.invalidation_conditions),
+            "review_cadence": self.review_cadence,
             "market_regime": self.market_regime,
             "liquidity_state": self.liquidity_state,
             "execution_feasibility": self.execution_feasibility,
@@ -246,6 +248,7 @@ class RecommendationAdviceDTO:
             holding_horizon=payload.get("holding_horizon", ""),
             entry_thesis=payload.get("entry_thesis", ""),
             invalidation_conditions=_string_tuple(payload.get("invalidation_conditions")),
+            review_cadence=payload.get("review_cadence", ""),
             market_regime=payload.get("market_regime", ""),
             liquidity_state=payload.get("liquidity_state", ""),
             execution_feasibility=payload.get("execution_feasibility", ""),

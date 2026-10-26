@@ -12,6 +12,7 @@ from app_module.backtest_repository import BacktestRunRepository
 from app_module.backtest_service import BacktestService
 from app_module.walkforward_service import WalkForwardService
 from app_module.strategy_version_service import StrategyVersionService
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from app_module.preset_service import PresetService
 from app_module.promotion_reconciliation_service import PromotionReconciliationService
 
@@ -157,7 +158,8 @@ class PromotionService:
         run_id: str,
         version_name: Optional[str] = None,
         profile_id: Optional[str] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        advice_contract: Optional[StrategyAdviceContract] = None,
     ) -> Optional[str]:
         """
         將回測結果升級為策略版本
@@ -178,6 +180,7 @@ class PromotionService:
                 run_id,
                 profile_id=profile_id,
                 notes=notes,
+                advice_contract=advice_contract,
             )
         
         # 1. 檢查升級條件
@@ -227,7 +230,8 @@ class PromotionService:
             regime=regime,
             source_run_id=run_id,
             profile_id=profile_id,
-            notes=notes
+            notes=notes,
+            advice_contract=advice_contract,
         )
         
         if version_id:

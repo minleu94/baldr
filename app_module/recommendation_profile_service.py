@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List, Optional
 
+from app_module.recommendation.contracts import StrategyAdviceContractSnapshot
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from decision_module.weight_contract import (
     LegacyWeightMigrationAdapter,
     RecommendationWeightContract,
@@ -101,6 +103,7 @@ class RecommendationProfile:
     validation_label: str = BUILTIN_PROFILE_LABEL
     risk_warning: Dict[str, Any] = field(default_factory=dict)
     source_version_id: Optional[str] = None
+    advice_contract_snapshot: Optional[StrategyAdviceContractSnapshot] = None
     enabled: bool = True
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -239,6 +242,10 @@ class RecommendationProfileService:
             strategy_id = str(version_data.get("strategy_id", "strategy"))
             strategy_version = str(version_data.get("strategy_version", "1.0.0"))
             version_id = str(version_data.get("version_id", f"{strategy_id}_{strategy_version}"))
+            advice_contract_snapshot = self._advice_contract_snapshot_for_version(
+                version_data,
+                version_id=version_id,
+            )
             profiles.append(
                 RecommendationProfile(
                     profile_id=f"strategy_version:{version_id}",
@@ -252,6 +259,7 @@ class RecommendationProfileService:
                     validation_label=STRATEGY_PROFILE_LABEL,
                     risk_warning=deepcopy(version_data.get("risk_warning", {})),
                     source_version_id=version_id,
+                    advice_contract_snapshot=advice_contract_snapshot,
                     enabled=True,
                     metadata={
                         "strategy_id": strategy_id,
@@ -261,6 +269,31 @@ class RecommendationProfileService:
                 )
             )
         return profiles
+
+    @staticmethod
+    def _advice_contract_snapshot_for_version(
+        version_data: Dict[str, Any],
+        *,
+        version_id: str,
+    ) -> Optional[StrategyAdviceContractSnapshot]:
+        """只投影可驗證且與來源 version_id 完全相符的作者契約。"""
+        stored_version_id = version_data.get("version_id")
+        raw_contract = version_data.get("advice_contract")
+        if (
+            type(stored_version_id) is not str
+            or stored_version_id != version_id
+            or not isinstance(raw_contract, dict)
+        ):
+            return None
+        try:
+            contract = StrategyAdviceContract.from_dict(raw_contract)
+            return StrategyAdviceContractSnapshot(
+                strategy_version_id=stored_version_id,
+                contract_sha256=contract.contract_sha256,
+                contract=contract,
+            )
+        except (TypeError, ValueError):
+            return None
 
     def save_custom_profile(
         self,

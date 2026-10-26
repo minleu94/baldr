@@ -13,6 +13,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass, asdict
 
+from app_module.strategy_advice_contract import StrategyAdviceContract
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,16 +40,34 @@ class StrategyVersion:
     validation_status: str = "pending"  # 'pending', 'validated', 'rejected'
     validation_metrics: Optional[Dict[str, Any]] = None  # Walk-Forward 結果、Baseline 對比結果
     notes: Optional[str] = None  # 備註
+    advice_contract: Optional[StrategyAdviceContract] = None
+
+    def __post_init__(self) -> None:
+        if (
+            self.advice_contract is not None
+            and type(self.advice_contract) is not StrategyAdviceContract
+        ):
+            raise TypeError("advice_contract 必須是 StrategyAdviceContract 或 None")
     
     def to_dict(self) -> Dict[str, Any]:
         """轉換為字典"""
-        return asdict(self)
+        payload = asdict(self)
+        if self.advice_contract is None:
+            # 舊版 StrategyVersion JSON 不加入 null 欄位，維持既有 wire shape。
+            payload.pop("advice_contract", None)
+        else:
+            payload["advice_contract"] = self.advice_contract.to_dict()
+        return payload
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'StrategyVersion':
         """從字典創建"""
         version_data = dict(data)
         version_data.pop('version', None)
+        if 'advice_contract' in version_data:
+            version_data['advice_contract'] = StrategyAdviceContract.from_dict(
+                version_data['advice_contract']
+            )
         return cls(**version_data)
 
 
@@ -152,7 +172,8 @@ class StrategyVersionService:
         validation_status: str = "pending",
         validation_metrics: Optional[Dict[str, Any]] = None,
         notes: Optional[str] = None,
-        version_id: Optional[str] = None
+        version_id: Optional[str] = None,
+        advice_contract: Optional[StrategyAdviceContract] = None,
     ) -> str:
         """
         創建策略版本
@@ -197,7 +218,8 @@ class StrategyVersionService:
             profile_version=profile_version,
             validation_status=validation_status,
             validation_metrics=validation_metrics,
-            notes=notes
+            notes=notes,
+            advice_contract=advice_contract,
         )
         
         version_data = {
@@ -354,6 +376,8 @@ class StrategyVersionService:
         
         # 更新欄位
         for key, value in kwargs.items():
+            if key == "advice_contract":
+                raise ValueError("策略版本的 advice_contract 為 create-only；請建立新策略版本")
             if hasattr(version, key):
                 setattr(version, key, value)
         

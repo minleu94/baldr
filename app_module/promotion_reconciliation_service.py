@@ -9,6 +9,7 @@ from typing import Any
 
 from app_module.research_run_repository import ResearchRunRepository
 from app_module.strategy_version_service import StrategyVersionService
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from app_module.strategy_lifecycle_service import (
     LifecycleAction,
     StrategyLifecycleService,
@@ -55,6 +56,7 @@ class PromotionReconciliationService:
         *,
         profile_id: str | None = None,
         notes: str | None = None,
+        advice_contract: StrategyAdviceContract | None = None,
     ) -> str:
         raw = self.research_repository.get_raw_metadata_row(run_id)
         metadata = self.research_repository.get_metadata(run_id)
@@ -88,6 +90,7 @@ class PromotionReconciliationService:
                 "benchmark_results": metadata.benchmark_results,
             },
             notes=notes,
+            advice_contract=advice_contract,
         )
 
         registry_marked = False

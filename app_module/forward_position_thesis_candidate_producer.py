@@ -1093,11 +1093,11 @@ class ForwardPositionThesisCandidateProducer:
             raise ForwardPositionThesisError("recommendation_read_integrity_not_canonical")
         if (
             read_model.schema_version != RecommendationExecution.schema_version
-            or read_model.schema_revision != 2
+            or read_model.schema_revision not in {2, 3}
             or save_receipt.schema_version != RecommendationExecution.schema_version
-            or save_receipt.schema_revision != 2
+            or save_receipt.schema_revision not in {2, 3}
         ):
-            raise ForwardPositionThesisError("recommendation_execution_revision_not_rev2")
+            raise ForwardPositionThesisError("recommendation_execution_revision_not_supported")
         if save_receipt.index_status is not IndexStatus.INDEXED:
             raise ForwardPositionThesisError("recommendation_save_receipt_not_indexed")
         if read_model.result_id != execution.result_id or save_receipt.result_id != execution.result_id:

@@ -11,6 +11,7 @@ from app_module.recommendation_profile_service import (
     RecommendationProfileService,
     RegimeProfileSuggestion,
 )
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from ui_qt.views.recommendation_view import RecommendationView
 
 
@@ -41,6 +42,12 @@ class FakeRegimeService:
 
 class FakeStrategyVersionService:
     def list_versions(self):
+        contract = StrategyAdviceContract(
+            thesis="作者聲明的策略論點",
+            invalidation_conditions=("作者聲明的失效條件",),
+            holding_horizon="5 個交易日",
+            review_cadence="每日收盤",
+        )
         return [
             {
                 "version_id": "version_breakout",
@@ -51,6 +58,7 @@ class FakeStrategyVersionService:
                 "profile_version": "1.2.0",
                 "regime": ["Breakout"],
                 "config": {"signals": {"weights": {"pattern": 3000, "technical": 4500, "volume": 2500}}},
+                "advice_contract": contract.to_dict(),
             }
         ]
 
@@ -122,6 +130,33 @@ def test_selected_profile_explains_regime_compatibility_and_custom_validation(tm
     assert "match" in text
     assert "分數影響" in text
     assert "bonus" in text
+
+
+def test_selected_exact_strategy_profile_binds_its_advice_contract_snapshot(tmp_path):
+    _app()
+    profile_service = RecommendationProfileService(
+        FakeConfig(tmp_path),
+        builtin_profiles=None,
+        strategy_version_service=FakeStrategyVersionService(),
+    )
+    view = RecommendationView(
+        recommendation_service=FakeRecommendationService(),
+        regime_service=FakeRegimeService(),
+        config=None,
+        profile_service=profile_service,
+    )
+
+    index = view.profile_combo.findData("strategy_version:version_breakout")
+    assert index >= 0
+    view.profile_combo.setCurrentIndex(index)
+
+    snapshot = view.selected_advice_contract_snapshot
+    assert snapshot is not None
+    assert snapshot.strategy_version_id == "version_breakout"
+    assert snapshot.contract.thesis == "作者聲明的策略論點"
+
+    view.profile_combo.setCurrentIndex(view.profile_combo.findData("momentum"))
+    assert view.selected_advice_contract_snapshot is None
 
 
 def test_builtin_profile_description_shows_weights_filters_and_patterns(tmp_path):

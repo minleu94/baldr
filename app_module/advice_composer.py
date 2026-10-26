@@ -20,6 +20,7 @@ from app_module.advice_policy import AdvicePolicy
 from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
 from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.recommendation.contracts import StrategyAdviceContractSnapshot
 from app_module.saved_recommendation_queries import (
     execution_result_config,
     saved_recommendation_capture_projection,
@@ -100,6 +101,19 @@ class AdviceComposer:
             if isinstance(recommendations, RecommendationExecutionReadModel)
             else {}
         )
+        advice_contract_snapshot = None
+        if (
+            isinstance(recommendations, RecommendationExecutionReadModel)
+            and recommendations.integrity_basis == "canonical_payload_and_index_verified"
+            and recommendations.execution is not None
+        ):
+            advice_contract_snapshot = (
+                getattr(
+                    recommendations.execution.context,
+                    "advice_contract_snapshot",
+                    None,
+                )
+            )
         for recommendation in recommendation_rows:
             calibration_by_stock.setdefault(
                 recommendation.stock_code,
@@ -179,6 +193,7 @@ class AdviceComposer:
                         ("保存結果沒有可核對的同股逐筆篩選／Why Not／流動性證據；不能據此推定沒有反證或風險。",),
                     ),
                     portfolio_sizing_requested=portfolio_result is not None,
+                    advice_contract_snapshot=advice_contract_snapshot,
                 )
                 for recommendation in recommendation_rows
             )
@@ -252,6 +267,7 @@ class AdviceComposer:
         source_provenance: tuple[str, ...] = (),
         source_evidence: tuple[str, ...] = (),
         portfolio_sizing_requested: bool = False,
+        advice_contract_snapshot: StrategyAdviceContractSnapshot | None = None,
     ) -> RecommendationAdviceDTO:
         decision = self._policy.decide(
             mode=mode,
@@ -269,6 +285,8 @@ class AdviceComposer:
             calibration if calibration is not None else recommendation,
             expected_stock_code=recommendation.stock_code,
         )
+        # 校準觀察期間不是策略作者聲明的持有期間。
+        calibration_fields.pop("holding_horizon", None)
         source_trace = (
             (source_trace_kind,)
             + ((str(result_id),) if result_id else ())
@@ -282,6 +300,20 @@ class AdviceComposer:
             risk_budget_available=self._bool_or_none(risk_budget_available),
             portfolio_sizing_requested=portfolio_sizing_requested,
             warnings=warnings,
+        )
+        contract = (
+            advice_contract_snapshot.contract
+            if advice_contract_snapshot is not None
+            else None
+        )
+        contract_trace = (
+            (
+                "strategy_advice_contract:",
+                advice_contract_snapshot.strategy_version_id,
+                advice_contract_snapshot.contract_sha256,
+            )
+            if advice_contract_snapshot is not None
+            else ()
         )
         return RecommendationAdviceDTO(
             stock_code=recommendation.stock_code,
@@ -300,9 +332,15 @@ class AdviceComposer:
             decision_date=decision_date,
             data_as_of_date=data_as_of_date,
             market_regime=market_regime,
+            holding_horizon=contract.holding_horizon if contract is not None else "",
+            entry_thesis=contract.thesis if contract is not None else "",
+            invalidation_conditions=(
+                contract.invalidation_conditions if contract is not None else ()
+            ),
+            review_cadence=contract.review_cadence if contract is not None else "",
             execution_feasibility=self._feasibility_text(execution_feasible),
             source_evidence=source_evidence,
-            source_trace=source_trace,
+            source_trace=source_trace + contract_trace,
             refusal_reasons=decision.reasons,
             **calibration_fields,
         )

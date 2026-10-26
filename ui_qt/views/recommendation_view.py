@@ -60,9 +60,11 @@ from app_module.scheduled_recommendation_status import (
 )
 from decision_module.recommendation.contracts import RecommendationItem
 from app_module.recommendation_profile_service import (
+    PROFILE_TYPE_STRATEGY_VERSION,
     RecommendationProfile,
     RecommendationProfileService,
 )
+from app_module.recommendation.contracts import StrategyAdviceContractSnapshot
 from app_module.strategy_version_service import StrategyVersionService
 from data_module.config import TWStockConfig
 from ui_qt.widgets.info_button import InfoButton
@@ -894,6 +896,7 @@ class RecommendationView(QWidget):
         self.current_config: Optional[Dict[str, Any]] = None
         self.current_regime: Optional[str] = None
         self.current_profile: Optional[str] = None  # 當前使用的 Profile
+        self.selected_advice_contract_snapshot: Optional[StrategyAdviceContractSnapshot] = None
 
         # 模式切換（新手/進階）
         self.is_beginner_mode = True  # 預設為新手模式
@@ -4906,6 +4909,7 @@ class RecommendationView(QWidget):
                 "尚未選擇策略風格；請先選擇 Profile，再執行推薦分析。"
             )
             self.current_profile = None
+            self.selected_advice_contract_snapshot = None
             return
 
         profile_option = self._get_profile_option(profile_id)
@@ -4914,6 +4918,17 @@ class RecommendationView(QWidget):
             return
 
         self.current_profile = str(profile_id)
+        self.selected_advice_contract_snapshot = None
+        if (
+            profile_option is not None
+            and profile_option.profile_type == PROFILE_TYPE_STRATEGY_VERSION
+            and profile_option.source_version_id is not None
+            and type(profile_option.advice_contract_snapshot)
+            is StrategyAdviceContractSnapshot
+            and profile_option.advice_contract_snapshot.strategy_version_id
+            == profile_option.source_version_id
+        ):
+            self.selected_advice_contract_snapshot = profile_option.advice_contract_snapshot
         desc_text = self._build_profile_description(profile_option, profile)
         self.profile_desc_label.setText(desc_text)
         self.profile_advanced_label.setText(desc_text)
@@ -5336,15 +5351,36 @@ class RecommendationView(QWidget):
         config = self._collect_config()
         config = deepcopy(config)
         active_profile = self.profile_combo.currentData() if self.is_beginner_mode else None
+        advice_contract_snapshot = None
         if active_profile:
             profile_meta = self.profiles.get(active_profile, {})
             config["profile_id"] = active_profile
             config["profile_version"] = profile_meta.get("version", "1.0.0")
+            profile_option = self._get_profile_option(active_profile)
+            if (
+                profile_option is not None
+                and profile_option.profile_type == PROFILE_TYPE_STRATEGY_VERSION
+                and profile_option.source_version_id is not None
+                and type(profile_option.advice_contract_snapshot)
+                is StrategyAdviceContractSnapshot
+                and type(self.selected_advice_contract_snapshot)
+                is StrategyAdviceContractSnapshot
+                and self.selected_advice_contract_snapshot.strategy_version_id
+                == profile_option.source_version_id
+                and self.selected_advice_contract_snapshot.contract_sha256
+                == profile_option.advice_contract_snapshot.contract_sha256
+                and self.current_profile == active_profile
+            ):
+                advice_contract_snapshot = self.selected_advice_contract_snapshot
         scope_input = getattr(self, "research_scope_input", None)
         scope_text = scope_input.text().strip() if scope_input is not None else ""
         universe = tuple(dict.fromkeys(re.split(r"[\s,，]+", scope_text))) if scope_text else None
         try:
-            request = RecommendationExecutionRequest(config, universe=universe)
+            request = RecommendationExecutionRequest(
+                config,
+                universe=universe,
+                advice_contract_snapshot=advice_contract_snapshot,
+            )
         except ValueError as exc:
             QMessageBox.warning(self, "研究範圍錯誤", str(exc))
             return

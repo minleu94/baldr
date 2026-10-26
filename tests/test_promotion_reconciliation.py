@@ -16,6 +16,7 @@ from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_run_repository import ResearchRunRepository
 from app_module.research_run_service import ResearchRunService
 from app_module.strategy_version_service import StrategyVersionService
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from data_module.config import TWStockConfig
 
 
@@ -91,8 +92,18 @@ def _service(tmp_path):
 def test_promote_registry_run_creates_json_and_marks_registry(tmp_path):
     research_service, version_service, reconciliation = _service(tmp_path)
     saved = research_service.save_run(_metadata(), _equity(), _trades())
+    advice_contract = StrategyAdviceContract(
+        thesis="作者確認趨勢條件與進場依據",
+        invalidation_conditions=("收盤跌破策略設定的趨勢界線",),
+        holding_horizon="5–10 個交易日",
+        review_cadence="每個交易日收盤後",
+    )
 
-    version_id = reconciliation.promote_registry_run(saved.run_id, notes="通過 registry gate")
+    version_id = reconciliation.promote_registry_run(
+        saved.run_id,
+        notes="通過 registry gate",
+        advice_contract=advice_contract,
+    )
 
     version = version_service.get_version(version_id)
     assert version is not None
@@ -100,6 +111,7 @@ def test_promote_registry_run_creates_json_and_marks_registry(tmp_path):
     assert version.strategy_id == "baseline_score"
     assert version.params["buy_score"] == 70
     assert version.backtest_summary["total_return"] == 0.08
+    assert version.advice_contract == advice_contract
 
     promoted = research_service.repository.get_metadata(saved.run_id)
     assert promoted.promoted_version_id == version_id
@@ -347,6 +359,12 @@ def test_single_backtest_promotion_service_delegates_to_registry_reconciliation(
     reconciliation = MagicMock()
     reconciliation.promote_registry_run.return_value = "version-from-registry"
     legacy_repository = MagicMock()
+    advice_contract = StrategyAdviceContract(
+        thesis="作者明確填寫的策略論點",
+        invalidation_conditions=("作者明確填寫的失效條件",),
+        holding_horizon="3 個交易日",
+        review_cadence="每日收盤",
+    )
     service = PromotionService(
         config=config,
         backtest_repository=legacy_repository,
@@ -360,6 +378,7 @@ def test_single_backtest_promotion_service_delegates_to_registry_reconciliation(
         "registry-run-001",
         profile_id="balanced",
         notes="registry path",
+        advice_contract=advice_contract,
     )
 
     assert version_id == "version-from-registry"
@@ -367,6 +386,7 @@ def test_single_backtest_promotion_service_delegates_to_registry_reconciliation(
         "registry-run-001",
         profile_id="balanced",
         notes="registry path",
+        advice_contract=advice_contract,
     )
     legacy_repository.get_run.assert_not_called()
 

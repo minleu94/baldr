@@ -2,6 +2,8 @@ from decimal import Decimal
 import json
 
 from app_module.recommendation_profile_service import RecommendationProfileService
+from app_module.recommendation.contracts import StrategyAdviceContractSnapshot
+from app_module.strategy_advice_contract import StrategyAdviceContract
 
 
 class FakeConfig:
@@ -139,3 +141,59 @@ def test_regime_compatibility_discloses_effect_without_excluding_results(tmp_pat
     assert neutral.status == "neutral"
     assert neutral.score_effect == "no_bonus"
     assert neutral.excludes_results is False
+
+
+def test_strategy_version_profile_projects_only_exact_verified_advice_contract(tmp_path):
+    contract = StrategyAdviceContract(
+        thesis="作者明確聲明的策略論點",
+        invalidation_conditions=("作者明確聲明的失效條件",),
+        holding_horizon="5 個交易日",
+        review_cadence="每日收盤",
+    )
+    versions = [
+        {
+            "version_id": "version_exact",
+            "strategy_id": "exact_lab",
+            "strategy_version": "1.0.0",
+            "validation_status": "validated",
+            "advice_contract": contract.to_dict(),
+        },
+        {
+            "version_id": "version_invalid_contract",
+            "strategy_id": "invalid_lab",
+            "strategy_version": "1.0.0",
+            "validation_status": "validated",
+            "advice_contract": {
+                **contract.to_dict(),
+                "contract_sha256": "sha256:" + "0" * 64,
+            },
+        },
+        {
+            "strategy_id": "missing_exact_id",
+            "strategy_version": "1.0.0",
+            "validation_status": "validated",
+            "advice_contract": contract.to_dict(),
+        },
+    ]
+    service = RecommendationProfileService(
+        FakeConfig(tmp_path),
+        builtin_profiles={},
+        strategy_version_service=FakeStrategyVersionService(versions),
+    )
+
+    profiles = {
+        profile.source_version_id: profile
+        for profile in service.list_strategy_version_profiles()
+    }
+
+    snapshot = profiles["version_exact"].advice_contract_snapshot
+    assert type(snapshot) is StrategyAdviceContractSnapshot
+    assert snapshot.strategy_version_id == "version_exact"
+    assert snapshot.contract_sha256 == contract.contract_sha256
+    assert profiles["version_invalid_contract"].advice_contract_snapshot is None
+    missing_exact_profile = next(
+        profile
+        for profile in profiles.values()
+        if profile.metadata["strategy_id"] == "missing_exact_id"
+    )
+    assert missing_exact_profile.advice_contract_snapshot is None

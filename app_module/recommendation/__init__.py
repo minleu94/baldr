@@ -2,6 +2,7 @@
 
 from .contracts import (
     EXECUTION_SCHEMA_REVISION,
+    SUPPORTED_EXECUTION_SCHEMA_REVISIONS,
     ExecutionEvent,
     ExecutionStatus,
     IndexStatus,
@@ -17,12 +18,15 @@ from .contracts import (
     SaveReceipt,
     VersionReference,
     Context,
+    StrategyAdviceContractSnapshot,
     schema_version,
 )
 
 __all__ = (
     "EXECUTION_SCHEMA_REVISION",
+    "SUPPORTED_EXECUTION_SCHEMA_REVISIONS",
     "Context",
+    "StrategyAdviceContractSnapshot",
     "ExecutionEvent",
     "ExecutionStatus",
     "IndexStatus",

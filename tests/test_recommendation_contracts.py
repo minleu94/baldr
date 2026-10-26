@@ -1029,10 +1029,10 @@ def test_aware_clock_and_schema_receipt_preserve_precision() -> None:
     )
     assert receipt.persisted_at is persisted_at
     assert receipt.schema_version == "recommendation-execution.v1"
-    assert receipt.schema_revision == 2
+    assert receipt.schema_revision == 3
     assert schema_version == "recommendation-execution.v1"
-    assert EXECUTION_SCHEMA_REVISION == 2
-    assert SUPPORTED_EXECUTION_SCHEMA_REVISIONS == (1, 2)
+    assert EXECUTION_SCHEMA_REVISION == 3
+    assert SUPPORTED_EXECUTION_SCHEMA_REVISIONS == (1, 2, 3)
     historical_receipt = SaveReceipt(
         result_id=RESULT_ID,
         payload_hash="legacy-hash",
@@ -1042,14 +1042,14 @@ def test_aware_clock_and_schema_receipt_preserve_precision() -> None:
         schema_revision=1,
     )
     assert historical_receipt.schema_revision == 1
-    with pytest.raises(ValueError, match="revision 1 或 2"):
+    with pytest.raises(ValueError, match="revision 1、2 或 3"):
         SaveReceipt(
             result_id=RESULT_ID,
             payload_hash="legacy-hash",
             artifact_location=None,
             persisted_at=persisted_at,
             index_status=IndexStatus.UNKNOWN,
-            schema_revision=3,
+            schema_revision=4,
         )
     with pytest.raises(ValueError, match="時區"):
         SaveReceipt(RESULT_ID, "hash", None, datetime(2026, 9, 21), IndexStatus.UNKNOWN)

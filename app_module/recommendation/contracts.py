@@ -15,6 +15,8 @@ from types import MappingProxyType
 from typing import ClassVar, TypeVar, cast
 from zoneinfo import ZoneInfo
 
+from app_module.strategy_advice_contract import StrategyAdviceContract
+
 from data_module.contracts.market import SourceRef
 from decision_module.recommendation.contracts import (
     CandidateAssessment,
@@ -30,8 +32,8 @@ from decision_module.recommendation.contracts import (
 
 
 schema_version = "recommendation-execution.v1"
-EXECUTION_SCHEMA_REVISION = 2
-SUPPORTED_EXECUTION_SCHEMA_REVISIONS: tuple[int, ...] = (1, 2)
+EXECUTION_SCHEMA_REVISION = 3
+SUPPORTED_EXECUTION_SCHEMA_REVISIONS: tuple[int, ...] = (1, 2, 3)
 _SHA256_TEXT_PATTERN = re.compile(r"(?:sha256:)?[0-9a-f]{64}\Z")
 _JSON_DOUBLE_MAX = Decimal.from_float(sys.float_info.max)
 _T = TypeVar("_T")
@@ -563,6 +565,23 @@ class StrategyConfigIdentity:
             spec, "strategy_config_spec_json"
         ):
             raise ValueError("strategy_config_hash 必須符合已保存的完整 strategy spec")
+
+
+@dataclass(frozen=True, slots=True)
+class StrategyAdviceContractSnapshot:
+    """策略作者契約的結果快照，綁定本次執行所用的精確版本。"""
+
+    strategy_version_id: str
+    contract_sha256: str
+    contract: StrategyAdviceContract
+
+    def __post_init__(self) -> None:
+        _require_nonblank(self.strategy_version_id, "strategy_version_id")
+        _validate_sha256_hash(self.contract_sha256, "contract_sha256")
+        if type(self.contract) is not StrategyAdviceContract:
+            raise TypeError("contract 必須是 StrategyAdviceContract")
+        if self.contract_sha256 != self.contract.contract_sha256:
+            raise ValueError("contract_sha256 必須符合快照中的作者契約")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1410,6 +1429,7 @@ class Context:
     snapshot_cohort: SnapshotCohort | None = None
     evidence_identity: RecommendationRunEvidenceIdentity | None = None
     result_config_snapshot: RecommendationResultConfigSnapshot | None = None
+    advice_contract_snapshot: StrategyAdviceContractSnapshot | None = None
 
     def __post_init__(self) -> None:
         _require_date(self.as_of_date, "as_of_date")
@@ -1460,6 +1480,22 @@ class Context:
             raise TypeError(
                 "result_config_snapshot 必須是 RecommendationResultConfigSnapshot 或 None"
             )
+        if self.advice_contract_snapshot is not None:
+            if type(self.advice_contract_snapshot) is not StrategyAdviceContractSnapshot:
+                raise TypeError(
+                    "advice_contract_snapshot 必須是 StrategyAdviceContractSnapshot 或 None"
+                )
+            if self.strategy_identity is None or not self.strategy_identity.strategy_version_id:
+                raise ValueError(
+                    "advice_contract_snapshot 必須有對應的 strategy_identity.strategy_version_id"
+                )
+            if (
+                self.advice_contract_snapshot.strategy_version_id
+                != self.strategy_identity.strategy_version_id
+            ):
+                raise ValueError(
+                    "advice_contract_snapshot.strategy_version_id 必須符合 strategy_identity"
+                )
         if self.result_config_snapshot is not None:
             result_config = _load_validated_json_object_snapshot(
                 self.result_config_snapshot.raw_result_config_json,
@@ -1770,7 +1806,7 @@ class SaveReceipt:
             or self.schema_revision not in SUPPORTED_EXECUTION_SCHEMA_REVISIONS
         ):
             raise ValueError(
-                "schema_revision 僅接受明示支援的 revision 1 或 2；不得改寫歷史值"
+                "schema_revision 僅接受明示支援的 revision 1、2 或 3；不得改寫歷史值"
             )
         object.__setattr__(self, "persisted_at", persisted_at)
 
@@ -1804,6 +1840,8 @@ _ALLOWED_FROZEN_RECORD_TYPES: tuple[type[object], ...] = (
     SnapshotCohortCoverage,
     SnapshotCohort,
     RecommendationRunEvidenceIdentity,
+    StrategyAdviceContract,
+    StrategyAdviceContractSnapshot,
 )
 
 _ALLOWED_ENUM_TYPES: tuple[type[Enum], ...] = (
@@ -1830,6 +1868,7 @@ __all__ = (
     "RecommendationConfigSnapshot",
     "RecommendationResultConfigSnapshot",
     "StrategyConfigIdentity",
+    "StrategyAdviceContractSnapshot",
     "UniversePolicyIdentity",
     "UniverseSnapshotIdentity",
     "RecommendationUniverseIdentity",

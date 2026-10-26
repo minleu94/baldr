@@ -149,8 +149,13 @@ def test_event_only_history_preserves_missing_fields_and_rejects_unknown_schema(
     assert projection["exclusion_quality"] is None
     assert projection["exclusion_warnings_json"] is None
 
-    unsupported = _event_only_execution(schema_revision=3)
-    with pytest.raises(NegativeEvidenceProjectionError, match="revision 1/2"):
+    rev3_projection = saved_recommendation_capture_projection(
+        _event_only_execution(schema_revision=3)
+    )
+    assert rev3_projection["screening_matrix_json"] == projection["screening_matrix_json"]
+
+    unsupported = _event_only_execution(schema_revision=4)
+    with pytest.raises(NegativeEvidenceProjectionError, match="revision 1/2/3"):
         saved_recommendation_capture_projection(unsupported)
 
     duplicate_events = _event_only_execution(

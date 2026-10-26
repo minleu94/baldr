@@ -51,6 +51,7 @@ from app_module.research_run_dated_equity import research_run_dated_equity_copy
 from app_module.chart_data_service import ChartDataService
 from app_module.promotion_service import PromotionService
 from app_module.strategy_version_service import StrategyVersionService
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from app_module.walkforward_service import WalkForwardService
 from app_module.optimizer_service import OptimizerService
 from app_module.recommendation_dataframe_provider import RecommendationDataFrameProvider
@@ -3169,11 +3170,16 @@ class BacktestView(QWidget):
             version_name = name_input.text().strip() or None
             notes = notes_input.toPlainText().strip() or None
 
+            should_promote, advice_contract = self._collect_strategy_advice_contract()
+            if not should_promote:
+                return
+
             try:
                 version_id = self.promotion_service.promote_to_strategy_version(
                     run_id=run_id,
                     version_name=version_name,
-                    notes=notes
+                    notes=notes,
+                    advice_contract=advice_contract,
                 )
 
                 if version_id:
@@ -3191,6 +3197,77 @@ class BacktestView(QWidget):
                     )
             except Exception as e:
                 QMessageBox.critical(self, "錯誤", f"升級失敗: {str(e)}")
+
+    def _collect_strategy_advice_contract(self) -> tuple[bool, Optional[StrategyAdviceContract]]:
+        """收集策略作者明確輸入；略過時回傳 None，不從回測內容推論。"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("策略作者建議契約")
+        dialog.setMinimumWidth(620)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(
+            "請由策略作者填寫版本化建議依據。這些內容不會由回測績效或推薦理由自動產生。"
+        ))
+
+        form = QFormLayout()
+        thesis_input = QTextEditDialog()
+        thesis_input.setPlaceholderText("說明此策略在什麼條件下提出目前的建議，以及主要依據。")
+        thesis_input.setMinimumHeight(90)
+        form.addRow("進場論點（必填）", thesis_input)
+
+        invalidation_input = QTextEditDialog()
+        invalidation_input.setPlaceholderText("每行一項失效條件；例如策略假設不再成立的可觀測條件。")
+        invalidation_input.setMinimumHeight(90)
+        form.addRow("失效條件（每行一項）", invalidation_input)
+
+        holding_horizon_input = QLineEdit()
+        holding_horizon_input.setPlaceholderText("由策略作者聲明，例如 5–10 個交易日")
+        form.addRow("策略作者持有期間", holding_horizon_input)
+
+        review_cadence_input = QLineEdit()
+        review_cadence_input.setPlaceholderText("由策略作者聲明，例如每個交易日收盤後")
+        form.addRow("檢視頻率", review_cadence_input)
+        layout.addLayout(form)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        skip_button = button_box.addButton(
+            "略過契約並繼續升版",
+            QDialogButtonBox.ButtonRole.ActionRole,
+        )
+        layout.addWidget(button_box)
+
+        contract_holder: list[StrategyAdviceContract] = []
+
+        def save_contract() -> None:
+            conditions = tuple(
+                line.strip()
+                for line in invalidation_input.toPlainText().splitlines()
+                if line.strip()
+            )
+            try:
+                contract = StrategyAdviceContract(
+                    thesis=thesis_input.toPlainText().strip(),
+                    invalidation_conditions=conditions,
+                    holding_horizon=holding_horizon_input.text().strip(),
+                    review_cadence=review_cadence_input.text().strip(),
+                )
+            except (TypeError, ValueError) as exc:
+                QMessageBox.warning(dialog, "契約欄位未完成", str(exc))
+                return
+            contract_holder.append(contract)
+            dialog.accept()
+
+        button_box.accepted.connect(save_contract)
+        button_box.rejected.connect(dialog.reject)
+        skip_button.clicked.connect(lambda: dialog.done(2))
+
+        result = dialog.exec()
+        if result == QDialog.DialogCode.Accepted:
+            return True, contract_holder[0]
+        if result == 2:
+            return True, None
+        return False, None
 
     def _refresh_history(self):
         """重新整理歷史列表"""

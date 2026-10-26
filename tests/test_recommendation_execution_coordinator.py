@@ -7,7 +7,9 @@ from app_module.recommendation.contracts import (
     ExecutionStatus,
     RecommendationExecution,
     Request,
+    StrategyAdviceContractSnapshot,
 )
+from app_module.strategy_advice_contract import StrategyAdviceContract
 
 from ui_qt.views.recommendation.execution_coordinator import (
     RecommendationExecutionRequest,
@@ -90,6 +92,63 @@ def test_recommendation_request_uses_frozen_config_and_returns_same_execution(mo
     assert "manual_qt_snapshot" not in captured["config"]
     assert '"manual_qt_snapshot":true' in request.config_snapshot.raw_config_json
     service.run_recommendation.assert_not_called()
+
+
+def test_recommendation_request_passes_exact_profile_advice_snapshot(monkeypatch) -> None:
+    from ui_qt.views.recommendation import execution_coordinator as module
+
+    contract = StrategyAdviceContract(
+        thesis="作者確認策略論點",
+        invalidation_conditions=("作者確認失效條件",),
+        holding_horizon="3 個交易日",
+        review_cadence="每日收盤",
+    )
+    snapshot = StrategyAdviceContractSnapshot(
+        strategy_version_id="version_exact",
+        contract_sha256=contract.contract_sha256,
+        contract=contract,
+    )
+    config = _config()
+    config["profile_id"] = "strategy_version:version_exact"
+    request = RecommendationExecutionRequest(
+        config,
+        advice_contract_snapshot=snapshot,
+    )
+    captured = {}
+    sealed = _execution(request.config_snapshot)
+
+    def execute(_service, _runtime_config, **kwargs):
+        captured.update(kwargs)
+        return sealed
+
+    monkeypatch.setattr(module, "execute_recommendation", execute)
+    result = request.execute(MagicMock())
+
+    assert result is sealed
+    assert captured["advice_contract_snapshot"] is snapshot
+
+
+def test_recommendation_request_rejects_advice_snapshot_for_another_profile() -> None:
+    contract = StrategyAdviceContract(
+        thesis="作者確認策略論點",
+        invalidation_conditions=("作者確認失效條件",),
+        holding_horizon="3 個交易日",
+        review_cadence="每日收盤",
+    )
+    snapshot = StrategyAdviceContractSnapshot(
+        strategy_version_id="version_exact",
+        contract_sha256=contract.contract_sha256,
+        contract=contract,
+    )
+    config = _config()
+    config["profile_id"] = "strategy_version:version_other"
+
+    try:
+        RecommendationExecutionRequest(config, advice_contract_snapshot=snapshot)
+    except ValueError as exc:
+        assert "精確選取" in str(exc)
+    else:
+        raise AssertionError("不同策略版本 Profile 不可攜帶此 Advice snapshot")
 
 
 def test_recommendation_request_preserves_cancelled_execution(monkeypatch) -> None:

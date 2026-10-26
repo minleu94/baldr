@@ -3895,6 +3895,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"原理由／論點：{compact_reasons_text}\n"
             f"校準適用期間：{presentation.horizon or '未提供'}｜"
             f"策略持有期間：{presentation.holding_horizon or '未提供'}｜"
+            f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}｜"
             f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供'}\n"
             f"失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}"
             f"\n保存來源逐股證據：{_compact_advice_text(source_evidence_text)}"
@@ -3917,6 +3918,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"完整原始理由／論點：{full_reasons_text}\n"
             f"完整風險：{full_risks_text}\n"
             f"完整失效條件：{full_invalidation_text}\n"
+            f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}\n"
             f"保存來源逐股證據：{source_evidence_text}"
         )
         self.advice_selection_card.setAccessibleDescription(
@@ -5253,6 +5255,7 @@ def _advice_contract_completeness(item: object) -> str:
         ("confidence_tier", "信心層級"),
         ("evidence_tier", "證據層級"),
         ("holding_horizon", "策略持有期間"),
+        ("review_cadence", "策略檢視頻率"),
         ("entry_thesis", "進場論點"),
         ("invalidation_conditions", "失效條件"),
         ("market_regime", "市場狀態"),

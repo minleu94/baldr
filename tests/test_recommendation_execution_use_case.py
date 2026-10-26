@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+import json
 from pathlib import Path
 from threading import Barrier, local
 from types import SimpleNamespace
@@ -24,9 +25,13 @@ from app_module.recommendation.execute import (
     execute_recommendation,
 )
 from app_module.recommendation.codec import decode_execution, encode_execution
-from app_module.recommendation.contracts import ExecutionStatus
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    StrategyAdviceContractSnapshot,
+)
 from app_module.recommendation_service import RecommendationService
 from app_module.recommendation.input_preparation import RecommendationInputSession
+from app_module.strategy_advice_contract import StrategyAdviceContract
 from data_module.recommendation_current_fundamental_provider import (
     CurrentMonthlyRevenueReadResult,
     CurrentObservedMonthlyRevenueInput,
@@ -241,6 +246,54 @@ def test_execute_never_calls_public_facade_and_freezes_nested_capture(
     assert execution.events[1].details["screening_matrix"][1]["reason_codes"][0] == old_matrix_reason
     with pytest.raises(TypeError):
         execution.events[1].details["screening_matrix"][1]["status"] = "changed"
+
+
+def test_execute_seals_exact_strategy_advice_contract_without_changing_result_config(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path, ("GOOD",), {"GOOD": Decimal("88.500")})
+    config = _config()
+    contract = StrategyAdviceContract(
+        thesis="作者明示的策略論點",
+        invalidation_conditions=("收盤跌破作者設定的界線",),
+        holding_horizon="10 個交易日",
+        review_cadence="每日收盤後",
+    )
+    snapshot = StrategyAdviceContractSnapshot(
+        strategy_version_id="version-owner-authored-1",
+        contract_sha256=contract.contract_sha256,
+        contract=contract,
+    )
+
+    execution = execute_recommendation(
+        service,
+        config,
+        top_n=1,
+        result_id="r011-advice-contract-snapshot",
+        advice_contract_snapshot=snapshot,
+    )
+
+    assert execution.status is ExecutionStatus.COMPLETED
+    assert execution.context.strategy_identity is not None
+    assert execution.context.strategy_identity.strategy_version_id == (
+        "version-owner-authored-1"
+    )
+    assert execution.context.advice_contract_snapshot == snapshot
+    # Direct execution has no scheduled-result config snapshot; the strategy
+    # identity hash must still be the one produced from calculation settings.
+    if execution.context.result_config_snapshot is not None:
+        assert "strategy_version_id" not in json.loads(
+            execution.context.result_config_snapshot.raw_result_config_json
+        )
+    from app_module.v4_evidence_identity import build_strategy_config_identity
+
+    expected_identity = build_strategy_config_identity(config, max_stocks=200, top_n=1)
+    assert execution.context.strategy_identity.strategy_config_hash == (
+        expected_identity["strategy_config_hash"]
+    )
+    encoded = encode_execution(execution)
+    restored = decode_execution(encoded)
+    assert restored.context.advice_contract_snapshot == snapshot
 
 
 def test_explicit_config_cutoff_does_not_enter_natural_current_fundamental_scope(

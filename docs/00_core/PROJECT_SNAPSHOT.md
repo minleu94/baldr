@@ -2,6 +2,8 @@
 
 2026-10-26 issuer 例外查核：TWSE 官方公告確認 `1589` 未依限申報 115 年 Q1/Q2，故 CSV 缺列是已解釋的非申報缺件，仍須降級呈現且不得補值；TPEx 官方公告確認 `3718` 由 `5371` 轉換而來、2026-09-03 生效，因此 `3718` 不屬 Q2 季末 issuer，應改查 `5371` 與歷史母體。Q2 候選兩碼皆無；其他資料契約與市場 coverage 未完成，不接受來源、不授 Gate／ML 資格。詳[issuer 例外查核](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-issuer-例外查核)。
 
+2026-10-26 官方目錄欄位契約查核：抽查 TWSE 一般業／金融業資產負債表目錄，可確認授權、季度頻率與欄名，但目錄未定義金額單位、合併／個別 basis、逐列 available-at 或修訂紀錄；這批 CSV 只有一次快照，所有列共用一個出表日期，HTTP Last-Modified 也只描述整個檔案。歷史 PIT／ML 仍不可用，除非取得有授權的歷史原件與逐筆時序。詳[欄位契約查核](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-官方目錄欄位契約查核)。
+
 2026-10-25 本機資料品質唯讀盤點：本機 SQLite 有 246,331 筆月營收及 1,645,555 筆報表項目，但月營收 98.5% 標記為 `degraded`，報表項目全數 `degraded`；交叉核對確認這些缺件列全都沒有 `announced_date`。Current observations 有 319,893 列但 aggregate feature eligible 為 0；現有月營收對照檔與舊 degraded 鍵無重疊，季報 availability 對照檔不存在。Decision Desk 現能顯示季報與月營收公告日缺漏筆數，未把日期補成 observed。該 SQLite 未找到 Watchlist 命名表，但 Watchlist 可能使用不同 store。詳[資料品質唯讀盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md)；不接受來源、不改 Gate。
 
 2026-10-25 來源條款界線：MOPS EZSearch 自動採集的端點授權範圍尚未證實；既有候選保留為研究證據，不再擴大自動擷取，不回填正式 DB／不授 Gate credit。已確認政府開放平台列出的四個一般業季度 CSV 資源為 OGL v1，可做隔離候選；仍未證明全產業 coverage、金額單位或逐筆 PIT／修訂語意。詳[來源授權與 CSV 清單](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#來源授權邊界與後續採集路徑)。

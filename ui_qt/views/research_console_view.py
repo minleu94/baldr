@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QToolButton,
     QScrollArea,
@@ -435,13 +436,56 @@ class ResearchConsoleView(QWidget):
         self.quarterly_resource_table.itemSelectionChanged.connect(
             self._render_quarterly_candidate_fields
         )
+        self.quarterly_resource_table.itemSelectionChanged.connect(
+            self._render_quarterly_candidate_row_profiles
+        )
         self.quarterly_field_table = _table(("原始財務欄位", "空白", "非空", "placeholder"))
+        self.quarterly_row_profile_filter = QLineEdit()
+        self.quarterly_row_profile_filter.setPlaceholderText(
+            "篩選公司代碼、名稱或財報期別…"
+        )
+        self.quarterly_row_profile_filter.setClearButtonEnabled(True)
+        self.quarterly_row_profile_filter.textChanged.connect(
+            self._filter_quarterly_row_profiles
+        )
+        self.quarterly_row_profile_summary_label = QLabel(
+            "選取一項候選資源查看公司／期別的儲存格計數。"
+        )
+        self.quarterly_row_profile_summary_label.setWordWrap(True)
+        self.quarterly_row_profile_table = _table(
+            (
+                "公司代碼",
+                "公司名稱",
+                "財報期別",
+                "出表日期（原值）",
+                "來源列數",
+                "空白儲存格",
+                "非空（含 placeholder）",
+                "placeholder 數",
+                "空白欄位數",
+            )
+        )
+        self.quarterly_row_profile_table.itemSelectionChanged.connect(
+            self._render_selected_quarterly_row_profile
+        )
+        self.quarterly_row_profile_detail_label = QLabel(
+            "空白只表示 CSV 儲存格為空；不推定缺報、不適用或來源完整性。"
+        )
+        self.quarterly_row_profile_detail_label.setWordWrap(True)
+        self.quarterly_row_profile_detail_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
         self._quarterly_candidate_resources: list[dict[str, Any]] = []
         self._update_quarterly_candidate_root_label()
         quarterly_panel.layout.addLayout(quarterly_controls)
         quarterly_panel.layout.addWidget(self.quarterly_candidate_summary_label)
         quarterly_panel.layout.addWidget(self.quarterly_resource_table)
         quarterly_panel.layout.addWidget(self.quarterly_field_table)
+        quarterly_panel.layout.addWidget(QLabel("逐公司／期別空白分布"))
+        quarterly_panel.layout.addWidget(self.quarterly_row_profile_filter)
+        quarterly_panel.layout.addWidget(self.quarterly_row_profile_summary_label)
+        quarterly_panel.layout.addWidget(self.quarterly_row_profile_table)
+        quarterly_panel.layout.addWidget(self.quarterly_row_profile_detail_label)
         gates_panel.layout.addWidget(quarterly_panel)
         gates_panel.layout.addWidget(QLabel("Artifact Inspector"))
         gates_panel.layout.addWidget(self.artifact_table)
@@ -958,11 +1002,20 @@ class ResearchConsoleView(QWidget):
         audit = source_row.get("quarterly_candidate_audit") if source_row else None
         if not isinstance(audit, dict):
             self._quarterly_candidate_resources = []
+            self._quarterly_display_row_profiles = []
             self.quarterly_candidate_summary_label.setText(
                 "未載入候選資料。此處只顯示研究候選；來源資格與下游 eligibility 維持 none。"
             )
             self.quarterly_resource_table.setRowCount(0)
             self.quarterly_field_table.setRowCount(0)
+            self.quarterly_row_profile_table.setRowCount(0)
+            self._quarterly_display_row_profiles = []
+            self.quarterly_row_profile_summary_label.setText(
+                "尚未載入公司／期別計數。"
+            )
+            self.quarterly_row_profile_detail_label.setText(
+                "空白只表示 CSV 儲存格為空；不推定缺報、不適用或來源完整性。"
+            )
             return
 
         summary = audit.get("summary")
@@ -1043,6 +1096,14 @@ class ResearchConsoleView(QWidget):
             self.quarterly_resource_table.selectRow(0)
         else:
             self.quarterly_field_table.setRowCount(0)
+            self._quarterly_display_row_profiles = []
+            self.quarterly_row_profile_table.setRowCount(0)
+            self.quarterly_row_profile_summary_label.setText(
+                "目前候選目錄沒有可顯示的公司／期別 profile。"
+            )
+            self.quarterly_row_profile_detail_label.setText(
+                "空白只表示 CSV 儲存格為空；不推定缺報、不適用或來源完整性。"
+            )
 
     def _render_quarterly_candidate_fields(self) -> None:
         row_index = self.quarterly_resource_table.currentRow()
@@ -1069,6 +1130,176 @@ class ResearchConsoleView(QWidget):
             status_column=-1,
         )
 
+    def _selected_quarterly_candidate_resource(self) -> dict[str, Any] | None:
+        row_index = self.quarterly_resource_table.currentRow()
+        resources = getattr(self, "_quarterly_candidate_resources", [])
+        if row_index < 0 or row_index >= len(resources):
+            return None
+        return resources[row_index]
+
+    def _render_quarterly_candidate_row_profiles(self) -> None:
+        resource = self._selected_quarterly_candidate_resource()
+        profiles = resource.get("row_profiles") if resource is not None else None
+        if not isinstance(profiles, list):
+            self._quarterly_display_row_profiles = []
+            self.quarterly_row_profile_table.setRowCount(0)
+            self.quarterly_row_profile_summary_label.setText(
+                "此資源沒有逐公司／期別計數；檔案缺失、無效或尚未產生 row profile。"
+            )
+            self.quarterly_row_profile_detail_label.setText(
+                "空白只表示 CSV 儲存格為空；不推定缺報、不適用或來源完整性。"
+            )
+            return
+        rows = [item for item in profiles if isinstance(item, dict)]
+        rows.sort(
+            key=lambda item: (
+                -int(item.get("blank_cell_count", 0))
+                if isinstance(item.get("blank_cell_count"), int)
+                else 0,
+                str(item.get("issuer_code", "")),
+                str(item.get("fiscal_period", "")),
+            )
+        )
+        self._quarterly_display_row_profiles = rows
+        _set_rows(
+            self.quarterly_row_profile_table,
+            (
+                (
+                    profile.get("issuer_code", "未知"),
+                    _quarterly_profile_name(profile),
+                    profile.get("fiscal_period", "未知"),
+                    "、".join(str(value) for value in profile.get("output_dates", []))
+                    if isinstance(profile.get("output_dates"), list)
+                    else "未提供",
+                    _display(profile.get("source_row_count")),
+                    _display(profile.get("blank_cell_count")),
+                    _display(profile.get("nonblank_cell_count")),
+                    _placeholder_total(profile.get("known_placeholder_counts")),
+                    len(profile.get("blank_fields", []))
+                    if isinstance(profile.get("blank_fields"), list)
+                    else "未知",
+                )
+                for profile in rows
+            ),
+            status_column=-1,
+        )
+        for row_index, profile in enumerate(rows):
+            blank_fields = profile.get("blank_fields")
+            blank_item = self.quarterly_row_profile_table.item(row_index, 8)
+            if blank_item is not None:
+                blank_item.setToolTip(
+                    "空白欄位（原始欄名）："
+                    + (
+                        "、".join(str(value) for value in blank_fields)
+                        if isinstance(blank_fields, list) and blank_fields
+                        else "無"
+                    )
+                )
+            placeholder_item = self.quarterly_row_profile_table.item(row_index, 7)
+            if placeholder_item is not None:
+                placeholder_item.setToolTip(
+                    _placeholder_counts(profile.get("known_placeholder_counts"))
+                )
+        profile_count = resource.get("row_profile_count", len(rows)) if resource else len(rows)
+        scanned_count = (
+            resource.get("row_profile_scanned_key_count", profile_count)
+            if resource
+            else profile_count
+        )
+        truncated = bool(resource.get("row_profiles_truncated")) if resource else False
+        complete = resource.get("row_profiles_complete") is True if resource else False
+        truncation_text = (
+            f"；超過輸出上限，僅保留依公司代碼／期別排序的前 {profile_count} 筆"
+            if truncated
+            else ""
+        )
+        completeness_text = "完整列出已解析 key" if complete and not truncated else "不宣稱完整"
+        self.quarterly_row_profile_summary_label.setText(
+            f"目前顯示 {len(rows)}／輸出 {profile_count}／掃描 {scanned_count} 個公司—期別 key；"
+            f"表格依空白儲存格數由高到低；{completeness_text}{truncation_text}。"
+            "列數是 CSV 中有完整 issuer／年度／季別鍵的觀察，不是市場分母。"
+        )
+        self._filter_quarterly_row_profiles(self.quarterly_row_profile_filter.text())
+
+    def _filter_quarterly_row_profiles(self, query: str) -> None:
+        needle = query.strip().casefold()
+        visible = 0
+        table = self.quarterly_row_profile_table
+        for row_index in range(table.rowCount()):
+            searchable = " ".join(
+                table.item(row_index, column).text()
+                for column in range(min(3, table.columnCount()))
+                if table.item(row_index, column) is not None
+            ).casefold()
+            hidden = bool(needle and needle not in searchable)
+            table.setRowHidden(row_index, hidden)
+            if not hidden:
+                visible += 1
+        resource = self._selected_quarterly_candidate_resource()
+        profiles = resource.get("row_profiles") if resource is not None else None
+        total_profiles = (
+            resource.get("row_profile_count", len(profiles))
+            if resource is not None and isinstance(profiles, list)
+            else 0
+        )
+        scanned_count = (
+            resource.get("row_profile_scanned_key_count", total_profiles)
+            if resource is not None
+            else total_profiles
+        )
+        truncation = (
+            "；超過輸出上限，profile 顯示不完整"
+            if resource is not None and resource.get("row_profiles_truncated") is True
+            else ""
+        )
+        if needle:
+            self.quarterly_row_profile_summary_label.setText(
+                f"篩選後顯示 {visible}／表格 {table.rowCount()} 個 key；"
+                f"輸出 {total_profiles}／掃描 {scanned_count} 個 key{truncation}。"
+                "公司／期別列不等於市場 coverage。"
+            )
+
+    def _render_selected_quarterly_row_profile(self) -> None:
+        row_index = self.quarterly_row_profile_table.currentRow()
+        resource = self._selected_quarterly_candidate_resource()
+        profiles = resource.get("row_profiles") if resource is not None else None
+        if not isinstance(profiles, list) or row_index < 0:
+            self.quarterly_row_profile_detail_label.setText(
+                "空白只表示 CSV 儲存格為空；不推定缺報、不適用或來源完整性。"
+            )
+            return
+        candidates = getattr(self, "_quarterly_display_row_profiles", [])
+        if row_index >= len(candidates):
+            return
+        profile = candidates[row_index]
+        blank_fields = profile.get("blank_fields")
+        blank_names = (
+            "、".join(str(value) for value in blank_fields)
+            if isinstance(blank_fields, list) and blank_fields
+            else "無空白欄位"
+        )
+        placeholders = _placeholder_counts(profile.get("known_placeholder_counts"))
+        self.quarterly_row_profile_detail_label.setText(
+            "選取列：{code} {name}｜期別原值 {period}｜出表日期原值 {dates}｜來源列數 {source_rows}\n"
+            "名稱欄位：{name_status}\n空白欄位：{blank_fields}\n已知 placeholder（非空值子集）：{placeholders}\n"
+            "以上只描述候選 CSV 儲存格；空白語意、申報義務與 PIT 均未判定。".format(
+                code=profile.get("issuer_code", "未知"),
+                name=_quarterly_profile_name(profile),
+                name_status=(
+                    "此 issuer-period 在來源列出現多個公司名稱，未自行選一個。"
+                    if profile.get("issuer_name_conflict") is True
+                    else "單一觀測值或未提供。"
+                ),
+                period=profile.get("fiscal_period", "未知"),
+                dates="、".join(str(value) for value in profile.get("output_dates", []))
+                if isinstance(profile.get("output_dates"), list)
+                else "未提供",
+                source_rows=profile.get("source_row_count", "未知"),
+                blank_fields=blank_names,
+                placeholders=placeholders,
+            )
+        )
+
     def _render_selected_control_center_details(self) -> None:
         row_index = self.control_center_table.currentRow()
         rows = getattr(self, "_control_center_rows", [])
@@ -1090,6 +1321,7 @@ class ResearchConsoleView(QWidget):
             self.control_center_table,
             self.quarterly_resource_table,
             self.quarterly_field_table,
+            self.quarterly_row_profile_table,
             self.artifact_table,
             self.learning_table,
         ):
@@ -1142,6 +1374,13 @@ def _quarterly_audit_state(value: object) -> str:
     }.get(str(value), "未知")
 
 
+def _quarterly_profile_name(profile: dict[str, Any]) -> str:
+    if profile.get("issuer_name_conflict") is True:
+        return "名稱有多版本"
+    value = profile.get("issuer_name")
+    return str(value) if isinstance(value, str) and value else "未提供"
+
+
 def _quarterly_resource_cell_summary(resource: dict[str, Any]) -> str:
     counts = resource.get("field_counts")
     if not isinstance(counts, list):
@@ -1173,6 +1412,12 @@ def _placeholder_counts(value: object) -> str:
         for token, count in sorted(value.items())
         if isinstance(token, str) and isinstance(count, int)
     ) or "0"
+
+
+def _placeholder_total(value: object) -> int | str:
+    if not isinstance(value, dict):
+        return "未知"
+    return sum(count for count in value.values() if isinstance(count, int))
 
 
 def _set_rows(

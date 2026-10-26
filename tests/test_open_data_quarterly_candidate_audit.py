@@ -70,7 +70,7 @@ def test_audit_profiles_each_resource_without_merging_or_exposing_values(
         "\ufeff出表日期,年度,季別,公司代號,公司名稱,營收,EPS\n"
         "1151026,115,2,2330,台積電,0,N/A\n"
         "1151026,115,2,2330,台積電,,--\n"
-        "1151026,115,2,2317,鴻海,null,5\n"
+        "1151026,115,2,2317,鴻海,null,SECRET_FINANCIAL_54821\n"
     ).encode("utf-8")
     empty_body = "出表日期,年度,季別,公司代號,公司名稱,營收\n".encode("utf-8")
     (root / "active.csv").write_bytes(active_body)
@@ -129,7 +129,37 @@ def test_audit_profiles_each_resource_without_merging_or_exposing_values(
     assert fields["EPS"]["blank_count"] == 0
     assert fields["EPS"]["nonblank_count"] == 3
     assert fields["EPS"]["known_placeholder_counts"] == {"--": 1, "N/A": 1}
-    assert "台積電" not in json.dumps(payload, ensure_ascii=False)
+    assert active["row_profile_count"] == 2
+    assert active["row_profiles_truncated"] is False
+    assert active["row_profiles_complete"] is True
+    assert active["row_profiles"] == [
+        {
+            "issuer_code": "2317",
+            "issuer_name": "鴻海",
+            "issuer_name_conflict": False,
+            "fiscal_period": "115-Q2",
+            "output_dates": ["1151026"],
+            "source_row_count": 1,
+            "blank_cell_count": 0,
+            "nonblank_cell_count": 2,
+            "blank_fields": [],
+            "known_placeholder_counts": {"null": 1},
+        },
+        {
+            "issuer_code": "2330",
+            "issuer_name": "台積電",
+            "issuer_name_conflict": False,
+            "fiscal_period": "115-Q2",
+            "output_dates": ["1151026"],
+            "source_row_count": 2,
+            "blank_cell_count": 1,
+            "nonblank_cell_count": 3,
+            "blank_fields": ["營收"],
+            "known_placeholder_counts": {"--": 1, "N/A": 1},
+        },
+    ]
+    profile_json = json.dumps(active["row_profiles"], ensure_ascii=False)
+    assert "SECRET_FINANCIAL_54821" not in profile_json
     assert "original body" not in json.dumps(payload, ensure_ascii=False)
     assert (root / "active.csv").read_bytes() == active_body
 
@@ -137,11 +167,82 @@ def test_audit_profiles_each_resource_without_merging_or_exposing_values(
     assert empty["row_count"] == 0
     assert empty["unique_issuer_count"] == 0
     assert empty["field_counts"] == []
+    assert empty["row_profiles"] == []
+    assert empty["row_profile_count"] == 0
+    assert empty["row_profile_scanned_key_count"] == 0
+    assert empty["row_profiles_truncated"] is False
+    assert empty["row_profiles_complete"] is True
     assert missing["state"] == "missing"
     assert missing["row_count"] is None
     assert tampered["state"] == "invalid"
     assert tampered["sha256"] == hashlib.sha256(b"changed body").hexdigest()
     assert tampered["manifest_sha256"] == hashlib.sha256(tampered_body).hexdigest()
+
+
+def test_row_profiles_preserve_period_and_output_date_values_and_aggregate_duplicates(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "candidate"
+    body = (
+        "出表日期,年度,季別,公司代號,公司名稱,營收,EPS\n"
+        " 1151026 , 115 , 2 ,2330,台積電,,N/A\n"
+        "1151027,115,2,2330,TSMC,100,NA\n"
+    ).encode("utf-8")
+    (root / "resource.csv").parent.mkdir(parents=True)
+    (root / "resource.csv").write_bytes(body)
+    _write_manifest(root, [_manifest_source(dataset_id="10", artifact="resource.csv", body=body)])
+
+    resource = audit_quarterly_candidate_root(root).to_dict()["resources"][0]
+    assert resource["duplicate_business_key_count"] == 1
+    assert resource["duplicate_business_key_row_count"] == 1
+    assert resource["row_profile_count"] == 1
+    assert resource["row_profile_scanned_key_count"] == 1
+    assert resource["row_profiles"] == [
+        {
+            "issuer_code": "2330",
+            "issuer_name": None,
+            "issuer_name_conflict": True,
+            "fiscal_period": "115-Q2",
+            "output_dates": [" 1151026 ", "1151027"],
+            "source_row_count": 2,
+            "blank_cell_count": 1,
+            "nonblank_cell_count": 3,
+            "blank_fields": ["營收"],
+            "known_placeholder_counts": {"N/A": 1, "NA": 1},
+        }
+    ]
+
+
+def test_row_profile_cap_reports_scanned_count_and_truncation(tmp_path: Path) -> None:
+    from data_module.open_data_quarterly_candidate_audit import (
+        MAX_ROW_PROFILES_PER_RESOURCE,
+    )
+
+    root = tmp_path / "candidate"
+    rows = [
+        f"1151026,115,2,{index:05d},Issuer {index},,N/A"
+        for index in range(MAX_ROW_PROFILES_PER_RESOURCE + 1)
+    ]
+    body = (
+        "出表日期,年度,季別,公司代號,公司名稱,營收,EPS\n"
+        + "\n".join(rows)
+        + "\n"
+    ).encode("utf-8")
+    (root / "resource.csv").parent.mkdir(parents=True)
+    (root / "resource.csv").write_bytes(body)
+    _write_manifest(root, [_manifest_source(dataset_id="11", artifact="resource.csv", body=body)])
+
+    resource = audit_quarterly_candidate_root(root).to_dict()["resources"][0]
+    assert resource["row_profile_count"] == MAX_ROW_PROFILES_PER_RESOURCE
+    assert resource["row_profile_scanned_key_count"] == MAX_ROW_PROFILES_PER_RESOURCE + 1
+    assert resource["row_profiles_truncated"] is True
+    assert resource["row_profiles_complete"] is False
+    assert resource["row_profiles"][0]["issuer_code"] == "00000"
+    assert resource["row_profiles"][-1]["issuer_code"] == "04999"
+    assert any(
+        "5000 keys" in warning and "5001 distinct keys were scanned"
+        for warning in resource["warnings"]
+    )
 
 
 def test_header_only_response_with_output_date_is_empty_not_coverage(tmp_path: Path) -> None:

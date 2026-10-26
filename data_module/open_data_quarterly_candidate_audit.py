@@ -25,6 +25,7 @@ SUPPORTED_MANIFEST_SCHEMAS = frozenset(
 AUDIT_SCHEMA = "baldr.open_data_quarterly_candidate_audit.v1"
 MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_RESOURCE_BYTES = 32 * 1024 * 1024
+MAX_ROW_PROFILES_PER_RESOURCE = 5_000
 KNOWN_PLACEHOLDERS = ("-", "--", "N/A", "NA", "null", "NULL")
 
 _IDENTITY_AND_DATE_HEADERS = frozenset(
@@ -59,6 +60,7 @@ _ISSUER_HEADERS = (
 _YEAR_HEADERS = ("年度", "year", "fiscal_year")
 _QUARTER_HEADERS = ("季別", "quarter", "fiscal_quarter")
 _OUTPUT_DATE_HEADERS = ("出表日期", "output_date", "report_date")
+_COMPANY_NAME_HEADERS = ("公司名稱", "company_name")
 _SHA256_RE = re.compile(r"[0-9a-fA-F]{64}\Z")
 
 
@@ -108,6 +110,11 @@ class QuarterlyCandidateResourceAudit:
     schema_fingerprint: str | None = None
     headers: tuple[str, ...] = ()
     field_counts: tuple[QuarterlyFieldCounts, ...] = ()
+    row_profiles: tuple[Mapping[str, Any], ...] = ()
+    row_profile_count: int = 0
+    row_profile_scanned_key_count: int = 0
+    row_profiles_truncated: bool = False
+    row_profiles_complete: bool = False
     warnings: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -129,6 +136,11 @@ class QuarterlyCandidateResourceAudit:
             "schema_fingerprint": self.schema_fingerprint,
             "headers": list(self.headers),
             "field_counts": [item.to_dict() for item in self.field_counts],
+            "row_profiles": [dict(item) for item in self.row_profiles],
+            "row_profile_count": self.row_profile_count,
+            "row_profile_scanned_key_count": self.row_profile_scanned_key_count,
+            "row_profiles_truncated": self.row_profiles_truncated,
+            "row_profiles_complete": self.row_profiles_complete,
             "warnings": list(self.warnings),
         }
 
@@ -473,6 +485,7 @@ def _profile_resource(
             unique_issuer_count=0,
             duplicate_business_key_count=0,
             duplicate_business_key_row_count=0,
+            row_profiles_complete=True,
             warnings=("resource body is empty and contains no schema header",),
         )
     normalized_headers = tuple(header.strip() for header in headers)
@@ -481,6 +494,7 @@ def _profile_resource(
     year_header = _first_header(positions, _YEAR_HEADERS)
     quarter_header = _first_header(positions, _QUARTER_HEADERS)
     output_date_header = _first_header(positions, _OUTPUT_DATE_HEADERS)
+    company_name_header = _first_header(positions, _COMPANY_NAME_HEADERS)
     if issuer_header is None or year_header is None or quarter_header is None:
         raise ValueError("CSV lacks issuer, fiscal year, or quarter identity column")
 
@@ -521,6 +535,7 @@ def _profile_resource(
             duplicate_business_key_row_count=0,
             schema_fingerprint=schema_fingerprint,
             headers=headers,
+            row_profiles_complete=True,
             warnings=("CSV contains a header and no issuer-period data rows",),
         )
     if not valid_rows:
@@ -536,6 +551,7 @@ def _profile_resource(
             duplicate_business_key_row_count=0,
             schema_fingerprint=schema_fingerprint,
             headers=headers,
+            row_profiles_complete=True,
             warnings=("CSV contains a header and no data rows",),
         )
 
@@ -568,11 +584,32 @@ def _profile_resource(
     )
     duplicate_key_count = sum(count > 1 for count in keys.values())
     duplicate_key_row_count = sum(count - 1 for count in keys.values() if count > 1)
-    warnings = (
+    row_profiles = _build_row_profiles(
+        valid_rows=valid_rows,
+        issuer_position=issuer_position,
+        year_position=year_position,
+        quarter_position=quarter_position,
+        output_date_position=(
+            positions[output_date_header] if output_date_header is not None else None
+        ),
+        company_name_position=(
+            positions[company_name_header] if company_name_header is not None else None
+        ),
+        financial_positions=financial_positions,
+        headers=headers,
+    )
+    row_profiles_truncated = len(row_profiles) > MAX_ROW_PROFILES_PER_RESOURCE
+    row_profiles = row_profiles[:MAX_ROW_PROFILES_PER_RESOURCE]
+    warnings: tuple[str, ...] = (
         ("blank-cell meaning is unknown; blanks were not imputed",)
         if any(field.blank_count for field in field_counts)
         else ()
     )
+    if row_profiles_truncated:
+        warnings += (
+            f"row profile output truncated at {MAX_ROW_PROFILES_PER_RESOURCE} keys; "
+            f"{len(keys)} distinct keys were scanned",
+        )
     return QuarterlyCandidateResourceAudit(
         **metadata,
         artifact=artifact,
@@ -588,8 +625,87 @@ def _profile_resource(
         schema_fingerprint=schema_fingerprint,
         headers=headers,
         field_counts=field_counts,
+        row_profiles=tuple(row_profiles),
+        row_profile_count=len(row_profiles),
+        row_profile_scanned_key_count=len(keys),
+        row_profiles_truncated=row_profiles_truncated,
+        row_profiles_complete=not row_profiles_truncated,
         warnings=warnings,
     )
+
+
+def _build_row_profiles(
+    *,
+    valid_rows: list[tuple[str, ...]],
+    issuer_position: int,
+    year_position: int,
+    quarter_position: int,
+    output_date_position: int | None,
+    company_name_position: int | None,
+    financial_positions: tuple[int, ...],
+    headers: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    profiles: dict[tuple[str, str, str], dict[str, Any]] = {}
+    known_placeholders = set(KNOWN_PLACEHOLDERS)
+    for row in valid_rows:
+        issuer = row[issuer_position].strip()
+        year = row[year_position].strip()
+        quarter = row[quarter_position].strip()
+        key = (issuer, year, quarter)
+        profile = profiles.get(key)
+        if profile is None:
+            profile = {
+                "issuer_code": issuer,
+                "issuer_names": set(),
+                "fiscal_period": f"{year}-Q{quarter}",
+                "output_dates": set(),
+                "source_row_count": 0,
+                "blank_cell_count": 0,
+                "nonblank_cell_count": 0,
+                "blank_fields": set(),
+                "known_placeholder_counts": Counter(),
+            }
+            profiles[key] = profile
+        profile["source_row_count"] += 1
+        if company_name_position is not None:
+            issuer_name = row[company_name_position].strip()
+            if issuer_name:
+                profile["issuer_names"].add(issuer_name)
+        if output_date_position is not None:
+            profile["output_dates"].add(row[output_date_position])
+        for position in financial_positions:
+            value = row[position].strip()
+            if not value:
+                profile["blank_cell_count"] += 1
+                profile["blank_fields"].add(headers[position].strip())
+            else:
+                profile["nonblank_cell_count"] += 1
+                if value in known_placeholders:
+                    profile["known_placeholder_counts"][value] += 1
+
+    result: list[dict[str, Any]] = []
+    for key in sorted(profiles):
+        profile = profiles[key]
+        names = sorted(profile["issuer_names"])
+        result.append(
+            {
+                "issuer_code": profile["issuer_code"],
+                "issuer_name": names[0] if len(names) == 1 else None,
+                "issuer_name_conflict": len(names) > 1,
+                "fiscal_period": profile["fiscal_period"],
+                "output_dates": sorted(profile["output_dates"]),
+                "source_row_count": profile["source_row_count"],
+                "blank_cell_count": profile["blank_cell_count"],
+                "nonblank_cell_count": profile["nonblank_cell_count"],
+                "blank_fields": sorted(profile["blank_fields"]),
+                "known_placeholder_counts": {
+                    token: profile["known_placeholder_counts"][token]
+                    for token in KNOWN_PLACEHOLDERS
+                    if profile["known_placeholder_counts"][token]
+                },
+            }
+        )
+    return result
 
 
 def _count_field(field_name: str, values: Iterable[str]) -> QuarterlyFieldCounts:

@@ -47,7 +47,7 @@ class MarketDataVisibilityService:
                 revenue_rows, revenue_error = self._load_rows(
                     conn,
                     """
-                    SELECT stock_code, period, as_of_date, available_date, revenue,
+                    SELECT stock_code, period, as_of_date, announced_date, available_date, revenue,
                            source, source_version, quality, created_at
                     FROM fundamental_monthly_revenues
                     """,
@@ -172,6 +172,9 @@ class MarketDataVisibilityService:
                        MAX(period),
                        MAX(available_date),
                        SUM(CASE WHEN lower(trim(coalesce(quality, ''))) != 'observed'
+                                THEN 1 ELSE 0 END),
+                       SUM(CASE WHEN announced_date IS NULL
+                                     OR trim(announced_date) = ''
                                 THEN 1 ELSE 0 END)
                 FROM fundamental_statement_items
                 WHERE available_date <= ? AND as_of_date <= ?
@@ -191,6 +194,13 @@ class MarketDataVisibilityService:
             if degraded_count
             else "資料可見但未完成來源資格驗收"
         )
+        missing_announcement_count = int(row[5] or 0)
+        warnings = [warning]
+        if missing_announcement_count:
+            warnings.append(
+                f"公告日缺漏 {missing_announcement_count:,}/{int(row[0]):,}"
+            )
+        warnings.append("license／coverage／PIT 尚未由此狀態驗收")
         return SourceVisibilityStatus(
             source_id=source_id,
             display_name=_SOURCE_LABELS[source_id],
@@ -202,7 +212,7 @@ class MarketDataVisibilityService:
             quality=quality,
             pit_status="historical_pit_unverified",
             eligibility="research_only",
-            warnings=(warning, "license／coverage／PIT 尚未由此狀態驗收"),
+            warnings=tuple(warnings),
         )
 
     @staticmethod
@@ -457,6 +467,14 @@ def _source_status(
     elif quality == "DEGRADED":
         pit_status = "historical_pit_unverified"
         warnings = ("historical_pit_unverified",)
+    if rows and "announced_date" in rows[0]:
+        missing_announcement_count = sum(
+            row.get("announced_date") is None
+            or not str(row.get("announced_date") or "").strip()
+            for row in rows
+        )
+        if missing_announcement_count:
+            warnings = (*warnings, f"公告日缺漏 {missing_announcement_count:,}/{len(rows):,}")
     return SourceVisibilityStatus(
         source_id=source_id,
         display_name=_SOURCE_LABELS[source_id],

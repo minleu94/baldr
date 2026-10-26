@@ -1230,6 +1230,14 @@ class DecisionDeskView(QWidget):
                 f"{status.row_count:,} 列/{status.stock_count:,} 檔｜"
                 f"觀測 {status.latest_observation_date or 'N/A'}｜可得 {status.available_date or 'N/A'}｜"
                 f"PIT {status.pit_status}｜資格 {status.eligibility}"
+                + next(
+                    (
+                        f"｜品質缺口 {warning}"
+                        for warning in status.warnings
+                        if warning.startswith("公告日缺漏 ")
+                    ),
+                    "",
+                )
             )
             for status in summary.source_statuses
         ]

@@ -1729,7 +1729,7 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
                 quality="DEGRADED",
                 pit_status="historical_pit_unverified",
                 eligibility="research_only",
-                warnings=("historical_pit_unverified",),
+                warnings=("historical_pit_unverified", "公告日缺漏 3,600/3,600"),
             ),
             SourceVisibilityStatus(
                 source_id="institutional_flows",
@@ -1765,6 +1765,7 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "僅供研究可見性" in view.visibility_action_hint.text()
     assert "三大法人" in view.visibility_sources_label.text()
     assert "3,600 列/1,200 檔" in view.visibility_sources_label.text()
+    assert "品質缺口 公告日缺漏 3,600/3,600" in view.visibility_sources_label.text()
     assert "資料缺件" in view.visibility_sources_label.text()
 
 

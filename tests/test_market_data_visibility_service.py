@@ -120,7 +120,38 @@ def test_statement_visibility_summarizes_legal_rows_without_qualifying_degraded_
     assert status.quality == "DEGRADED"
     assert status.pit_status == "historical_pit_unverified"
     assert status.eligibility == "research_only"
+    assert "公告日缺漏 2/2" in status.warnings
     assert "license／coverage／PIT 尚未由此狀態驗收" in status.warnings
+
+
+def test_monthly_revenue_visibility_exposes_missing_announcement_date_count(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "visibility.db"
+    _create_visibility_db(db_file)
+    with sqlite3.connect(db_file) as conn:
+        _insert_revenue(
+            conn,
+            stock_code="2330",
+            period="2026-05",
+            available_date="2026-06-17",
+            revenue="100",
+            source_version="legacy-snapshot",
+            quality="degraded",
+        )
+        conn.execute(
+            "UPDATE fundamental_monthly_revenues SET announced_date=NULL"
+        )
+
+    summary = MarketDataVisibilityService(db_file).build_summary(
+        as_of_date=date(2026, 6, 30)
+    )
+    status = next(
+        status for status in summary.source_statuses
+        if status.source_id == "fundamental_monthly_revenues"
+    )
+    assert status.quality == "DEGRADED"
+    assert "公告日缺漏 1/1" in status.warnings
 
 
 def _insert_revenue(

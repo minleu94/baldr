@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QDateEdit, QMessageBox, QFormLayout, QSpinBox, QLineEdit,
     QListWidget, QStackedWidget, QFrame, QCalendarWidget, QGridLayout,
     QScrollArea, QSizePolicy, QBoxLayout, QAbstractItemView, QHeaderView,
-    QTableWidget, QTableWidgetItem
+    QTableWidget, QTableWidgetItem, QDialog
 )
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
@@ -42,6 +42,7 @@ from app_module.program_readiness_projection import (
     load_program_readiness,
     project_program_readiness,
 )
+from app_module.evidence_weekly_approval_input import build_weekly_approval_input
 from data_module.source_acceptance_decision_registry import parse_source_acceptance_decisions
 from data_module.monthly_revenue_snapshot_selection import (
     select_latest_monthly_revenue_snapshot,
@@ -56,10 +57,12 @@ from ui_qt.views.update.update_formatters import (
     format_monthly_revenue_candidate_lines,
     format_monthly_revenue_freshness_gap,
     format_p0_license_capture_status,
+    format_p0_owner_decision_details,
     format_p0_route_probe_statuses,
     format_program_readiness_blockers,
     format_program_readiness_lane_progress,
     format_program_readiness_summary,
+    format_weekly_collection_details,
     format_scheduler_operations_detail,
     format_source_detail_summary,
     format_status_token,
@@ -411,6 +414,7 @@ class UpdateView(QWidget):
         tpex_status_path: str | Path | None = None,
         program_readiness_path: str | Path | None = None,
         program_readiness_live_inspection: bool = False,
+        weekly_collection_sidecar_path: str | Path | None = None,
     ):
         """初始化數據更新視圖
 
@@ -482,7 +486,20 @@ class UpdateView(QWidget):
             else None
         )
         self.program_readiness_live_inspection = bool(program_readiness_live_inspection)
+        self.weekly_collection_sidecar_path = (
+            Path(weekly_collection_sidecar_path).expanduser().resolve()
+            if weekly_collection_sidecar_path is not None
+            else (
+                output_root_path
+                / "scheduled"
+                / "v2_2_weekly_collection"
+                / "evidence_scheduler.db"
+                if output_root_path is not None
+                else None
+            )
+        )
         self._p0_control_center_service = P0SourceControlCenterService()
+        self._p0_source_rows: list[dict[str, Any]] = []
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self._responsive_narrow: bool | None = None
@@ -1327,6 +1344,18 @@ class UpdateView(QWidget):
             "P0 row 只代表候選觀測與治理缺口；downstream eligibility 永遠為 none。"
         )
         p0_layout.addWidget(self.p0_source_control_table)
+        self.p0_source_decision_detail_label = QLabel(
+            "選取一個來源，分開查看 Owner 決議、資料／授權／PIT 缺口與下一步。"
+        )
+        self.p0_source_decision_detail_label.setWordWrap(True)
+        self.p0_source_decision_detail_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.p0_source_decision_detail_label.setProperty("role", "muted")
+        self.p0_source_control_table.itemSelectionChanged.connect(
+            self._render_selected_p0_source_decision_details
+        )
+        p0_layout.addWidget(self.p0_source_decision_detail_label)
         self.p0_details_button = self._add_update_details(all_layout, p0_group, "官方來源候選與接受條件")
 
         # 整體 readiness 面板：有指定整體 artifact 時只讀該檔；正式主程式
@@ -1348,9 +1377,9 @@ class UpdateView(QWidget):
         self.program_readiness_summary_label.setProperty("role", "muted")
         self.program_readiness_summary_label.setStyleSheet("font-size: 11px;")
         readiness_layout.addWidget(self.program_readiness_summary_label)
-        self.program_readiness_table = QTableWidget(0, 4)
+        self.program_readiness_table = QTableWidget(0, 5)
         self.program_readiness_table.setHorizontalHeaderLabels(
-            ("產品區域", "狀態", "缺口／阻擋原因", "下一步")
+            ("產品區域", "狀態", "進度／範圍", "缺口／阻擋原因", "下一步")
         )
         self.program_readiness_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.program_readiness_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1364,6 +1393,7 @@ class UpdateView(QWidget):
         readiness_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         readiness_header.setSectionResizeMode(2, QHeaderView.Stretch)
         readiness_header.setSectionResizeMode(3, QHeaderView.Stretch)
+        readiness_header.setSectionResizeMode(4, QHeaderView.Stretch)
         self.program_readiness_table.horizontalHeader().setStretchLastSection(True)
         self.program_readiness_table.setMinimumHeight(120)
         ensure_visible_rows(self.program_readiness_table, 5)
@@ -1373,6 +1403,15 @@ class UpdateView(QWidget):
             "license 與 owner decision 檔，不會由 UI 發出網路請求；lane 狀態與 blocker 不會在 UI 自動解除。"
         )
         readiness_layout.addWidget(self.program_readiness_table)
+        self.weekly_collection_details_button = QPushButton("檢視週收集明細（唯讀）")
+        self.weekly_collection_details_button.setProperty("variant", "secondary")
+        self.weekly_collection_details_button.setToolTip(
+            "讀取 weekly collection sidecar 的待審候選與 bounded 品質摘要；不會寫入審查決定或授予 Gate credit。"
+        )
+        self.weekly_collection_details_button.clicked.connect(
+            self._show_weekly_collection_details
+        )
+        readiness_layout.addWidget(self.weekly_collection_details_button)
         self.readiness_details_button = self._add_update_details(all_layout, readiness_group, "使用資格與完整阻擋原因")
 
         # 一鍵更新與輔助按鈕；容器已在標題下方建立，這裡只填入按鈕。
@@ -3468,13 +3507,13 @@ class UpdateView(QWidget):
                 else ""
             )
             next_text = "；".join(next_actions) or "無"
-            if progress_text:
-                next_text = f"目前：{progress_text}\n下一步：{next_text}"
             if not lane_supplied or raw_lane.get("external_input_required") is True:
                 next_text = f"{next_text}（需補資料、實測或人工審查）"
+            progress_cell = progress_text or "未提供可量化進度"
             cells = (
                 PROGRAM_READINESS_LANE_LABELS.get(lane, lane),
                 format_status_token(raw_status),
+                progress_cell,
                 format_program_readiness_blockers(blockers, include_raw=False),
                 next_text,
             )
@@ -3486,11 +3525,44 @@ class UpdateView(QWidget):
                 if column_index == 1:
                     item.setForeground(QColor(self._timeline_status_color(raw_status)))
                     item.setToolTip(f"狀態代碼：{raw_status}")
-                elif column_index == 2:
+                elif column_index == 3:
                     raw_blockers = "\n".join(blockers) or "無"
                     item.setToolTip(f"完整阻擋原因代碼（供追查）：\n{raw_blockers}")
                 table.setItem(row_index, column_index, item)
         table.resizeRowsToContents()
+
+    def _show_weekly_collection_details(self) -> None:
+        """Open a read-only, bounded summary of pending weekly sidecar records."""
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("週 Evidence 收集明細（唯讀）")
+        dialog.setMinimumSize(760, 520)
+        layout = QVBoxLayout(dialog)
+        detail = QTextEdit(dialog)
+        detail.setReadOnly(True)
+        if self.weekly_collection_sidecar_path is None:
+            detail.setPlainText(
+                "未設定 weekly collection sidecar 路徑。\n"
+                "此明細不會自行搜尋其他位置。"
+            )
+        else:
+            try:
+                packet = build_weekly_approval_input(
+                    self.weekly_collection_sidecar_path,
+                    include_failed=False,
+                )
+                detail.setPlainText(format_weekly_collection_details(packet))
+            except Exception as exc:
+                detail.setPlainText(
+                    "無法唯讀載入 weekly collection 明細。\n"
+                    f"原因：{type(exc).__name__}。\n"
+                    "請確認 sidecar 存在且可讀；本畫面不會建立或修改它。"
+                )
+        layout.addWidget(detail)
+        close_button = QPushButton("關閉", dialog)
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+        dialog.exec()
 
     def _load_p0_source_control_center(
         self,
@@ -3804,10 +3876,9 @@ class UpdateView(QWidget):
         )
 
         rows = value.get("rows") if isinstance(value.get("rows"), list) else []
+        self._p0_source_rows = [row for row in rows if isinstance(row, dict)]
         table.setRowCount(0)
-        for raw_row in rows:
-            if not isinstance(raw_row, dict):
-                continue
+        for raw_row in self._p0_source_rows:
             row_index = table.rowCount()
             table.insertRow(row_index)
             display_values = self._format_p0_source_row(raw_row)
@@ -3860,6 +3931,17 @@ class UpdateView(QWidget):
                     if item is not None:
                         item.setToolTip(f"{item.toolTip()}\n缺口／下一步：{'；'.join(extra)}")
         table.resizeRowsToContents()
+
+    def _render_selected_p0_source_decision_details(self) -> None:
+        label = getattr(self, "p0_source_decision_detail_label", None)
+        table = getattr(self, "p0_source_control_table", None)
+        if label is None or table is None:
+            return
+        row_index = table.currentRow()
+        if row_index < 0 or row_index >= len(self._p0_source_rows):
+            label.setText("選取一個來源，分開查看 Owner 決議、資料／授權／PIT 缺口與下一步。")
+            return
+        label.setText(format_p0_owner_decision_details(self._p0_source_rows[row_index]))
 
     def _get_source_detail(self, source: str) -> Dict[str, Any]:
         """取得單一資料來源詳細狀態並包成 UI 可套用的狀態 dict"""

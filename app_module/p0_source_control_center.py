@@ -20,7 +20,11 @@ from data_module.p0_source_contract_registry import (
     P0SourceContractRegistry,
     build_p0_source_contract_registry,
 )
-from data_module.p0_source_acquisition_routes import build_p0_acquisition_route_registry
+from data_module.p0_source_acquisition_routes import (
+    P0AcquisitionRoute,
+    P0AcquisitionRouteRegistry,
+    build_p0_acquisition_route_registry,
+)
 from data_module.source_acceptance_decision_registry import (
     SourceAcceptanceDecisionRevision,
     validate_source_acceptance_decision_revision,
@@ -176,6 +180,7 @@ class P0SourceControlRow:
     allowed_use_cases: tuple[str, ...] = ()
     blockers: tuple[str, ...] = ()
     evidence_requirements: tuple[str, ...] = _REQUIRED_EVIDENCE
+    source_contract_requirements: tuple[str, ...] = ()
     owner_actions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -229,6 +234,11 @@ class P0SourceControlRow:
         )
         object.__setattr__(self, "blockers", _string_tuple(self.blockers))
         object.__setattr__(self, "evidence_requirements", _string_tuple(self.evidence_requirements))
+        object.__setattr__(
+            self,
+            "source_contract_requirements",
+            _string_tuple(self.source_contract_requirements),
+        )
         object.__setattr__(self, "owner_actions", _string_tuple(self.owner_actions))
         if self.fallback_used is not None and type(self.fallback_used) is not bool:
             raise TypeError("fallback_used must be a boolean or None")
@@ -292,6 +302,7 @@ class P0SourceControlRow:
             "allowed_use_cases": list(self.allowed_use_cases),
             "blockers": list(self.blockers),
             "evidence_requirements": list(self.evidence_requirements),
+            "source_contract_requirements": list(self.source_contract_requirements),
             "owner_actions": list(self.owner_actions),
         }
 
@@ -411,8 +422,13 @@ class P0SourceControlCenterDTO:
 class P0SourceControlCenterService:
     """將來源 contract、候選稽核與人工決議組合為唯讀投影。"""
 
-    def __init__(self, registry: P0SourceContractRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: P0SourceContractRegistry | None = None,
+        route_registry: P0AcquisitionRouteRegistry | None = None,
+    ) -> None:
         self._registry = registry or build_p0_source_contract_registry()
+        self._route_registry = route_registry or build_p0_acquisition_route_registry()
         contracts = self._registry.list()
         if tuple(item.source_id for item in contracts) != P0_SOURCE_IDS:
             raise ValueError("P0 registry does not match the authoritative source denominator")
@@ -630,6 +646,10 @@ class P0SourceControlCenterService:
                 else ()
             ),
             blockers=_unique_strings(blockers),
+            source_contract_requirements=_source_contract_requirements(
+                contract,
+                self._route_registry.for_source(contract.source_id),
+            ),
             owner_actions=owner_actions,
         )
 
@@ -1014,6 +1034,30 @@ def _governance_status(
     return "research_shadow"
 
 
+def _source_contract_requirements(
+    contract: P0SourceContract,
+    routes: Iterable[P0AcquisitionRoute],
+) -> tuple[str, ...]:
+    """Expose source-specific review policy and bounded route identities."""
+
+    requirements = [
+        f"可得日：{contract.available_date_policy}",
+        f"可得日必要：{'是' if contract.available_date_required else '否'}",
+        f"新鮮度：{contract.freshness_policy}",
+        f"缺件處理：{contract.missing_policy}",
+        f"覆蓋口徑：{contract.coverage_policy}",
+        f"重試策略：{contract.retry_policy}",
+    ]
+    for route in routes:
+        requirements.append(
+            "路徑："
+            f"{route.route_id}；供應者 {route.provider}；市場範圍 {route.market_scope}；"
+            f"可得日證據 {route.availability_evidence}；證據角色 {route.evidence_role}；"
+            f"實作狀態 {route.implementation_status}；端點 {route.endpoint}"
+        )
+    return tuple(requirements)
+
+
 def _owner_actions(
     *, audit: Mapping[str, Any] | None, decision_status: str, blockers: tuple[str, ...]
 ) -> tuple[str, ...]:
@@ -1032,8 +1076,18 @@ def _owner_actions(
         actions.append("補齊 PIT 可得日／公告時間與 row provenance")
     if "license_not_accepted" in blockers:
         actions.append("由資料擁有者與法務記錄 license／再分發條款")
-    if decision_status in {"not_supplied", "deferred", "rejected", "disabled"}:
+    if decision_status == "not_supplied":
         actions.append("取得 owner／reviewer 的明確 source acceptance 決議")
+    elif decision_status == "deferred":
+        actions.append("Owner 決議已記錄為延後；補齊來源、授權或 PIT 證據後再重新評估")
+    elif decision_status == "rejected":
+        actions.append("Owner 決議已記錄為拒絕；若來源條件改變，須重新審查後另建決議")
+    elif decision_status == "disabled":
+        actions.append("Owner 決議已記錄為停用；重新啟用前須完成來源與安全條件複核")
+    elif decision_status == "limited":
+        actions.append("限用途決議已記錄；只可依核准用途使用，其他證據仍須分別通過")
+    elif decision_status == "accepted":
+        actions.append("接受決議已記錄；機器驗證、license、PIT 與品質證據仍須分別通過")
     actions.append("維持 downstream_eligibility=none；不得自動接受或升級")
     return tuple(dict.fromkeys(actions))
 

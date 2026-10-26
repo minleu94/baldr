@@ -114,6 +114,51 @@ from app_module.paper_equal_weight_benchmark_builder import (
     PaperEqualWeightBenchmarkBuilder,
 )
 from app_module.paper_trade_import_service import PaperTradeImportService
+
+
+_PAPER_FILL_IMPORT_FIELD_LABELS = {
+    "fill_id": "成交識別碼",
+    "order_id": "訂單識別碼",
+    "portfolio_id": "Paper 組合識別碼",
+    "event_date": "成交日期",
+    "stock_code": "股票代碼",
+    "side": "買賣方向",
+    "requested_quantity": "委託數量",
+    "filled_quantity": "成交數量",
+    "reference_price": "參考價格",
+    "fill_price": "成交價格",
+    "commission": "手續費",
+    "tax": "交易稅",
+    "slippage_cost": "滑價成本",
+    "turnover_bp": "換手率 bp",
+    "execution_gap_bp": "執行落差 bp",
+    "status": "成交狀態",
+    "source_event_id": "來源事件識別碼",
+}
+
+
+def _paper_fill_import_error_label(error: str) -> str:
+    if error.endswith("_missing"):
+        field_name = error[: -len("_missing")]
+        return f"缺少{_PAPER_FILL_IMPORT_FIELD_LABELS.get(field_name, field_name)}"
+    if error.endswith("_invalid"):
+        field_name = error[: -len("_invalid")]
+        if field_name == "event_date":
+            return "成交日期格式無效"
+        if field_name == "side":
+            return "買賣方向不在支援值內"
+        if field_name == "status":
+            return "成交狀態不在支援值內"
+        return f"{_PAPER_FILL_IMPORT_FIELD_LABELS.get(field_name, field_name)}格式無效"
+    if error == "fill_id_duplicate_in_file":
+        return "CSV 內成交識別碼重複"
+    if error == "source_event_id_duplicate_in_file":
+        return "CSV 內來源事件識別碼重複"
+    if error == "extra_columns_in_file":
+        return "該列欄位數多於標題列"
+    if error.startswith("paper_fill_invalid:"):
+        return f"Paper fill 規則不符（{error.split(':', 1)[1][:180]}）"
+    return f"其他驗證錯誤（{error[:180]}）"
 from app_module.trade_import_service import TradeImportService
 from app_module.user_declared_holding_research import (
     UserDeclaredHoldingResearchService,
@@ -4839,6 +4884,73 @@ class PortfolioView(QWidget):
             logger.error("Failed to save portfolio stress history: %s", exc)
             QMessageBox.warning(self, "Stress 研究快照未保存", str(exc))
 
+    @staticmethod
+    def _format_paper_fill_import_issues(preview: Any) -> str:
+        payload = preview.to_dict()
+        rows = payload.get("rows")
+        rows = rows if isinstance(rows, list) else []
+        grouped: dict[str, set[int]] = {}
+        detail_lines: list[str] = []
+        for raw_row in rows:
+            if not isinstance(raw_row, Mapping) or raw_row.get("valid") is True:
+                continue
+            try:
+                row_number = max(0, int(raw_row.get("row_number") or 0))
+            except (TypeError, ValueError):
+                row_number = 0
+            errors = raw_row.get("errors")
+            error_items = (
+                [str(item).strip() for item in errors if str(item).strip()]
+                if isinstance(errors, (list, tuple))
+                else ["unknown_validation_error"]
+            )
+            for error in error_items:
+                grouped.setdefault(error, set()).add(row_number)
+            detail_lines.append(
+                f"行號 {row_number}："
+                + "；".join(
+                    f"{_paper_fill_import_error_label(error)}（{error[:120]}）"
+                    for error in error_items
+                )
+            )
+
+        lines = [
+            "Paper 成交 CSV 預覽結果",
+            f"總列數：{payload.get('row_count', len(rows))}；"
+            f"有效列：{payload.get('valid_row_count', 0)}；"
+            f"無效列：{payload.get('invalid_row_count', len(detail_lines))}",
+            f"來源 SHA-256：{payload.get('source_hash', '未提供')}",
+            "匯入狀態：阻擋；本次沒有寫入 Paper Ledger。修正 CSV 後可重新預覽。",
+            "",
+            "依錯誤分類的影響列：",
+        ]
+        for error, row_numbers in grouped.items():
+            rendered_rows = "、".join(str(number) for number in sorted(row_numbers))
+            lines.append(
+                f"- {_paper_fill_import_error_label(error)}：{len(row_numbers)} 列；"
+                f"行號 {rendered_rows}（{error}）"
+            )
+        lines.extend(["", "逐列修正：", *detail_lines])
+        warnings = payload.get("warnings")
+        if isinstance(warnings, list) and warnings:
+            lines.extend(["", "預覽提醒：", *(f"- {item}" for item in warnings)])
+        return "\n".join(lines)
+
+    def _show_paper_fill_import_issues(self, preview: Any) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Paper 成交 CSV 驗證明細")
+        dialog.setMinimumSize(780, 560)
+        layout = QVBoxLayout(dialog)
+        text = QTextEdit(dialog)
+        text.setReadOnly(True)
+        text.setPlainText(self._format_paper_fill_import_issues(preview))
+        layout.addWidget(text)
+        close_buttons = QDialogButtonBox(QDialogButtonBox.Close, dialog)
+        close_buttons.rejected.connect(dialog.reject)
+        close_buttons.accepted.connect(dialog.accept)
+        layout.addWidget(close_buttons)
+        dialog.exec()
+
     def _show_import_paper_fills_dialog(self) -> None:
         """預覽並在二次確認後匯入完整 Paper fill CSV；不修改正式 Portfolio。"""
         source_path, _ = QFileDialog.getOpenFileName(
@@ -4857,15 +4969,7 @@ class PortfolioView(QWidget):
             return
 
         if not preview.ready_to_import:
-            error_text = "; ".join(
-                f"第 {row.row_number} 列：{', '.join(row.errors)}"
-                for row in preview.invalid_rows[:5]
-            ) or "沒有可匯入的 Paper fill 列。"
-            QMessageBox.warning(
-                self,
-                "Paper 成交匯入被阻擋",
-                f"預覽 {len(preview.rows)} 列，沒有全部通過 Paper fill 驗證。\n{error_text}",
-            )
+            self._show_paper_fill_import_issues(preview)
             return
 
         try:

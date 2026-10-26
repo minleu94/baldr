@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import replace
 from datetime import date, datetime
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -46,6 +47,9 @@ def _dashboard() -> WorkbenchDashboardDTO:
         candidate_source_snapshot_id="snapshot-1",
         candidate_data_date="2026-09-14",
         candidate_quality="degraded",
+        candidate_requested_count=120,
+        candidate_degraded_count=2,
+        candidate_missing_count=1,
         candidate_reasons=("1528 恩德｜產業 電機機械｜理由 圖形模式分數+",),
         candidate_identity=("cohort_hash=sha256:cohort-1",),
         evidence_event_type="recommendation_included",
@@ -123,7 +127,7 @@ def test_daily_candidate_opens_direct_stock_research_context_without_watchlist_m
     assert context.data_date == "2026-09-14"
     assert context.result_id == "scheduled-rec-1"
     assert context.source_id == "scheduled-rec-1"
-    assert context.source_workspace == "recommendation"
+    assert context.source_workspace == "workbench"
 
     assert view.workflow_collapsible.is_collapsed() is True
     assert "直接開啟" in view.workflow_path_note.text()
@@ -138,8 +142,11 @@ def test_daily_journey_details_are_collapsed_until_requested_and_evidence_tab_is
 
     assert view.daily_trace_label.isHidden() is True
     assert "sha256:event-1" not in view.daily_candidate_detail_label.text()
-    assert "scheduled-rec-1" not in view.daily_candidate_detail_label.text()
+    assert "來源：scheduled-rec-1" in view.daily_candidate_detail_label.text()
     assert "candidate_degraded" not in view.daily_candidate_detail_label.text()
+    assert "候選資料日：2026-09-14" in view.daily_candidate_detail_label.text()
+    assert "要求檔數：120｜降級檔數：2｜缺漏檔數：1" in view.daily_candidate_detail_label.text()
+    assert "全市場分母：未提供" in view.daily_candidate_detail_label.text()
     assert "合格事件 1 件" in view.daily_evidence_card.value_label.text()
     assert "recommendation_included" not in view.daily_journey_label.text()
     assert "active pointer" not in view.daily_journey_label.text()
@@ -154,3 +161,34 @@ def test_daily_journey_details_are_collapsed_until_requested_and_evidence_tab_is
     view.daily_evidence_button.click()
     assert view.subtabs.currentWidget() is view.research_console_view
     assert view.subtabs.tabText(view.subtabs.currentIndex()) == "研究證據"
+
+
+def test_daily_candidate_disclosure_remains_visible_for_empty_candidate_result() -> None:
+    _app()
+    daily = _dashboard().daily_evidence
+    assert daily is not None
+    empty_daily = WorkbenchDailyEvidence(
+        status=daily.status,
+        decision_date=daily.decision_date,
+        data_as_of_date=daily.data_as_of_date,
+        headline="沒有候選列",
+        next_action=daily.next_action,
+        market_summary=daily.market_summary,
+        industry_summary=daily.industry_summary,
+        stock_summary="",
+        watchlist_summary=daily.watchlist_summary,
+        portfolio_summary=daily.portfolio_summary,
+        candidate_count=0,
+        candidate_status="missing",
+        candidate_quality="missing",
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard(), daily_evidence=empty_daily),
+        auto_refresh=False,
+    )
+
+    disclosure = view.daily_candidate_detail_label.text()
+    assert "目前沒有可安全呈現的候選列" in disclosure
+    assert "來源：未提供" in disclosure
+    assert "要求檔數：未提供｜降級檔數：未提供｜缺漏檔數：未提供" in disclosure
+    assert "全市場分母：未提供" in disclosure

@@ -22,6 +22,16 @@ V2 開發分支產品接受摘要：[BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md](BA
 
 [2026-10-25 Workbench Advice 空結果判讀](BALDR_WORKBENCH_ADVICE_EMPTY_STATE_20261025.md)記錄 UI 如何區分帶有來源／資格警告的空 DTO 與未附原因的空結果；完整原警告保留，來源、PIT、ML 與 Gate 資格不變。
 
+[2026-10-25 Daily／Weekly 資料品質披露](BALDR_DAILY_WEEKLY_DISCLOSURE_QA_20261025.md)記錄 Workbench 候選品質摘要、Update Readiness 分欄及 weekly 收集需重收原因計數的唯讀投影；未改 Gate，GUI 重啟與 Owner UAT 尚未完成。
+
+[2026-10-25 P0 來源決策清晰度](BALDR_P0_DECISION_CLARITY_QA_20261025.md)記錄已決議來源不再被要求重複輸入決策，並在 Update／Research Console 明示選取列的決策與剩餘證據缺口；不授予來源接受或下游資格。
+
+[2026-10-25 weekly collection 明細](BALDR_WEEKLY_COLLECTION_DETAIL_QA_20261025.md)記錄 Update 內可唯讀展開既有週收集的期間、來源 hash、coverage、品質發現與有限 integrity examples；不含附件路徑、核准或 Gate credit。
+
+[2026-10-25 P0 來源特定契約查核提示](BALDR_P0_DECISION_CLARITY_QA_20261025.md#2026-10-25-後續來源特定契約查核提示)記錄各來源可得日、新鮮度、缺件、coverage、retry 政策及已登錄 acquisition route 的唯讀呈現；政策不是來源證據或接受決議。
+
+[2026-10-25 Paper 成交 CSV 無效預覽明細](BALDR_PAPER_FILL_IMPORT_PREVIEW_QA_20261025.md)記錄驗證錯因中文分組、列數／行號提示，以及無效 CSV 不寫入 Paper Ledger 的 UI regression。
+
 [10/18後繼題材研究](BALDR_THEME_DAILY_QA_20261018.md)另核每日聚合、首頁／題材／個股返回及Journal原判斷重啟回訪；[研究12回報修正](BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)包含清除、同版顯示均線、原價格筆記刪除與明確一般查詢，完整Gate接受範圍保持。
 
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。

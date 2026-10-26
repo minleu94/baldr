@@ -27,6 +27,7 @@ from app_module.research_console_dtos import (
     ResearchPipelineRowDTO,
     ResearchSourceRowDTO,
 )
+from app_module.p0_source_control_center import P0SourceControlCenterService
 from app_module.recommendation_learning_evidence_projection_service import (
     LearningHorizonProjection,
     LearningLaneProjection,
@@ -324,6 +325,23 @@ def test_missing_console_opens_and_shows_fail_closed_boundary() -> None:
     assert "Downstream eligible：0" in text
     assert view.control_center_table.rowCount() == 13
     assert view.control_center_table.horizontalHeaderItem(5).text() == "PIT / 解析通過率"
+
+
+def test_research_console_shows_selected_p0_owner_decision_and_evidence_gaps() -> None:
+    app()
+    control_center = P0SourceControlCenterService().build()
+    view = ResearchConsoleView(
+        console=replace(_console(), source_control_center=control_center),
+        auto_refresh=False,
+    )
+
+    view.control_center_table.setCurrentCell(0, 0)
+    detail = view.control_center_detail_label.text()
+
+    assert "尚無 Owner／Reviewer 決議（not_supplied）" in detail
+    assert "證據缺口：" in detail
+    assert "Machine 狀態不等於來源接受" in detail
+    assert "取得 owner／reviewer 的明確 source acceptance 決議" in detail
 
 
 def test_fixture_renders_pipeline_gates_sources_and_separate_broker_lane() -> None:

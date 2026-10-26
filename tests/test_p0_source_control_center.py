@@ -81,6 +81,22 @@ def test_default_center_is_authoritative_and_fail_closed() -> None:
     assert all("source_acceptance_decision_missing" in row.blockers for row in center.rows)
 
 
+def test_source_rows_expose_contract_specific_freshness_and_route_availability() -> None:
+    center = P0SourceControlCenterService().build()
+    tdcc = next(row for row in center.rows if row.source_id == "tdcc_shareholding")
+    financials = next(
+        row for row in center.rows if row.source_id == "pit.quarterly_financials"
+    )
+
+    assert any("weekly publication available date" in item for item in tdcc.source_contract_requirements)
+    assert any("weekly_period_end_and_first_observed" in item for item in tdcc.source_contract_requirements)
+    assert any("quarterly announcement and revision dates" in item for item in financials.source_contract_requirements)
+    assert any("official_announcement_timestamp" in item for item in financials.source_contract_requirements)
+    assert tdcc.decision_status == "not_supplied"
+    assert financials.decision_status == "not_supplied"
+    assert tdcc.downstream_eligibility == financials.downstream_eligibility == "none"
+
+
 def test_candidate_audit_projects_machine_status_without_granting_acceptance() -> None:
     center = P0SourceControlCenterService().build(candidate_audit=_candidate_audit())
 
@@ -382,6 +398,11 @@ def test_control_center_cli_accepts_single_owner_review_deferred_decision(tmp_pa
     assert row["decision_status"] == "deferred"
     assert row["revision"] == "decision:source:deferred"
     assert "source_acceptance_not_authorized" in row["blockers"]
+    assert any("決議已記錄為延後" in item for item in row["owner_actions"])
+    assert not any(
+        "取得 owner／reviewer 的明確 source acceptance 決議" in item
+        for item in row["owner_actions"]
+    )
     assert payload["accepted_count"] == 0
 
 

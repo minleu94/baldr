@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QSizePolicy,
     QStackedWidget,
+    QTextEdit,
     QWidget,
 )
 from PySide6.QtTest import QTest
@@ -3077,6 +3078,50 @@ def test_paper_fill_csv_import_requires_confirmation_and_only_writes_paper_ledge
     assert [fill.fill_id for fill in PaperTradeLedgerRepository(ledger_path).list()] == ["fill-1"]
     assert [trade.trade_id for trade in view.portfolio_service.trades] == ["t1", "t2"]
     assert "成本帳：可用（ready）（1 筆；2026-08-27 → 2026-08-27）" in view.paper_readiness_summary_label.text()
+
+
+def test_invalid_paper_fill_preview_lists_all_rows_and_never_writes_ledger(
+    tmp_path,
+    monkeypatch,
+):
+    from PySide6.QtWidgets import QDialog
+
+    view = make_portfolio_view(tmp_path)
+    csv_path = tmp_path / "paper_fills_invalid.csv"
+    csv_path.write_text(
+        "fill_id,order_id,portfolio_id,event_date,stock_code,side,requested_quantity,"
+        "filled_quantity,reference_price,fill_price,commission,tax,slippage_cost,"
+        "turnover_bp,execution_gap_bp,status,source_event_id,override_reason\n"
+        "fill-ok,order-1,paper-main,2026-08-27,2330,buy,1000,1000,100.00,100.08,"
+        "15.00,0.00,8.00,120,8,filled,event-1,\n"
+        "fill-bad,order-2,paper-main,2026-08-28,2317,buy,500,500,,100.00,"
+        "15.00,0.00,8.00,120,8,bogus,event-2,\n",
+        encoding="utf-8-sig",
+    )
+    shown = {}
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *_args: (str(csv_path), "CSV"))
+
+    def reject_unexpected_confirmation(*_args):
+        raise AssertionError("invalid preview must not request import confirmation")
+
+    def capture_dialog(dialog):
+        shown["title"] = dialog.windowTitle()
+        shown["text"] = dialog.findChild(QTextEdit).toPlainText()
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "question", reject_unexpected_confirmation)
+    monkeypatch.setattr(QDialog, "exec", capture_dialog)
+
+    view.btn_import_paper_fills.click()
+
+    ledger_path = tmp_path / "paper_portfolio" / "paper_trade_ledger.sqlite"
+    assert shown["title"] == "Paper 成交 CSV 驗證明細"
+    assert "總列數：2；有效列：1；無效列：1" in shown["text"]
+    assert "成交狀態不在支援值內" in shown["text"]
+    assert "缺少參考價格" in shown["text"]
+    assert "行號 3" in shown["text"]
+    assert "沒有寫入 Paper Ledger" in shown["text"]
+    assert not ledger_path.exists()
 
 
 def test_paper_fill_template_export_writes_headers_only_and_not_ledger(tmp_path, monkeypatch):

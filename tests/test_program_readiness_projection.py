@@ -210,7 +210,13 @@ def test_projection_keeps_bounded_lane_progress_without_nested_details(tmp_path:
                                 {"period_start": "2026-08-17", "period_end": "2026-08-23"},
                                 {"period_start": "2026-08-24", "period_end": "2026-08-28"},
                                 {"details_that_must_not_leak": {"large": "payload"}},
-                            ]
+                            ],
+                            "pending_collection_reviewability": {
+                                "unreviewable_count": 3,
+                                "source_unavailable_count": 2,
+                                "coverage_missing_count": 3,
+                                "private_paths_must_not_leak": ["C:/private/source.db"],
+                            },
                         },
                     },
                     {
@@ -242,12 +248,16 @@ def test_projection_keeps_bounded_lane_progress_without_nested_details(tmp_path:
         "weekly_observed_count": 0,
         "weekly_required_count": 3,
         "weekly_pending_count": 3,
+        "weekly_unreviewable_count": 3,
+        "weekly_source_unavailable_count": 2,
+        "weekly_coverage_missing_count": 3,
         "dry_run_observed_count": 2,
         "dry_run_required_count": 3,
         "formal_credit_authorized": False,
     }
     assert "details" not in projected["workstreams"]["p0"]
     assert "details_that_must_not_leak" not in json.dumps(projected)
+    assert "private_paths_must_not_leak" not in json.dumps(projected)
 
     p0_progress = format_program_readiness_lane_progress(
         "p0", projected["workstreams"]["p0"]
@@ -258,7 +268,7 @@ def test_projection_keeps_bounded_lane_progress_without_nested_details(tmp_path:
         "evidence", projected["workstreams"]["evidence"]
     )
     assert "真實週證據 0/3" in evidence_progress
-    assert "待人工審核 3 期" in evidence_progress
+    assert "待人工審核收集 3 筆（需重收 3；來源不可讀 2；覆蓋資訊缺件 3；分類可重疊）" in evidence_progress
     assert "dry-run 2/3" in evidence_progress
     assert "正式週證據核准：未授權" in evidence_progress
 

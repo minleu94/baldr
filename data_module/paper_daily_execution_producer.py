@@ -2110,7 +2110,7 @@ def _validate_queue_receipt(
         # 沒有選中來源的診斷不建立待執行 identity；原始錯誤收據仍逐筆驗證。
         return _validate_required_candidate_hashes(value, result)
     source_hash = value.get("source_file_hash")
-    if not _is_sha256(source_hash):
+    if not isinstance(source_hash, str) or not _is_sha256(source_hash):
         return "source_file_hash_missing_or_invalid"
     source_result_id = value.get("source_result_id")
     if not isinstance(source_result_id, str) or not source_result_id.strip():

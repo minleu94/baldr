@@ -2136,7 +2136,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 "下一步：重新整理既有唯讀來源。UI 不讀 DB、不執行策略、不補值。"
             )
             self.daily_candidate_detail_label.setText(
-                "個股研究候選：尚未載入；空白不等於沒有候選。"
+                "個股研究候選：尚未載入；空白不等於沒有候選。\n"
+                "來源：未提供｜候選資料日：未提供｜品質：未知\n"
+                "範圍：要求檔數未提供｜降級檔數未提供｜缺漏檔數未提供｜全市場分母：未提供"
             )
             self._sync_daily_candidate_open_controls()
             self.daily_watchlist_button.setEnabled(False)
@@ -2170,22 +2172,41 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if fallback_line:
             journey_lines.append(fallback_line)
         self.daily_journey_label.setText("\n".join(journey_lines))
-        if daily.candidate_count or daily.candidate_symbols or daily.candidate_reasons:
-            suffix = (
-                f"狀態：{_daily_candidate_surface_status(daily)}｜"
-                f"資料品質：{_daily_quality_text(daily.candidate_quality)}｜"
-                f"資料日：{daily.candidate_data_date or '未知'}"
-            )
-            self.daily_candidate_detail_label.setText(
-                f"個股研究候選：{daily.candidate_count} 檔｜{suffix}\n"
-                "逐股原始理由請看上方候選列；候選僅供研究，不代表已驗證、可成交或應下單。"
-                f"\n下一步：{next_action}"
-            )
-        else:
-            self.daily_candidate_detail_label.setText(
-                "個股研究候選："
-                "目前沒有可安全呈現的候選列；空結果不等於 Gate 已通過。"
-            )
+        requested_count = (
+            str(daily.candidate_requested_count)
+            if daily.candidate_requested_count is not None
+            else "未提供"
+        )
+        degraded_count = (
+            str(daily.candidate_degraded_count)
+            if daily.candidate_degraded_count is not None
+            else "未提供"
+        )
+        missing_count = (
+            str(daily.candidate_missing_count)
+            if daily.candidate_missing_count is not None
+            else "未提供"
+        )
+        candidate_state = (
+            f"候選狀態：{_daily_candidate_surface_status(daily)}｜"
+            if daily.candidate_count or daily.candidate_symbols or daily.candidate_reasons
+            else "目前沒有可安全呈現的候選列；空結果不等於 Gate 已通過。｜"
+        )
+        reasons = (
+            "逐股原始理由請看上方候選列。"
+            if daily.candidate_count or daily.candidate_symbols or daily.candidate_reasons
+            else "目前無候選列或來源理由可供檢視。"
+        )
+        self.daily_candidate_detail_label.setText(
+            f"個股研究候選：{daily.candidate_count} 檔｜{candidate_state}"
+            f"品質：{_daily_quality_text(daily.candidate_quality)}\n"
+            f"來源：{daily.candidate_source_id or '未提供'}｜"
+            f"候選資料日：{daily.candidate_data_date or '未提供'}｜"
+            f"要求檔數：{requested_count}｜降級檔數：{degraded_count}｜缺漏檔數：{missing_count}\n"
+            "全市場分母：未提供；以上筆數是候選來源範圍，不代表全市場覆蓋率。\n"
+            f"{reasons} 候選僅供研究，不代表已驗證、可成交或應下單。\n"
+            f"下一步：{next_action}"
+        )
         self._sync_daily_candidate_open_controls()
         self.daily_watchlist_button.setEnabled(self.navigate_to_watchlist_callback is not None)
         self.daily_evidence_button.setEnabled(True)

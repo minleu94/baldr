@@ -31,6 +31,7 @@
         "tests/test_workbench_advice_contract.py",
         "tests/test_workbench_source_service.py",
         "tests/test_daily_investment_journey.py",
+        "tests/test_ui_qt_daily_journey.py",
         "tests/test_advice_composer.py",
         "tests/test_pre_v2_readiness_service.py",
         "tests/test_workbench_read_only_composer.py"
@@ -43,6 +44,7 @@
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
         "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
         "docs/06_qa/BALDR_WORKBENCH_ADVICE_EMPTY_STATE_20261025.md",
+        "docs/06_qa/BALDR_DAILY_WEEKLY_DISCLOSURE_QA_20261025.md",
         "docs/06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md"
       ],
       "status": [
@@ -58,6 +60,7 @@
         "app_module/workbench_read_only_composer.py",
         "tests/test_workbench_source_service.py",
         "tests/test_daily_investment_journey.py",
+        "tests/test_ui_qt_daily_journey.py",
         "tests/test_advice_composer.py",
         "tests/test_pre_v2_readiness_service.py",
         "tests/test_workbench_read_only_composer.py",
@@ -1130,6 +1133,7 @@
         "tests/test_ui_qt_portfolio_v2_sections.py",
         "tests/test_ui_qt_portfolio_health_navigation.py",
         "tests/test_ui_qt_portfolio_view.py",
+        "tests/test_paper_trade_import_service.py",
         "tests/test_portfolio_research_scenario_widget.py",
         "tests/test_portfolio_research_scenario_workspace.py",
         "tests/test_portfolio_research_initial_source.py",
@@ -1153,7 +1157,8 @@
         "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
       ],
       "evidence": [
-        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_PAPER_FILL_IMPORT_PREVIEW_QA_20261025.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -1276,6 +1281,7 @@
         "app_module/evidence_weekly_approval_input.py",
         "app_module/p0_source_control_center.py",
         "ui_qt/views/update_view.py",
+        "ui_qt/views/research_console_view.py",
         "ui_qt/views/update/update_formatters.py",
         "data_module/tpex_institutional_openapi.py"
       ],
@@ -1290,7 +1296,10 @@
         "tests/test_evidence_weekly_approval_input.py",
         "tests/test_evidence_weekly_collection_repository.py",
         "tests/test_update_view_formatters.py",
+        "tests/test_p0_source_control_center.py",
         "tests/test_ui_qt_update_view_workbench.py",
+        "tests/test_ui_qt_research_console_view.py",
+        "tests/test_ui_qt_daily_journey.py",
         "tests/test_institutional_flow_capture_scope.py",
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",
         "tests/test_daily_market_monthly_revenue_archived_v2.py",
@@ -1331,6 +1340,7 @@
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
         "tests/test_ui_qt_update_view_workbench.py",
         "tests/test_program_readiness_projection.py",
+        "tests/test_ui_qt_daily_journey.py",
         "tests/test_watchlist_revenue_archived_bookmark_v3.py",
         "tests/test_tpex_institutional_openapi.py",
         "tests/test_tpex_institutional_daily_snapshot.py",
@@ -1345,6 +1355,9 @@
       ],
       "evidence": [
         "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md",
+        "docs/06_qa/BALDR_DAILY_WEEKLY_DISCLOSURE_QA_20261025.md",
+        "docs/06_qa/BALDR_P0_DECISION_CLARITY_QA_20261025.md",
+        "docs/06_qa/BALDR_WEEKLY_COLLECTION_DETAIL_QA_20261025.md",
         "docs/06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md"
       ],
       "status": [
@@ -1388,6 +1401,11 @@
         "tests/test_evidence_weekly_approval_input.py",
         "tests/test_evidence_weekly_collection_repository.py",
         "app_module/p0_source_control_center.py",
+        "ui_qt/views/update_view.py",
+        "ui_qt/views/research_console_view.py",
+        "ui_qt/views/update/update_formatters.py",
+        "tests/test_p0_source_control_center.py",
+        "tests/test_ui_qt_research_console_view.py",
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",
         "tests/test_daily_market_monthly_revenue_archived_v2.py",
         "tests/test_daily_market_monthly_revenue_cohort_v2.py",

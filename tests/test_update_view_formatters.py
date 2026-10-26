@@ -4,10 +4,12 @@ from ui_qt.views.update.update_formatters import (
     format_monthly_revenue_freshness_gap,
     format_manual_update_summary,
     format_p0_license_capture_status,
+    format_p0_owner_decision_details,
     format_p0_route_probe_statuses,
     format_scheduler_operations_detail,
     format_source_detail_summary,
     format_status_token,
+    format_weekly_collection_details,
     get_update_type_name,
     tpex_warning_messages,
 )
@@ -29,6 +31,57 @@ def test_format_manual_update_summary_keeps_attempt_state_separate_from_schedule
     assert "資料區間：2026-08-27 ~ 2026-08-28" in summary
     assert "失敗步驟：大盤指數更新" in summary
     assert "排程時間軸仍只讀取明確 status artifact" in summary
+
+
+def test_weekly_collection_detail_is_bounded_and_does_not_expose_paths_or_authority() -> None:
+    detail = format_weekly_collection_details(
+        {
+            "pending_human_review_count": 1,
+            "recollection_required_count": 0,
+            "reviewable_pending_count": 1,
+            "records": [
+                {
+                    "period_start": "2026-10-12",
+                    "period_end": "2026-10-18",
+                    "collection_id": "ewc_123",
+                    "source_hash": "sha256:abc123",
+                    "source_path": "C:/private/source.db",
+                    "collection_status": "pending_human_review",
+                    "reviewability_status": "reviewable_candidate",
+                    "last_trading_date": "2026-10-16",
+                    "reviewability_reasons": [],
+                    "collection_payload": {
+                        "source_coverage": {
+                            "status": "degraded",
+                            "trading_day_count": 5,
+                            "observed_row_count": 10,
+                            "observed_symbol_count": 2,
+                            "duplicate_symbol_rows": 1,
+                            "incomplete_row_count": 1,
+                            "quality_findings": ["missing_required_price_values"],
+                            "integrity_examples": [
+                                {
+                                    "date": "2026-10-16",
+                                    "symbol": "2330",
+                                    "missing_fields": ["最高價"],
+                                    "classification": "source_cause_unverified",
+                                    "official_receipt_sha256": "sha256:receipt",
+                                    "official_receipt_path": "C:/private/receipt.json",
+                                }
+                            ],
+                        }
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "ewc_123" in detail
+    assert "sha256:abc123" in detail
+    assert "missing_required_price_values" in detail
+    assert "sha256:receipt" in detail
+    assert "C:/private" not in detail
+    assert "不寫入審查決定" in detail
 
 
 def test_format_manual_update_summary_clamps_progress_and_counts() -> None:
@@ -79,6 +132,50 @@ def test_format_p0_route_probe_statuses_shows_attempts_and_bounded_markers() -> 
     assert "twse.T86：已觀測（observed）（已選）" in rendered
     assert "tpex.tpex_3insti_daily_trading：未嘗試（not_attempted）" in rendered
     assert format_p0_route_probe_statuses({}) == "未提供"
+
+
+def test_p0_decision_details_separate_deferred_decision_from_evidence_gaps() -> None:
+    rendered = format_p0_owner_decision_details(
+        {
+            "source_id": "pit.quarterly_financials",
+            "decision_status": "deferred",
+            "machine_status": "verified",
+            "license_status": "not_accepted",
+            "downstream_eligibility": "none",
+            "blockers": ["source_acceptance_deferred", "license_not_accepted"],
+            "owner_actions": ["Owner 決議已記錄為延後；補齊來源證據後再重新評估"],
+        }
+    )
+
+    assert "目前決議：已記錄延後決議（deferred）" in rendered
+    assert "Owner 已決議延後" in rendered
+    assert "Machine：verified" in rendered
+    assert "Machine 狀態不等於來源接受" in rendered
+    assert "取得 owner／reviewer 的明確 source acceptance 決議" not in rendered
+
+
+def test_p0_decision_details_show_contract_and_route_evidence_requirements() -> None:
+    rendered = format_p0_owner_decision_details(
+        {
+            "source_id": "tdcc_shareholding",
+            "decision_status": "deferred",
+            "machine_status": "verified",
+            "license_status": "requires_review",
+            "downstream_eligibility": "none",
+            "blockers": ["source_acceptance_deferred"],
+            "owner_actions": ["補齊證據後重核"],
+            "source_contract_requirements": [
+                "新鮮度：weekly publication available date must be preserved",
+                "路徑：tdcc.openapi_1-5；可得日證據 weekly_period_end_and_first_observed",
+            ],
+        }
+    )
+
+    assert "來源契約查核項目" in rendered
+    assert "weekly publication available date must be preserved" in rendered
+    assert "tdcc.openapi_1-5" in rendered
+    assert "weekly_period_end_and_first_observed" in rendered
+    assert "不代表證據已取得" in rendered
 
 
 def test_format_status_token_preserves_known_unknown_and_missing_values() -> None:

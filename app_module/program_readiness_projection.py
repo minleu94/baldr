@@ -337,6 +337,19 @@ def _project_lane_metrics(lane: str, payload: Mapping[str, Any]) -> dict[str, An
                                     if isinstance(pending, Mapping)
                                 )
                                 metrics["weekly_pending_count"] = pending_count
+                            reviewability = evidence.get("pending_collection_reviewability")
+                            if isinstance(reviewability, Mapping):
+                                for source_key, metric_key in (
+                                    ("unreviewable_count", "weekly_unreviewable_count"),
+                                    ("source_unavailable_count", "weekly_source_unavailable_count"),
+                                    ("coverage_missing_count", "weekly_coverage_missing_count"),
+                                ):
+                                    _copy_nonnegative_int(
+                                        reviewability,
+                                        source_key,
+                                        metrics,
+                                        metric_key,
+                                    )
                     elif item_id == "multi_day_dry_run":
                         _copy_nonnegative_int(item, "observed_count", metrics, "dry_run_observed_count")
                         _copy_nonnegative_int(item, "required_count", metrics, "dry_run_required_count")

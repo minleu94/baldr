@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QPushButton, QStackedWidget, QMessageBox, QDateEdit, QTextEdit, QGroupBox
+from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QPushButton, QStackedWidget, QMessageBox, QDateEdit, QTextEdit, QGroupBox, QDialog
 import pandas as pd
 
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -358,6 +358,50 @@ def test_p0_source_status_table_uses_error_token_for_blocked_provenance():
     assert f"color: {MIDNIGHT_ANALYST.status_error}" in view.p0_source_control_summary_label.styleSheet()
 
 
+def test_p0_source_selection_explains_deferred_decision_and_separate_evidence_gaps():
+    view = make_view()
+    view._render_p0_source_control_status(
+        {
+            "status": "research_shadow",
+            "source_count": 1,
+            "rows": [
+                {
+                    "source_id": "pit.quarterly_financials",
+                    "label": "PIT 季財報",
+                    "governance_status": "deferred",
+                    "machine_status": "verified",
+                    "audit_status": "observed_candidate",
+                    "decision_status": "deferred",
+                    "license_status": "not_accepted",
+                    "downstream_eligibility": "none",
+                    "blockers": [
+                        "source_acceptance_deferred",
+                        "license_not_accepted",
+                    ],
+                    "owner_actions": [
+                        "Owner 決議已記錄為延後；補齊來源證據後再重新評估",
+                        "維持 downstream_eligibility=none；不得自動接受或升級",
+                    ],
+                    "source_contract_requirements": [
+                        "新鮮度：quarterly announcement and revision dates must be preserved",
+                        "路徑：mops.ezsearch.statement_publication；可得日證據 official_announcement_timestamp",
+                    ],
+                }
+            ],
+        }
+    )
+    view.p0_source_control_table.setCurrentCell(0, 0)
+
+    detail = view.p0_source_decision_detail_label.text()
+    assert "已記錄延後決議（deferred）" in detail
+    assert "Owner 已決議延後" in detail
+    assert "Machine：verified" in detail
+    assert "Machine 狀態不等於來源接受" in detail
+    assert "quarterly announcement and revision dates" in detail
+    assert "official_announcement_timestamp" in detail
+    assert "取得 owner／reviewer 的明確 source acceptance 決議" not in detail
+
+
 def test_update_view_projects_license_candidate_capture_status(tmp_path):
     audit_path = _write_p0_evidence_audit(tmp_path / "p0-audit-license.json")
     license_path = _write_p0_license_evidence(tmp_path / "p0-license.json")
@@ -530,12 +574,52 @@ def test_update_view_projects_program_readiness_lanes(tmp_path):
                         "blockers": ["source_acceptance_decision_missing"],
                         "next_actions": ["完成 owner review"],
                         "external_input_required": True,
+                        "details": {
+                            "source_count": 13,
+                            "accepted_count": 0,
+                            "limited_count": 2,
+                            "projection": {
+                                "machine_status_counts": {
+                                    "verified": 1,
+                                    "degraded": 3,
+                                }
+                            },
+                        },
                     },
                     "runtime": {
                         "status": "ready",
                         "blockers": [],
                         "next_actions": ["維持觀察"],
                         "external_input_required": False,
+                    },
+                    "evidence": {
+                        "status": "waiting_for_external_input",
+                        "blockers": ["insufficient_weekly_history_records"],
+                        "next_actions": ["舊週需重新收集；核准不能補出證據。"],
+                        "external_input_required": True,
+                        "details": {
+                            "readiness": {
+                                "formal_credit_authorized": False,
+                                "items": [
+                                    {
+                                        "item_id": "weekly_history",
+                                        "observed_count": 0,
+                                        "required_count": 3,
+                                        "evidence": {
+                                            "pending_collection_periods": [
+                                                {"period_start": "2026-10-12", "period_end": "2026-10-18"},
+                                                {"period_start": "2026-10-19", "period_end": "2026-10-25"},
+                                            ],
+                                            "pending_collection_reviewability": {
+                                                "unreviewable_count": 2,
+                                                "source_unavailable_count": 1,
+                                                "coverage_missing_count": 2,
+                                            },
+                                        },
+                                    }
+                                ],
+                            }
+                        },
                     },
                 },
             }
@@ -554,16 +638,92 @@ def test_update_view_projects_program_readiness_lanes(tmp_path):
     assert status["program_readiness"]["status"] == "action_required"
     assert view.program_readiness_table.rowCount() == 7
     assert view.program_readiness_table.item(0, 0).text() == "P0 來源"
-    assert "尚未提供來源接受決議" in view.program_readiness_table.item(0, 2).text()
-    assert "source_acceptance_decision_missing" in view.program_readiness_table.item(0, 2).toolTip()
-    assert "需補資料、實測或人工審查" in view.program_readiness_table.item(0, 3).text()
+    assert view.program_readiness_table.columnCount() == 5
+    assert "來源 13 項" in view.program_readiness_table.item(0, 2).text()
+    assert "機器證據 4/13" in view.program_readiness_table.item(0, 2).text()
+    assert "正式接受 0／限用途 2" in view.program_readiness_table.item(0, 2).text()
+    assert "尚未提供來源接受決議" in view.program_readiness_table.item(0, 3).text()
+    assert "source_acceptance_decision_missing" in view.program_readiness_table.item(0, 3).toolTip()
+    assert "需補資料、實測或人工審查" in view.program_readiness_table.item(0, 4).text()
     assert view.program_readiness_table.item(2, 0).text() == "Paper Portfolio"
-    assert "缺少Paper Portfolio盤點資料" in view.program_readiness_table.item(2, 2).text()
-    assert "readiness_lane_not_supplied:paper" in view.program_readiness_table.item(2, 2).toolTip()
+    assert "未提供可量化進度" in view.program_readiness_table.item(2, 2).text()
+    assert "缺少Paper Portfolio盤點資料" in view.program_readiness_table.item(2, 3).text()
+    assert "readiness_lane_not_supplied:paper" in view.program_readiness_table.item(2, 3).toolTip()
     assert view.program_readiness_table.item(0, 1).text() == "需處理"
     assert view.program_readiness_table.item(0, 1).toolTip() == "狀態代碼：action_required"
+    evidence_row = next(
+        row
+        for row in range(view.program_readiness_table.rowCount())
+        if view.program_readiness_table.item(row, 0).text() == "Evidence"
+    )
+    evidence_progress = view.program_readiness_table.item(evidence_row, 2).text()
+    assert "真實週證據 0/3" in evidence_progress
+    assert "待人工審核收集 2 筆（需重收 2；來源不可讀 1；覆蓋資訊缺件 2；分類可重疊）" in evidence_progress
+    assert view.program_readiness_table.item(evidence_row, 4).text().startswith(
+        "舊週需重新收集"
+    )
     assert "整體狀態：需處理" in view.program_readiness_summary_label.text()
     assert "action_required" in view.program_readiness_summary_label.toolTip()
+
+
+def test_update_view_opens_weekly_collection_details_read_only(monkeypatch, tmp_path):
+    from ui_qt.views import update_view as update_view_module
+
+    sidecar_path = tmp_path / "weekly-sidecar.sqlite"
+    shown = {}
+
+    monkeypatch.setattr(
+        update_view_module,
+        "build_weekly_approval_input",
+        lambda path, **kwargs: {
+            "pending_human_review_count": 1,
+            "recollection_required_count": 0,
+            "reviewable_pending_count": 1,
+            "records": [
+                {
+                    "period_start": "2026-10-12",
+                    "period_end": "2026-10-18",
+                    "collection_id": "ewc_ui_test",
+                    "source_hash": "sha256:source",
+                    "collection_status": "pending_human_review",
+                    "reviewability_status": "reviewable_candidate",
+                    "last_trading_date": "2026-10-16",
+                    "reviewability_reasons": [],
+                    "collection_payload": {
+                        "source_coverage": {
+                            "status": "observed_no_basic_integrity_gaps",
+                            "trading_day_count": 5,
+                            "observed_row_count": 100,
+                            "observed_symbol_count": 20,
+                            "duplicate_symbol_rows": 0,
+                            "incomplete_row_count": 0,
+                        }
+                    },
+                }
+            ],
+        },
+    )
+
+    def capture_dialog(dialog):
+        shown["title"] = dialog.windowTitle()
+        shown["text"] = dialog.findChild(QTextEdit).toPlainText()
+        return 0
+
+    monkeypatch.setattr(QDialog, "exec", capture_dialog)
+    app = QApplication.instance() or QApplication([])
+    view = _TestableUpdateView(
+        FakeUpdateService(),
+        weekly_collection_sidecar_path=sidecar_path,
+    )
+
+    assert view.weekly_collection_sidecar_path == sidecar_path.resolve()
+    view.weekly_collection_details_button.click()
+
+    assert shown["title"] == "週 Evidence 收集明細（唯讀）"
+    assert "ewc_ui_test" in shown["text"]
+    assert "sha256:source" in shown["text"]
+    assert "不授予 Gate credit" in shown["text"]
+    view.close()
 
 
 def test_update_view_runs_live_program_readiness_with_p0_artifacts(monkeypatch, tmp_path):

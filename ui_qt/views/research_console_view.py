@@ -32,7 +32,10 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.layout_helpers import ensure_visible_rows, set_scroll_content_constraints
 from ui_qt.widgets.theme_widgets import SectionPanel
-from ui_qt.views.update.update_formatters import format_p0_license_capture_status
+from ui_qt.views.update.update_formatters import (
+    format_p0_license_capture_status,
+    format_p0_owner_decision_details,
+)
 from ui_qt.workers.task_worker import TaskWorker
 
 
@@ -377,8 +380,17 @@ class ResearchConsoleView(QWidget):
                 "Blockers",
             )
         )
+        self.control_center_detail_label = QLabel(
+            "選取來源查看 Owner 決議、資料／授權／PIT 缺口及下一步。"
+        )
+        self.control_center_detail_label.setWordWrap(True)
+        self.control_center_detail_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.control_center_table.itemSelectionChanged.connect(
+            self._render_selected_control_center_details
+        )
         control_panel.layout.addWidget(self.control_center_summary_label)
         control_panel.layout.addWidget(self.control_center_table)
+        control_panel.layout.addWidget(self.control_center_detail_label)
         gates_panel.layout.addWidget(control_panel)
         gates_panel.layout.addWidget(QLabel("Artifact Inspector"))
         gates_panel.layout.addWidget(self.artifact_table)
@@ -788,11 +800,19 @@ class ResearchConsoleView(QWidget):
         )
         control_center = console.source_control_center
         if control_center is None:
+            self._control_center_rows: list[dict[str, Any]] = []
+            self.control_center_detail_label.setText(
+                "沒有可選取的來源治理資料；未知不代表沒有缺口。"
+            )
             self.control_center_summary_label.setText(
                     "P0 來源控制中心：未提供 13 項來源治理投影。"
             )
             self.control_center_table.setRowCount(0)
         else:
+            self._control_center_rows = [row.to_dict() for row in control_center.rows]
+            self.control_center_detail_label.setText(
+                "選取來源查看 Owner 決議、資料／授權／PIT 缺口及下一步。"
+            )
             self.control_center_summary_label.setText(
                 "狀態：{status}｜P0：{count}｜Research shadow：{shadow}｜"
                 "Blocked provenance：{blocked}｜Accepted / Limited：{accepted} / {limited}｜"
@@ -839,6 +859,18 @@ class ResearchConsoleView(QWidget):
         )
         if self.learning_projection_service is not None and not self._async_refresh:
             self._refresh_learning_projection()
+
+    def _render_selected_control_center_details(self) -> None:
+        row_index = self.control_center_table.currentRow()
+        rows = getattr(self, "_control_center_rows", [])
+        if row_index < 0 or row_index >= len(rows):
+            self.control_center_detail_label.setText(
+                "選取來源查看 Owner 決議、資料／授權／PIT 缺口及下一步。"
+            )
+            return
+        self.control_center_detail_label.setText(
+            format_p0_owner_decision_details(rows[row_index])
+        )
 
     def visible_text(self) -> str:
         values = [label.text() for label in self.findChildren(QLabel)]

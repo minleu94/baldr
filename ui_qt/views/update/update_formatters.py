@@ -341,6 +341,10 @@ _READINESS_BLOCKER_LABELS = {
     "paper_weekly_report_not_computable": "Paper 週報尚不可計算",
     "production_scheduler_disabled": "正式排程維持關閉",
     "source_acceptance_decision_missing": "尚未提供來源接受決議",
+    "source_acceptance_deferred": "Owner 已決議延後，來源目前不具接受資格",
+    "source_acceptance_rejected": "Owner 已決議拒絕此來源",
+    "source_acceptance_disabled": "Owner 已決議停用此來源",
+    "source_acceptance_not_authorized": "來源尚未取得允許用途的授權",
     "direct_chain_storage_preflight_blocked": "Direct/OOC 容量預檢受阻",
     "technical_production_single_writer_canary_not_completed": "technical 正式 single-writer canary 尚未完成",
     "formal_credit_not_authorized": "Formal credit 尚未授權",
@@ -475,6 +479,54 @@ def format_program_readiness_blockers(
     return "；".join(rendered) or "無"
 
 
+def format_p0_owner_decision_details(value: Mapping[str, Any]) -> str:
+    """分開呈現 P0 Owner 決議、證據缺口及後續動作。"""
+
+    decision = str(value.get("decision_status") or "not_supplied").strip().lower()
+    decision_labels = {
+        "not_supplied": "尚無 Owner／Reviewer 決議",
+        "deferred": "已記錄延後決議",
+        "rejected": "已記錄拒絕決議",
+        "disabled": "已記錄停用決議",
+        "limited": "已記錄限用途決議",
+        "accepted": "已記錄接受決議",
+    }
+    label = str(value.get("label") or value.get("source_id") or "所選來源")
+    machine_status = str(value.get("machine_status") or "not_observed")
+    license_status = str(value.get("license_status") or "not_supplied")
+    blockers = value.get("blockers")
+    actions = value.get("owner_actions")
+    allowed_use_cases = value.get("allowed_use_cases")
+    source_contract_requirements = value.get("source_contract_requirements")
+    blocker_text = format_program_readiness_blockers(blockers, include_raw=True)
+    action_text = "；".join(
+        str(item).strip()
+        for item in actions
+        if str(item).strip()
+    ) if isinstance(actions, (list, tuple)) else "依資料缺口補件後重新盤點"
+    allowed_text = "、".join(
+        str(item).strip()
+        for item in allowed_use_cases
+        if str(item).strip()
+    ) if isinstance(allowed_use_cases, (list, tuple)) else ""
+    lines = [
+        f"{label}｜目前決議：{decision_labels.get(decision, f'狀態 {decision}')}（{decision}）",
+        f"證據缺口：{blocker_text}",
+        f"Machine：{machine_status}；License：{license_status}；下游資格：none。Machine 狀態不等於來源接受。",
+        f"下一步：{action_text or '未提供'}",
+    ]
+    if allowed_text:
+        lines.append(f"核准用途：{allowed_text}")
+    if isinstance(source_contract_requirements, (list, tuple)) and source_contract_requirements:
+        lines.append("來源契約查核項目（政策／路徑描述，不代表證據已取得）：")
+        lines.extend(
+            f"• {str(item).strip()[:500]}"
+            for item in source_contract_requirements[:16]
+            if str(item).strip()
+        )
+    return "\n".join(lines)
+
+
 def format_program_readiness_lane_progress(lane: str, value: Mapping[str, Any]) -> str:
     """Render bounded progress facts for one projected readiness lane."""
 
@@ -510,10 +562,27 @@ def format_program_readiness_lane_progress(lane: str, value: Mapping[str, Any]) 
                 f"真實週證據 {_safe_nonnegative_int(metrics.get('weekly_observed_count'))}/{weekly_required}"
             )
         if "weekly_pending_count" in metrics:
-            parts.append(
-                "待人工審核 "
-                f"{_safe_nonnegative_int(metrics.get('weekly_pending_count'))} 期"
+            pending_text = (
+                "待人工審核收集 "
+                f"{_safe_nonnegative_int(metrics.get('weekly_pending_count'))} 筆"
             )
+            if "weekly_unreviewable_count" in metrics:
+                pending_text += (
+                    "（需重收 "
+                    f"{_safe_nonnegative_int(metrics.get('weekly_unreviewable_count'))}"
+                )
+                if "weekly_source_unavailable_count" in metrics:
+                    pending_text += (
+                        "；來源不可讀 "
+                        f"{_safe_nonnegative_int(metrics.get('weekly_source_unavailable_count'))}"
+                    )
+                if "weekly_coverage_missing_count" in metrics:
+                    pending_text += (
+                        "；覆蓋資訊缺件 "
+                        f"{_safe_nonnegative_int(metrics.get('weekly_coverage_missing_count'))}"
+                    )
+                pending_text += "；分類可重疊）"
+            parts.append(pending_text)
         dry_required = _safe_nonnegative_int(metrics.get("dry_run_required_count"))
         if dry_required:
             parts.append(
@@ -948,6 +1017,87 @@ def format_data_freshness_preview(payload: Mapping[str, Any]) -> str:
     if payload.get("read_only") is True:
         lines.append("邊界：唯讀，只觀測 freshness artifact，不修改資料或 Scheduler")
     return "\n".join(lines)
+
+
+def format_weekly_collection_details(packet: Mapping[str, Any]) -> str:
+    """Render a bounded, read-only weekly collection review summary."""
+
+    records = packet.get("records")
+    if not isinstance(records, (list, tuple)):
+        records = []
+    lines = [
+        "週 Evidence 收集明細（唯讀候選）",
+        f"待審 {_safe_nonnegative_int(packet.get('pending_human_review_count'))} 筆；"
+        f"需重收 {_safe_nonnegative_int(packet.get('recollection_required_count'))} 筆；"
+        f"可供人工審查 {_safe_nonnegative_int(packet.get('reviewable_pending_count'))} 筆。",
+        "本畫面不寫入審查決定、不產生核准 projection，也不授予 Gate credit。",
+        "來源雜湊只綁定收集時來源快照；不代表品質、全市場覆蓋、PIT 或 License 已通過。",
+        "",
+    ]
+    max_records = 30
+
+    def optional_count(value: Any) -> str:
+        if value is None or isinstance(value, bool):
+            return "未提供"
+        try:
+            return str(max(0, int(value)))
+        except (TypeError, ValueError):
+            return "格式無效"
+
+    for index, record in enumerate(records[:max_records]):
+        if not isinstance(record, Mapping):
+            continue
+        payload = record.get("collection_payload")
+        payload = payload if isinstance(payload, Mapping) else {}
+        coverage = payload.get("source_coverage")
+        coverage = coverage if isinstance(coverage, Mapping) else {}
+        lines.extend(
+            [
+                f"{index + 1}. {record.get('period_start', '?')} ～ {record.get('period_end', '?')}",
+                f"   收集 ID：{str(record.get('collection_id') or '未提供')[:80]}",
+                f"   來源雜湊：{str(record.get('source_hash') or '未提供')[:80]}",
+                f"   狀態／審查性：{record.get('collection_status', 'unknown')}／{record.get('reviewability_status', 'unknown')}",
+                f"   最近交易日：{record.get('last_trading_date') or '未提供'}；覆蓋狀態：{coverage.get('status', '未提供')}",
+                f"   覆蓋基準：{coverage.get('coverage_basis', '未提供')}；"
+                f"全市場分母：{optional_count(coverage.get('expected_universe_count'))}；"
+                f"完整覆蓋宣稱：{'是' if coverage.get('full_coverage_claimed') is True else '否／未宣稱'}",
+                "   覆蓋統計："
+                f"交易日 {optional_count(coverage.get('trading_day_count'))}；"
+                f"觀測列 {optional_count(coverage.get('observed_row_count'))}；"
+                f"觀測股票 {optional_count(coverage.get('observed_symbol_count'))}；"
+                f"重複列 {optional_count(coverage.get('duplicate_symbol_rows'))}；"
+                f"不完整列 {optional_count(coverage.get('incomplete_row_count'))}",
+            ]
+        )
+        reasons = record.get("reviewability_reasons")
+        if isinstance(reasons, (list, tuple)) and reasons:
+            lines.append("   需重收原因：" + "、".join(str(item)[:100] for item in reasons[:8]))
+        findings = coverage.get("quality_findings")
+        if isinstance(findings, (list, tuple)) and findings:
+            lines.append("   品質發現：" + "；".join(str(item)[:160] for item in findings[:12]))
+        examples = coverage.get("integrity_examples")
+        if isinstance(examples, (list, tuple)) and examples:
+            lines.append("   完整性例子（最多 5 筆，僅顯示收據雜湊、不開啟路徑）：")
+            for example in examples[:5]:
+                if not isinstance(example, Mapping):
+                    continue
+                fields = example.get("missing_fields")
+                fields_text = (
+                    ", ".join(str(item)[:40] for item in fields[:8])
+                    if isinstance(fields, (list, tuple))
+                    else "未提供"
+                )
+                lines.append(
+                    f"   - {example.get('date', '?')}／{example.get('symbol', '?')}；"
+                    f"缺欄位 {fields_text}；分類 {str(example.get('classification') or '未提供')[:100]}；"
+                    f"官方收據雜湊 {str(example.get('official_receipt_sha256') or '未核')[:80]}"
+                )
+        lines.append("")
+    if len(records) > max_records:
+        lines.append(f"其餘 {len(records) - max_records} 筆未展開；完整封包需走既有人工核對流程。")
+    if not records:
+        lines.append("目前沒有可列出的待人工審查週收集記錄。")
+    return "\n".join(lines).rstrip()
 
 
 def tpex_warning_messages(result: Mapping[str, Any]) -> list[str]:

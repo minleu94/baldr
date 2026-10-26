@@ -1492,6 +1492,7 @@
         "app_module/storage_overview.py",
         "ui_qt/views/storage_overview_view.py",
         "ui_qt/views/runtime_view.py",
+        "ui_qt/views/scheduled_evidence_status_view.py",
         "app_module/decision_capture_status_reader.py",
         "app_module/dtos/runtime_dtos.py",
         "app_module/runtime_services/scheduled_operations_service.py",
@@ -1522,6 +1523,7 @@
         "tests/test_evidence_event_service.py",
         "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py",
         "tests/test_run_evidence_pipeline_cli.py",
+        "tests/test_ui_qt_evidence_review_dashboards.py",
         "tests/test_repository_output_boundary.py"
       ],
       "manual": [
@@ -1541,10 +1543,12 @@
         "app_module/evidence_event_service.py",
         "scripts/run_evidence_pipeline.py",
         "scripts/scheduled/run_scheduled_evidence_pipeline_dry_run.py",
+        "ui_qt/views/scheduled_evidence_status_view.py",
         "tests/test_evidence_pipeline_runner.py",
         "tests/test_evidence_event_service.py",
         "tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py",
         "tests/test_run_evidence_pipeline_cli.py",
+        "tests/test_ui_qt_evidence_review_dashboards.py",
         "app_module/daily_operations_status.py",
         "scripts/audit_daily_operations.py",
         "tests/test_daily_operations_status.py",

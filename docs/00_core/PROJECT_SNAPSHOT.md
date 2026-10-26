@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-25 Evidence Review blocker 可讀摘要：每日排程證據狀態新增「主要缺口與下一步」卡，將已知 pipeline blocker 顯示成安全的檢查方向；未知碼保留原碼並標示未登錄說明，無 blocker 也不宣稱 Gate 通過。Qt offscreen UI tests 2 passed；原生 GUI 重啟、實際頁面尺寸檢視及 Owner UAT 尚未完成。此呈現不改資料或 readiness。詳[Scheduled Evidence Replay 隔離 QA](../06_qa/BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md#follow-upevidence-blocker-可讀摘要)。
+
 2026-10-25 Gate 2 replay follow-up：查明上一輪 Paper research missing 是因 controlled replay 把 Paper state/status 指到空 scratch，不能當成正式帳戶缺件證據。wrapper 現允許 `--paper-evidence-source-root` 將唯讀 Paper 輸入與 scratch 輸出分離；未指定時 receipt 標示 `not_configured_for_controlled_replay`。5 個相關 focused tests passed，py_compile 與全域 mypy 1145 passed；較完整 wrapper＋CLI 回歸為 31 passed／31 failed，失敗落在 Windows sandbox pytest temp receipt 寫入及 hard-link 權限。這不表示 Paper source 已綁定或 Gate 已通過。詳[受控 Replay 隔離 QA](../06_qa/BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md#follow-uppaper-唯讀輸入根分離)。
 
 2026-10-25 Gate 2 controlled scheduled dry-run 隔離完成：以正式 recommendation result `rec_bb92ea25e2194e7885498ec5cb973c7d`（source status SHA `ca6053…41a98`）作唯讀輸入，working-copy DB 作市場資料，`r2` scratch 收納所有報告／receipt。Pipeline 檢視 1,695 events、寫入 0，`degraded`／0 errors／20 warnings，readiness `not_ready`；blocking gaps 為 watchlist trigger 與 risk prompt，freshness degraded，5 項 fundamental source qualification 仍缺。修正 evidence hash 對巢狀 date 的序列化後，64 個受影響測試通過、20 個 Windows hard-link 案例未執行。這不是自然排程、dashboard 或人工週審，不計 Gate 2 history／credit，正式來源 root 未變。詳[Scheduled Evidence Replay 隔離 QA](../06_qa/BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md)。

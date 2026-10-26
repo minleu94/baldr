@@ -5,6 +5,7 @@ import sqlite3
 import sys
 import threading
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -323,6 +324,27 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
     assert "production evidence/trading write risk: false" in view.detail_panel.toPlainText()
     assert "risk_prompt_source_quality:portfolio_alerts:estimated=4" in view.detail_panel.toPlainText()
     assert "Run Metadata" in view.detail_panel.toPlainText()
+
+
+def test_scheduled_status_view_shows_readable_blockers_and_safe_next_steps() -> None:
+    app()
+    source = FakeScheduledStatus()
+    source.result = replace(
+        source.result,
+        pipeline_blocking_gaps=("watchlist_trigger_not_ready", "risk_prompt_not_ready"),
+        pipeline_warnings_count=20,
+        source_coverage_warnings=("source_freshness_degraded:market.relative_strength",),
+    )
+    view = ScheduledEvidenceStatusView(source, auto_refresh=False, async_refresh=False)
+
+    view.refresh_status()
+
+    text = view.action_label.text()
+    assert text.startswith("主要缺口與下一步\n2 項阻擋")
+    assert "檢查 Watchlist pool 與其行情新鮮度／品質" in text
+    assert "不要手動補候選" in text
+    assert "breadth、relative strength/liquidity、sector rotation" in text
+    assert "watchlist_trigger_not_ready" in view.detail_panel.toPlainText()
 
 
 def test_scheduled_status_view_separates_engineering_run_from_research_cohort_quality() -> None:

@@ -45,3 +45,10 @@
 - 新增 Paper source/scratch 分離、未設定 disclosure、來源根重疊拒絕、舊 operation root 保護及 child CLI source path 測試：**5 passed**。
 - 修改的兩個 CLI 與兩個測試檔 `py_compile`：通過；全域 mypy：`Success: no issues found in 1145 source files`。
 - 完整 wrapper＋CLI 回歸執行：**31 passed、31 failed**。失敗可見 Windows sandbox pytest temp 下 terminal receipt 路徑回 `FileNotFoundError`，及 exit-effectiveness hard-link 案例回 `PermissionError [WinError 5]`；因此不將整套回歸記為通過。5 個新增／關聯 focused tests 在同一受控 Job 下全部通過。
+
+## Follow-up：Evidence blocker 可讀摘要
+
+Evidence Review 的「每日排程證據狀態」頁新增「主要缺口與下一步」卡。已知的 watchlist、risk prompt、portfolio alert、saved recommendation、Why Not、liquidity 與 forward dashboard blockers 會顯示對應檢查方向；未知 blocker 保留原始診斷碼並標明未登錄處理說明。沒有 blocker 時也明示「不等於 Evidence／Gate 已通過」，完整 machine diagnostics 繼續留在下方明細。這是可讀性改善，不改 quality、readiness 或 gate predicate。
+
+- Qt offscreen UI focused tests：**2 passed**，覆蓋已知 blocker 摘要、安全下一步與原始診斷保留。
+- 此處未執行原生 GUI 重啟、不同螢幕尺寸視覺檢視或 Owner UAT；卡片尚需在實際 Evidence Review 頁確認版面。

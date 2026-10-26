@@ -94,6 +94,10 @@ class ScheduledEvidenceStatusView(QWidget):
         cards.addWidget(forward_outcome_panel, 1, 1)
         cards.addWidget(self.safety_label, 2, 0)
         cards.addWidget(self.report_label, 2, 1)
+        self.action_label = self._make_card("主要缺口與下一步", "尚未載入")
+        self.action_label.setObjectName("scheduledEvidenceNextActions")
+        self.action_label.setMinimumHeight(116)
+        cards.addWidget(self.action_label, 3, 0, 1, 2)
         cards.setColumnStretch(0, 1)
         cards.setColumnStretch(1, 1)
         root.addLayout(cards)
@@ -206,6 +210,7 @@ class ScheduledEvidenceStatusView(QWidget):
             + (str(status.report_path) if status.report_path is not None else "未提供 report path")
             + stale_suffix
         )
+        self.action_label.setText("主要缺口與下一步\n" + _pipeline_action_summary(status) + stale_suffix)
         is_stale = status.is_stale or status.load_state == MACHINE_STATUS_STALE
         is_usable = is_stale or status.load_state == "current" or (
             status.load_state == MACHINE_STATUS_UNKNOWN
@@ -256,6 +261,7 @@ class ScheduledEvidenceStatusView(QWidget):
         self.forward_outcome_label.setText(f"前瞻結果追蹤\n分類：{unknown_label}")
         self.safety_label.setText("安全邊界\n狀態未知；不能推定可寫入或可交易")
         self.report_label.setText("報告\n狀態未知；尚無可信報告")
+        self.action_label.setText("主要缺口與下一步\n狀態未知；尚無可信 blocker 清單")
         self.maturity_distribution.set_unavailable(f"狀態未知；{error_line}")
         self.detail_panel.setPlainText(
             f"排程狀態載入失敗；狀態未知：{error_line}\n"
@@ -615,6 +621,47 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
     ]
     if status.report_preview:
         lines.extend(["", "Report preview（trimmed）", _trim_report_preview(status.report_preview)])
+    return "\n".join(lines)
+
+
+def _pipeline_action_summary(status: ScheduledEvidenceStatus) -> str:
+    """把常見的 pipeline blockers 摘成先做什麼；原始診斷仍保留在明細。"""
+    explanations = {
+        "watchlist_trigger_not_ready": (
+            "觀察清單觸發快照未就緒：檢查 Watchlist pool 與其行情新鮮度／品質；不要手動補候選。"
+        ),
+        "risk_prompt_not_ready": (
+            "風險提示未就緒：先核對 breadth、relative strength/liquidity、sector rotation 的來源日期與品質。"
+        ),
+        "portfolio_alert_not_ready": (
+            "Portfolio Alert 未就緒：確認已綁定的 Paper state、daily status 與持倉欄位。"
+        ),
+        "recommendation_persisted_missing": (
+            "指定決策日沒有可讀的已保存推薦；先核對 canonical recommendation result 與 result ID。"
+        ),
+        "why_not_exclusion_payload_missing": (
+            "Why Not 排除理由 payload 缺件；需補可追溯的推薦輸出，不以空列表代替。"
+        ),
+        "liquidity_gate_payload_missing": (
+            "Liquidity Gate payload 缺件；需補可追溯的流動性判讀輸出。"
+        ),
+        "forward_dashboard_service_unavailable": (
+            "Forward dashboard service 不可用；先恢復服務讀取，再判讀 maturity 或 scheduler readiness。"
+        ),
+    }
+    gaps = tuple(dict.fromkeys(status.pipeline_blocking_gaps))
+    if not gaps and status.evidence_status in {"", "missing", "unknown"}:
+        return "狀態未知；尚無可信的 pipeline blocker 清單。"
+    if not gaps:
+        text = "未提供 pipeline blocking gaps；這不等於 Evidence／Gate 已通過。"
+        warning_count = status.pipeline_warnings_count
+        if warning_count:
+            text += f" 仍有 {warning_count} 個 warning occurrences，請看下方 warning 明細。"
+        return text
+    lines = [f"{len(gaps)} 項阻擋；需逐項補來源或品質證據，不能略過 Gate："]
+    lines.extend(f"• {explanations.get(gap, f'{gap}：原始診斷未登錄處理說明，保留原碼供查核。')}" for gap in gaps[:4])
+    if len(gaps) > 4:
+        lines.append(f"另有 {len(gaps) - 4} 項，見下方原始 blocker 明細。")
     return "\n".join(lines)
 
 

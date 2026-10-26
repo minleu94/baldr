@@ -4,7 +4,7 @@
 
 2026-10-25 來源條款界線：MOPS EZSearch 自動採集的端點授權範圍尚未證實；既有候選保留為研究證據，不再擴大自動擷取，不回填正式 DB／不授 Gate credit。已確認政府開放平台列出的四個一般業季度 CSV 資源為 OGL v1，可做隔離候選；仍未證明全產業 coverage、金額單位或逐筆 PIT／修訂語意。詳[來源授權與 CSV 清單](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#來源授權邊界與後續採集路徑)。
 
-2026-10-26 四個一般業季度 CSV 研究候選已擷取：HTTP 200、raw/hash readback 4/4；TWSE 每表 1,051、TPEx 每表 888 個唯一代碼，均為 115-Q2，出表日期 1151026。搭配前一日 OGL 公司目錄唯讀對照，發現一般業之外的目錄代碼及 7 個財報 CSV／本機 current-HTML 子集差異，仍需其他產業來源與歷史 universe 核對；不接受來源、不補正式 DB、不授 Gate credit。單位、basis、available-at、PIT 與全產業 coverage 未驗證。詳[CSV 候選與 coverage 對照](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-開放資料季報-csv-候選與-coverage-對照)。
+2026-10-26 四個一般業季度 CSV 研究候選已擷取：HTTP 200、raw/hash readback 4/4；TWSE 每表 1,051、TPEx 每表 888 個唯一代碼，均為 115-Q2，出表日期 1151026。搭配前一日 OGL 公司目錄唯讀對照，初步發現一般業以外的目錄代碼及 7 個財報 CSV／本機 current-HTML 子集差異；後續已擴展到全產業目錄資源，見下項。該次不接受來源、不補正式 DB、不授 Gate credit；單位、basis、available-at、PIT 與完整 coverage 未驗證。詳[一般業 CSV 候選與初步 coverage 對照](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-開放資料季報-csv-候選與-coverage-對照)。
 
 2026-10-26 全產業季度 CSV 補採：依 OGL 目錄列出的 19 個產業資源逐一隔離 GET，19/19 HTTP 200 且 SHA readback 相符；與四份一般業候選合併後，TWSE 季報聯集 1,086 代碼（近時點目錄 1,097，仍差 11，含普通產業 1589）；TPEx 聯集 895（目錄 894，3718 未命中，另 6898／6938 不在前一日目錄）。TPEx 新增產業資源只有證券期貨 7 個有效代碼，其餘回應無有效列，不能推定為不適用或完整。16 個非空報表共有 3,962 個報表公司列、0 重複鍵；財報欄位空白率 31.8%，語意未明，不補零。單位、basis、available-at、PIT、歷史 universe 與差異原因仍未核定；不接受來源、不寫正式 DB、不授 Gate／ML 資格。詳[全產業 CSV 候選與差異](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-全產業季度-csv-候選補採與-issuer-對照)。
 

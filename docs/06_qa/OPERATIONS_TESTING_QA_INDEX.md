@@ -4,6 +4,8 @@
 
 ## 近期營運與測試收據
 
+[10/26 Gate 2 隔離 recovery rehearsal 工具](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-26-隔離-gate-2-recovery-rehearsal-工具)：合成 DB／projection 的 scratch 備份、故障注入與還原測試 3 passed；未操作真實 working-copy／Owner projection 或 Task Scheduler，不計 Gate credit。
+
 [10/26 Gate 2 週報 Owner 覆核入口](BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md)：歷史週報提供 hash 綁定、具名自我聲明與 append-only projection 覆核；86 個聚焦測試、Update Workbench 93 測試、validator 25/0/4 與全域 mypy 通過。尚未由真正 Owner 覆核，Gate 2 時間／操作日及復原演練仍缺，未授來源、Gate 或 ML 資格。
 
 [10/25 Scheduled Evidence 受控 Replay 路徑隔離](BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md)：正式 recommendation 唯讀綁定與 scratch 輸出分離通過；乾跑為 `degraded`，0 errors／20 warnings、0 event writes，未形成 weekly review 或 Gate credit。

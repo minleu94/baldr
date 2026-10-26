@@ -65,6 +65,18 @@
 
 8. 記錄下一步與本週 backup / rollback / recovery 演練狀態。三週都完成後，仍須人工彙整 scheduler approval package；不可自動進入 formal closeout。
 
+### 隔離 recovery rehearsal（工程演練，不計 weekly Gate）
+
+若已具備一份既有、非正式且 checkpoint 完整的 weekly-review working-copy DB 與核准 projection，可用以下工具在一個全新 scratch 目錄演練備份、故障注入與還原：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\rehearse_weekly_review_recovery.py --source-db-path <existing-working-copy-db> --source-projection-path <existing-approval-projection.json> --scratch-root <new-scratch-run-directory>
+```
+
+工具只讀取兩個來源檔；若 DB 有非空 WAL／rollback journal、來源不是一般檔案、projection schema／`formal_credit_authorized` 不合約，或來源 DB 是正式 `twstock.db`，會 fail closed。Scratch 必須是新路徑，且位於設定的 `DATA_ROOT`／`OUTPUT_ROOT` 之外。工具會先在 scratch 寫入模擬停用標記，再建立 DB／projection 備份、在各自 scratch working copy 注入故障、將備份還原為新檔，並核對 SHA-256、SQLite `quick_check`、weekly history IDs/hashes 與 projection record count；故障副本保留供稽核。它不呼叫 Task Scheduler、不改 scheduler task、不覆寫來源或舊 scratch。
+
+收據的 `passed=true` 只代表這次隔離副本的備份／還原與來源前後 hash 檢查通過。`disable_first.verified_in_scratch_simulation` 是 scratch 模擬，不代表正式 task 已停用；它也不代表真實 Owner review、三週 history、三操作日、production disable／rollback 或 scheduler approval 已通過，不能給 Gate 2 credit。若要測正式的停用優先操作，另依排程操作指南取得對應人工核准並由操作人員在 Task Scheduler 實際執行。
+
 ## 4. 固定三週人工紀錄格式
 
 下表必須完整填寫三列。`待執行` 不是通過；若未保存 history，`--save-history` 欄必須填入拒絕原因而非虛構 review ID。

@@ -32,3 +32,9 @@
 - `required-pycompile-weekly-visibility-final-v2.log`
 
 驗證僅使用合成／隔離測試 DB；沒有讀寫正式 DB、建立真實核准 projection、接受來源、啟用 scheduler 或變更 Gate／ML credit。下一步需用實際既有 working-copy 由 Owner 覆核，再逐項補足三個真實週期、三個操作日、backup／rollback／recovery 與 scheduler approval；Gate 3 還需來源條款、欄位契約、PIT 與市場 coverage 證據。
+
+## 2026-10-26 隔離 Gate 2 recovery rehearsal 工具
+
+新增 `scripts/rehearse_weekly_review_recovery.py`，供人工以既有非正式 weekly-review working-copy DB 與 approval projection 執行可重複的備份／還原演練。它拒絕正式 `twstock.db` 路徑、來源檔 reparse point、非空 WAL／rollback journal、正式／輸出根底下或與來源重疊的 scratch、無效 projection schema，以及 `formal_credit_authorized=true`。只有全新 scratch 根目錄可寫入；source DB、WAL、journal 與 projection 都做前後 hash 讀回。實際 Scheduler 不會被呼叫或停用，disable-first 僅在 scratch 模擬。故障注入後工具把備份還原成新檔，保留故障副本，核對 SQLite `quick_check`、週報 ID／hash／期間摘要及 projection bytes／record count。
+
+本輪對合成 weekly history DB 與 `formal_credit_authorized=false` 空 projection 執行 focused tests **3 passed**；包含成功還原、正式 DB 路徑拒絕、非空 WAL／journal 拒絕與禁止 formal credit。新工具 mypy **1 source file clean**、兩個修改 Python 檔 `py_compile` 通過；Feature Map／QA／Runbook scoped document-control **12 features／5 link sources／0 errors**。PROJECT_SNAPSHOT 單檔核對仍列出 **27** 條既有 `output/` trial/task 外部連結越界，均非本次新增連結。這只證明 utility 的 scratch recovery 機制；未用實際 working-copy／Owner projection 做 live rehearsal，未操作 Task Scheduler，不算 backup／rollback Gate 完成，也不授 Gate credit。Windows sandbox 拒絕 scratch 內 `os.replace`，實作改為將備份還原至新的 scratch 檔，保留故障注入副本，避免覆寫任何來源。

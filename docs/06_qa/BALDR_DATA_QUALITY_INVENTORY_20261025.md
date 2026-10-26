@@ -200,7 +200,7 @@ Owner 已授權把 MOPS 顯示的公告日期與時間直接作為對應公告�
 將其接回正式資料時，實際結果是 **0 列品質解除**：
 
 - `fundamental_statement_items` 有 1,645,555 列且公告日全缺，但資料期間僅到 2024-Q1，沒有 2026-Q2 目標列。這批公告候選無法回填至不存在的 Q2 財報列。
-- `fundamental_current_observations` 有 Q2 資料，但 MOPS current statement HTML 在 TWSE 1,084 家、TPEx 891 家公司與三種報表中，每個公司／報表鍵各有 3 個 `source_version`，合計 5,925 個公司／報表鍵。已封存公告事件沒有連至報表內容 hash／版本的 key；僅以公司、期間、報表類型 join 會把同一時間套到多個報表版本。該表全體 `aggregate_feature_eligible=0`，unit／basis 等其他門檻也不會因公告時間而自動解除。因此沒有修改這 306,067 列 Q2 觀測。
+- `fundamental_current_observations` 有 Q2 資料，但 MOPS current statement HTML 在 TWSE 1,084 家、TPEx 891 家公司與三種報表中，每個公司／報表鍵各有 3 個 `source_version`，合計 5,925 個公司／報表鍵、306,067 列。精查現有候選契約：公告 event hash 綁公告時間、報表項目、detail URL、期間與代碼；`source_sha256` 綁 MOPS 公告查詢 response，不是 filing／財報 HTML bytes。現況 `source_version` 則綁 current statement HTML bytes SHA 及 `captured_at`，`source_available_at` 是擷取時間；公告事件沒有 filing content hash／不可變文件 ID，也沒有寫進現況表的 `announcement_at` 欄。因此 event 到 `source_version` 沒有精確橋。僅以公司、期間、報表類型 join 會把同一時間套到多個報表快照版本；來源擷取時間或相同數值也不能證明它就是公告版。該表全體 `aggregate_feature_eligible=0`，unit／basis 等其他門檻也不會因公告時間而自動解除。因此沒有修改任何一列 Q2 觀測，正式可解除仍為 **0**。
 - `fundamental_monthly_revenues` 有 242,651 列缺公告日；現有 1,832 個月營收 availability key 與缺公告日正式 DB key 的精確公司／月份交集為 **0**。沒有各舊月份對應公告時，不拿 2026-Q2 或其他月份時間代填；實際解除 **0 列**。
 
 以上正式 DB 均以唯讀方式檢查，本輪未寫入或重算正式資料。公告匹配候選不能視為 quality projector 已接受的事件映射；要安全解除品質，仍需取得具報表內容版本關聯的公告證據，或 source acceptance 審核建立該連結。MOPS EZSearch endpoint 使用授權、季度 CSV 金額單位／basis、歷史 PIT、舊月營收逐月公告以及其他缺值仍未解。原始 crosswalk 摘要、候選 hash 與唯讀查詢值由 bounded QA runner 產生，詳[本輪公告時間及圖卡 QA](BALDR_INDUSTRY_LEADER_CARDS_20261025.md)。

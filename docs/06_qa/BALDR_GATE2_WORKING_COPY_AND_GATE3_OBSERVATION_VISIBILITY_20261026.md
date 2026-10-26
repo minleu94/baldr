@@ -25,10 +25,10 @@
 
 隔離收據位於本機任務 scratch：
 
-- `weekly-history-visibility-focused-final.log`
-- `required-workbench-weekly-visibility.log`
-- `required-validator-weekly-visibility.log` 及該次 validator 報告
-- `required-mypy-weekly-visibility.log`
-- `required-pycompile-weekly-visibility.log`
+- `weekly-history-visibility-final-v2.log`
+- `required-workbench-weekly-visibility-v2.log`
+- `required-validator-weekly-visibility-v2.log` 及該次 validator 報告
+- `required-mypy-weekly-visibility-v2.log`
+- `required-pycompile-weekly-visibility-final-v2.log`
 
 驗證僅使用合成／隔離測試 DB；沒有讀寫正式 DB、建立真實核准 projection、接受來源、啟用 scheduler 或變更 Gate／ML credit。下一步需用實際既有 working-copy 由 Owner 覆核，再逐項補足三個真實週期、三個操作日、backup／rollback／recovery 與 scheduler approval；Gate 3 還需來源條款、欄位契約、PIT 與市場 coverage 證據。

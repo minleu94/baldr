@@ -1754,19 +1754,23 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
             state="available",
             row_count=12,
             stock_count=4,
+            latest_as_of_date="2026-06-14",
+            latest_observed_at="2026-06-14T12:00:00Z",
+            latest_source_available_at="2026-06-16T09:00:00Z",
             market_counts=(VisibilityCategoryCount("TWSE", 8), VisibilityCategoryCount("TPEx", 4)),
             kind_counts=(VisibilityCategoryCount("balance_sheet", 12),),
+            source_counts=(VisibilityCategoryCount("official_csv", 12),),
             source_version_counts=(VisibilityCategoryCount("2026-Q2", 12),),
             period_basis_counts=(VisibilityCategoryCount("quarter", 12),),
             basis_verified_count=3,
             basis_unverified_count=9,
-            basis_unknown_count=0,
+            basis_unknown_count=1,
             aggregate_feature_eligible_count=0,
             aggregate_feature_ineligible_count=12,
-            aggregate_feature_eligibility_unknown_count=0,
+            aggregate_feature_eligibility_unknown_count=2,
             source_available_at_known_count=5,
             source_available_at_missing_count=7,
-            source_available_at_after_as_of_date_count=0,
+            source_available_at_after_as_of_date_count=1,
             eligibility="research_only",
             pit_status="historical_pit_unverified",
             warnings=("available-at、PIT、授權與市場 coverage 尚未由此摘要驗收",),
@@ -1796,9 +1800,11 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "資料缺件" in view.visibility_sources_label.text()
     assert "現況基本面觀測（僅研究，不代表來源驗收）" in view.visibility_sources_label.text()
     assert "TWSE 8 列、TPEx 4 列" in view.visibility_sources_label.text()
-    assert "基準已驗證／未驗證：3／9" in view.visibility_sources_label.text()
-    assert "aggregate eligible 標記：0" in view.visibility_sources_label.text()
-    assert "source available-at 已知／缺漏：5／7" in view.visibility_sources_label.text()
+    assert "來源：official_csv 12 列" in view.visibility_sources_label.text()
+    assert "基準已驗證／未驗證／未知：3／9／1" in view.visibility_sources_label.text()
+    assert "aggregate feature 標記 eligible／ineligible／未知：0／12／2" in view.visibility_sources_label.text()
+    assert "source available-at 已知／缺漏／晚於判斷日：5／7／1" in view.visibility_sources_label.text()
+    assert "原始最新觀測／可得時間（語意未驗）：2026-06-14T12:00:00Z／2026-06-16T09:00:00Z" in view.visibility_sources_label.text()
 
 
 def test_decision_desk_displays_valid_regime_source_date_separately_from_decision_date():

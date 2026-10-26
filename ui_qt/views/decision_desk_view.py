@@ -1285,9 +1285,17 @@ class DecisionDeskView(QWidget):
                     f"  {row_count:,} 列／{stock_count:,} 檔；資格僅供研究；"
                     f"PIT {self._visibility_pit_label(current_observations.pit_status)}"
                 )
+                source_lines.append(
+                    "  樣本截至 "
+                    f"{current_observations.latest_as_of_date or '未確認'}；"
+                    "原始最新觀測／可得時間（語意未驗）："
+                    f"{current_observations.latest_observed_at or '未提供'}／"
+                    f"{current_observations.latest_source_available_at or '未提供'}"
+                )
                 for title, attribute in (
                     ("市場", "market_counts"),
                     ("資料種類", "kind_counts"),
+                    ("來源", "source_counts"),
                     ("來源版本", "source_version_counts"),
                     ("期間基準", "period_basis_counts"),
                 ):
@@ -1300,18 +1308,34 @@ class DecisionDeskView(QWidget):
                         source_lines.append(f"  {title}：{values}")
                 basis_verified = current_observations.basis_verified_count
                 basis_unverified = current_observations.basis_unverified_count
+                basis_unknown = current_observations.basis_unknown_count
                 eligible = current_observations.aggregate_feature_eligible_count
+                ineligible = current_observations.aggregate_feature_ineligible_count
+                eligibility_unknown = (
+                    current_observations.aggregate_feature_eligibility_unknown_count
+                )
                 available_known = current_observations.source_available_at_known_count
                 available_missing = current_observations.source_available_at_missing_count
+                available_after_cutoff = (
+                    current_observations.source_available_at_after_as_of_date_count
+                )
                 source_lines.append(
-                    "  基準已驗證／未驗證："
+                    "  基準已驗證／未驗證／未知："
                     f"{basis_verified if basis_verified is not None else '未知'}／"
-                    f"{basis_unverified if basis_unverified is not None else '未知'}；"
-                    "aggregate eligible 標記："
-                    f"{eligible if eligible is not None else '未知'}；"
-                    "source available-at 已知／缺漏："
+                    f"{basis_unverified if basis_unverified is not None else '未知'}／"
+                    f"{basis_unknown if basis_unknown is not None else '未知'}"
+                )
+                source_lines.append(
+                    "  aggregate feature 標記 eligible／ineligible／未知："
+                    f"{eligible if eligible is not None else '未知'}／"
+                    f"{ineligible if ineligible is not None else '未知'}／"
+                    f"{eligibility_unknown if eligibility_unknown is not None else '未知'}"
+                )
+                source_lines.append(
+                    "  source available-at 已知／缺漏／晚於判斷日："
                     f"{available_known if available_known is not None else '未知'}／"
-                    f"{available_missing if available_missing is not None else '未知'}"
+                    f"{available_missing if available_missing is not None else '未知'}／"
+                    f"{available_after_cutoff if available_after_cutoff is not None else '未知'}"
                 )
                 if current_observations.warnings:
                     source_lines.append(

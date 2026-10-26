@@ -7,6 +7,8 @@ import sqlite3
 import subprocess
 import sys
 
+from scripts.collect_v2_2_weekly_evidence import _indexed_date_range_predicate
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "collect_v2_2_weekly_evidence.py"
@@ -41,6 +43,61 @@ def _create_source_database(path: Path) -> None:
                 ("20260713", "2330", 102, 104, 101, 103, 100, 10, 10000),
             ],
         )
+        connection.execute("CREATE INDEX idx_daily_prices_date ON daily_prices (日期)")
+
+
+def test_weekly_date_filter_uses_index_for_compact_and_iso_dates(tmp_path: Path) -> None:
+    database = tmp_path / "weekly-index.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE daily_prices (日期 TEXT)")
+        connection.execute("CREATE INDEX idx_daily_prices_date ON daily_prices (日期)")
+        predicate = _indexed_date_range_predicate('"日期"')
+        plan = connection.execute(
+            f"EXPLAIN QUERY PLAN SELECT 日期 FROM daily_prices WHERE {predicate}",
+            ("20261019", "20261025", "2026-10-19", "2026-10-25"),
+        ).fetchall()
+
+    assert any("idx_daily_prices_date" in str(row[-1]) for row in plan)
+    assert "REPLACE" not in predicate
+
+
+def test_collect_cli_includes_iso_date_rows_in_same_period(tmp_path: Path) -> None:
+    source_db_path = tmp_path / "twstock.db"
+    sidecar_db_path = tmp_path / "weekly-collection-sidecar.sqlite"
+    _create_source_database(source_db_path)
+    with sqlite3.connect(source_db_path) as connection:
+        connection.execute(
+            """INSERT INTO daily_prices (
+                日期, 證券代號, 開盤價, 最高價, 最低價, 收盤價,
+                成交股數, 成交筆數, 成交金額
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("2026-07-06", "2330", 100, 102, 99, 101, 100, 10, 10000),
+        )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--source-db-path",
+            str(source_db_path),
+            "--sidecar-db-path",
+            str(sidecar_db_path),
+            "--output-root",
+            str(tmp_path / "output"),
+            "--period-end",
+            "2026-07-12",
+            "--json-output",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    coverage = json.loads(completed.stdout)["source_coverage"]
+    assert coverage["trading_day_count"] == 3
+    assert coverage["trading_days"][0]["date"] == "2026-07-06"
 
 
 def _create_twse_custody(

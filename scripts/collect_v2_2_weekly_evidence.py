@@ -49,6 +49,15 @@ def _quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
+def _indexed_date_range_predicate(date_column: str) -> str:
+    """用原始日期欄做範圍篩選，讓 SQLite 可使用既有日期索引。"""
+
+    return (
+        f"({date_column} BETWEEN ? AND ? OR "
+        f"{date_column} BETWEEN ? AND ?)"
+    )
+
+
 def _verified_twse_daily_rows(
     source_db_path: Path,
     *,
@@ -192,6 +201,13 @@ def _read_weekly_source_coverage(
         date_column = _quote_identifier("日期")
         symbol_column = _quote_identifier("證券代號")
         date_expression = f"REPLACE(TRIM(CAST({date_column} AS TEXT)), '-', '')"
+        date_range_predicate = _indexed_date_range_predicate(date_column)
+        date_range_parameters = (
+            period_start_key,
+            period_end_key,
+            period_start,
+            period_end,
+        )
         symbol_expression = f"TRIM(CAST({symbol_column} AS TEXT))"
         required_value_fields = ("開盤價", "最高價", "最低價", "收盤價")
         activity_fields = ("成交股數", "成交筆數", "成交金額")
@@ -222,11 +238,11 @@ def _read_weekly_source_coverage(
                    COUNT(DISTINCT {symbol_expression}) AS symbol_count
                    {null_count_sql}
             FROM daily_prices
-            WHERE {date_expression} BETWEEN ? AND ?
+            WHERE {date_range_predicate}
             GROUP BY {date_expression}
             ORDER BY {date_expression}
             """,
-            (period_start_key, period_end_key),
+            date_range_parameters,
         ).fetchall()
         value_columns = [
             _quote_identifier(field) for field in available_value_fields
@@ -243,11 +259,11 @@ def _read_weekly_source_coverage(
                 SELECT {date_expression}, {symbol_expression},
                        {", ".join(value_columns)}
                 FROM daily_prices
-                WHERE {date_expression} BETWEEN ? AND ?
+                WHERE {date_range_predicate}
                   AND ({" OR ".join(missing_value_predicates)})
                 ORDER BY {date_expression}, {symbol_expression}
                 """,
-                (period_start_key, period_end_key),
+                date_range_parameters,
             ).fetchall()
         incomplete_activity: dict[tuple[str, str], dict[str, Any]] = {}
         if available_value_fields and available_activity_fields:
@@ -258,11 +274,11 @@ def _read_weekly_source_coverage(
                 f"""
                 SELECT {date_expression}, {symbol_expression}, {selected_activity_columns}
                 FROM daily_prices
-                WHERE {date_expression} BETWEEN ? AND ?
+                WHERE {date_range_predicate}
                   AND ({" OR ".join(missing_value_predicates)})
                 ORDER BY {date_expression}, {symbol_expression}
                 """,
-                (period_start_key, period_end_key),
+                date_range_parameters,
             ).fetchall()
             for activity_row in incomplete_activity_rows:
                 incomplete_activity[(str(activity_row[0]), str(activity_row[1]).strip())] = {
@@ -274,10 +290,10 @@ def _read_weekly_source_coverage(
                 f"""
                 SELECT COUNT(DISTINCT {symbol_expression})
                 FROM daily_prices
-                WHERE {date_expression} BETWEEN ? AND ?
+                WHERE {date_range_predicate}
                   AND {symbol_expression} <> ''
                 """,
-                (period_start_key, period_end_key),
+                date_range_parameters,
             ).fetchone()[0]
         )
 

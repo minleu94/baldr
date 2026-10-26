@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-26 weekly collector timeout 根因修復及隔離重跑：日期欄套 `REPLACE/TRIM/CAST` 作 SQL 範圍條件造成正式 `daily_prices` 日期索引 full scan；改用原始欄位同時查 compact／ISO 日期後，focused 7 tests 通過，10/19–25 真實唯讀候選報告產生。觀察 7,859 列／1,987 檔／4 交易日／0 重複列；16 列 OHLC 空值均有 TWSE 同日 receipt 顯示官方 `--`。狀態 `degraded`／`pending_human_review`、分母未知、正式 sidecar 未寫、Gate credit 未授。詳[Gate 2 weekly 重跑 QA](../06_qa/BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-26-weekly-collection-索引掃描修復與隔離重跑)。
+
 2026-10-26 MOPS F22／富邦候選來源盤點：MOPS 官方公告快易查列有 F22「月營業收入」，頁面標示資料區間自民國 102 年起，時間範圍可能覆蓋正式 DB 2014-04 起的缺公告日月份；但 repo 既有 EZSearch adapter 僅接受 F26–F29，且 EZSearch 自動採集授權尚未證實。一次無登入、單公司／單日 F22 探測在 DNS 階段失敗，沒有 HTTP response 或候選證據。富邦官方文件證實歷史日 K 可回溯至 2010，但不含 MOPS 公告時間／報表版本橋；單筆 2330／2026-10-23 查詢因憑證讀取及真實 API 登入未獲自動審查授權而未送出，沒有讀取憑證。兩條路徑均未解除正式資料缺漏。詳[資料品質盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-f22-與富邦-api-來源可用性盤點)。
 
 2026-10-26 TWSE 最新日價單股重核：已捕獲的官方 MI_INDEX 2330／10/23 response 回「沒有符合條件的資料」；10/26 最新重試在 HTTP 前因 TWSE DNS 解析失敗，故沒有更新 response receipt；官方 2330 月成交頁有 15 列、最後 10/22。Formal `daily_prices` 對 2330／10/23 唯讀查詢 0 列，當日 canonical CSV 不存在。此觀測只限 2330，不外推全市場；缺源原因未知，未補值、未改正式資料，歷史 PIT／來源 Gate 不變。候選擷取器現會為明確 TWSE 無資料回應保存不可晉升的診斷 receipt／comparison，不生成行情列或 ML 候選；官方無資料回應依代號範圍分開保存，失敗暫存會清除。詳[10/23 TWSE freshness 重核](../06_qa/BALDR_LIVE_MARKET_FRESHNESS_RECHECK_20261024.md#2026-10-26-twse-1023-單股來源重核)。

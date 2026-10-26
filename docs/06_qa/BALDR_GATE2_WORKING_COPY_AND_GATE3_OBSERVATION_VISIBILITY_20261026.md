@@ -33,6 +33,14 @@
 
 驗證僅使用合成／隔離測試 DB；沒有讀寫正式 DB、建立真實核准 projection、接受來源、啟用 scheduler 或變更 Gate／ML credit。下一步需用實際既有 working-copy 由 Owner 覆核，再逐項補足三個真實週期、三個操作日、backup／rollback／recovery 與 scheduler approval；Gate 3 還需來源條款、欄位契約、PIT 與市場 coverage 證據。
 
+## 2026-10-26 weekly collection 索引掃描修復與隔離重跑
+
+Task Scheduler 的 2026-10-25 weekly collection 上次因 core process timeout 失敗，沒有產生週報。追查發現 `_read_weekly_source_coverage` 將 `日期` 欄包在 `REPLACE(TRIM(CAST(...)))` 內做 WHERE，SQLite 對正式 `daily_prices` 日期索引只能 full scan。collector 現改用原始 `日期` 欄的 compact `YYYYMMDD` 與 ISO `YYYY-MM-DD` 雙範圍 predicate 做篩選，保留標準化日期作分組；合成測試核對索引可用與 ISO 日期仍會納入。Focused collector tests **7 passed**，兩個修改 Python 檔 `py_compile` 通過。
+
+修復後從正式行情 DB 以 SQLite `mode=ro` 執行同期間候選採集；候選 sidecar／輸出都在隔離 scratch，正式 DB 未寫入。實際報告 `v2_2_weekly_collection_20261025.json` 的 SHA-256 為 `4BDFC5BEFCB1D0DC925F0D8057EB36D0209FA8258C14085725BA767F274C7471`，run record `ewc_58409a20689d74be`：2026-10-19..25 觀察到 7,859 列、1,987 個股票、4 個交易日、0 重複列；16 列 OHLC 缺值均有同日 TWSE custody receipt 證明官方值為 `--`，未驗證原因 0 列。coverage 仍為 `degraded`、collection／Gate credit 為 `pending_human_review`；母體未知，未宣稱全市場覆蓋。`write_intent=false`、`source_write_allowed=false`、`human_approval_required=true`；沒有 append 正式 sidecar、修補 OHLC、接受來源或授 Gate credit。隔離 scratch 報告：`C:\Users\archi\.codex\visualizations\2026\10\23\01a16afa-5b3f-7692-a5db-8881433773e9\weekly-candidate-rerun-20261026-10f453771a23\output\scheduled\v2_2_weekly_collection\v2_2_weekly_collection_20261025.json`。
+
+正式 `twstock.db` 的 `mode=ro` query-plan 複核回報 `MULTI-INDEX OR`，compact 與 ISO 兩個分支都 `SEARCH daily_prices USING COVERING INDEX idx_daily_prices_date (日期>? AND 日期<?)`；只有分組用 `TEMP B-TREE`。這證實 WHERE 不再全掃日期索引。正式 DB 僅供此 query plan 開啟，未讀行情列或執行寫入。
+
 ## 2026-10-26 隔離 Gate 2 recovery rehearsal 工具
 
 新增 `scripts/rehearse_weekly_review_recovery.py`，供人工以既有非正式 weekly-review working-copy DB 與 approval projection 執行可重複的備份／還原演練。它拒絕正式 `twstock.db` 路徑、來源檔 reparse point、非空 WAL／rollback journal、正式／輸出根底下或與來源重疊的 scratch、無效 projection schema，以及 `formal_credit_authorized=true`。只有全新 scratch 根目錄可寫入；source DB、WAL、journal 與 projection 都做前後 hash 讀回。實際 Scheduler 不會被呼叫或停用，disable-first 僅在 scratch 模擬。故障注入後工具把備份還原成新檔，保留故障副本，核對 SQLite `quick_check`、週報 ID／hash／期間摘要及 projection bytes／record count。

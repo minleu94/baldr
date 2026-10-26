@@ -51,7 +51,7 @@ from app_module.recommendation_learning_evidence_projection_service import (
     RecommendationLearningEvidenceProjectionService,
 )
 from app_module.research_console_source_service import ResearchConsoleSourceService
-from app_module.advice_dtos import AdviceClassification
+from app_module.advice_dtos import AdviceAction, AdviceClassification
 from app_module.decision_presentation import (
     DecisionPresentationService,
     PositionHealthReadModel,
@@ -3540,6 +3540,33 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 "共用證據詳情：目前沒有合格 Advice；不補排名、機率或成本後結果。"
             )
 
+        elif state == "NO_NEW_POSITION":
+            reason_text = escape(extra_msg or "缺少可用拒絕理由。")
+            warning_lines = "<br/>".join(
+                f"• {escape(_advice_warning_text(value))}"
+                for value in warnings[:3]
+            )
+            warning_note = (
+                f"<br/>來源警告：<br/>{warning_lines}"
+                if warning_lines
+                else ""
+            )
+            self.advice_empty_label.setText(
+                "<b>【本次結論：暫不新增部位】</b><br/>"
+                f"拒絕原因：{reason_text}{warning_note}<br/>"
+                "這不是賣出或清倉指令；現有持倉需依其獨立證據判讀。"
+            )
+            self.advice_empty_widget.setVisible(True)
+            self.advice_summary.setText("暫不新增部位｜目前證據不足以支持新增候選。")
+            self.advice_warning_status.setText(
+                "原警告：\n" + "\n".join(f"• {warning}" for warning in warnings)
+                if warnings
+                else "原警告：無；拒絕原因仍列於上方。"
+            )
+            self.advice_presentation_detail.setText(
+                "共用證據詳情：Advice Policy 已 fail-closed；不補資料、排名、機率或配置。"
+            )
+
         elif state == "ADVICE_DTO_ERROR":
             self.advice_empty_label.setText(
                 "<b>【狀態：ADVICE_DTO_ERROR】</b><br/>"
@@ -3576,7 +3603,35 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         portfolio_rows = advice.portfolio_rows if hasattr(advice, "portfolio_rows") else ()
 
-        total_rows = len(formal_rows) + len(candidate_rows) + len(portfolio_rows)
+        refusal_rows = tuple(
+            row
+            for row in formal_rows
+            if row.advice_action is AdviceAction.NO_NEW_POSITION
+            and not row.stock_code.strip()
+        )
+
+        if (
+            refusal_rows
+            and len(refusal_rows) == len(formal_rows)
+            and not candidate_rows
+            and not portfolio_rows
+        ):
+            refusal_reasons = tuple(
+                dict.fromkeys(
+                    reason
+                    for row in refusal_rows
+                    for reason in (row.refusal_reasons or row.why_not_reasons)
+                )
+            )
+            self._set_advice_state(
+                "NO_NEW_POSITION",
+                "；".join(_advice_warning_text(reason) for reason in refusal_reasons),
+                warnings=tuple(advice.warnings),
+            )
+            return
+
+        visible_formal_rows = formal_rows
+        total_rows = len(visible_formal_rows) + len(candidate_rows) + len(portfolio_rows)
         if total_rows == 0:
             self._set_advice_state(
                 "NO_ELIGIBLE_ADVICE",
@@ -3597,10 +3652,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             if advice.warnings
             else "原警告：無原警告回報；這不代表沒有風險。"
         )
-        self.advice_recommendation_model.set_rows(formal_rows)
+        self.advice_recommendation_model.set_rows(visible_formal_rows)
         self.advice_candidate_model.set_rows(candidate_rows)
         self.advice_portfolio_model.set_rows(portfolio_rows)
-        self.advice_recommendation_table.setVisible(bool(formal_rows))
+        self.advice_recommendation_table.setVisible(bool(visible_formal_rows))
         self.advice_candidate_label.setVisible(bool(candidate_rows))
         self.advice_candidate_table.setVisible(bool(candidate_rows))
         self.advice_portfolio_table.setVisible(bool(portfolio_rows))

@@ -89,7 +89,7 @@ def test_composer_preserves_dates_and_returns_no_new_position_for_missing_eviden
     assert result.decision_date == "2026-07-12"
     assert result.data_as_of_date == "2026-07-12"
     assert result.recommendations[0].advice_action is AdviceAction.NO_NEW_POSITION
-    assert result.recommendations[0].source_trace == ("RecommendationResultDTO",)
+    assert result.recommendations[0].source_trace == ("AdviceComposer.refusal",)
     assert result.recommendations[0].why_not_reasons == (
         "evidence_quality_missing",
     )

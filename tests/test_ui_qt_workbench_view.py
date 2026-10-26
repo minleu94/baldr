@@ -1188,6 +1188,41 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert view.advice_recommendation_model.rowCount() == 1
 
 
+def test_workbench_renders_missing_evidence_refusal_as_explicit_no_new_position() -> None:
+    app()
+    refusal = RecommendationAdviceDTO(
+        stock_code="",
+        advice_action=AdviceAction.NO_NEW_POSITION,
+        why_not_reasons=("evidence_quality_missing",),
+        refusal_reasons=("evidence_quality_missing",),
+        risk_reasons=("evidence_quality_missing",),
+        data_quality="MISSING",
+        warnings=("candidate_data_date_missing",),
+        source_trace=("AdviceComposer.refusal",),
+    )
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-06",
+        data_as_of_date="",
+        mode=AdviceMode.PROFESSIONAL,
+        policy=AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL),
+        recommendations=(refusal,),
+        warnings=refusal.warnings,
+    )
+
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), advice_dashboard=advice),
+        auto_refresh=False,
+    )
+
+    assert not view.advice_empty_widget.isHidden()
+    assert "本次結論：暫不新增部位" in view.advice_empty_label.text()
+    assert "缺少合格證據" in view.advice_empty_label.text()
+    assert "候選資料日期缺失" in view.advice_empty_label.text()
+    assert "不是賣出或清倉指令" in view.advice_empty_label.text()
+    assert view.advice_recommendation_table.isHidden()
+    assert view.advice_recommendation_model.rowCount() == 0
+
+
 def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknown() -> None:
     app()
     advice = AdviceDashboardDTO(

@@ -905,7 +905,12 @@ def test_workbench_shares_recommendation_snapshot_only_within_each_inspect(
     assert readiness_sessions[2] is scheduled_sessions[2]
     source_gap = next(item for item in readiness_reports[2].items if item.item_id == "source_gaps")
     assert source_gap.status == "action_required"
-    assert "recommendation_query_failure:ExecutionArtifactIntegrityError" in source_gap.diagnostics
+    assert any(
+        diagnostic.startswith(
+            "recommendation_query_failure:ExecutionArtifactIntegrityError"
+        )
+        for diagnostic in source_gap.diagnostics
+    )
     assert any(
         "recommendation_query_failure:ExecutionArtifactIntegrityError" in diagnostic
         for diagnostic in scheduled_reports[2].diagnostics

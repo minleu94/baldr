@@ -296,7 +296,7 @@ class AdviceComposer:
             warnings=warnings,
             decision_date=decision_date,
             data_as_of_date=data_as_of_date,
-            source_trace=("RecommendationResultDTO",),
+            source_trace=("AdviceComposer.refusal",),
             why_not_reasons=("evidence_quality_missing",),
             risk_reasons=("evidence_quality_missing", *warnings),
             refusal_reasons=("evidence_quality_missing",),

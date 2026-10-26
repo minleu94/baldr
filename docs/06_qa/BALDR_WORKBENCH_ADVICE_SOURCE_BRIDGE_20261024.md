@@ -20,3 +20,11 @@
 ## 範圍限制
 
 此 QA 證明 source adapter 的候選接線契約與 Advice 分類測試，不證明自然排程有可用當日候選，也不解除正式來源、PIT、Gate 1、配置、自然 evidence、ML 或 Owner UAT。Promoted 策略目前刻意不透過這條 Workbench 讀取路徑注入。
+
+## 2026-10-26 Advice 拒絕結果與來源追溯修正
+
+AdviceComposer 在 `evidence_quality=MISSING` 時會產生無個股代號的 `NO_NEW_POSITION` 拒絕 DTO；原來源追溯硬編成 `RecommendationResultDTO`，會誤示有推薦原件。現在標記為 `AdviceComposer.refusal`。Workbench 對只有此拒絕列的 DTO 不渲染空白股票列，改顯「本次結論：暫不新增部位」、拒絕原因及來源警告，並說明這不是賣出／清倉指令；正常有股票代號的個股拒絕列仍留在建議表。
+
+首次聚焦執行為 **78 passed／1 failed**；唯一失敗是同組未修改的 source-service 測試將診斷代碼當成完整字串比對，但現行診斷附帶了額外解碼失敗原因。保留詳細診斷，將測試調整為檢查穩定錯誤代碼前綴後，`tests/test_advice_composer.py`、`tests/test_ui_qt_workbench_view.py`、`tests/test_workbench_advice_contract.py`、`tests/test_workbench_source_service.py` 合計 **79 passed**。強制 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,149 source files，無錯誤**；5 個修改 Python 檔 `py_compile` 通過。收據位於工作區 scratch `quarterly-coverage-qa/advice-refusal-focused2.log`、`advice-workbench.log`、`advice-validator.log`、`advice-mypy.log`、`advice-pycompile.log`。
+
+這項補正沒有新造推薦／配置、沒有改 portfolio 或策略計算，也沒有寫正式資料或 Gate／ML 狀態。它只讓既有缺證據拒絕答案忠實呈現。相同決策日帳戶持倉、現金及風險預算仍未載入，因此 Workbench 仍不給配置／加碼數字；Gate 1 的完整 Advice、自然資料驗收與 Owner UAT 尚未完成。

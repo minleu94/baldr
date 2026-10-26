@@ -272,6 +272,11 @@
       },
       {
         "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
         "source_file": "output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd",
         "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd"
       },

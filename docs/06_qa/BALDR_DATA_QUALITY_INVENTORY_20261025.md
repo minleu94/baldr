@@ -53,6 +53,17 @@ Decision Desk 現有的唯讀市場資料可見性列新增 `fundamental_stateme
 - 正式設定初始化因 sandbox 不允許建立 `output/application_state/logs/config.log`，退回 console-only；資料庫本身以唯讀方式成功開啟。
 - 原生 GUI／正式資料庫互動耗時／Owner UAT：尚未執行。
 
+### 2026-10-26 來源缺口呈現易讀性
+
+Decision Desk「完整市場資料 → 資料可見性與擴充因子」改為每個來源分層顯示品質與列數、觀測／可得日期、PIT 可得時間狀態、資格，以及來源 warnings。已知 `historical_pit_unverified`、`observation_date_only`、`missing` 與 `research_only` 轉成繁體中文白話；未知狀態仍保留原值。下一步提示明列逐來源核對缺漏、可得時間、授權及覆蓋，並說明未核清前不拿來做歷史回測或 ML。呈現只讀既有 DTO，不新增資料或改 eligibility。
+
+- `tests/test_ui_qt_decision_desk_view.py`：**53 passed**（3.54 秒）。
+- `tests/test_ui_qt_update_view_workbench.py`：**93 passed**（3.87 秒）。
+- `scripts/qa_validate_update_tab.py`：**25 passed／0 failed／4 skipped**；第一次預設輸出至 `output/qa/update_tab/RUN_LOG.txt` 被 Windows sandbox 拒絕，使用既有 `BALDR_UPDATE_TAB_QA_LOG_DIR` 改寫到隔離 scratch 後正常完成。跳過項目仍不計為通過。
+- 修改的 view／test `py_compile` 通過；全域 mypy **1,145 個來源檔無錯**。pytest、validator、mypy 與 py_compile 均以 Windows Job 執行，readback 為 kill-on-close、8 GiB memory cap、12 process cap，執行後正常退出。
+- `git diff --check` 通過。原生 GUI 目視與 Owner UAT 尚未執行；因此只確認 offscreen 回歸和程式靜態檢查，不能宣稱正常桌面視窗尺寸或真人操作已接受。
+- Feature Map `change_patterns` 與 targeted document-control check（Feature Map、Snapshot、Operations index、output navigation registry／scope doc）通過，12 個功能入口映射無錯，目標文件 0 錨點／連結錯誤。舊 Snapshot 的精確 QA_RESULTS output 導航已加到既有 registry；只驗目標存在及路徑 metadata，未讀原件內容。其他文件的 output link 與全域 check 尚未清完。
+
 ## Official announcement evidence capture attempt
 
 以既有唯讀 MOPS announcement collector 查詢 2026-Q2 TWSE／TPEx F26–F28 公告，分別保留原始成功 response custody 與 mapping，所有產物都在使用者 visualization scratch；沒有寫正式資料庫、沒有來源接受或 Gate credit。

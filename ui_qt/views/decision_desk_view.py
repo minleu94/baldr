@@ -379,7 +379,9 @@ class DecisionDeskView(QWidget):
         self.visibility_sources_label.setWordWrap(True)
         self.visibility_sources_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.visibility_sources_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
-        self.visibility_action_hint = QLabel("僅供研究可見性；不代表可交易訊號，也不改寫既有決策輸出。")
+        self.visibility_action_hint = QLabel(
+            "下一步：依來源核對缺漏、可得時間、授權與覆蓋；未核清前僅作研究觀察，不用於歷史回測或 ML。"
+        )
         self.visibility_action_hint.setWordWrap(True)
         self.visibility_action_hint.setStyleSheet(f"color: {MIDNIGHT_ANALYST.warning};")
         self.visibility_section.layout.addWidget(self.visibility_sources_label)
@@ -1118,6 +1120,24 @@ class DecisionDeskView(QWidget):
         return {"estimated": "估算"}.get(raw.lower(), shared_label)
 
     @staticmethod
+    def _visibility_pit_label(value: str) -> str:
+        raw = str(value or "unknown").strip()
+        return {
+            "verified": "可得時間已核驗",
+            "observation_date_only": "只有觀測日，沒有可得日",
+            "historical_pit_unverified": "歷史可得時間未驗證",
+            "missing": "可得時間缺件",
+        }.get(raw.lower(), f"可得時間狀態未登錄（{raw}）")
+
+    @staticmethod
+    def _visibility_eligibility_label(value: str) -> str:
+        raw = str(value or "unknown").strip()
+        return {
+            "research_only": "僅供研究",
+            "none": "尚無可用資格",
+        }.get(raw.lower(), f"資格狀態未登錄（{raw}）")
+
+    @staticmethod
     def _format_ratio_bp(value: int | None) -> str:
         if value is None:
             return "N/A"
@@ -1224,23 +1244,30 @@ class DecisionDeskView(QWidget):
         self.institutional_visibility_card.value_label.setText(institutional_text)
         self._render_institutional_flow_bar(institutional, summary.as_of_date)
 
-        source_lines = [
-            (
-                f"{status.display_name}：{self._visibility_quality_label(status.quality)}｜"
-                f"{status.row_count:,} 列/{status.stock_count:,} 檔｜"
-                f"觀測 {status.latest_observation_date or 'N/A'}｜可得 {status.available_date or 'N/A'}｜"
-                f"PIT {status.pit_status}｜資格 {status.eligibility}"
-                + next(
-                    (
-                        f"｜品質缺口 {warning}"
-                        for warning in status.warnings
-                        if warning.startswith("公告日缺漏 ")
-                    ),
-                    "",
-                )
+        source_lines: list[str] = []
+        for status in summary.source_statuses:
+            source_lines.append(
+                f"{status.display_name}｜{self._visibility_quality_label(status.quality)}｜"
+                f"{status.row_count:,} 列／{status.stock_count:,} 檔"
             )
-            for status in summary.source_statuses
-        ]
+            source_lines.append(
+                f"  觀測至 {status.latest_observation_date or '未確認'}；"
+                f"可得日 {status.available_date or '未確認'}；"
+                f"{self._visibility_pit_label(status.pit_status)}；"
+                f"資格 {self._visibility_eligibility_label(status.eligibility)}"
+            )
+            warnings = tuple(str(item) for item in (status.warnings or ()))
+            display_warnings = tuple(
+                (
+                    warning.replace("公告日缺漏 ", "公告日期缺漏 ", 1)
+                    if warning.startswith("公告日缺漏 ")
+                    else warning
+                )
+                for warning in warnings
+                if warning != "historical_pit_unverified"
+            )
+            if display_warnings:
+                source_lines.append("  缺口／提示：" + "；".join(display_warnings))
         self.visibility_sources_label.setText("\n".join(source_lines) or "來源狀態：缺漏")
         if source_lines:
             self.visibility_quality_badge.setToolTip(

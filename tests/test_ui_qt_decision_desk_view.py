@@ -1762,10 +1762,13 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "尚未匯入（0 筆）" in view.institutional_visibility_card.value_label.text()
     assert "外資 0" not in view.institutional_visibility_card.value_label.text()
     assert "降級" in view.visibility_quality_badge.text()
-    assert "僅供研究可見性" in view.visibility_action_hint.text()
+    assert "依來源核對缺漏、可得時間、授權與覆蓋" in view.visibility_action_hint.text()
+    assert "不用於歷史回測或 ML" in view.visibility_action_hint.text()
     assert "三大法人" in view.visibility_sources_label.text()
-    assert "3,600 列/1,200 檔" in view.visibility_sources_label.text()
-    assert "品質缺口 公告日缺漏 3,600/3,600" in view.visibility_sources_label.text()
+    assert "3,600 列／1,200 檔" in view.visibility_sources_label.text()
+    assert "歷史可得時間未驗證" in view.visibility_sources_label.text()
+    assert "資格 僅供研究" in view.visibility_sources_label.text()
+    assert "公告日期缺漏 3,600/3,600" in view.visibility_sources_label.text()
     assert "資料缺件" in view.visibility_sources_label.text()
 
 

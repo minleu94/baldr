@@ -20,6 +20,8 @@ Data Update 表格把「來源日期早於查詢日」、「取得較早日期�
 
 受控 Windows Job 驗證：P0 candidate ingestion、source evidence audit、formatter 與 Update Workbench 共 **146 passed**；Update validator **25 passed／0 failed／4 skipped**；修改檔 py_compile 通過；mypy **1,144 source files，無錯誤**。各 Job 自然排空，source pins 未變。這是 fallback 資料流／UI 回歸驗證，未把任何來源 Gate 升格，也未新增來源授權或 PIT 證據。
 
+<a id="2026-10-24-utc-twse-coverage-範圍校正與雙來源更新"></a>
+
 ## 2026-10-24 UTC：TWSE coverage 範圍校正與雙來源更新
 
 依官方上市清冊、上市日與 MOPS 月營收來源範圍重抓 TWSE machine evidence，沒有寫入正式資料根。原始 1,097 家現行清冊中，6467 在 2026-10-20 才上市，晚於 2026-10-17 月營收報告日；10 個 `91` 開頭的 TDR 不屬於 MOPS 月營收清冊範圍。對齊後母體為 1,086，官方月營收 1,088 列中 1,086 列屬於該母體，coverage 10,000 bp、品質 10,000 bp、缺漏 0。額外觀測到的 9105、912000 也依同一 TDR 範圍明確列為 out-of-scope，而非未知意外列。
@@ -29,6 +31,8 @@ Data Update 表格把「來源日期早於查詢日」、「取得較早日期�
 TWSE 原先的 9 個缺列（99.17%）是把 TDR 與報告日後上市的公司放進錯誤分母；較早的證據及決議保留作歷史，新的範圍校正以子決議追加，沒有改寫既有決策。TWSE 現行候選證據路徑為 `C:\\Users\\archi\\.codex\\visualizations\\2026\\10\\23\\01a16afa-5b3f-7692-a5db-8881433773e9\\twse-monthly-revenue-machine-evidence-20261025-scopefix-v2`；combined decisions 與唯讀 projection 路徑仍由同一工作區的環境變數指向。新的 User environment license 路徑供下次啟動 app 讀取；本次沒有宣稱已目視確認重啟後 UI。
 
 受控驗證：`tests/test_p0_machine_producer.py tests/test_source_acceptance_governance.py tests/test_capture_p0_license_evidence.py` **21 passed**；對修改的 producer、governance 與測試檔 `py_compile` 通過。兩次驗證 Job 均自然排空、handles 關閉、鎖釋放。這只證明此兩個月營收來源的限定證據，不改變其他 P0 source、正式資料、PIT 歷史、自然週期、Paper fills 或 Formal／ML inputs 的 gate。
+
+<a id="2026-10-23-最近應有交易日-13-source-bounded-refresh"></a>
 
 ## 2026-10-23 最近應有交易日：13-source bounded refresh
 
@@ -240,6 +244,8 @@ TPEx 使用條款頁尾有每次變動的 Cloudflare challenge script。license 
 系統已在 visualization workspace 的非正式 candidate registry append `machine:evidence_policy` 的 `limited` 決議，decision hash `sha256:46de0a8bd85b1a76601c8666c4034adae4ef03aa1bfd5591157564185f46170a`；唯一用途是 `research_shadow`／`diagnostics`。P0 Control Center 唯讀投影為 1 limited、0 accepted、0 downstream eligible；另 12 項維持 contract-only。已設定使用者環境變數 `P0_SOURCE_CONTROL_CENTER_DECISIONS` 與 `P0_SOURCE_CONTROL_CENTER_LICENSE_EVIDENCE` 指向 workspace artifacts，下一次啟動 app 後讀取。這不授予正式來源接受、正式資料寫入、production scheduler、投資 Advice、歷史 PIT 或 ML/OOS。
 
 整條 producer／evaluator／candidate append／Control Center projection 在受控 Windows Job 執行：起跑可用 RAM 約 26 GiB、Job 上限 8 GiB／12 程序、suspended assign-before-resume；程序自然歸零，handles 關閉、workspace mutex 釋放，未強制清理。正式資料根與正式 Registry 均未寫入。
+
+<a id="2026-10-24-gate-續清-p0-官方回應效能基線與-technical-單股-canary"></a>
 
 ## 2026-10-24 Gate 續清：P0 官方回應、效能基線與 Technical 單股 canary
 

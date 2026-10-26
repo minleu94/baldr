@@ -19,6 +19,7 @@ WP4的8132差異不能標thousand_twd；不同出表日期不能證明曾官方�
 | 精確來源檔案 | 引用文件 | 類型 |
 |---|---|---|
 | `output/tasks/baldr-post-completion-execution/TPEX_20261019_GUIDE.md` | `docs/00_core/PROJECT_SNAPSHOT.md` | metadata-only historical navigation |
+| `output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md` | `docs/00_core/PROJECT_SNAPSHOT.md` | metadata-only historical navigation |
 | `output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd` | `docs/00_core/PROJECT_SNAPSHOT.md` | metadata-only historical navigation |
 | `output/trial/Baldr-Theme-Research-02/Launch-Baldr.cmd` | `docs/00_core/PROJECT_SNAPSHOT.md` | metadata-only historical navigation |
 | `output/trial/Baldr-Theme-Research-02/TRIAL_GUIDE.md` | `docs/00_core/PROJECT_SNAPSHOT.md` | metadata-only historical navigation |

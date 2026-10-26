@@ -90,3 +90,59 @@ Decision Desk 現有的唯讀市場資料可見性列新增 `fundamental_stateme
 - 既有季度 OpenAPI collector 曾完成 24 個數值 endpoint 的隔離研究擷取，原始回應與 review items 已有 2026-10-01 QA 紀錄。該批資料標記一般金額 `unit_unknown`、`available_at=null`，含 8 個未納入 preview 的 key/schema review 列，且不含現金流量表／權益變動表；不能因此視為完整季度來源或正式可用。不得將 OpenAPI 端點改名或合併成 MOPS EZSearch。
 
 本節記錄目前可核驗的來源範圍與工程採集守則，不作法律裁定。官方依據：[TWSE 使用條款](https://wwwc.twse.com.tw/zh/terms/use.html)；[data.gov.tw 18420](https://data.gov.tw/dataset/18420)。
+
+### 2026-10-26 開放資料季報 CSV 候選與 coverage 對照
+
+使用政府開放平台各資料集頁面明列的 CSV 資源 URL，對四個一般業季報資源各執行一次 GET。四個回應均 HTTP 200，原始 bytes 寫入隔離 scratch 並逐檔 SHA-256 readback；CSV 可解析，沒有正式 DB 寫入、source acceptance 或 Gate credit。原始候選、manifest 與內容稽核位於：
+
+`C:/Users/archi/.codex/visualizations/2026/10/23/01a16afa-5b3f-7692-a5db-8881433773e9/open-data-quarterly-csv-candidate-20261026retry1/`
+
+| 市場／報表 | data.gov.tw dataset | 列數／唯一代碼 | 期別 | 出表日期 | 原始 bytes | SHA-256 |
+|---|---|---:|---|---|---:|---|
+| TWSE 資產負債表 | [94831](https://data.gov.tw/dataset/94831) | 1,051 | 115-Q2 | 1151026 | 257,355 | `96cd65e1c5ad1251772bbcf3fae3491c0ce1a60e29a8f2e63f989fd9b99196eb` |
+| TWSE 綜合損益表 | [91998](https://data.gov.tw/dataset/91998) | 1,051 | 115-Q2 | 1151026 | 287,750 | `c89fc3db5db5850af8867b81ef12fb53c905facdf0d98d2e7fe51176492c1233` |
+| TPEx 資產負債表 | [91967](https://data.gov.tw/dataset/91967) | 888 | 115-Q2 | 1151026 | 207,730 | `94e23dfa43d8accf62dea0d339f924d484d0ee93db9146e3d521dcb53aa7280c` |
+| TPEx 綜合損益表 | [94853](https://data.gov.tw/dataset/94853) | 888 | 115-Q2 | 1151026 | 231,938 | `690ee762106602db2b0e3a1d431ba836ed0cea4c039ebdda1f65413843d0fb62` |
+
+四檔 CSV 的公司代碼及 `(公司代號, 年度, 季別)` 都沒有重複；同市場資產負債表與綜損的代碼集合相同。每列欄位數與 header 相符，沒有額外欄或短列。欄位中有大量空字串，但沒有 `-`／`--`／`N/A` 等字面 placeholder；空值究竟代表不適用、未揭露或資料缺漏，官方語意仍未知，不將它轉成 0。四檔都有 `出表日期`，該欄逐列為 1151026；它只證明這次輸出所標的日期，不證明逐筆首次公告／可得時間或修訂歷史。一般金額單位、財報 basis 與歷史 PIT 仍未核定。
+
+另以政府開放平台列出的上市／上櫃公司基本資料資源建立近時點目錄候選：TWSE [18419](https://data.gov.tw/dataset/18419) 有 1,097 個唯一代碼，TPEx [25036](https://data.gov.tw/dataset/25036) 有 894 個唯一代碼，兩檔出表日期皆為 1151025；bytes/hash 及 readback 收據在：
+
+`C:/Users/archi/.codex/visualizations/2026/10/23/01a16afa-5b3f-7692-a5db-8881433773e9/open-data-company-directory-candidate-20261026/`
+
+目錄比一般業 CSV 晚／早一日的觀測差，故不是完全同日分母。以目錄 `產業別` 欄做集合對照：TWSE 有 46 個目錄代碼不在一般業 CSV（其中產業碼 17 有 31、91 有 10，其他碼合計 5），一般業 CSV 代碼全都在目錄中；TPEx 有 8 個目錄代碼不在一般業 CSV（產業碼 17 有 7、26 有 1），另有兩個 CSV 代碼 `6898`、`6938` 不在前一日目錄。這些差異尚未按全部產業的季報資源及歷史上市狀態裁定，不能宣稱已完整覆蓋或視為來源錯誤。
+
+再與本機 `fundamental_current_observations` 的 2026-Q2、`as_of_date=2026-06-30` MOPS current-HTML 子集唯讀對照：TWSE 子集 1,084 檔中 1,049 檔命中一般業 CSV（35 檔不在一般業集合）；TPEx 子集 891 檔中 883 檔命中（8 檔不在一般業集合）。反向有 2 檔 TWSE、5 檔 TPEx 一般業 CSV 公司代碼沒有該本機子集列。此子集不是正式 issuer denominator，且其觀測時間早於兩份新候選；結果只用來定位差異，不用來判定缺漏、接受來源或補正式資料。
+
+### 2026-10-26 全產業季度 CSV 候選補採與 issuer 對照
+
+依政府資料開放平台各資料集頁面所列資源 URL，追加擷取 19 個非一般業季度 CSV；每項均單次 GET、禁止自動跟隨 redirect、每個 response 上限 32 MiB，原始 body 寫入 scratch 並逐檔 hash/readback。19/19 回 HTTP 200 且原始 bytes 與 readback SHA-256 一致；沒有正式 DB 寫入、來源接受或 Gate credit。完整 manifest、原始檔與集合對照：
+
+`C:/Users/archi/.codex/visualizations/2026/10/23/01a16afa-5b3f-7692-a5db-8881433773e9/open-data-industry-quarterly-candidate-20261026/`
+
+TWSE 共採資產負債表／綜合損益表各五個產業資源；TPEx 採目錄列出的資產負債表四個及綜合損益表五個產業資源。各市場同一產業的兩種報表有效代碼集合相符：
+
+| 市場／產業 | 季報目錄資產負債表／損益表 dataset | 各表有效代碼 | 觀察 |
+|---|---|---:|---|
+| TWSE 銀行業 | [94829](https://data.gov.tw/dataset/94829)／[91995](https://data.gov.tw/dataset/91995) | 10 | 115-Q2，出表日 1151026 |
+| TWSE 證券期貨業 | [94830](https://data.gov.tw/dataset/94830)／[91996](https://data.gov.tw/dataset/91996) | 3 | 115-Q2，出表日 1151026 |
+| TWSE 金控業 | [94832](https://data.gov.tw/dataset/94832)／[91999](https://data.gov.tw/dataset/91999) | 13 | 115-Q2，出表日 1151026 |
+| TWSE 保險業 | [94833](https://data.gov.tw/dataset/94833)／[92000](https://data.gov.tw/dataset/92000) | 5 | 115-Q2，出表日 1151026 |
+| TWSE 異業 | [94834](https://data.gov.tw/dataset/94834)／[92001](https://data.gov.tw/dataset/92001) | 4 | 115-Q2，出表日 1151026 |
+| TPEx 銀行業 | [91965](https://data.gov.tw/dataset/91965)／[94850](https://data.gov.tw/dataset/94850) | 0 | HTTP 200，但沒有有效代碼／年度／季別列 |
+| TPEx 證券期貨業 | [91966](https://data.gov.tw/dataset/91966)／[94852](https://data.gov.tw/dataset/94852) | 7 | 115-Q2，出表日 1151026 |
+| TPEx 金控業 | [91968](https://data.gov.tw/dataset/91968)／[94854](https://data.gov.tw/dataset/94854) | 0 | HTTP 200，回應僅 78 bytes 表頭／空列 |
+| TPEx 保險業 | 無另列資產負債表資源（[94867](https://data.gov.tw/dataset/94867) 保險資料集欄位只見損益項目）／[94855](https://data.gov.tw/dataset/94855) | 0 | 損益資源列為不定期更新；本次沒有有效代碼／年度／季別列 |
+| TPEx 異業 | [91970](https://data.gov.tw/dataset/91970)／[94856](https://data.gov.tw/dataset/94856) | 0 | HTTP 200，回應僅 78 bytes 表頭／空列 |
+
+所有非空產業表均只有 115-Q2、出表日 1151026；各檔有效 issuer 代碼無重複。TPEx 空回應只證明本次 response 沒有有效季報列，不能推論產業「沒有公司」或來源已完整。保險業損益目錄頁標示不定期更新；其餘新增目錄頁列政府資料開放授權條款第 1 版／免費與每三月更新。資料集主要欄位清單列出欄名，未提供財報金額單位或合併／個別 basis 說明；例如[一般業](https://data.gov.tw/dataset/94831)與[金融業](https://data.gov.tw/dataset/94829)頁只在股數欄明列「單位：股」，金額單位仍不能由數值推斷。以上授權只支持這些明列資源的研究採集。
+
+對四個一般業與 19 個產業資源再做結構剖析：16 個檔案有有效財報列，合計 3,962 個「報表 × 公司」列；`(公司代號, 年度, 季別)` 重複鍵為 0，觀察欄位的空白值為 31,077／97,708（31.8%），檢查的 `-`、`--`、`N/A`、`NA`、`null`、`NULL` 文字 placeholder 為 0。3,962 是跨報表列數，不是唯一公司數；31.8% 空白可能是格式／適用性／缺漏，官方語意未明，不補零。欄位數在不同報表／產業間從 5 到 64 欄不等，需建立逐報表欄位與單位映射，不能直接拼成一張同質資料表。稽核結果在同一候選目錄 `content_audit_all_quarterly.json`；原始 response、readback hash 與逐來源資料集 ID 在 `capture_manifest.json`。
+
+以 1151025 的 TWSE／TPEx 公司目錄作近時點分母，將四份一般業資源和本次有效產業列去重後：
+
+- TWSE：季報資源聯集 1,086 代碼；目錄 1,097 代碼中 11 個不在該聯集。其中特別需要追查的是普通產業代碼 `1589`（目錄產業別 05）；另十個未命中代碼均為目錄產業別 91。不能因剩餘差異看似小就接受完整 coverage。
+- TPEx：季報資源聯集 895 代碼；目錄 894 代碼中 `3718` 不在季報聯集，季報候選另有 `6898`、`6938` 不在前一日目錄。目錄列出 `3718` 的上櫃日期為 20260903、產業別 26，故其缺口不能用「當日新上市」解釋，需核對季度適用範圍與官方其他資源。
+- 目錄與季度 CSV 的出表日相差一天；這是近時點對照，不是相同觀測時點的正式 denominator。公司目錄也不提供歷史上市狀態或季度財報義務判斷。完整差異代碼與每個檔案 hash 在上述 scratch `scope_reconciliation.json` 與 `capture_manifest.json`。
+
+此補採縮小了「一般業以外都未核對」的未知範圍，但仍未完成來源契約：`出表日期` 不等於逐筆首次公告／available-at；單位、合併／個別 basis、空值語意、修訂歷史、歷史 PIT、產業母體與 `1589`／`3718` 差異都未解決。候選不得匯入正式 DB，不授予 Gate 3／來源接受或 ML 訓練資格。

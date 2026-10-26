@@ -54,6 +54,25 @@ def _create_visibility_db(path: Path) -> None:
                 source_version TEXT NOT NULL,
                 quality TEXT NOT NULL
             );
+            CREATE TABLE fundamental_current_observations (
+                stock_code TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                period TEXT NOT NULL,
+                as_of_date TEXT NOT NULL,
+                item_code TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                value TEXT NOT NULL,
+                unit TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_version TEXT NOT NULL,
+                market TEXT NOT NULL,
+                period_basis TEXT NOT NULL DEFAULT 'unknown',
+                basis_verified INTEGER NOT NULL DEFAULT 0,
+                aggregate_feature_eligible INTEGER NOT NULL DEFAULT 0,
+                source_available_at TEXT,
+                PRIMARY KEY(stock_code, kind, period, item_code, source_version)
+            );
             CREATE TABLE institutional_flows (
                 stock_code TEXT,
                 decision_date TEXT,
@@ -85,6 +104,121 @@ def _create_visibility_db(path: Path) -> None:
             );
             """
         )
+
+
+def test_current_fundamental_observation_projection_uses_bounded_aggregates_and_keeps_research_only(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "visibility.db"
+    _create_visibility_db(db_file)
+    with sqlite3.connect(db_file) as conn:
+        conn.executemany(
+            """
+            INSERT INTO fundamental_current_observations VALUES (
+                ?, ?, ?, ?, ?, 'item', ?, 'TWD', ?, 'official.source', ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                (
+                    "2330", "income", "2025-Q1", "2025-03-31", "revenue", "secret-value-1",
+                    "2025-04-01T00:00:00Z", "v1", "twse", "unknown", 1, 0,
+                    "2025-04-01T00:00:00Z",
+                ),
+                (
+                    "2317", "income", "2025-Q1", "2025-03-31", "revenue", "secret-value-2",
+                    "2025-04-02T00:00:00Z", "v1", "twse", "unknown", 0, 0, None,
+                ),
+                (
+                    "2330", "valuation", "2025-Q1", "2025-03-31", "pe", "secret-value-3",
+                    "2025-04-03T00:00:00Z", "v2", "tpex", "period_end", 1, 1,
+                    "2025-05-01T00:00:00Z",
+                ),
+                (
+                    "9999", "income", "2025-Q2", "2025-06-30", "revenue", "future-value",
+                    "2025-07-01T00:00:00Z", "future", "twse", "unknown", 0, 0,
+                    "2025-07-01T00:00:00Z",
+                ),
+            ),
+        )
+
+    summary = MarketDataVisibilityService(db_file).build_summary(
+        as_of_date=date(2025, 4, 30)
+    )
+    projection = summary.current_fundamental_observations
+    assert projection is not None
+    assert projection.state == "available"
+    assert projection.row_count == 3
+    assert projection.stock_count == 2
+    assert {item.value: item.row_count for item in projection.market_counts} == {
+        "twse": 2,
+        "tpex": 1,
+    }
+    assert {item.value: item.row_count for item in projection.kind_counts} == {
+        "income": 2,
+        "valuation": 1,
+    }
+    assert {item.value: item.row_count for item in projection.source_counts} == {
+        "official.source": 3,
+    }
+    assert {item.value: item.row_count for item in projection.source_version_counts} == {
+        "v1": 2,
+        "v2": 1,
+    }
+    assert {item.value: item.row_count for item in projection.period_basis_counts} == {
+        "period_end": 1,
+        "unknown": 2,
+    }
+    assert projection.basis_verified_count == 2
+    assert projection.basis_unverified_count == 1
+    assert projection.basis_unknown_count == 0
+    assert projection.aggregate_feature_eligible_count == 1
+    assert projection.aggregate_feature_ineligible_count == 2
+    assert projection.source_available_at_known_count == 2
+    assert projection.source_available_at_missing_count == 1
+    assert projection.source_available_at_after_as_of_date_count == 1
+    assert projection.latest_as_of_date == "2025-03-31"
+    assert projection.latest_observed_at == "2025-04-03T00:00:00Z"
+    assert projection.eligibility == "research_only"
+    assert projection.pit_status == "historical_pit_unverified"
+    assert "secret-value-1" not in str(projection.to_dict())
+    assert "future-value" not in str(projection.to_dict())
+
+
+def test_current_fundamental_observation_projection_distinguishes_empty_and_unavailable(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "visibility.db"
+    _create_visibility_db(db_file)
+    empty = MarketDataVisibilityService(db_file).build_summary(
+        as_of_date=date(2025, 4, 30)
+    ).current_fundamental_observations
+    assert empty is not None
+    assert empty.state == "empty"
+    assert empty.row_count == 0
+    assert empty.source_available_at_missing_count == 0
+
+    with sqlite3.connect(db_file) as conn:
+        conn.execute("DROP TABLE fundamental_current_observations")
+    unavailable = MarketDataVisibilityService(db_file).build_summary(
+        as_of_date=date(2025, 4, 30)
+    ).current_fundamental_observations
+    assert unavailable is not None
+    assert unavailable.state == "unavailable"
+    assert unavailable.row_count is None
+    assert unavailable.source_available_at_missing_count is None
+    assert any("資料表或 schema 無法讀取" in warning for warning in unavailable.warnings)
+
+    with sqlite3.connect(db_file) as conn:
+        conn.execute(
+            "CREATE TABLE fundamental_current_observations (as_of_date TEXT)"
+        )
+    malformed_schema = MarketDataVisibilityService(db_file).build_summary(
+        as_of_date=date(2025, 4, 30)
+    ).current_fundamental_observations
+    assert malformed_schema is not None
+    assert malformed_schema.state == "unavailable"
+    assert malformed_schema.row_count is None
+    assert malformed_schema.warnings
 
 
 def test_statement_visibility_summarizes_legal_rows_without_qualifying_degraded_source(

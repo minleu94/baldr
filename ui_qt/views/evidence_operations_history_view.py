@@ -6,8 +6,10 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -50,6 +52,9 @@ class EvidenceOperationsHistoryView(QWidget):
         dashboard_service,
         *,
         approval_service=None,
+        history_service_factory=None,
+        approval_service_factory=None,
+        history_source_path: str = "",
         auto_refresh: bool = True,
         async_refresh: bool = True,
         parent=None,
@@ -57,6 +62,9 @@ class EvidenceOperationsHistoryView(QWidget):
         super().__init__(parent)
         self.dashboard_service = dashboard_service
         self.approval_service = approval_service
+        self.history_service_factory = history_service_factory
+        self.approval_service_factory = approval_service_factory
+        self.history_source_path = str(history_source_path or "").strip()
         self.async_refresh = async_refresh
         self._active_request_id = 0
         self._workers: list[TaskWorker] = []
@@ -99,6 +107,34 @@ class EvidenceOperationsHistoryView(QWidget):
         filter_row.addWidget(self.previous_button, 0, 5)
         filter_row.addWidget(self.next_button, 0, 6)
         root.addLayout(filter_row)
+
+        history_source_row = QHBoxLayout()
+        self.history_source_label = QLabel(
+            f"週報歷史來源：{self.history_source_path or '應用程式預設路由'}（唯讀）"
+        )
+        self.history_source_label.setWordWrap(True)
+        self.history_source_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        history_source_row.addWidget(self.history_source_label, stretch=1)
+        self.choose_history_source_button = QPushButton("選擇 working-copy DB…")
+        self.choose_history_source_button.setToolTip(
+            "只讀取你明選的週報歷史 working-copy，不建立 DB 或 schema。PERSONAL store 路由不接受自訂路徑。"
+        )
+        self.choose_history_source_button.setEnabled(
+            self.history_service_factory is not None
+            and self.approval_service_factory is not None
+        )
+        self.choose_history_source_button.clicked.connect(self._choose_history_source)
+        history_source_row.addWidget(self.choose_history_source_button)
+        self.default_history_source_button = QPushButton("還原預設")
+        self.default_history_source_button.setEnabled(
+            self.history_service_factory is not None
+            and self.approval_service_factory is not None
+        )
+        self.default_history_source_button.clicked.connect(
+            lambda: self._apply_history_source(None)
+        )
+        history_source_row.addWidget(self.default_history_source_button)
+        root.addLayout(history_source_row)
 
         approval_row = QGridLayout()
         self.owner_approval_button = QPushButton("Owner 覆核此週報…")
@@ -144,6 +180,40 @@ class EvidenceOperationsHistoryView(QWidget):
         self.detail_panel.setReadOnly(True)
         self.detail_panel.setFont(QFont("Consolas", 9))
         root.addWidget(self.detail_panel, stretch=1)
+
+    def _choose_history_source(self) -> None:
+        if self.history_service_factory is None or self.approval_service_factory is None:
+            return
+        selected_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "選擇 Evidence weekly-review working-copy DB",
+            self.history_source_path,
+            "SQLite database (*.db *.sqlite *.sqlite3);;All files (*.*)",
+        )
+        if selected_path:
+            self._apply_history_source(selected_path)
+
+    def _apply_history_source(self, db_path: str | None) -> bool:
+        if self.history_service_factory is None or self.approval_service_factory is None:
+            return False
+        try:
+            dashboard_service = self.history_service_factory(db_path)
+            approval_service = self.approval_service_factory(db_path)
+        except Exception as exc:  # noqa: BLE001 - show a concise safe-path diagnostic.
+            QMessageBox.warning(
+                self,
+                "週報歷史來源未切換",
+                _history_source_error_message(exc),
+            )
+            return False
+        self.dashboard_service = dashboard_service
+        self.approval_service = approval_service
+        self.history_source_path = str(db_path or "").strip()
+        self.history_source_label.setText(
+            f"週報歷史來源：{self.history_source_path or '應用程式預設路由'}（唯讀）"
+        )
+        self.refresh_dashboard()
+        return True
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -484,3 +554,18 @@ def _scope_message(result: EvidenceOperationsHistoryDashboardResult, page_index:
             f"{page_range}後面還有較舊週報；卡片僅統計本頁 {count} 筆。"
         )
     return f"{page_range}卡片統計本頁 {count} 筆。"
+
+
+def _history_source_error_message(error: Exception) -> str:
+    code = str(error).splitlines()[0]
+    messages = {
+        "weekly_review_custom_db_requires_legacy_compat": (
+            "此個人資料路由不允許指定其他資料庫；請使用目前應用程式路由。"
+        ),
+        "weekly_review_working_copy_unavailable": "找不到該 working-copy 資料庫。",
+        "weekly_review_working_copy_not_file": "所選來源不是可讀取的資料庫檔案。",
+        "weekly_review_formal_db_forbidden": (
+            "正式 twstock.db 不可作為 weekly-review working-copy 來源。"
+        ),
+    }
+    return messages.get(code, "無法切換週報歷史來源；請確認檔案與資料路由。")

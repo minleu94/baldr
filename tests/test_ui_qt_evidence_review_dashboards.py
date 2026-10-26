@@ -258,6 +258,9 @@ def test_evidence_review_view_contains_read_only_tabs_including_scheduled_status
         signal_decay_service=FakeDashboard(SignalDecayDashboardResult(SignalDecayDashboardRequest(), SignalDecayDashboardCards())),
         decision_quality_service=FakeDashboard(DecisionQualityDashboardResult(DecisionQualityDashboardRequest(), DecisionQualityDashboardCards())),
         evidence_history_service=FakeDashboard(EvidenceOperationsHistoryDashboardResult(EvidenceOperationsHistoryDashboardRequest(), EvidenceOperationsHistoryDashboardCards())),
+        evidence_history_service_factory=lambda path: ("history", path),
+        evidence_approval_service_factory=lambda path: ("approval", path),
+        evidence_history_source_path="C:/scratch/weekly.db",
         scheduled_status_service=FakeScheduledStatus(),
     )
 
@@ -281,6 +284,11 @@ def test_evidence_review_view_contains_read_only_tabs_including_scheduled_status
     assert "前瞻證據" in hist_labels
     assert "訊號衰退" in hist_labels
     assert "覆盤歷史" in hist_labels
+    history_view = hist_tabs.widget(hist_labels.index("覆盤歷史"))
+    assert isinstance(history_view, EvidenceOperationsHistoryView)
+    assert history_view.history_service_factory("copy.db") == ("history", "copy.db")
+    assert history_view.approval_service_factory("copy.db") == ("approval", "copy.db")
+    assert "C:/scratch/weekly.db" in history_view.history_source_label.text()
 
     assert "任何 demote / retire" in view.boundary_banner.text()
 

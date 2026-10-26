@@ -11,6 +11,7 @@ import re
 from typing import Any, Protocol
 
 from app_module.approved_weekly_history_projection import SCHEMA_VERSION
+from app_module.weekly_review_history_source import resolve_weekly_review_working_copy_path
 
 
 _SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -127,12 +128,15 @@ def create_weekly_review_approval_service(
     config: Any,
     *,
     projection_path: str | Path | None = None,
+    db_path: str | Path | None = None,
 ) -> WeeklyReviewApprovalService:
     """以唯讀歷史 repository 建立人工投影寫入服務。"""
 
     from app_module.evidence_operations_history_repository import EvidenceOperationsHistoryRepository
 
-    history = EvidenceOperationsHistoryRepository(config, read_only=True)
+    if db_path is not None:
+        db_path = resolve_weekly_review_working_copy_path(config, db_path)
+    history = EvidenceOperationsHistoryRepository(config, db_path=db_path, read_only=True)
     return WeeklyReviewApprovalService(history, projection_path=projection_path)
 
 

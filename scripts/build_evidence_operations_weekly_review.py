@@ -20,6 +20,7 @@ from app_module.evidence_operations_history_repository import (
 from data_module.config import TWStockConfig
 from app_module.personal_store_selection import resolve_personal_store_selection
 from app_module.personal_store_routes import PersonalStoreMode
+from app_module.weekly_review_history_source import is_production_like_weekly_db_path
 from runtime.console_encoding import configure_utf8_console
 
 
@@ -65,18 +66,8 @@ def _config(args: argparse.Namespace) -> TWStockConfig:
 _DEFAULT_PRODUCTION_DATA_ROOT = Path("F:/Min/Python/Project/FA_Data")
 
 
-def _canonical_path(path: Path) -> Path:
-    return path.expanduser().resolve()
-
-
 def _production_like(path: Path, config: TWStockConfig) -> bool:
-    actual_db_path = _canonical_path(path)
-    production_roots = {
-        _canonical_path(Path(config.data_root)),
-        _canonical_path(Path(os.environ.get("DATA_ROOT", _DEFAULT_PRODUCTION_DATA_ROOT))),
-        _canonical_path(_DEFAULT_PRODUCTION_DATA_ROOT),
-    }
-    return actual_db_path in {_canonical_path(root / "sqlite" / "twstock.db") for root in production_roots}
+    return is_production_like_weekly_db_path(path, config)
 
 
 def _read_only_history_db_path(args: argparse.Namespace) -> Path:

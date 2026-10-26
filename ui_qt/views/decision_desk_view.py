@@ -1268,6 +1268,55 @@ class DecisionDeskView(QWidget):
             )
             if display_warnings:
                 source_lines.append("  缺口／提示：" + "；".join(display_warnings))
+        current_observations = getattr(
+            summary, "current_fundamental_observations", None
+        )
+        if current_observations is not None:
+            source_lines.append("現況基本面觀測（僅研究，不代表來源驗收）")
+            if current_observations.state == "unavailable":
+                source_lines.append(
+                    "  筆數未知；資料表或欄位無法唯讀彙總。"
+                    + ("；".join(current_observations.warnings or ()) or "請檢查資料庫診斷。")
+                )
+            else:
+                row_count = current_observations.row_count
+                stock_count = current_observations.stock_count
+                source_lines.append(
+                    f"  {row_count:,} 列／{stock_count:,} 檔；資格僅供研究；"
+                    f"PIT {self._visibility_pit_label(current_observations.pit_status)}"
+                )
+                for title, attribute in (
+                    ("市場", "market_counts"),
+                    ("資料種類", "kind_counts"),
+                    ("來源版本", "source_version_counts"),
+                    ("期間基準", "period_basis_counts"),
+                ):
+                    categories = tuple(getattr(current_observations, attribute, ()) or ())
+                    if categories:
+                        values = "、".join(
+                            f"{item.value if item.value is not None else '未提供'} {item.row_count:,} 列"
+                            for item in categories
+                        )
+                        source_lines.append(f"  {title}：{values}")
+                basis_verified = current_observations.basis_verified_count
+                basis_unverified = current_observations.basis_unverified_count
+                eligible = current_observations.aggregate_feature_eligible_count
+                available_known = current_observations.source_available_at_known_count
+                available_missing = current_observations.source_available_at_missing_count
+                source_lines.append(
+                    "  基準已驗證／未驗證："
+                    f"{basis_verified if basis_verified is not None else '未知'}／"
+                    f"{basis_unverified if basis_unverified is not None else '未知'}；"
+                    "aggregate eligible 標記："
+                    f"{eligible if eligible is not None else '未知'}；"
+                    "source available-at 已知／缺漏："
+                    f"{available_known if available_known is not None else '未知'}／"
+                    f"{available_missing if available_missing is not None else '未知'}"
+                )
+                if current_observations.warnings:
+                    source_lines.append(
+                        "  缺口／提示：" + "；".join(current_observations.warnings)
+                    )
         self.visibility_sources_label.setText("\n".join(source_lines) or "來源狀態：缺漏")
         if source_lines:
             self.visibility_quality_badge.setToolTip(

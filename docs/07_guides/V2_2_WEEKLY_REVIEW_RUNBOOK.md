@@ -61,6 +61,8 @@
 .\.venv\Scripts\python.exe scripts\build_evidence_operations_weekly_review.py --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> --db-path <working-copy-db> --list-history --json-output
 ```
 
+若在產品 Evidence Review 內核對，於「覆盤歷史」按「選擇 working-copy DB…」並選同一個既有副本；UI 會唯讀載入 history，Owner 覆核時也對同檔重新核對 ID／hash。PERSONAL／LEGACY_READ_ONLY 路由不接受自訂 DB；Owner projection 仍須獨立設定，核准不寫回 working-copy。
+
 8. 記錄下一步與本週 backup / rollback / recovery 演練狀態。三週都完成後，仍須人工彙整 scheduler approval package；不可自動進入 formal closeout。
 
 ## 4. 固定三週人工紀錄格式

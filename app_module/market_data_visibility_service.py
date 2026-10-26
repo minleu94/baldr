@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from app_module.market_data_visibility_dtos import (
+    CurrentFundamentalObservationsSummary,
     InstitutionalFlowMarketSummary,
     MarketDataVisibilitySummary,
     MonthlyRevenueBreadthSummary,
     SourceVisibilityStatus,
+    VisibilityCategoryCount,
 )
 
 
@@ -53,6 +55,9 @@ class MarketDataVisibilityService:
                     """,
                 )
                 statement_status = self._load_statement_status(conn, as_of_date)
+                current_observations = self._load_current_observations_summary(
+                    conn, as_of_date
+                )
                 institutional_rows, institutional_error = self._load_rows(
                     conn,
                     """
@@ -146,6 +151,7 @@ class MarketDataVisibilityService:
             source_statuses=statuses,
             overall_quality=overall_quality,
             warnings=warnings,
+            current_fundamental_observations=current_observations,
         )
 
     def _connect_read_only(self) -> sqlite3.Connection:
@@ -216,6 +222,154 @@ class MarketDataVisibilityService:
         )
 
     @staticmethod
+    def _load_current_observations_summary(
+        conn: sqlite3.Connection, as_of_date: date
+    ) -> CurrentFundamentalObservationsSummary:
+        """以 SQL 聚合讀取現況基本面；不載入或回傳金融數值欄位。"""
+        cutoff = as_of_date.isoformat()
+        try:
+            totals = conn.execute(
+                """
+                SELECT COUNT(*) AS row_count,
+                       COUNT(DISTINCT stock_code) AS stock_count,
+                       SUM(CASE WHEN basis_verified = 1 THEN 1 ELSE 0 END)
+                           AS basis_verified_count,
+                       SUM(CASE WHEN basis_verified = 0 THEN 1 ELSE 0 END)
+                           AS basis_unverified_count,
+                       SUM(CASE WHEN basis_verified IS NULL
+                                      OR basis_verified NOT IN (0, 1)
+                                THEN 1 ELSE 0 END) AS basis_unknown_count,
+                       SUM(CASE WHEN aggregate_feature_eligible = 1
+                                THEN 1 ELSE 0 END) AS aggregate_eligible_count,
+                       SUM(CASE WHEN aggregate_feature_eligible = 0
+                                THEN 1 ELSE 0 END) AS aggregate_ineligible_count,
+                       SUM(CASE WHEN aggregate_feature_eligible IS NULL
+                                      OR aggregate_feature_eligible NOT IN (0, 1)
+                                THEN 1 ELSE 0 END) AS aggregate_unknown_count,
+                       SUM(CASE WHEN source_available_at IS NOT NULL
+                                      AND trim(source_available_at) != ''
+                                THEN 1 ELSE 0 END) AS available_at_known_count,
+                       SUM(CASE WHEN source_available_at IS NULL
+                                      OR trim(source_available_at) = ''
+                                THEN 1 ELSE 0 END) AS available_at_missing_count,
+                       SUM(CASE WHEN source_available_at IS NOT NULL
+                                      AND trim(source_available_at) != ''
+                                      AND substr(trim(source_available_at), 1, 10) > ?
+                                THEN 1 ELSE 0 END) AS available_at_after_as_of_count,
+                       MAX(as_of_date) AS latest_as_of_date,
+                       MAX(observed_at) AS latest_observed_at,
+                       MAX(NULLIF(trim(source_available_at), ''))
+                           AS latest_source_available_at
+                FROM fundamental_current_observations
+                WHERE as_of_date <= ?
+                """,
+                (cutoff, cutoff),
+            ).fetchone()
+            category_rows = conn.execute(
+                """
+                SELECT market, kind, source, source_version, period_basis, COUNT(*) AS row_count
+                FROM fundamental_current_observations
+                WHERE as_of_date <= ?
+                GROUP BY market, kind, source, source_version, period_basis
+                """,
+                (cutoff,),
+            ).fetchall()
+        except sqlite3.Error as exc:
+            return CurrentFundamentalObservationsSummary(
+                as_of_date=cutoff,
+                state="unavailable",
+                row_count=None,
+                stock_count=None,
+                eligibility="research_only",
+                pit_status="historical_pit_unverified",
+                warnings=(f"資料表或 schema 無法讀取：{exc}",),
+            )
+
+        row_count = int(totals["row_count"] or 0) if totals is not None else 0
+        if row_count == 0:
+            return CurrentFundamentalObservationsSummary(
+                as_of_date=cutoff,
+                state="empty",
+                row_count=0,
+                stock_count=0,
+                basis_verified_count=0,
+                basis_unverified_count=0,
+                basis_unknown_count=0,
+                aggregate_feature_eligible_count=0,
+                aggregate_feature_ineligible_count=0,
+                aggregate_feature_eligibility_unknown_count=0,
+                source_available_at_known_count=0,
+                source_available_at_missing_count=0,
+                source_available_at_after_as_of_date_count=0,
+                eligibility="research_only",
+                pit_status="missing",
+                warnings=(_MISSING_WARNING,),
+            )
+
+        categories = _current_observation_category_counts(category_rows)
+        verified_count = int(totals["basis_verified_count"] or 0)
+        unverified_count = int(totals["basis_unverified_count"] or 0)
+        eligible_count = int(totals["aggregate_eligible_count"] or 0)
+        warnings = [
+            "現況觀測不等於已完成來源資格驗收",
+            "available-at、PIT、授權與市場 coverage 尚未由此摘要驗收",
+        ]
+        if unverified_count:
+            warnings.append(f"欄位基準未驗證 {unverified_count:,}/{row_count:,}")
+        if eligible_count:
+            warnings.append(
+                "表內 aggregate feature 標記不會改變此來源的 research-only 資格"
+            )
+        return CurrentFundamentalObservationsSummary(
+            as_of_date=cutoff,
+            state="available",
+            row_count=row_count,
+            stock_count=int(totals["stock_count"] or 0),
+            market_counts=categories["market"],
+            kind_counts=categories["kind"],
+            source_counts=categories["source"],
+            source_version_counts=categories["source_version"],
+            period_basis_counts=categories["period_basis"],
+            basis_verified_count=verified_count,
+            basis_unverified_count=unverified_count,
+            basis_unknown_count=int(totals["basis_unknown_count"] or 0),
+            aggregate_feature_eligible_count=eligible_count,
+            aggregate_feature_ineligible_count=int(
+                totals["aggregate_ineligible_count"] or 0
+            ),
+            aggregate_feature_eligibility_unknown_count=int(
+                totals["aggregate_unknown_count"] or 0
+            ),
+            source_available_at_known_count=int(
+                totals["available_at_known_count"] or 0
+            ),
+            source_available_at_missing_count=int(
+                totals["available_at_missing_count"] or 0
+            ),
+            source_available_at_after_as_of_date_count=int(
+                totals["available_at_after_as_of_count"] or 0
+            ),
+            latest_as_of_date=(
+                str(totals["latest_as_of_date"])
+                if totals["latest_as_of_date"] is not None
+                else None
+            ),
+            latest_observed_at=(
+                str(totals["latest_observed_at"])
+                if totals["latest_observed_at"] is not None
+                else None
+            ),
+            latest_source_available_at=(
+                str(totals["latest_source_available_at"])
+                if totals["latest_source_available_at"] is not None
+                else None
+            ),
+            eligibility="research_only",
+            pit_status="historical_pit_unverified",
+            warnings=tuple(warnings),
+        )
+
+    @staticmethod
     def _load_rows(
         conn: sqlite3.Connection,
         query: str,
@@ -250,6 +404,15 @@ class MarketDataVisibilityService:
             source_statuses=statuses,
             overall_quality="MISSING",
             warnings=(warning,),
+            current_fundamental_observations=CurrentFundamentalObservationsSummary(
+                as_of_date=as_of_date.isoformat(),
+                state="unavailable",
+                row_count=None,
+                stock_count=None,
+                eligibility="research_only",
+                pit_status="historical_pit_unverified",
+                warnings=(warning,),
+            ),
         )
 
 
@@ -544,6 +707,31 @@ def _overall_quality(statuses: tuple[SourceVisibilityStatus, ...]) -> str:
 
 def _unique_warnings(groups: Iterable[tuple[str, ...]]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(warning for group in groups for warning in group))
+
+
+def _current_observation_category_counts(
+    rows: Iterable[sqlite3.Row],
+) -> dict[str, tuple[VisibilityCategoryCount, ...]]:
+    dimensions = ("market", "kind", "source", "source_version", "period_basis")
+    counts: dict[str, dict[str | None, int]] = {
+        dimension: {} for dimension in dimensions
+    }
+    for row in rows:
+        row_count = int(row["row_count"] or 0)
+        for dimension in dimensions:
+            raw_value = row[dimension]
+            value = str(raw_value) if raw_value is not None else None
+            counts[dimension][value] = counts[dimension].get(value, 0) + row_count
+    return {
+        dimension: tuple(
+            VisibilityCategoryCount(value=value, row_count=row_count)
+            for value, row_count in sorted(
+                dimension_counts.items(),
+                key=lambda item: (item[0] is None, item[0] or ""),
+            )
+        )
+        for dimension, dimension_counts in counts.items()
+    }
 
 
 def _valid_period(value: str) -> bool:

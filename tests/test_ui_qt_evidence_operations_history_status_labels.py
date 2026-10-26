@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 from app_module.evidence_operations_history_dashboard_dtos import (
     EvidenceOperationsHistoryDashboardRow,
 )
+from ui_qt.views.evidence_operations_history_view import EvidenceOperationsHistoryView
 from ui_qt.models.evidence_operations_history_table_model import (
     EvidenceOperationsHistoryTableModel,
 )
@@ -73,3 +74,47 @@ def test_unknown_evidence_history_statuses_remain_raw_and_scheduler_headers_are_
     allowed_index = model.index(0, model.column_index("production_scheduler_allowed"))
     assert model.data(allowed_index, Qt.DisplayRole) == "否"
     assert model.raw_value(0, "production_scheduler_allowed") is False
+
+
+def test_history_view_switches_dashboard_and_approval_to_same_working_copy(monkeypatch) -> None:
+    _app()
+    refreshes = []
+    history_sources = []
+    approval_sources = []
+    view = EvidenceOperationsHistoryView(
+        object(),
+        history_service_factory=lambda path: history_sources.append(path) or object(),
+        approval_service_factory=lambda path: approval_sources.append(path) or object(),
+        auto_refresh=False,
+    )
+    monkeypatch.setattr(view, "refresh_dashboard", lambda: refreshes.append(True))
+
+    assert view._apply_history_source("C:/scratch/weekly.db") is True
+    assert history_sources == ["C:/scratch/weekly.db"]
+    assert approval_sources == ["C:/scratch/weekly.db"]
+    assert len(refreshes) == 1
+    assert "C:/scratch/weekly.db" in view.history_source_label.text()
+
+
+def test_history_view_keeps_current_source_when_working_copy_is_rejected(monkeypatch) -> None:
+    _app()
+    warnings = []
+    monkeypatch.setattr(
+        "ui_qt.views.evidence_operations_history_view.QMessageBox.warning",
+        lambda *args: warnings.append(args[-1]),
+    )
+    view = EvidenceOperationsHistoryView(
+        object(),
+        history_service_factory=lambda _path: (_ for _ in ()).throw(
+            ValueError("weekly_review_formal_db_forbidden")
+        ),
+        approval_service_factory=lambda _path: object(),
+        history_source_path="default-db",
+        auto_refresh=False,
+    )
+    current_dashboard = view.dashboard_service
+
+    assert view._apply_history_source("formal-db") is False
+    assert view.dashboard_service is current_dashboard
+    assert view.history_source_path == "default-db"
+    assert warnings == ["正式 twstock.db 不可作為 weekly-review working-copy 來源。"]

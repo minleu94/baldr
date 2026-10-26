@@ -1,5 +1,7 @@
 # 產品與個股研究 QA 索引
 
+[2026-10-26 Gate 2 working-copy 與 Gate 3 現況觀測可見性](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md)記錄週報 working-copy 唯讀接線，以及 Decision Desk 對 current observations 的 SQL 分層計數；不代表實際 Owner UAT、來源接受、PIT、Gate 或 ML 資格通過。
+
 [Opus→Antigravity UX 原始碼實作收尾](BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)整理排程啟動、Sol 複核、M1–M169 工程／審查／QA 切片、最後共同 QA 與未完成 Gate；逐輪原收據及圖片留在本機任務目錄，不能由提交推定產品正式驗收。
 
 [Opus外部UI／UX審查](OPUS_BALDR_UI_UX_REVIEW_20261022.md)及[修正處置計畫](../superpowers/plans/BALDR_OPUS_UX_REMEDIATION_20261022.md)指出方向色、資訊層級、圖型、巢狀捲動與面向遮蔽問題；本輪Luna實作、root複核及未評頁面補證見[修正 QA](BALDR_OPUS_UX_REMEDIATION_QA_20261022.md)。既有與本輪工程QA均不等於美觀／直覺、金融或真人接受。

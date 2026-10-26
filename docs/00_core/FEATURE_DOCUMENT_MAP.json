@@ -116,7 +116,8 @@
         "app_module/theme_research_presentation.py",
         "app_module/theme_research_notes.py",
         "ui_qt/widgets/theme_research_notes_widget.py",
-        "app_module/market_data_visibility_service.py"
+        "app_module/market_data_visibility_service.py",
+        "app_module/market_data_visibility_dtos.py"
       ],
       "tests": [
         "tests/test_theme_snapshot_catalog.py",
@@ -147,7 +148,8 @@
         "tests/test_theme_stock_context_guard.py",
         "tests/test_ui_qt_industry_theme_stock_lookup.py",
         "tests/test_ui_qt_theme_research_clear.py",
-        "tests/test_market_data_visibility_service.py"
+        "tests/test_market_data_visibility_service.py",
+        "tests/test_ui_qt_decision_desk_view.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -173,6 +175,7 @@
         "app_module/industry_strength*",
         "app_module/decision_desk*",
         "app_module/market_data_visibility_service.py",
+        "app_module/market_data_visibility_dtos.py",
         "ui_qt/views/decision_desk_view.py",
         "app_module/daily_market_technical_universe_v4*",
         "app_module/daily_market_technical_universe_projection_group*",

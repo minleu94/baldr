@@ -15,6 +15,7 @@ from app_module.evidence_operations_history_repository import (
     EvidenceOperationsHistoryReadOnlyError,
     EvidenceOperationsHistoryRepository,
 )
+from app_module.weekly_review_history_source import resolve_weekly_review_working_copy_path
 
 
 class EvidenceOperationsHistoryDashboardService:
@@ -75,6 +76,8 @@ def create_evidence_operations_history_dashboard_service(
     *,
     db_path: str | Path | None = None,
 ) -> EvidenceOperationsHistoryDashboardService:
+    if db_path is not None:
+        db_path = resolve_weekly_review_working_copy_path(config, db_path)
     return EvidenceOperationsHistoryDashboardService(
         EvidenceOperationsHistoryRepository(config, db_path=db_path, read_only=True)
     )

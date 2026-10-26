@@ -62,7 +62,7 @@ R104的`theme_member_navigation` Python候選只處理已載入題材snapshot內
 
 依賴方向由 UI 經 application 到領域與資料邊界。Qt 不成為 domain 計算 owner；資料 reader 不自行決定 Advice；Runtime 不持有推薦公式。`ui_qt/main.py` 是 Qt 主程式入口，Windows 啟動由 `baldr_launcher.py` 導入既有 composition。[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py) 作為獨立之 L2 產業鏈與題材萃取對應模組，僅讀取 `TWStockConfig` 解析 `<DATA_ROOT>/meta_data/` 路徑並產出產業檔案、題材檔案與股票對應檔案，目前不介入既有 UI 或每日選股流程；詳見[L2 產業鏈與題材設計文件](../02_features/INDUSTRY_THEME_MAP_DESIGN.md)。
 
-Evidence Review 的週報 Owner 覆核沿 UI → `WeeklyReviewApprovalService` →唯讀 Evidence history repository／獨立 approval projection；projection 僅保存具名人工週審參照，不會回寫週報或正式市場 SQLite。完整路徑、hash pins 與路由邊界見[資料儲存與 Runtime](current/data_storage_runtime.md#讀寫與保存契約)。
+Evidence Review 的週報 Owner 覆核沿 UI → `WeeklyReviewApprovalService` →唯讀 Evidence history repository／獨立 approval projection；projection 僅保存具名人工週審參照，不會回寫週報或正式市場 SQLite。覆盤歷史可由 UI 明選既有 working-copy，UI 同時重建 history 與 approval reader；路徑守衛只接受 `LEGACY_COMPAT` 下非 production-like 檔案，正式 DB 與 PERSONAL／LEGACY_READ_ONLY 自訂路徑均拒絕。完整路徑、hash pins 與讀寫邊界見[資料儲存與 Runtime](current/data_storage_runtime.md#讀寫與保存契約)。
 
 法人固定批次唯讀路徑沿 UpdateView → UpdateService → `institutional_daily_snapshot` → 原capture／parser，原件、時鐘及資格由application reader核驗，widget只呈現。TPEx可另明選`institutional_source_use`的外部SHA契約，重用DailySourceUseAcceptance，固定官方文件／市場／schema／股數／diagnostics；一次接受與逐批品質小時分離，generic P0 v1決議及其他來源資格不變。具體保存／讀回界線見[資料架構](current/data_storage_runtime.md#讀寫與保存契約)。
 

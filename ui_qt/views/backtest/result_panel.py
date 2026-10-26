@@ -1493,6 +1493,17 @@ class BacktestResultPanel(QWidget):
                 config,
                 projection_path=os.environ.get("WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH"),
             ),
+            evidence_history_service_factory=lambda db_path: create_evidence_operations_history_dashboard_service(
+                config, db_path=db_path
+            ),
+            evidence_approval_service_factory=lambda db_path: create_weekly_review_approval_service(
+                config,
+                projection_path=os.environ.get(
+                    "WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH"
+                ),
+                db_path=db_path,
+            ),
+            evidence_history_source_path=str(getattr(config, "db_file", "")),
             scheduled_status_service=ScheduledEvidenceStatusService(config),
             evidence_db_path=str(getattr(config, "db_file", "")),
         )

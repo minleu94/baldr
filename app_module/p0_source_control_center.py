@@ -184,6 +184,7 @@ class P0SourceControlRow:
     source_contract_requirements: tuple[str, ...] = ()
     owner_actions: tuple[str, ...] = ()
     quarterly_candidate_audit_json: str | None = None
+    quarterly_announcement_crosswalk_json: str | None = None
 
     def __post_init__(self) -> None:
         if self.source_id not in P0_SOURCE_IDS:
@@ -200,6 +201,18 @@ class P0SourceControlRow:
             if not isinstance(quarterly_audit, Mapping):
                 raise ValueError("quarterly candidate audit must be an object")
             _require_quarterly_candidate_boundary(quarterly_audit)
+        if self.quarterly_announcement_crosswalk_json is not None:
+            if self.source_id != "pit.quarterly_financials":
+                raise ValueError("quarterly announcement crosswalk can only attach to PIT financials")
+            try:
+                quarterly_crosswalk = json.loads(
+                    self.quarterly_announcement_crosswalk_json
+                )
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("quarterly announcement crosswalk must be valid JSON") from exc
+            if not isinstance(quarterly_crosswalk, Mapping):
+                raise ValueError("quarterly announcement crosswalk must be an object")
+            _require_quarterly_announcement_crosswalk_boundary(quarterly_crosswalk)
         for name in (
             "observed_rows",
             "accepted_rows",
@@ -319,6 +332,11 @@ class P0SourceControlRow:
             "quarterly_candidate_audit": (
                 json.loads(self.quarterly_candidate_audit_json)
                 if self.quarterly_candidate_audit_json is not None
+                else None
+            ),
+            "quarterly_announcement_crosswalk": (
+                json.loads(self.quarterly_announcement_crosswalk_json)
+                if self.quarterly_announcement_crosswalk_json is not None
                 else None
             ),
         }
@@ -455,6 +473,7 @@ class P0SourceControlCenterService:
         *,
         candidate_audit: Mapping[str, Any] | None = None,
         quarterly_candidate_audit: Mapping[str, Any] | None = None,
+        quarterly_announcement_crosswalk: Mapping[str, Any] | None = None,
         license_evidence: Mapping[str, Any] | None = None,
         decisions: Iterable[SourceAcceptanceDecisionRevision] = (),
     ) -> P0SourceControlCenterDTO:
@@ -470,6 +489,11 @@ class P0SourceControlCenterService:
             if quarterly_candidate_audit is not None
             else None
         )
+        quarterly_announcement_crosswalk_json = (
+            _serialize_quarterly_announcement_crosswalk(quarterly_announcement_crosswalk)
+            if quarterly_announcement_crosswalk is not None
+            else None
+        )
         rows = tuple(
             self._build_row(
                 contract,
@@ -477,6 +501,9 @@ class P0SourceControlCenterService:
                 license_items,
                 decision_items.get(contract.source_id),
                 quarterly_audit_json
+                if contract.source_id == "pit.quarterly_financials"
+                else None,
+                quarterly_announcement_crosswalk_json
                 if contract.source_id == "pit.quarterly_financials"
                 else None,
             )
@@ -518,6 +545,7 @@ class P0SourceControlCenterService:
         license_items: Mapping[str, Mapping[str, Any]],
         decision: SourceAcceptanceDecisionRevision | None,
         quarterly_candidate_audit_json: str | None,
+        quarterly_announcement_crosswalk_json: str | None,
     ) -> P0SourceControlRow:
         audit_status = _text(audit.get("audit_status")) if audit else "not_supplied"
         machine_status = _text(audit.get("machine_status")) if audit else "not_observed"
@@ -679,6 +707,7 @@ class P0SourceControlCenterService:
             ),
             owner_actions=owner_actions,
             quarterly_candidate_audit_json=quarterly_candidate_audit_json,
+            quarterly_announcement_crosswalk_json=quarterly_announcement_crosswalk_json,
         )
 
 
@@ -1054,12 +1083,37 @@ def _require_quarterly_candidate_boundary(payload: Mapping[str, Any]) -> None:
             raise ValueError(f"quarterly candidate boundary mismatch: {key}")
 
 
+def _require_quarterly_announcement_crosswalk_boundary(
+    payload: Mapping[str, Any],
+) -> None:
+    expected = {
+        "schema_version": "baldr.quarterly_announcement_crosswalk.v1",
+        "candidate_only": True,
+        "formal_db_write": False,
+        "source_acceptance": False,
+        "gate_credit": False,
+        "downstream_eligibility": "none",
+    }
+    for key, value in expected.items():
+        if payload.get(key) != value:
+            raise ValueError(f"quarterly announcement crosswalk boundary mismatch: {key}")
+
+
 def _serialize_quarterly_candidate_audit(
     payload: Mapping[str, Any],
 ) -> str:
     if not isinstance(payload, Mapping):
         raise TypeError("quarterly candidate audit must be an object")
     _require_quarterly_candidate_boundary(payload)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _serialize_quarterly_announcement_crosswalk(
+    payload: Mapping[str, Any],
+) -> str:
+    if not isinstance(payload, Mapping):
+        raise TypeError("quarterly announcement crosswalk must be an object")
+    _require_quarterly_announcement_crosswalk_boundary(payload)
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 

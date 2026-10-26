@@ -289,6 +289,7 @@ class DecisionPresentationDTO:
     evidence_confidence: str = ""
     sample_size: int | None = None
     horizon: str = ""
+    holding_horizon: str = ""
     cost_basis: Decimal | None = None
     cost_basis_bp: int | None = None
     reasons: tuple[str, ...] = ()
@@ -373,6 +374,7 @@ class DecisionPresentationDTO:
         object.__setattr__(self, "decision_date", _date_text(self.decision_date))
         object.__setattr__(self, "data_as_of_date", _date_text(self.data_as_of_date))
         object.__setattr__(self, "horizon", str(self.horizon or "").strip())
+        object.__setattr__(self, "holding_horizon", str(self.holding_horizon or "").strip())
         object.__setattr__(self, "confidence_tier", str(self.confidence_tier or "").strip())
         object.__setattr__(self, "evidence_confidence", str(self.evidence_confidence or "").strip())
         object.__setattr__(self, "ranking_method", str(self.ranking_method or "").strip())
@@ -449,6 +451,7 @@ class DecisionPresentationDTO:
             "evidence_confidence": self.evidence_confidence,
             "sample_size": self.sample_size,
             "horizon": self.horizon,
+            "holding_horizon": self.holding_horizon,
             "cost_basis": None if self.cost_basis is None else str(self.cost_basis),
             "cost_basis_bp": self.cost_basis_bp,
             "reasons": list(self.reasons),
@@ -506,6 +509,7 @@ class DecisionPresentationDTO:
             evidence_confidence=value.get("evidence_confidence", ""),
             sample_size=_integer(value.get("sample_size"), minimum=0),
             horizon=value.get("horizon", ""),
+            holding_horizon=value.get("holding_horizon", ""),
             cost_basis=_decimal(value.get("cost_basis")),
             cost_basis_bp=cost_basis_bp,
             reasons=_strings(value.get("reasons")),
@@ -716,7 +720,8 @@ class DecisionPresentationService:
             confidence_tier=advice.confidence_tier,
             evidence_confidence=evidence_confidence,
             sample_size=_integer(sample_size, minimum=0),
-            horizon=advice.holding_horizon,
+            horizon=advice.calibration_horizon,
+            holding_horizon=advice.holding_horizon,
             cost_basis=_decimal(cost_basis),
             cost_basis_bp=cost_basis_bp,
             reasons=reasons,
@@ -789,7 +794,8 @@ class DecisionPresentationService:
             confidence_tier=advice.confidence_tier,
             evidence_confidence=evidence_confidence,
             sample_size=_integer(sample_size, minimum=0),
-            horizon=advice.holding_horizon,
+            horizon=advice.calibration_horizon,
+            holding_horizon=advice.holding_horizon,
             cost_basis=_decimal(cost_basis),
             cost_basis_bp=cost_basis_bp,
             reasons=_strings(advice.reasons),
@@ -887,7 +893,8 @@ class DecisionPresentationService:
             confidence_tier=str(source_summary.get("confidence_tier") or ""),
             evidence_confidence=str(source_summary.get("evidence_confidence") or ""),
             sample_size=_integer(source_summary.get("sample_size"), minimum=0),
-            horizon=str(source_summary.get("holding_horizon") or ""),
+            horizon=str(source_summary.get("calibration_horizon") or ""),
+            holding_horizon=str(source_summary.get("holding_horizon") or ""),
             cost_basis=_decimal(getattr(position, "average_cost", None)),
             reasons=_strings((*condition_reasons, *feedback_tokens, *health_reasons)),
             risks=_strings(
@@ -1142,7 +1149,7 @@ def _probability_context(presentation: DecisionPresentationDTO) -> str:
     sample = "未提供" if presentation.sample_size is None else f"{presentation.sample_size:,}"
     return (
         f"證據類型：{evidence_kind}"
-        f"｜適用期間：{presentation.horizon or '未提供'}"
+        f"｜校準適用期間：{presentation.horizon or '未提供'}"
         f"｜樣本：{sample}"
         f"｜模型：{_short_identifier(presentation.calibration_model_version)}"
         f"｜資料集：{_short_identifier(presentation.calibration_dataset_version)}"
@@ -1204,7 +1211,8 @@ def format_decision_lineage_detail(presentation: DecisionPresentationDTO) -> str
         f"模型版本：{presentation.calibration_model_version or '未提供'}",
         f"資料集版本：{presentation.calibration_dataset_version or '未提供'}",
         f"校準來源：{presentation.calibration_source or '未提供'}",
-        f"適用期間：{presentation.horizon or '未提供'}｜樣本數：{sample}",
+        f"校準適用期間：{presentation.horizon or '未提供'}｜樣本數：{sample}",
+        f"策略持有期間：{presentation.holding_horizon or '未提供'}",
         f"自然 evidence kind：{presentation.calibration_evidence_kind}",
         f"自然 evidence status：{presentation.calibration_natural_evidence_status}",
         f"自然 authority receipt：{presentation.calibration_natural_receipt_hash or '未提供'}",
@@ -1245,7 +1253,8 @@ def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
         f"排名分數：{score}（僅作排序，不等於機率）{ranking_context}",
         probability_line,
         f"證據狀態：{_quality_label(presentation.evidence_status)}｜證據信心：{presentation.evidence_confidence or '未提供'}｜決策信心：{presentation.confidence_tier or '未提供'}｜樣本數：{sample}",
-        f"適用期間：{presentation.horizon or '未提供'}｜成本基準：{cost}｜成本假設：{cost_assumption}",
+        f"校準適用期間：{presentation.horizon or '未提供'}｜成本基準：{cost}｜成本假設：{cost_assumption}",
+        f"策略持有期間：{presentation.holding_horizon or '未提供'}",
         f"目標／目前／差距：{_bp_text(presentation.target_weight_bp)}／{_bp_text(presentation.current_weight_bp)}／{_bp_text(presentation.weight_gap_bp)}",
         "理由：" + ("；".join(presentation.reasons) if presentation.reasons else "未提供"),
         "風險：" + ("；".join(presentation.risks) if presentation.risks else "未提供"),

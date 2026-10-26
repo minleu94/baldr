@@ -22,6 +22,7 @@ from app_module.recommendation_calibration_consumer import RecommendationCalibra
 from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.saved_recommendation_queries import (
     execution_result_config,
+    saved_recommendation_capture_projection,
     verified_saved_calibration_projections,
 )
 from app_module.portfolio_construction_dtos import PortfolioAllocationRow, PortfolioConstructionResult
@@ -147,6 +148,10 @@ class AdviceComposer:
                 ),
             )
         else:
+            source_evidence_by_stock = self._source_evidence_by_stock(
+                recommendations,
+                expected_result_id=result_id,
+            )
             recommendation_advice = tuple(
                 self._recommendation_advice(
                     recommendation,
@@ -169,6 +174,11 @@ class AdviceComposer:
                     calibration=calibration_by_stock.get(recommendation.stock_code),
                     source_trace_kind=source_trace_kind,
                     source_provenance=source_provenance,
+                    source_evidence=source_evidence_by_stock.get(
+                        recommendation.stock_code,
+                        ("保存結果沒有可核對的同股逐筆篩選／Why Not／流動性證據；不能據此推定沒有反證或風險。",),
+                    ),
+                    portfolio_sizing_requested=portfolio_result is not None,
                 )
                 for recommendation in recommendation_rows
             )
@@ -240,6 +250,8 @@ class AdviceComposer:
         calibration: object | None,
         source_trace_kind: str = "RecommendationResultDTO",
         source_provenance: tuple[str, ...] = (),
+        source_evidence: tuple[str, ...] = (),
+        portfolio_sizing_requested: bool = False,
     ) -> RecommendationAdviceDTO:
         decision = self._policy.decide(
             mode=mode,
@@ -268,10 +280,12 @@ class AdviceComposer:
             evidence_quality=evidence_quality,
             execution_feasible=self._bool_or_none(execution_feasible),
             risk_budget_available=self._bool_or_none(risk_budget_available),
+            portfolio_sizing_requested=portfolio_sizing_requested,
             warnings=warnings,
         )
         return RecommendationAdviceDTO(
             stock_code=recommendation.stock_code,
+            stock_name=str(getattr(recommendation, "stock_name", "") or ""),
             advice_action=decision.action,
             classification=self._classification(
                 mode,
@@ -287,10 +301,94 @@ class AdviceComposer:
             data_as_of_date=data_as_of_date,
             market_regime=market_regime,
             execution_feasibility=self._feasibility_text(execution_feasible),
+            source_evidence=source_evidence,
             source_trace=source_trace,
             refusal_reasons=decision.reasons,
             **calibration_fields,
         )
+
+    @staticmethod
+    def _source_evidence_by_stock(
+        recommendations: RecommendationResultDTO | RecommendationExecutionReadModel | Sequence[RecommendationDTO],
+        *,
+        expected_result_id: str,
+    ) -> dict[str, tuple[str, ...]]:
+        """只呈現同一保存結果、同一股票代碼的既有逐股證據摘要。"""
+
+        try:
+            if isinstance(recommendations, RecommendationResultDTO):
+                projection: Mapping[str, object] = {
+                    "result_id": recommendations.result_id,
+                    "screening_matrix_json": recommendations.screening_matrix_json,
+                    "why_not_payload_json": recommendations.why_not_payload_json,
+                    "liquidity_gate_payload_json": recommendations.liquidity_gate_payload_json,
+                }
+            elif isinstance(recommendations, RecommendationExecutionReadModel):
+                projection = saved_recommendation_capture_projection(recommendations)
+            else:
+                return {}
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return {}
+        if projection.get("result_id") != expected_result_id:
+            return {}
+
+        evidence: dict[str, list[str]] = {}
+        fields = (
+            ("screening_matrix_json", "篩選"),
+            ("why_not_payload_json", "Why Not"),
+            ("liquidity_gate_payload_json", "流動性"),
+        )
+        status_labels = {
+            "pass": "通過",
+            "fail": "未通過",
+            "degraded": "降級",
+            "missing": "缺資料",
+            "skipped": "略過",
+        }
+        quality_labels = {
+            "observed": "已觀測",
+            "estimated": "估算",
+            "degraded": "降級",
+            "missing": "缺資料",
+            "unknown": "未知",
+        }
+        for field_name, label in fields:
+            rows = projection.get(field_name)
+            if not isinstance(rows, (tuple, list)):
+                continue
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    continue
+                stock_code = row.get("stock_code")
+                if type(stock_code) is not str or not stock_code.strip():
+                    continue
+                codes = row.get("reason_codes", row.get("exclusion_reason_codes", ()))
+                if codes is None:
+                    codes = ()
+                if not isinstance(codes, (tuple, list)) or any(type(code) is not str for code in codes):
+                    continue
+                stage = row.get("stage")
+                status = row.get("status")
+                quality = row.get("quality")
+                details: list[str] = []
+                if type(stage) is str and stage.strip():
+                    details.append(f"階段={stage.strip()[:80]}")
+                if type(status) is str and status.strip():
+                    token = status.strip().lower()
+                    details.append(f"結果={status_labels.get(token, f'未知（{token[:40]}）')}")
+                if type(quality) is str and quality.strip():
+                    token = quality.strip().lower()
+                    details.append(f"資料品質={quality_labels.get(token, f'未知（{token[:40]}）')}")
+                clean_codes = tuple(code.strip()[:100] for code in codes if code.strip())
+                if clean_codes:
+                    details.append("來源理由碼=" + ", ".join(clean_codes[:8]))
+                if not details:
+                    continue
+                evidence.setdefault(stock_code, []).append(f"{label}：" + "；".join(details))
+        return {
+            stock_code: tuple(dict.fromkeys(lines))
+            for stock_code, lines in evidence.items()
+        }
 
     @staticmethod
     def _refusal_recommendation(decision_date: str, data_as_of_date: str, warnings: tuple[str, ...]) -> RecommendationAdviceDTO:
@@ -560,8 +658,9 @@ class AdviceComposer:
                 "raw_after_cost_profit_probability_bp",
                 value("calibration_raw_after_cost_probability_bp"),
             ),
-            "holding_horizon": str(
-                value("horizon", value("holding_horizon", value("calibration_horizon", ""))) or ""
+            "holding_horizon": str(value("holding_horizon", "") or ""),
+            "calibration_horizon": str(
+                value("horizon", value("calibration_horizon", "")) or ""
             ),
             "calibration_provenance": calibration_provenance,
             "_source_trace": tuple(str(item) for item in source_trace) + provenance_trace,
@@ -838,6 +937,7 @@ class AdviceComposer:
         evidence_quality: str | None,
         execution_feasible: bool | None,
         risk_budget_available: bool | None,
+        portfolio_sizing_requested: bool,
         warnings: tuple[str, ...],
     ) -> tuple[str, ...]:
         reasons: list[str] = list(warnings)
@@ -849,7 +949,7 @@ class AdviceComposer:
             )
         if execution_feasible is not True:
             reasons.append("execution_feasibility_not_confirmed")
-        if risk_budget_available is not True:
+        if portfolio_sizing_requested and risk_budget_available is not True:
             reasons.append("risk_budget_not_confirmed")
         risk_tokens = (
             "risk",
@@ -870,7 +970,11 @@ class AdviceComposer:
 
     @staticmethod
     def _feasibility_text(value: object) -> str:
-        return "FEASIBLE" if value is True else "NOT_FEASIBLE"
+        if value is True:
+            return "FEASIBLE"
+        if value is False:
+            return "NOT_FEASIBLE"
+        return "UNKNOWN"
 
     @staticmethod
     def _classification(

@@ -53,7 +53,7 @@ def test_advice_policy_config_rejects_position_cap_above_eight() -> None:
         AdvicePolicyConfig(max_positions=9)
 
 
-def test_policy_rejects_a_runtime_mutated_position_cap() -> None:
+def test_account_specific_position_cap_does_not_gate_strategy_advice() -> None:
     config = AdvicePolicyConfig()
     object.__setattr__(config, "max_positions", 9)
 
@@ -70,8 +70,8 @@ def test_policy_rejects_a_runtime_mutated_position_cap() -> None:
         target_weight_bp=1500,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
-    assert decision.reasons == ("invalid_policy_max_positions",)
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ()
 
 
 def test_guided_mode_rejects_incomplete_disclosure_even_when_parameters_are_locked() -> None:
@@ -147,7 +147,7 @@ def test_exact_risk_boundaries_allow_add_candidate() -> None:
     assert decision.reasons == ()
 
 
-def test_position_limit_returns_no_new_position() -> None:
+def test_position_limit_does_not_gate_account_independent_strategy_advice() -> None:
     decision = AdvicePolicy().decide(
         mode=AdviceMode.GUIDED,
         strategy_status="promoted",
@@ -161,8 +161,8 @@ def test_position_limit_returns_no_new_position() -> None:
         disclosure_complete=True,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
-    assert decision.reasons == ("max_positions_reached",)
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ()
 
 
 def test_missing_or_degraded_data_returns_research() -> None:
@@ -208,7 +208,21 @@ def test_execution_infeasible_returns_avoid() -> None:
     assert decision.reasons == ("execution_not_feasible",)
 
 
-def test_unavailable_risk_budget_returns_no_new_position() -> None:
+def test_unknown_execution_feasibility_keeps_candidate_but_is_not_confirmed() -> None:
+    decision = AdvicePolicy().decide(
+        mode=AdviceMode.GUIDED,
+        strategy_status="promoted",
+        data_quality="OBSERVED",
+        execution_feasible=None,
+        parameters_locked=True,
+        disclosure_complete=True,
+    )
+
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ()
+
+
+def test_unavailable_risk_budget_does_not_gate_strategy_recommendation() -> None:
     decision = AdvicePolicy().decide(
         mode=AdviceMode.GUIDED,
         strategy_status="promoted",
@@ -219,8 +233,8 @@ def test_unavailable_risk_budget_returns_no_new_position() -> None:
         disclosure_complete=True,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
-    assert decision.reasons == ("risk_budget_unavailable",)
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ()
 
 
 def test_professional_candidate_is_research_only() -> None:
@@ -236,7 +250,7 @@ def test_professional_candidate_is_research_only() -> None:
     assert decision.reasons == ("professional_candidate_research_only",)
 
 
-def test_cash_and_single_position_limits_fail_closed() -> None:
+def test_cash_and_single_position_limits_do_not_gate_strategy_recommendation() -> None:
     policy = AdvicePolicy(AdvicePolicyConfig())
 
     low_cash = policy.decide(
@@ -264,7 +278,7 @@ def test_cash_and_single_position_limits_fail_closed() -> None:
         disclosure_complete=True,
     )
 
-    assert low_cash.action is AdviceAction.NO_NEW_POSITION
-    assert low_cash.reasons == ("min_cash_reserve_not_met",)
-    assert oversized.action is AdviceAction.NO_NEW_POSITION
-    assert oversized.reasons == ("max_single_position_exceeded",)
+    assert low_cash.action is AdviceAction.ADD_CANDIDATE
+    assert low_cash.reasons == ()
+    assert oversized.action is AdviceAction.ADD_CANDIDATE
+    assert oversized.reasons == ()

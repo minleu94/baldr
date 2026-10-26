@@ -15,7 +15,11 @@
       ],
       "code": [
         "ui_qt/views/workbench_view.py",
+        "ui_qt/models/workbench_table_models.py",
+        "ui_qt/widgets/portfolio_research_scenario_widget.py",
         "app_module/workbench_source_service.py",
+        "app_module/workbench_dtos.py",
+        "app_module/advice_dtos.py",
         "app_module/daily_investment_journey.py",
         "app_module/advice_composer.py",
         "app_module/pre_v2_readiness_service.py",
@@ -26,9 +30,11 @@
         "tests/test_ui_qt_workbench_view.py",
         "tests/test_ui_qt_workbench_theme_entry.py",
         "tests/test_ui_qt_workbench_portfolio_health_navigation.py",
+        "tests/test_portfolio_research_initial_widget.py",
         "tests/test_ui_qt_workbench_candidate_selection.py",
         "tests/test_ui_qt_workbench_candidate_return.py",
         "tests/test_workbench_advice_contract.py",
+        "tests/test_ui_qt_workbench_view.py",
         "tests/test_workbench_source_service.py",
         "tests/test_daily_investment_journey.py",
         "tests/test_ui_qt_daily_journey.py",
@@ -44,6 +50,7 @@
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
         "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
         "docs/06_qa/BALDR_WORKBENCH_ADVICE_EMPTY_STATE_20261025.md",
+        "docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md",
         "docs/06_qa/BALDR_DAILY_WEEKLY_DISCLOSURE_QA_20261025.md",
         "docs/06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md"
       ],
@@ -53,7 +60,11 @@
       "change_patterns": [
         "tests/test_ui_qt_workbench_home_single_page.py",
         "ui_qt/views/workbench_view.py",
+        "ui_qt/models/workbench_table_models.py",
+        "ui_qt/widgets/portfolio_research_scenario_widget.py",
         "app_module/workbench_source_service.py",
+        "app_module/workbench_dtos.py",
+        "app_module/advice_dtos.py",
         "app_module/daily_investment_journey.py",
         "app_module/advice_composer.py",
         "app_module/pre_v2_readiness_service.py",
@@ -66,8 +77,10 @@
         "tests/test_workbench_read_only_composer.py",
         "tests/test_workbench_advice_contract.py",
         "tests/test_ui_qt_workbench_view.py",
+        "tests/test_ui_qt_workbench_view.py",
         "tests/test_ui_qt_workbench_theme_entry.py",
         "tests/test_ui_qt_workbench_portfolio_health_navigation.py",
+        "tests/test_portfolio_research_initial_widget.py",
         "tests/test_ui_qt_workbench_candidate_selection.py",
         "tests/test_ui_qt_workbench_candidate_return.py"
       ],
@@ -157,6 +170,7 @@
       ],
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_INDUSTRY_LEADER_CARDS_20261025.md",
         "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md",
         "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
         "docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md"

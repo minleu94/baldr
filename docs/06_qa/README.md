@@ -14,6 +14,12 @@
 
 - [10/18 後繼題材每日研究](BALDR_THEME_DAILY_QA_20261018.md)：M1定向驗證、真實資料工程量測、M2接線及各自未驗界線；[研究12](BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)另核research07五項回報、固定EXE／新程序及交付，原完整Gate不變。
 
+- [2026-10-25 產業方向圖卡與公告時間對照](BALDR_INDUSTRY_LEADER_CARDS_20261025.md)：領先／落後卡成員方向圖及 Q2 公告時間候選匹配、實際 formal 解除數；不宣稱全市場寬度、正式資料寫入或來源／Gate 接受。
+
+- [2026-10-26 產業卡與人工研究決定 UI 增量](BALDR_INDUSTRY_LEADER_CARDS_20261025.md#首屏法人淨額分布增量2026-10-25-root-驗證)、[Workbench Advice 收據](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-workbench-advice-人工研究決定入口)：題材法人家數分布、精確 Advice 人工研究記錄及其 sandbox／Owner UAT 限制；不建立交易或連線帳戶。
+
+- [2026-10-25 本機資料品質唯讀盤點](BALDR_DATA_QUALITY_INVENTORY_20261025.md)：fundamental 資料現況、Open Data 季報候選及 MOPS 公告時間 crosswalk；原始 DB 以唯讀核查，不能由 candidate matches 推成正式資料資格。
+
 > 本目錄保存日期化驗收、調查與交接證據。它們描述各自的範圍與時間點；目前專案狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，產品操作請看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。主題相同不代表證據可互換，舊報告中的待辦也不自動成為目前待辦。
 
 ## 先從這裡開始

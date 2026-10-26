@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from html import escape
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from typing import cast
 
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -24,6 +25,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QTabWidget,
     QTableView,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -178,6 +181,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         navigate_to_update_callback: Callable[[], None] | None = None,
         navigate_to_recommendation_callback: Callable[[], None] | None = None,
         navigate_to_saved_recommendation_callback: Callable[[str], object] | None = None,
+        save_advice_research_decision_callback: Callable[[str, Mapping[str, str], str], object] | None = None,
         navigate_to_industry_themes_callback: Callable[[], None] | None = None,
         parent=None,
     ) -> None:
@@ -211,6 +215,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.navigate_to_update_callback = navigate_to_update_callback
         self.navigate_to_recommendation_callback = navigate_to_recommendation_callback
         self.navigate_to_saved_recommendation_callback = navigate_to_saved_recommendation_callback
+        self.save_advice_research_decision_callback = save_advice_research_decision_callback
         self.navigate_to_industry_themes_callback = (
             navigate_to_industry_themes_callback
         )
@@ -224,6 +229,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.presentation_service = DecisionPresentationService()
         self._selected_advice_presentation = None
         self._selected_advice_original_reasons: tuple[str, ...] = ()
+        self._selected_advice_source_result_id: str | None = None
+        self._selected_advice_source_stock_code: str | None = None
+        self._selected_advice_decision_identity: dict[str, str] | None = None
         self._daily_candidate_selection_identity: tuple[object, ...] | None = None
         self._recent_research_widget: QWidget | None = None
 
@@ -519,29 +527,23 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         content_layout.addWidget(self.boundary_banner)
 
-        advice_panel, self.advice_section_title = self._panel_with_title("今日 Advice 與研究候選")
+        advice_panel, self.advice_section_title = self._panel_with_title("今日策略建議")
+        self.advice_panel = advice_panel
         self.advice_summary = self._make_state_label()
         self.advice_summary.setTextFormat(Qt.PlainText)
         self.advice_warning_status = self._make_state_label()
         self.advice_warning_status.setObjectName("adviceWarningStatus")
         self.advice_warning_status.setTextFormat(Qt.PlainText)
         self.advice_warning_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.advice_account_source_button = QPushButton(
-            "前往持倉管理選擇 Paper 帳戶與 checkpoint"
-        )
-        self.advice_account_source_button.setObjectName("adviceAccountSourceButton")
-        self.advice_account_source_button.setProperty("variant", "secondary")
-        self.advice_account_source_button.setToolTip(
-            "開啟「配置研究封存」明選策略 Paper 帳戶、版本與 Health 收據。"
-            "此處只導覽；選取不會自動注入或認可 Advice，也不會推算風險預算。"
-        )
-        self.advice_account_source_button.clicked.connect(
-            self._open_portfolio_account_source
-        )
-        self.advice_account_source_button.hide()
         self.advice_recommendation_table = self._make_table(self.advice_recommendation_model)
         self.advice_candidate_table = self._make_table(self.advice_candidate_model)
         self.advice_portfolio_table = self._make_table(self.advice_portfolio_model)
+        for advice_table in (
+            self.advice_recommendation_table,
+            self.advice_candidate_table,
+            self.advice_portfolio_table,
+        ):
+            self._configure_advice_table_columns(advice_table)
         self.advice_recommendation_table.clicked.connect(
             lambda index: self._show_advice_row_presentation(
                 self.advice_recommendation_model, index.row()
@@ -574,11 +576,33 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         advice_panel.layout.addWidget(self.advice_summary)
         advice_panel.layout.addWidget(self.advice_warning_status)
-        advice_panel.layout.addWidget(self.advice_account_source_button)
+        self.paper_account_context_label = self._make_state_label()
+        self.paper_account_context_label.setObjectName("paperAccountContextLabel")
+        self.paper_account_context_label.setTextFormat(Qt.PlainText)
+        self.paper_account_context_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.paper_account_context_label.setText(
+            ""
+        )
+        self.paper_account_context_label.hide()
+        self.paper_account_context_table = QTableWidget(0, 5, self)
+        self.paper_account_context_table.setObjectName("paperAccountContextTable")
+        self.paper_account_context_table.setHorizontalHeaderLabels(
+            ("代碼", "股數", "標記價格", "市場價值", "權重 bp")
+        )
+        self.paper_account_context_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.paper_account_context_table.setVisible(False)
+        advice_panel.layout.addWidget(self.paper_account_context_label)
+        advice_panel.layout.addWidget(self.paper_account_context_table)
         advice_panel.layout.addWidget(self.advice_recommendation_table)
         self.advice_candidate_label = QLabel("Professional 研究候選（不屬於正式 Advice）")
         advice_panel.layout.addWidget(self.advice_candidate_label)
         advice_panel.layout.addWidget(self.advice_candidate_table)
+        self.advice_portfolio_label = QLabel("可選配置研究（手動紀錄脈絡）")
+        self.advice_portfolio_label.setObjectName("adviceOptionalPortfolioLabel")
+        self.advice_portfolio_label.hide()
+        advice_panel.layout.addWidget(self.advice_portfolio_label)
         advice_panel.layout.addWidget(self.advice_portfolio_table)
         self.advice_selection_card = self._make_state_label()
         self.advice_selection_card.setObjectName("adviceSelectionCard")
@@ -587,6 +611,51 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_card.setText("所選建議判讀：選取 Advice 或研究候選列後顯示。")
         self.advice_selection_card.setVisible(False)
         advice_panel.layout.addWidget(self.advice_selection_card)
+        self.advice_source_result_button = QPushButton("回查這筆保存推薦結果")
+        self.advice_source_result_button.setObjectName("adviceSourceResultButton")
+        self.advice_source_result_button.setProperty("variant", "secondary")
+        self.advice_source_result_button.setToolTip(
+            "僅在目前 Advice 列的保存結果 ID 與同一份當日 read model 完全相符時，"
+            "開啟該筆 exact 保存結果。"
+        )
+        self.advice_source_result_button.clicked.connect(
+            self._open_selected_advice_source_result
+        )
+        self.advice_source_result_button.hide()
+        advice_panel.layout.addWidget(self.advice_source_result_button)
+        self.advice_research_decision_status = self._make_state_label()
+        self.advice_research_decision_status.setObjectName("adviceResearchDecisionStatus")
+        self.advice_research_decision_status.setTextFormat(Qt.PlainText)
+        self.advice_research_decision_status.hide()
+        advice_panel.layout.addWidget(self.advice_research_decision_status)
+        decision_actions = QGridLayout()
+        self.advice_accept_decision_button = QPushButton("記錄已納入研究")
+        self.advice_skip_decision_button = QPushButton("記錄略過")
+        self.advice_note_decision_button = QPushButton("新增研究註記")
+        self.advice_readback_decision_button = QPushButton("重新讀取同筆決定")
+        decision_buttons = (
+            self.advice_accept_decision_button,
+            self.advice_skip_decision_button,
+            self.advice_note_decision_button,
+            self.advice_readback_decision_button,
+        )
+        for index, button in enumerate(decision_buttons):
+            button.setProperty("variant", "secondary")
+            button.setEnabled(False)
+            decision_actions.addWidget(button, index // 2, index % 2)
+        self.advice_accept_decision_button.clicked.connect(
+            lambda: self._save_selected_advice_research_decision("accepted")
+        )
+        self.advice_skip_decision_button.clicked.connect(
+            lambda: self._save_selected_advice_research_decision("skipped")
+        )
+        self.advice_note_decision_button.clicked.connect(
+            lambda: self._save_selected_advice_research_decision("note")
+        )
+        self.advice_readback_decision_button.clicked.connect(
+            lambda: self._save_selected_advice_research_decision("readback")
+        )
+        advice_panel.layout.addLayout(decision_actions)
         self.advice_presentation_detail = self._make_state_label()
         self.advice_presentation_detail.setObjectName("advicePresentationDetail")
         self.advice_presentation_detail.setText(
@@ -933,7 +1002,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.daily_investment_journey_panel,
         ):
             self.advanced_overview_layout.removeWidget(widget)
+        self.advanced_overview_layout.removeWidget(self.advice_panel)
         self.advanced_overview_layout.removeItem(root_content_layout.itemAt(root_content_layout.count() - 1))
+        root_content_layout.insertWidget(1, self.advice_panel)
         root_content_layout.insertWidget(3, self.priority_banner)
         root_content_layout.insertWidget(4, self.summary_row)
         root_content_layout.insertWidget(5, self.position_health_panel)
@@ -3286,6 +3357,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def render_dashboard(self, dashboard: WorkbenchDashboardDTO) -> None:
         self._dashboard = dashboard
+        self._selected_advice_source_result_id = None
+        self._selected_advice_source_stock_code = None
+        self._selected_advice_decision_identity = None
+        self.advice_source_result_button.hide()
+        self._set_advice_research_decision_enabled(False)
+        self.advice_research_decision_status.hide()
         self._last_good_dashboard = dashboard
         self._last_good_dashboard_loaded_at = datetime.now().astimezone()
         self._dashboard_stale = False
@@ -3321,6 +3398,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.meta_label.setToolTip(self._format_workbench_source_meta(dashboard))
         self.status_model.set_rows(dashboard.status_strip)
         self._render_advice(dashboard)
+        self._render_paper_account_context(dashboard)
         self.review_model.set_rows(dashboard.review_items)
         self.review_state_label.setText(self._review_queue_state_text(dashboard))
         has_review_items = bool(dashboard.review_items)
@@ -3486,7 +3564,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
         warnings: tuple[str, ...] = (),
     ):
         self._clear_advice_presentation_selection()
-        self._update_advice_account_source_action(warnings)
         self.advice_recommendation_model.set_rows(())
         self.advice_candidate_model.set_rows(())
         self.advice_portfolio_model.set_rows(())
@@ -3497,6 +3574,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_candidate_label.setVisible(False)
         self.advice_candidate_table.setVisible(False)
         self.advice_portfolio_table.setVisible(False)
+        self.advice_portfolio_label.setVisible(False)
         if state == "WAITING_FOR_ADVICE_DTO":
             self.advice_empty_label.setText(
                 "<b>【狀態：WAITING_FOR_ADVICE_DTO】</b><br/>"
@@ -3507,6 +3585,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_candidate_label.setVisible(False)
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
+            self.advice_portfolio_label.setVisible(False)
+            self.advice_portfolio_label.setVisible(False)
             self.advice_summary.setText("等待 AdviceDashboardDTO；UI 不執行 Policy 或核心計算。")
             self.advice_warning_status.setText("警告狀態：尚未載入。")
             self.advice_presentation_detail.setText(
@@ -3602,6 +3682,45 @@ class UnifiedDecisionWorkbenchView(QWidget):
         elif state == "READY":
             self.advice_empty_widget.setVisible(False)
 
+    def _render_paper_account_context(self, dashboard: WorkbenchDashboardDTO) -> None:
+        context = dashboard.paper_account_context
+        table = self.paper_account_context_table
+        table.setRowCount(0)
+        table.setVisible(False)
+        if context is None:
+            self.paper_account_context_label.clear()
+            self.paper_account_context_label.hide()
+            return
+        self.paper_account_context_label.show()
+        if context.status == "stale":
+            self.paper_account_context_label.setText(
+                "Paper 帳戶背景：已選來源目前過期／日期不符，金額與持倉已清除。\n"
+                f"帳本={context.portfolio_id}；snapshot={context.snapshot_id}；"
+                f"來源日={context.as_of_date.isoformat()}；可得時間={context.available_at.isoformat()}；"
+                f"source SHA-256={context.source_hash}\n{context.diagnostic}"
+            )
+            return
+        self.paper_account_context_label.setText(
+            "Paper 帳戶背景（唯讀，非 Advice 輸入）："
+            f"決策日={context.decision_date.isoformat()}；來源日={context.as_of_date.isoformat()}；"
+            f"帳本={context.portfolio_id}；snapshot={context.snapshot_id}\n"
+            f"NAV={context.total_value}；現金={context.cash_amount}；"
+            f"可得時間={context.available_at.isoformat()}；source SHA-256={context.source_hash}\n"
+            "這是明選的 Paper 研究背景，不是實際帳戶，也不改變策略建議。"
+        )
+        table.setRowCount(len(context.positions))
+        for row_index, position in enumerate(context.positions):
+            values = (
+                position.stock_code,
+                str(position.quantity),
+                str(position.mark_price),
+                str(position.market_value),
+                str(position.weight_bp),
+            )
+            for column, value in enumerate(values):
+                table.setItem(row_index, column, QTableWidgetItem(value))
+        table.setVisible(bool(context.positions))
+
     def _render_advice(self, dashboard: WorkbenchDashboardDTO) -> None:
         advice = dashboard.advice_dashboard
         if advice is None:
@@ -3667,7 +3786,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
             if advice.warnings
             else "原警告：無原警告回報；這不代表沒有風險。"
         )
-        self._update_advice_account_source_action(tuple(advice.warnings))
         self.advice_recommendation_model.set_rows(visible_formal_rows)
         self.advice_candidate_model.set_rows(candidate_rows)
         self.advice_portfolio_model.set_rows(portfolio_rows)
@@ -3675,6 +3793,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_candidate_label.setVisible(bool(candidate_rows))
         self.advice_candidate_table.setVisible(bool(candidate_rows))
         self.advice_portfolio_table.setVisible(bool(portfolio_rows))
+        self.advice_portfolio_label.setVisible(bool(portfolio_rows))
         for table in (
             self.advice_recommendation_table,
             self.advice_candidate_table,
@@ -3690,6 +3809,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _clear_advice_presentation_selection(self) -> None:
         self._selected_advice_presentation = None
         self._selected_advice_original_reasons = ()
+        self._selected_advice_source_result_id = None
+        self._selected_advice_source_stock_code = None
+        if hasattr(self, "advice_source_result_button"):
+            self.advice_source_result_button.hide()
+        self._selected_advice_decision_identity = None
+        self._set_advice_research_decision_enabled(False)
         if hasattr(self, "advice_selection_card"):
             self.advice_selection_card.setText("所選建議判讀：尚未選取；欄位未提供。")
             self.advice_selection_card.setVisible(False)
@@ -3716,22 +3841,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _toggle_advice_lineage(self, expanded: bool) -> None:
         del expanded
         self._render_advice_presentation_detail()
-
-    def _update_advice_account_source_action(self, warnings: tuple[str, ...]) -> None:
-        """只在來源明確回報缺少帳戶輸入時提供相應導覽。"""
-
-        needs_account_source = any(
-            "未載入同一決策日的帳戶持倉、現金與風險預算" in warning
-            for warning in warnings
-        )
-        self.advice_account_source_button.setVisible(
-            needs_account_source and callable(self.navigate_to_portfolio_callback)
-        )
-
-    def _open_portfolio_account_source(self) -> None:
-        callback = self.navigate_to_portfolio_callback
-        if callable(callback):
-            callback()
 
     def _show_advice_row_presentation(self, model, row: int) -> None:
         """在 Workbench 直接展示共用 DTO；無法適配時 fail closed。"""
@@ -3776,15 +3885,19 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if len(compact_reasons_text) > 150:
             compact_reasons_text = compact_reasons_text[:147] + "…（完整理由見下方共用證據詳情）"
         contract_completeness = _advice_contract_completeness(item)
+        source_evidence = tuple(getattr(item, "source_evidence", ()) or ())
+        source_evidence_text = "；".join(source_evidence) if source_evidence else "未提供"
         card_text = (
             "所選建議判讀\n"
             f"層級：{'Professional 研究候選（不屬於正式 Advice）' if is_candidate else '配置列' if is_portfolio_row else '正式 Advice'}｜"
             f"動作：{action_label}（原碼：{action_raw or '未提供'}）\n"
             f"{contract_completeness}\n"
             f"原理由／論點：{compact_reasons_text}\n"
-            f"適用期間：{presentation.horizon or '未提供'}｜"
+            f"校準適用期間：{presentation.horizon or '未提供'}｜"
+            f"策略持有期間：{presentation.holding_horizon or '未提供'}｜"
             f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供'}\n"
             f"失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}"
+            f"\n保存來源逐股證據：{_compact_advice_text(source_evidence_text)}"
         )
         full_risks_text = "；".join(presentation.risks) if presentation.risks else "未提供"
         full_invalidation_text = (
@@ -3803,15 +3916,222 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_card.setToolTip(
             f"完整原始理由／論點：{full_reasons_text}\n"
             f"完整風險：{full_risks_text}\n"
-            f"完整失效條件：{full_invalidation_text}"
+            f"完整失效條件：{full_invalidation_text}\n"
+            f"保存來源逐股證據：{source_evidence_text}"
         )
         self.advice_selection_card.setAccessibleDescription(
             f"{card_text}\n完整原始理由／論點：{full_reasons_text}\n"
-            f"完整風險：{full_risks_text}\n完整失效條件：{full_invalidation_text}"
+            f"完整風險：{full_risks_text}\n完整失效條件：{full_invalidation_text}\n"
+            f"保存來源逐股證據：{source_evidence_text}"
         )
         self.advice_selection_card.setVisible(True)
+        self._update_advice_source_result_action(item, model)
+        self._update_advice_research_decision_action(item, model)
         self.advice_lineage_button.setEnabled(True)
         self._render_advice_presentation_detail()
+
+    def _update_advice_source_result_action(self, item: object, model: object) -> None:
+        self._selected_advice_source_result_id = None
+        self._selected_advice_source_stock_code = None
+        self.advice_source_result_button.hide()
+        if (
+            model not in (self.advice_recommendation_model, self.advice_candidate_model)
+            or self._dashboard is None
+            or self._dashboard_stale
+            or not callable(self.navigate_to_saved_recommendation_callback)
+        ):
+            return
+        daily = self._dashboard.daily_evidence
+        result_id = getattr(item, "source_result_id", None)
+        stock_code = getattr(item, "stock_code", None)
+        data_date = getattr(item, "data_as_of_date", "")
+        row_decision_date = getattr(item, "decision_date", "")
+        if (
+            daily is None
+            or daily.candidate_status != "candidate"
+            or not isinstance(result_id, str)
+            or not result_id
+            or result_id != daily.candidate_result_id
+            or not isinstance(stock_code, str)
+            or stock_code not in daily.candidate_symbols
+            or row_decision_date != daily.decision_date
+            or not daily.candidate_data_date
+            or data_date != daily.candidate_data_date
+        ):
+            return
+        self._selected_advice_source_result_id = result_id
+        self._selected_advice_source_stock_code = stock_code
+        source_hash = getattr(item, "source_payload_sha256", None)
+        hash_detail = f"；payload SHA-256={source_hash}" if source_hash else ""
+        self.advice_source_result_button.setToolTip(
+            "回查目前選取列綁定的 exact 保存推薦結果："
+            f"result_id={result_id}；股票={stock_code}{hash_detail}。"
+            "讀回失敗時不會改選其他結果。"
+        )
+        self.advice_source_result_button.show()
+
+    def _open_selected_advice_source_result(self) -> bool:
+        result_id = self._selected_advice_source_result_id
+        stock_code = self._selected_advice_source_stock_code
+        dashboard = self._dashboard
+        daily = dashboard.daily_evidence if dashboard is not None else None
+        callback = self.navigate_to_saved_recommendation_callback
+        if (
+            result_id is None
+            or stock_code is None
+            or dashboard is None
+            or self._dashboard_stale
+            or daily is None
+            or daily.candidate_status != "candidate"
+            or daily.candidate_result_id != result_id
+            or stock_code not in daily.candidate_symbols
+            or not callable(callback)
+        ):
+            self.advice_source_result_button.hide()
+            self._selected_advice_source_result_id = None
+            self._selected_advice_source_stock_code = None
+            return False
+        return callback(result_id) is not False
+
+    def _set_advice_research_decision_enabled(self, enabled: bool) -> None:
+        for name in (
+            "advice_accept_decision_button",
+            "advice_skip_decision_button",
+            "advice_note_decision_button",
+            "advice_readback_decision_button",
+        ):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.setEnabled(enabled)
+
+    def _update_advice_research_decision_action(self, item: object, model: object) -> None:
+        """只為同一每日來源已核對的 Advice 列提供人工 continuity 動作。"""
+
+        self._selected_advice_decision_identity = None
+        self._set_advice_research_decision_enabled(False)
+        self.advice_research_decision_status.setText(
+            "目前 Advice 尚未具備可核對的 exact result／股票／決策日／snapshot ID；不會保存。"
+        )
+        self.advice_research_decision_status.hide()
+        callback = self.save_advice_research_decision_callback
+        dashboard = self._dashboard
+        daily = dashboard.daily_evidence if dashboard is not None else None
+        if (
+            not callable(callback)
+            or dashboard is None
+            or self._dashboard_stale
+            or daily is None
+            or daily.candidate_status != "candidate"
+            or model not in (self.advice_recommendation_model, self.advice_candidate_model)
+        ):
+            return
+        result_id = getattr(item, "source_result_id", None)
+        stock_code = getattr(item, "stock_code", None)
+        decision_date = getattr(item, "decision_date", "")
+        if (
+            not isinstance(result_id, str)
+            or not result_id
+            or result_id != daily.candidate_result_id
+            or not isinstance(stock_code, str)
+            or not stock_code
+            or stock_code not in daily.candidate_symbols
+            or decision_date != daily.decision_date
+            or not daily.candidate_data_date
+            or getattr(item, "data_as_of_date", "") != daily.candidate_data_date
+            or not daily.candidate_source_snapshot_id
+        ):
+            return
+        identity = {
+            "result_id": result_id,
+            "stock_code": stock_code,
+            "decision_date": decision_date,
+            "source_snapshot_id": daily.candidate_source_snapshot_id,
+            "source_snapshot_hash": "",
+            "identity_status": "linked",
+        }
+        self._selected_advice_decision_identity = identity
+        self._set_advice_research_decision_enabled(True)
+        self.advice_research_decision_status.setText(
+            "來源 snapshot：已提供 ID；hash 未提供。人工決定會沿用此筆 result／股票／日期身分，"
+            "不會建立交易或 fill。"
+        )
+        self.advice_research_decision_status.show()
+
+    def _save_selected_advice_research_decision(self, action: str) -> bool:
+        identity = self._selected_advice_decision_identity
+        callback = self.save_advice_research_decision_callback
+        if not isinstance(identity, dict) or not callable(callback):
+            return False
+        note = ""
+        if action == "note":
+            note, accepted = QInputDialog.getMultiLineText(
+                self, "新增研究註記", "研究註記（手動保存；不建立交易）："
+            )
+            if not accepted or not note.strip():
+                return False
+        try:
+            result = callback(action, dict(identity), note)
+        except Exception as exc:  # noqa: BLE001 - UI 顯示失敗，不偽裝成功
+            self.advice_research_decision_status.setText(
+                f"人工研究決定未確認保存：{type(exc).__name__}: {exc}"
+            )
+            self.advice_research_decision_status.show()
+            return False
+        is_readback = action == "readback"
+        if is_readback:
+            error = str(getattr(result, "read_error", "") or "")
+            read_identity = getattr(result, "identity", None)
+            identity_fields = (
+                "result_id",
+                "stock_code",
+                "decision_date",
+                "source_snapshot_id",
+                "source_snapshot_hash",
+            )
+            mismatched_fields = tuple(
+                field
+                for field in identity_fields
+                if str(getattr(read_identity, field, "") or "")
+                != str(identity.get(field, "") or "")
+            )
+            identity_status = str(getattr(read_identity, "identity_status", "") or "")
+            conflict_reason = str(
+                getattr(result, "identity_conflict_reason", "") or ""
+            )
+            identity_matches = identity_status == "linked" and not mismatched_fields
+            success = not error and identity_matches
+            verified = success
+            if error:
+                failure_detail = f"讀回失敗：{error}"
+            elif not identity_matches:
+                mismatch_detail = (
+                    "；欄位不符=" + ", ".join(mismatched_fields)
+                    if mismatched_fields else ""
+                )
+                failure_detail = (
+                    f"讀回身分衝突：狀態={identity_status or '未提供'}"
+                    f"{mismatch_detail}"
+                    + (f"；原因={conflict_reason}" if conflict_reason else "")
+                )
+            else:
+                failure_detail = ""
+            message = (
+                f"目前狀態={getattr(result, 'decision_status', 'unknown')}；"
+                f"研究註記={getattr(result, 'active_note_count', 0)} 筆；"
+                f"下次檢視={getattr(result, 'next_review_at', '') or '未設定'}"
+                if success else failure_detail
+            )
+        else:
+            message = str(getattr(result, "message", result or "研究決定已送出；讀回狀態未知。"))
+            verified = bool(getattr(result, "readback_verified", False))
+            success = bool(getattr(result, "success", result is not False))
+        self.advice_research_decision_status.setText(
+            f"{'同筆狀態已讀回' if is_readback and success else '已保存並讀回核對' if success and verified else '已送出但尚未核對讀回' if success else '未保存／未讀回'}：{message}\n"
+            f"result_id={identity['result_id']}；股票={identity['stock_code']}；決策日={identity['decision_date']}\n"
+            "來源 snapshot：已提供 ID；hash 未提供。此操作只記錄研究決定，不建立交易或 fill。"
+        )
+        self.advice_research_decision_status.show()
+        return success and verified
 
     def _show_initial_detail(self, dashboard: WorkbenchDashboardDTO) -> None:
         if self.evidence_feed_model.rowCount() > 0:
@@ -3904,12 +4224,34 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if self._last_good_dashboard is not None:
             self._dashboard = self._last_good_dashboard
             self._dashboard_stale = True
+            self._selected_advice_source_result_id = None
+            self._selected_advice_source_stock_code = None
+            self.advice_source_result_button.hide()
+            self._selected_advice_decision_identity = None
+            self._set_advice_research_decision_enabled(False)
+            self.advice_research_decision_status.setText(
+                "Workbench source 已 stale；人工研究決定與 readback 已停用，請 Retry 後重新核對。"
+            )
+            self.advice_research_decision_status.show()
             last_good_at = (
                 self._last_good_dashboard_loaded_at.isoformat()
                 if self._last_good_dashboard_loaded_at is not None
                 else "未知"
             )
             dashboard = self._last_good_dashboard
+            context = dashboard.paper_account_context
+            self.paper_account_context_table.setRowCount(0)
+            self.paper_account_context_table.setVisible(False)
+            if context is None:
+                self.paper_account_context_label.clear()
+                self.paper_account_context_label.hide()
+            else:
+                self.paper_account_context_label.show()
+                self.paper_account_context_label.setText(
+                    "Paper 帳戶背景：Workbench 來源讀取失敗，金額與持倉已清除。\n"
+                    f"帳本={context.portfolio_id}；snapshot={context.snapshot_id}；"
+                    f"來源日={context.as_of_date.isoformat()}；source SHA-256={context.source_hash}"
+                )
             self._render_guided_home(dashboard)
             self._set_summary_blocks(dashboard)
             for key in self.summary_blocks:
@@ -3968,6 +4310,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         self._dashboard = None
         self._dashboard_stale = False
+        self._selected_advice_source_result_id = None
+        self._selected_advice_source_stock_code = None
+        self.advice_source_result_button.hide()
+        self.paper_account_context_table.setRowCount(0)
+        self.paper_account_context_table.setVisible(False)
+        self.paper_account_context_label.clear()
+        self.paper_account_context_label.hide()
         self._render_guided_home(None)
         self._render_daily_investment_journey(None)
         self._render_position_health(None)
@@ -4054,6 +4403,29 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         table.setMinimumHeight(bounded_height)
         table.setMaximumHeight(bounded_height)
+
+    def _configure_advice_table_columns(self, table: QTableView) -> None:
+        """讓快速判讀欄使用剩餘寬度，其餘欄位保留穩定寬度。"""
+
+        model = table.model()
+        if not isinstance(model, AdviceRecommendationTableModel):
+            return
+        header = table.horizontalHeader()
+        header.setStretchLastSection(False)
+        fixed_widths = {
+            "stock_code": 76,
+            "advice_action": 136,
+            "primary_risk": 220,
+            "evidence_status": 248,
+        }
+        for field_name, width in fixed_widths.items():
+            column = model.column_index(field_name)
+            header.setSectionResizeMode(column, QHeaderView.Fixed)
+            table.setColumnWidth(column, width)
+        quick_reasons_column = model.column_index("quick_reasons")
+        header.setSectionResizeMode(quick_reasons_column, QHeaderView.Stretch)
+        table.hideColumn(model.column_index("data_quality"))
+        table.hideColumn(model.column_index("execution_feasibility"))
 
     def _fit_summary_table(self, table: QTableView, *, fixed_widths: tuple[int, ...]) -> None:
         header = table.horizontalHeader()
@@ -4861,7 +5233,7 @@ def _advice_contract_completeness(item: object) -> str:
         ("why_reasons", "成立理由"),
         ("confidence_tier", "信心層級"),
         ("evidence_tier", "證據層級"),
-        ("holding_horizon", "適用期間"),
+        ("holding_horizon", "策略持有期間"),
         ("entry_thesis", "進場論點"),
         ("invalidation_conditions", "失效條件"),
         ("market_regime", "市場狀態"),

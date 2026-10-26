@@ -116,6 +116,7 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     portfolio = result.portfolio_rows[0]
     assert recommendation.advice_action is AdviceAction.ADD_CANDIDATE
     assert recommendation.source_trace == ("RecommendationResultDTO", "rec-20260712-001")
+    assert recommendation.stock_name == "台積電"
     assert recommendation.decision_date == "2026-07-12"
     assert recommendation.data_as_of_date == "2026-07-11"
     assert recommendation.why_reasons == ("技術型態完整", "量能支持")
@@ -128,6 +129,186 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     assert portfolio.weight_gap_bp == 1000
     assert portfolio.source_trace == ("PortfolioConstructionResult", "rec-20260712-001")
     assert result.warnings == ("evidence_freshness_review_required",)
+
+
+def test_composer_projects_only_exact_stock_saved_screening_and_risk_evidence() -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    source = _recommendation_result()
+    source.screening_matrix_json = [
+        {
+            "stock_code": "2330",
+            "stage": "legacy:technical_gate",
+            "status": "pass",
+            "quality": "observed",
+            "reason_codes": [],
+        },
+        {
+            "stock_code": "1101",
+            "stage": "legacy:relative_strength",
+            "status": "fail",
+            "quality": "observed",
+            "reason_codes": ["weak_rs"],
+        },
+    ]
+    source.why_not_payload_json = [
+        {"stock_code": "1101", "reason_codes": ["weak_rs"]}
+    ]
+    source.liquidity_gate_payload_json = [
+        {"stock_code": "2201", "reason_codes": ["low_liquidity"]}
+    ]
+
+    result = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    )
+
+    advice = result.recommendations[0]
+    assert advice.stock_code == "2330"
+    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
+    assert advice.source_evidence == (
+        "篩選：階段=legacy:technical_gate；結果=通過；資料品質=已觀測",
+    )
+    assert "1101" not in " ".join(advice.source_evidence)
+    assert "2201" not in " ".join(advice.source_evidence)
+
+
+def test_advice_source_evidence_round_trips_and_missing_stays_explicit() -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.advice_dtos import RecommendationAdviceDTO
+
+    source = _recommendation_result()
+    advice = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+
+    assert "不能據此推定沒有反證或風險" in advice.source_evidence[0]
+    assert advice.stock_name == "台積電"
+    restored = RecommendationAdviceDTO.from_dict(advice.to_dict())
+    assert restored.source_evidence == advice.source_evidence
+    assert restored.stock_name == "台積電"
+
+
+def test_composer_reads_canonical_typed_evidence_for_exact_recommended_stock() -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.recommendation.queries import RecommendationExecutionReadModel
+    from decision_module.recommendation.contracts import (
+        CandidateAssessment,
+        DecisionBatch,
+        FilterOutcome,
+        RecommendationItem,
+    )
+
+    def assessment(stock_code: str, *, passed: bool, reason_code: str = "") -> CandidateAssessment:
+        stage = "final_selection"
+        row = {
+            "stock_code": stock_code,
+            "stock_name": f"name-{stock_code}",
+            "status": "pass" if passed else "fail",
+            "reason_codes": (reason_code,) if reason_code else (),
+            "quality": "observed",
+            "stage": stage,
+            "threshold_name": "",
+            "observed_value": "",
+            "required_value": "",
+            "total_score": "",
+            "score_bp": None,
+            "score_percentile_bp": None,
+            "eligible_universe_size": None,
+            "threshold_mode": "fixed",
+            "warnings": (),
+            "industry": "",
+            "as_of_date": "2026-07-11",
+            "data_fingerprint": "sha256:source",
+        }
+        outcome = FilterOutcome(
+            filter_id=f"legacy:{stage}",
+            passed=passed,
+            reason=reason_code or ("pass" if passed else "fail"),
+            evidence=row,
+        )
+        return CandidateAssessment(
+            stock_code=stock_code,
+            eligible=passed,
+            filter_outcomes={outcome.filter_id: outcome},
+        )
+
+    decision = DecisionBatch(
+        items=(RecommendationItem(stock_code="2330", reason_text="規則候選"),),
+        assessments=(
+            assessment("2330", passed=True),
+            assessment("1101", passed=False, reason_code="weak_rs"),
+        ),
+    )
+    execution = SimpleNamespace(
+        result_id="canonical-evidence-result",
+        context=SimpleNamespace(
+            created_at=None,
+            as_of_date=date(2026, 7, 11),
+            result_config_snapshot=None,
+            strategy_identity=None,
+        ),
+        request=SimpleNamespace(as_of_date=date(2026, 7, 11)),
+        decision=decision,
+        events=(),
+    )
+    read_model = RecommendationExecutionReadModel(
+        execution=execution,
+        label="canonical evidence result",
+        notes=None,
+        persisted_at=None,
+        payload_hash="sha256:" + "b" * 64,
+        artifact_location="private-path",
+        integrity_basis="canonical_payload_and_index_verified",
+    )
+
+    advice = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=read_model,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    ).recommendations[0]
+
+    assert advice.stock_code == "2330"
+    assert advice.advice_action is AdviceAction.NO_NEW_POSITION
+    assert advice.source_evidence == (
+        "篩選：階段=final_selection；結果=通過；資料品質=已觀測",
+    )
+    assert "weak_rs" not in " ".join(advice.source_evidence)
+    assert "private-path" not in " ".join(advice.source_evidence)
+
+
+def test_strategy_advice_does_not_require_account_budget_or_position_inputs() -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    recommendations = _recommendation_result()
+    recommendations.config.pop("risk_budget_available")
+    recommendations.config.pop("execution_feasible")
+    result = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=recommendations,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    )
+
+    advice = result.recommendations[0]
+    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
+    assert advice.execution_feasibility == "UNKNOWN"
+    assert "risk_budget_not_confirmed" not in advice.risk_reasons
+    assert "execution_feasibility_not_confirmed" in advice.risk_reasons
 
 
 def test_composer_carries_only_verified_canonical_payload_hash_into_source_trace() -> None:
@@ -573,6 +754,11 @@ def test_recommendation_dto_projection_is_reused_by_normal_advice_and_portfolio_
     assert advice.calibrated_probability_bp == 6_000
     assert advice.after_cost_profit_probability_bp == 5_500
     assert advice.sample_size == 120
+    assert advice.holding_horizon == ""
+    assert advice.calibration_horizon == "20 trading days"
+    presentation = DecisionPresentationService().from_recommendation_advice(advice)
+    assert presentation.horizon == "20 trading days"
+    assert presentation.holding_horizon == ""
     assert "candidate:rec-cal-model-2" in advice.source_trace
     portfolio = dashboard.portfolio_rows[0]
     assert portfolio.calibrated_probability_bp == 6_000
@@ -625,7 +811,7 @@ def test_professional_without_promoted_strategy_status_stays_research_candidate(
     assert recommendation.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
 
 
-def test_professional_promoted_strategy_keeps_formal_classification() -> None:
+def test_professional_promoted_strategy_is_independent_of_portfolio_inputs() -> None:
     from app_module.advice_composer import AdviceComposer
 
     result = AdviceComposer(
@@ -640,5 +826,5 @@ def test_professional_promoted_strategy_keeps_formal_classification() -> None:
     )
 
     recommendation = result.recommendations[0]
-    assert recommendation.advice_action is AdviceAction.RESEARCH
+    assert recommendation.advice_action is AdviceAction.ADD_CANDIDATE
     assert recommendation.classification is AdviceClassification.FORMAL_ADVICE

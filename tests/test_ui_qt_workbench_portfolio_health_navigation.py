@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import replace
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -16,8 +18,13 @@ from app_module.decision_presentation import (
     PositionHealthPresentationDTO,
     PositionHealthReadModel,
 )
-from app_module.workbench_dtos import WorkbenchDashboardDTO
+from app_module.workbench_dtos import (
+    WorkbenchDashboardDTO,
+    WorkbenchPaperAccountContextDTO,
+    WorkbenchPaperAccountPosition,
+)
 from test_ui_qt_workbench_view import _dashboard_with_replay
+from test_portfolio_research_scenario_repository import _comparison as _paper_research_comparison
 from ui_qt.main import MainWindow
 from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
 
@@ -234,6 +241,77 @@ def test_workbench_source_exception_revokes_pending_health_selection() -> None:
     assert calls == []
 
 
+def test_paper_account_context_is_display_only_and_stale_refresh_clears_values() -> None:
+    _app()
+    available = WorkbenchPaperAccountContextDTO(
+        status="available",
+        decision_date=date(2026, 10, 9),
+        portfolio_id="account-a",
+        snapshot_id="snapshot-a",
+        as_of_date=date(2026, 10, 8),
+        available_at=datetime(2026, 10, 8, 9, tzinfo=timezone.utc),
+        source_hash="sha256:" + "a" * 64,
+        total_value=Decimal("1000000.00"),
+        cash_amount=Decimal("900000.00"),
+        positions=(WorkbenchPaperAccountPosition(
+            "2330", 1000, Decimal("100.00"), Decimal("100000.00"), 1000
+        ),),
+    )
+    dashboard = replace(_dashboard_with_replay(), paper_account_context=available)
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+
+    assert not view.paper_account_context_label.isHidden()
+    assert "非 Advice 輸入" in view.paper_account_context_label.text()
+    assert "不改變策略建議" in view.paper_account_context_label.text()
+    assert "1000000.00" in view.paper_account_context_label.text()
+    assert view.paper_account_context_table.rowCount() == 1
+    assert view.paper_account_context_table.item(0, 0).text() == "2330"
+
+    stale = replace(
+        available,
+        status="stale",
+        total_value=None,
+        cash_amount=None,
+        positions=(),
+        diagnostic="來源日期與目前工作日不符。",
+    )
+    view.render_dashboard(replace(dashboard, paper_account_context=stale))
+    assert not view.paper_account_context_label.isHidden()
+    assert "過期／日期不符" in view.paper_account_context_label.text()
+    assert "1000000.00" not in view.paper_account_context_label.text()
+    assert view.paper_account_context_table.rowCount() == 0
+    view.render_dashboard(dashboard)
+    assert view.paper_account_context_table.rowCount() == 1
+    view._display_exception_dashboard("source read failed")
+    assert "金額與持倉已清除" in view.paper_account_context_label.text()
+    assert "1000000.00" not in view.paper_account_context_label.text()
+    assert view.paper_account_context_table.rowCount() == 0
+
+
+def test_main_routes_explicit_paper_context_to_workbench_and_refreshes() -> None:
+    comparison = _paper_research_comparison()
+    calls: list[object] = []
+
+    class SourceService:
+        def select_paper_account_context(self, selected: object) -> None:
+            calls.append(selected)
+
+    class View:
+        def refresh_dashboard(self) -> None:
+            calls.append("refresh")
+
+    selected_workspaces: list[str] = []
+    main = SimpleNamespace(
+        workbench_source_service=SourceService(),
+        workbench_view=View(),
+        _select_main_workspace=selected_workspaces.append,
+    )
+    MainWindow._on_workbench_paper_account_context_selected(main, comparison)
+
+    assert calls == [comparison, "refresh"]
+    assert selected_workspaces == ["workbench"]
+
+
 @pytest.mark.parametrize(
     "case",
     (
@@ -421,3 +499,79 @@ def test_main_refusal_or_focus_exception_never_switches_workspace(request_result
     assert not any(event[:1] == ("producer",) for event in events)
     if request_result is False:
         assert any(event[:1] == ("status",) for event in events)
+
+
+def test_main_workbench_advice_research_decision_dispatches_exact_identity() -> None:
+    calls: list[tuple[str, object, dict[str, str]]] = []
+
+    class Controller:
+        def accept(self, identity, **kwargs):
+            calls.append(("accepted", identity, kwargs))
+            return "accepted-result"
+
+        def skip(self, identity, **kwargs):
+            calls.append(("skipped", identity, kwargs))
+            return "skipped-result"
+
+        def note(self, identity, **kwargs):
+            calls.append(("note", identity, kwargs))
+            return "note-result"
+
+        def read_state(self, identity):
+            calls.append(("readback", identity, {}))
+            return "readback-state"
+
+    host = SimpleNamespace(decision_continuity_controller=Controller())
+    identity = {
+        "result_id": "exact-result-01",
+        "stock_code": "2330",
+        "decision_date": "2026-10-24",
+        "source_snapshot_id": "source-snapshot-01",
+        "source_snapshot_hash": "",
+        "identity_status": "linked",
+    }
+
+    assert MainWindow._save_workbench_advice_research_decision(
+        host, "accepted", identity
+    ) == "accepted-result"
+    assert MainWindow._save_workbench_advice_research_decision(
+        host, "skipped", identity
+    ) == "skipped-result"
+    assert MainWindow._save_workbench_advice_research_decision(
+        host, "note", identity, "  人工研究註記  "
+    ) == "note-result"
+    assert MainWindow._save_workbench_advice_research_decision(
+        host, "readback", identity
+    ) == "readback-state"
+
+    assert [call[0] for call in calls] == ["accepted", "skipped", "note", "readback"]
+    for action, passed_identity, kwargs in calls[:2]:
+        assert passed_identity.result_id == identity["result_id"]
+        assert passed_identity.stock_code == identity["stock_code"]
+        assert passed_identity.decision_date == identity["decision_date"]
+        assert passed_identity.source_snapshot_id == identity["source_snapshot_id"]
+        assert passed_identity.source_snapshot_hash == ""
+        assert kwargs == {"source_id": "workbench_advice"}
+    note_identity = calls[2][1]
+    note_kwargs = calls[2][2]
+    assert note_identity.result_id == identity["result_id"]
+    assert note_identity.stock_code == identity["stock_code"]
+    assert note_identity.decision_date == identity["decision_date"]
+    assert note_identity.source_snapshot_id == identity["source_snapshot_id"]
+    assert note_identity.source_snapshot_hash == ""
+    assert note_kwargs == {"source_id": "workbench_advice", "note": "人工研究註記"}
+    assert calls[3][1].source_snapshot_id == identity["source_snapshot_id"]
+    assert calls[3][1].source_snapshot_hash == ""
+
+    with pytest.raises(ValueError, match="來源 snapshot ID"):
+        MainWindow._save_workbench_advice_research_decision(
+            host, "accepted", {**identity, "source_snapshot_id": ""}
+        )
+    with pytest.raises(
+        ValueError,
+        match="linked decision identity requires result_id and stock_code",
+    ):
+        MainWindow._save_workbench_advice_research_decision(
+            host, "skipped", {**identity, "result_id": ""}
+        )
+    assert len(calls) == 4

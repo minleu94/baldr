@@ -12,6 +12,10 @@
 
 [V2 圖卡優先研究體驗](BALDR_V2_CARD_EXPERIENCE_20261022.md)記錄首頁、個股同屏、選股與策略庫收合、題材缺件及研究時間展示的後繼 UI 增量；不改每日資料恢復或固定候選資格，進度按原文判讀。
 
+[2026-10-25 產業方向摘要卡](BALDR_INDUSTRY_LEADER_CARDS_20261025.md)記錄題材領先／落後平均日漲幅卡的成員漲跌分布、有效分母、版面測試與字型／原生視覺限制；同頁記錄 MOPS Q2 timestamp crosswalk 為候選且正式資料實際解除 0 列，來源／Gate 接受未變。
+
+[2026-10-26 產業卡法人分布與 Workbench 人工研究入口](BALDR_INDUSTRY_LEADER_CARDS_20261025.md#首屏法人淨額分布增量2026-10-25-root-驗證)及[Workbench Advice 人工研究決定入口](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-workbench-advice-人工研究決定入口)記錄兩項 UI 增量與受控 QA；測試不等於原生 GUI／Owner UAT 或 Gate 資格通過。
+
 V2後繼補完集中看[工程與整合驗收](BALDR_V2_FINAL_COMPLETION_20261021.md)：原始失敗保留，來源／Paper程式契約、真Main GUI、金融用途、Native及OwnerUAT各自列證據，不以正向fixture代替正式來源資格。
 
 本次啟動 TabOrder、Qt model 連線清理與 pandas 相容性修正，見[主視窗啟動警告修復](BALDR_STARTUP_WARNINGS_FIX_20261015.md)；來源版限定驗證與公司名冊來源憑證缺件分開判讀。

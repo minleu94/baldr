@@ -211,9 +211,12 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
     COLUMNS = (
         ("stock_code", "標的"),
         ("advice_action", "動作"),
-        ("why_not_reasons", "理由"),
-        ("data_quality", "資料品質"),
-        ("execution_feasibility", "可成交性"),
+        ("quick_reasons", "支持／反證"),
+        ("primary_risk", "主要風險"),
+        ("evidence_status", "資料與執行狀態"),
+        # 保留具名唯讀欄位，供既有 model consumer 與輔助讀取使用；View 會收合。
+        ("data_quality", "資料品質（明細）"),
+        ("execution_feasibility", "可成交性（明細）"),
     )
 
     def __init__(self, rows: Sequence[RecommendationAdviceDTO] = (), parent=None) -> None:
@@ -223,9 +226,35 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
         if not index.isValid() or not (0 <= index.row() < len(self._rows)):
             return None
         field_name = self.COLUMNS[index.column()][0]
+        row = self._rows[index.row()]
+        if field_name == "stock_code":
+            stock_code = str(row.stock_code or "").strip()
+            stock_name = str(row.stock_name or "").strip()
+            exact_source = bool(row.source_result_id)
+            display = f"{stock_code} {stock_name}" if exact_source and stock_name else stock_code
+            detail = (
+                f"股票代碼：{stock_code}；股票名稱：{stock_name}；"
+                f"保存結果已對齊：{row.source_result_id}"
+                if exact_source and stock_name
+                else f"股票代碼：{stock_code}；股票名稱：未與目前保存結果核對"
+            )
+            if role == Qt.DisplayRole:
+                return display
+            if role in {Qt.ToolTipRole, Qt.AccessibleTextRole}:
+                return detail
+            return None
+        if field_name in {"quick_reasons", "primary_risk", "evidence_status"}:
+            display, detail = _advice_quick_read(row, field_name)
+            if role == Qt.DisplayRole:
+                return display
+            if role == Qt.ToolTipRole:
+                return detail
+            if role == Qt.AccessibleTextRole:
+                return detail
+            return None
         if field_name not in {"advice_action", "data_quality", "execution_feasibility"}:
             return super().data(index, role)
-        raw = getattr(self._rows[index.row()], field_name, None)
+        raw = getattr(row, field_name, None)
         raw_text = raw.value if isinstance(raw, Enum) else str(raw or "").strip()
         label = _advice_display_label(field_name, raw_text)
         if role == Qt.DisplayRole:
@@ -271,6 +300,92 @@ def _advice_display_label(field_name: str, raw_value: str) -> str:
         },
     }
     return maps[field_name].get(raw_value.upper(), raw_value)
+
+
+def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[str, str]:
+    """在建議列展示短摘要，完整欄位仍可由提示與選列詳情核對。"""
+
+    if field_name == "quick_reasons":
+        support = tuple(_public_advice_reason(item) for item in row.why_reasons if str(item).strip())
+        counter = tuple(
+            _public_advice_reason(item)
+            for item in row.why_not_reasons
+            if str(item).strip()
+        )
+        support_text = _first_reason(support)
+        counter_text = _first_reason(counter)
+        display = (
+            f"支持：{_compact_advice_text(support_text)}｜"
+            f"反證：{_compact_advice_text(counter_text)}"
+        )
+        detail = (
+            f"支持理由：{'；'.join(support) if support else '未提供'}\n"
+            f"反證／不支持理由：{'；'.join(counter) if counter else '未提供'}"
+        )
+        return display, detail
+
+    if field_name == "primary_risk":
+        risks = tuple(_public_advice_reason(item) for item in row.risk_reasons if str(item).strip())
+        display = _compact_advice_text(risks[0]) if risks else "未提供風險判讀"
+        detail = "風險判讀：" + ("；".join(risks) if risks else "未提供；不能據此推定沒有風險")
+        if len(risks) > 1:
+            display += f"（另 {len(risks) - 1} 項）"
+        return display, detail
+
+    quality = _advice_display_label("data_quality", str(row.data_quality or "").strip())
+    feasibility = _advice_display_label(
+        "execution_feasibility", str(row.execution_feasibility or "").strip()
+    )
+    if feasibility.startswith("原狀態："):
+        feasibility = feasibility.removeprefix("原狀態：")
+    data_date = str(row.data_as_of_date or "").strip() or "未知"
+    display = f"{quality}｜成交：{feasibility}｜資料日：{data_date}"
+    detail = (
+        f"資料品質：{quality}\n可成交性：{feasibility}\n"
+        f"決策日：{str(row.decision_date or '').strip() or '未知'}\n"
+        f"資料日：{data_date}"
+    )
+    return display, detail
+
+
+def _first_reason(values: tuple[str, ...]) -> str:
+    if not values:
+        return "未提供"
+    suffix = f"（另 {len(values) - 1} 項）" if len(values) > 1 else ""
+    return values[0] + suffix
+
+
+def _compact_advice_text(value: str, *, limit: int = 34) -> str:
+    normalized = " ".join(str(value or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1].rstrip() + "…"
+
+
+def _public_advice_reason(value: object) -> str:
+    """將常見 Advice 診斷碼改成使用者語句；保留未知文字但隱去底線格式。"""
+
+    raw = " ".join(str(value or "").split())
+    known = {
+        "evidence_quality_missing": "缺少合格證據",
+        "research_gate_passed": "符合研究條件",
+        "position_limit_review": "持倉限制待覆核",
+        "data_quality_missing": "資料品質缺漏",
+        "data_quality_degraded": "資料品質降級",
+        "data_quality_not_observed": "資料尚未驗證",
+        "guided_mode_strategy_not_promoted": "策略尚未正式採用",
+        "guided_mode_strategy_parameters_not_locked": "策略參數尚未鎖定",
+        "guided_mode_strategy_disclosure_incomplete": "策略揭露尚未完整",
+        "professional_candidate_research_only": "僅供研究，不屬正式建議",
+        "strategy_status_not_promoted": "策略尚未正式採用",
+        "execution_not_feasible": "目前不可成交",
+        "price_current_session_missing": "缺少當日價格",
+        "source_not_fresh": "來源資料非最新",
+        "low_liquidity_review": "需覆核流動性",
+        "source_missing": "來源缺漏",
+        "execution_feasibility_not_confirmed": "可成交性尚未核實",
+    }
+    return known.get(raw, raw.replace("_", " "))
 
 
 class AdvicePortfolioTableModel(_WorkbenchTableModel):

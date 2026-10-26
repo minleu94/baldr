@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import re
 from typing import Any, Mapping, cast
 
 
@@ -103,7 +104,10 @@ class RecommendationAdviceDTO:
     market_regime: str = ""
     liquidity_state: str = ""
     execution_feasibility: str = ""
+    source_evidence: tuple[str, ...] = ()
     source_trace: tuple[str, ...] = ()
+    source_result_id: str | None = None
+    source_payload_sha256: str | None = None
     refusal_reasons: tuple[str, ...] = ()
     ranking_score_bp: int | None = None
     ranking_percentile_bp: int | None = None
@@ -117,6 +121,7 @@ class RecommendationAdviceDTO:
     cost_basis_bp: int | None = None
     calibration_model_version: str = ""
     calibration_dataset_version: str = ""
+    calibration_horizon: str = ""
     calibration_source: str = ""
     calibration_probability_transform_id: str = ""
     calibration_probability_baseline_id: str = ""
@@ -126,6 +131,8 @@ class RecommendationAdviceDTO:
     calibration_raw_after_cost_probability_bp: int | None = None
     # P1 immutable projection receipt/provenance; presentation never recomputes it.
     calibration_provenance: Mapping[str, Any] = field(default_factory=dict)
+    # 只沿用同一推薦列名稱；Workbench 僅在保存結果身分對齊後展示。
+    stock_name: str = ""
 
     def __post_init__(self) -> None:
         if (
@@ -150,6 +157,22 @@ class RecommendationAdviceDTO:
             raise ValueError("ranking_score_bp must be an integer basis-point value")
         if self.sample_size is not None and (isinstance(self.sample_size, bool) or self.sample_size < 0):
             raise ValueError("sample_size must be a non-negative integer")
+        if self.source_result_id is not None and (
+            type(self.source_result_id) is not str
+            or not self.source_result_id
+            or self.source_result_id in {".", ".."}
+            or self.source_result_id.strip() != self.source_result_id
+            or len(self.source_result_id) > 128
+            or any(character in self.source_result_id for character in ("/", "\\", "\x00"))
+        ):
+            raise ValueError("source_result_id must be a safe exact result identity")
+        if self.source_payload_sha256 is not None and (
+            not isinstance(self.source_payload_sha256, str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", self.source_payload_sha256) is None
+        ):
+            raise ValueError("source_payload_sha256 must be canonical SHA-256")
+        object.__setattr__(self, "source_evidence", _string_tuple(self.source_evidence))
+        object.__setattr__(self, "stock_name", str(self.stock_name or "").strip())
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -172,7 +195,10 @@ class RecommendationAdviceDTO:
             "market_regime": self.market_regime,
             "liquidity_state": self.liquidity_state,
             "execution_feasibility": self.execution_feasibility,
+            "source_evidence": list(self.source_evidence),
             "source_trace": list(self.source_trace),
+            "source_result_id": self.source_result_id,
+            "source_payload_sha256": self.source_payload_sha256,
             "refusal_reasons": list(self.refusal_reasons),
             "ranking_score_bp": self.ranking_score_bp,
             "ranking_percentile_bp": self.ranking_percentile_bp,
@@ -186,6 +212,7 @@ class RecommendationAdviceDTO:
             "cost_basis_bp": self.cost_basis_bp,
             "calibration_model_version": self.calibration_model_version,
             "calibration_dataset_version": self.calibration_dataset_version,
+            "calibration_horizon": self.calibration_horizon,
             "calibration_source": self.calibration_source,
             "calibration_probability_transform_id": self.calibration_probability_transform_id,
             "calibration_probability_baseline_id": self.calibration_probability_baseline_id,
@@ -194,6 +221,7 @@ class RecommendationAdviceDTO:
             "calibration_raw_probability_bp": self.calibration_raw_probability_bp,
             "calibration_raw_after_cost_probability_bp": self.calibration_raw_after_cost_probability_bp,
             "calibration_provenance": dict(self.calibration_provenance),
+            "stock_name": self.stock_name,
         }
 
     @classmethod
@@ -221,7 +249,10 @@ class RecommendationAdviceDTO:
             market_regime=payload.get("market_regime", ""),
             liquidity_state=payload.get("liquidity_state", ""),
             execution_feasibility=payload.get("execution_feasibility", ""),
+            source_evidence=_string_tuple(payload.get("source_evidence")),
             source_trace=_string_tuple(payload.get("source_trace")),
+            source_result_id=payload.get("source_result_id"),
+            source_payload_sha256=payload.get("source_payload_sha256"),
             refusal_reasons=_string_tuple(payload.get("refusal_reasons")),
             ranking_score_bp=payload.get("ranking_score_bp"),
             ranking_percentile_bp=payload.get("ranking_percentile_bp"),
@@ -235,6 +266,7 @@ class RecommendationAdviceDTO:
             cost_basis_bp=payload.get("cost_basis_bp"),
             calibration_model_version=payload.get("calibration_model_version", ""),
             calibration_dataset_version=payload.get("calibration_dataset_version", ""),
+            calibration_horizon=payload.get("calibration_horizon", ""),
             calibration_source=payload.get("calibration_source", ""),
             calibration_probability_transform_id=payload.get("calibration_probability_transform_id", ""),
             calibration_probability_baseline_id=payload.get("calibration_probability_baseline_id", ""),
@@ -249,6 +281,7 @@ class RecommendationAdviceDTO:
                 if isinstance(payload.get("calibration_provenance"), Mapping)
                 else {}
             ),
+            stock_name=payload.get("stock_name", ""),
         )
 
 
@@ -288,6 +321,7 @@ class PortfolioAdviceDTO:
     cost_basis_bp: int | None = None
     calibration_model_version: str = ""
     calibration_dataset_version: str = ""
+    calibration_horizon: str = ""
     calibration_source: str = ""
     calibration_probability_transform_id: str = ""
     calibration_probability_baseline_id: str = ""
@@ -366,6 +400,7 @@ class PortfolioAdviceDTO:
             "cost_basis_bp": self.cost_basis_bp,
             "calibration_model_version": self.calibration_model_version,
             "calibration_dataset_version": self.calibration_dataset_version,
+            "calibration_horizon": self.calibration_horizon,
             "calibration_source": self.calibration_source,
             "calibration_probability_transform_id": self.calibration_probability_transform_id,
             "calibration_probability_baseline_id": self.calibration_probability_baseline_id,
@@ -414,6 +449,7 @@ class PortfolioAdviceDTO:
             cost_basis_bp=payload.get("cost_basis_bp"),
             calibration_model_version=payload.get("calibration_model_version", ""),
             calibration_dataset_version=payload.get("calibration_dataset_version", ""),
+            calibration_horizon=payload.get("calibration_horizon", ""),
             calibration_source=payload.get("calibration_source", ""),
             calibration_probability_transform_id=payload.get("calibration_probability_transform_id", ""),
             calibration_probability_baseline_id=payload.get("calibration_probability_baseline_id", ""),

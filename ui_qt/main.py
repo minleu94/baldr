@@ -2037,6 +2037,27 @@ class MainWindow(QMainWindow):
                 tabs.setCurrentIndex(index)
                 return
 
+    def _on_workbench_paper_account_context_selected(self, comparison: object) -> None:
+        source_service = getattr(self, "workbench_source_service", None)
+        workbench_view = getattr(self, "workbench_view", None)
+        select_context = getattr(source_service, "select_paper_account_context", None)
+        if not callable(select_context) or workbench_view is None:
+            return
+        try:
+            select_context(comparison)
+        except (TypeError, ValueError) as exc:
+            panel = getattr(
+                getattr(self, "portfolio_view", None),
+                "portfolio_research_scenario_widget",
+                None,
+            )
+            status = getattr(panel, "initial_sources_status_label", None)
+            if status is not None:
+                status.setText(f"帳戶背景未傳送：{exc}")
+            return
+        self._select_main_workspace("workbench")
+        workbench_view.refresh_dashboard()
+
     def _open_workbench_saved_recommendation(self, result_id: str) -> bool:
         """由一般工作台明選原保存結果；不建立每日決策返回脈絡。"""
 
@@ -2059,6 +2080,32 @@ class MainWindow(QMainWindow):
         self._last_saved_recommendation_open_error = ""
         self._select_main_workspace("recommendation")
         return True
+
+    def _save_workbench_advice_research_decision(
+        self, action: str, identity_payload: Mapping[str, str], note: str = ""
+    ) -> object:
+        """把明選 Advice 的既有動作接到 continuity writer；不建立交易。"""
+
+        from app_module.dtos.decision_continuity_dtos import DecisionIdentity
+
+        identity = DecisionIdentity.from_mapping(identity_payload)
+        if not identity.is_linked or not identity.decision_date or not identity.source_snapshot_id:
+            raise ValueError("需有 exact result、股票、決策日及來源 snapshot ID 才能保存")
+        controller = getattr(self, "decision_continuity_controller", None)
+        if controller is None:
+            raise RuntimeError("研究決定 writer 未就緒")
+        if action == "readback":
+            return controller.read_state(identity)
+        kwargs = {"source_id": "workbench_advice"}
+        if action == "accepted":
+            return controller.accept(identity, **kwargs)
+        if action == "skipped":
+            return controller.skip(identity, **kwargs)
+        if action == "note":
+            if not note.strip():
+                raise ValueError("研究註記不可為空")
+            return controller.note(identity, note=note.strip(), **kwargs)
+        raise ValueError(f"不支援的研究決定動作：{action}")
 
     def _open_decision_desk_saved_recommendation(self, result_id: str) -> bool:
         """每日決策來源專用入口；失敗留在原摘要，成功才允許返回。"""
@@ -2380,6 +2427,7 @@ class MainWindow(QMainWindow):
                         "recommendation"
                     ),
                     navigate_to_saved_recommendation_callback=self._open_workbench_saved_recommendation,
+                    save_advice_research_decision_callback=self._save_workbench_advice_research_decision,
                     auto_refresh=True,
                     async_refresh=True,
                     parent=self,
@@ -2528,6 +2576,13 @@ class MainWindow(QMainWindow):
                     **self._personal_portfolio_view_kwargs,
                 )
                 self.portfolio_view = portfolio_view
+                scenario_panel = getattr(
+                    portfolio_view, "portfolio_research_scenario_widget", None
+                )
+                if scenario_panel is not None:
+                    scenario_panel.accountContextSelected.connect(
+                        self._on_workbench_paper_account_context_selected
+                    )
                 if hasattr(portfolio_view, "stockResearchRequested"):
                     portfolio_view.stockResearchRequested.connect(
                         self._open_stock_research_context

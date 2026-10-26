@@ -95,7 +95,7 @@ def test_advice_detail_lists_missing_required_contract_fields_without_filling_th
     assert "不可由分數或空白推定" in summary
 
 
-def test_advice_missing_account_warning_opens_explicit_portfolio_source_flow() -> None:
+def test_advice_does_not_require_account_connection_or_offer_account_source_gate() -> None:
     app()
     navigations: list[str] = []
     view = UnifiedDecisionWorkbenchView(
@@ -103,19 +103,18 @@ def test_advice_missing_account_warning_opens_explicit_portfolio_source_flow() -
         navigate_to_portfolio_callback=lambda: navigations.append("portfolio"),
     )
     view._set_advice_state(
-        "NO_NEW_POSITION",
-        "risk_budget_unavailable",
-        warnings=("未載入同一決策日的帳戶持倉、現金與風險預算，因此不提供配置或加碼判斷。",),
+        "NO_ELIGIBLE_ADVICE",
+        "strategy_candidate_research_only",
+        warnings=(
+            "策略建議不需要連接真實帳戶；持倉與交易由使用者手動記錄。",
+        ),
     )
     view.show()
     app().processEvents()
 
-    assert not view.advice_account_source_button.isHidden()
-    QTest.mouseClick(view.advice_account_source_button, Qt.MouseButton.LeftButton)
-    assert navigations == ["portfolio"]
-
-    view._set_advice_state("NO_NEW_POSITION", "risk_budget_unavailable")
-    assert view.advice_account_source_button.isHidden()
+    assert "不需要連接真實帳戶" in view.advice_warning_status.text()
+    assert not hasattr(view, "advice_account_source_button")
+    assert navigations == []
     view.close()
 
 
@@ -1213,6 +1212,17 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
         auto_refresh=False,
     )
 
+    assert view.advice_section_title.text() == "今日策略建議"
+    assert view.advanced_overview_layout.indexOf(view.advice_panel) == -1
+    assert not view.advanced_workbench_panel.isAncestorOf(view.advice_panel)
+    assert view.paper_account_context_label.isHidden()
+    assert view.advice_recommendation_model.columnCount() == 7
+    assert view.advice_recommendation_table.isColumnHidden(
+        view.advice_recommendation_model.column_index("data_quality")
+    )
+    assert view.advice_recommendation_table.isColumnHidden(
+        view.advice_recommendation_model.column_index("execution_feasibility")
+    )
     assert "正式 Advice：1 列" in view.advice_summary.text()
     assert "無原警告回報；這不代表沒有風險" in view.advice_warning_status.text()
     action_index = view.advice_recommendation_model.index(
@@ -1220,6 +1230,35 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     )
     assert view.advice_recommendation_model.data(action_index) == "暫不新增部位"
     assert view.advice_recommendation_model.data(action_index, Qt.ToolTipRole) == "原始值：NO_NEW_POSITION"
+    stock_index = view.advice_recommendation_model.index(
+        0, view.advice_recommendation_model.column_index("stock_code")
+    )
+    assert view.advice_recommendation_model.data(stock_index) == "2330"
+    reason_index = view.advice_recommendation_model.index(
+        0, view.advice_recommendation_model.column_index("quick_reasons")
+    )
+    assert view.advice_recommendation_model.data(reason_index) == (
+        "支持：未提供｜反證：缺少合格證據"
+    )
+    assert "反證／不支持理由：缺少合格證據" in view.advice_recommendation_model.data(
+        reason_index, Qt.ToolTipRole
+    )
+    risk_index = view.advice_recommendation_model.index(
+        0, view.advice_recommendation_model.column_index("primary_risk")
+    )
+    assert view.advice_recommendation_model.data(risk_index) == "未提供風險判讀"
+    assert "不能據此推定沒有風險" in view.advice_recommendation_model.data(
+        risk_index, Qt.ToolTipRole
+    )
+    status_index = view.advice_recommendation_model.index(
+        0, view.advice_recommendation_model.column_index("evidence_status")
+    )
+    assert view.advice_recommendation_model.data(status_index) == (
+        "缺漏｜成交：不可成交｜資料日：未知"
+    )
+    assert "決策日：未知" in view.advice_recommendation_model.data(
+        status_index, Qt.ToolTipRole
+    )
     view.advice_recommendation_table.setCurrentIndex(
         view.advice_recommendation_model.index(0, 0)
     )
@@ -1228,6 +1267,81 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert "失效條件：未提供" in view.advice_selection_card.text()
     assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
     assert view.advice_recommendation_model.rowCount() == 1
+
+
+def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> None:
+    app()
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-06",
+        data_as_of_date="2026-07-03",
+        mode=AdviceMode.GUIDED,
+        policy=AdvicePolicyConfig(),
+        recommendations=(
+            RecommendationAdviceDTO(
+                stock_code="2330",
+                advice_action=AdviceAction.RESEARCH,
+                why_reasons=("research_gate_passed", "volume_confirmation"),
+                why_not_reasons=("price_current_session_missing", "source_not_fresh"),
+                risk_reasons=("position_limit_review", "low_liquidity_review"),
+                data_quality="PARTIAL",
+                decision_date="2026-07-06",
+                data_as_of_date="2026-07-03",
+                execution_feasibility="UNKNOWN",
+            ),
+        ),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), advice_dashboard=advice),
+        auto_refresh=False,
+    )
+    model = view.advice_recommendation_model
+    quick_index = model.index(0, model.column_index("quick_reasons"))
+    risk_index = model.index(0, model.column_index("primary_risk"))
+    status_index = model.index(0, model.column_index("evidence_status"))
+
+    assert model.data(quick_index).startswith("支持：符合研究條件（另 1 項）｜反證：")
+    assert "缺少當日價格" in model.data(quick_index, Qt.ToolTipRole)
+    assert model.data(risk_index) == "持倉限制待覆核（另 1 項）"
+    assert model.data(status_index) == "部分資料｜成交：未知｜資料日：2026-07-03"
+    assert "決策日：2026-07-06" in model.data(status_index, Qt.ToolTipRole)
+
+
+def test_workbench_shows_stock_name_only_when_saved_result_identity_is_bound() -> None:
+    app()
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-06",
+        data_as_of_date="2026-07-03",
+        mode=AdviceMode.GUIDED,
+        policy=AdvicePolicyConfig(),
+        recommendations=(
+            RecommendationAdviceDTO(
+                stock_code="2330",
+                stock_name="台積電",
+                advice_action=AdviceAction.RESEARCH,
+                source_result_id="current-result",
+            ),
+            RecommendationAdviceDTO(
+                stock_code="2317",
+                stock_name="鴻海",
+                advice_action=AdviceAction.RESEARCH,
+            ),
+        ),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), advice_dashboard=advice),
+        auto_refresh=False,
+    )
+    model = view.advice_recommendation_model
+    stock_column = model.column_index("stock_code")
+
+    assert model.data(model.index(0, stock_column)) == "2330 台積電"
+    assert "保存結果已對齊：current-result" in model.data(
+        model.index(0, stock_column), Qt.ToolTipRole
+    )
+    assert model.data(model.index(1, stock_column)) == "2317"
+    assert "未與目前保存結果核對" in model.data(
+        model.index(1, stock_column), Qt.ToolTipRole
+    )
 
 
 def test_workbench_renders_missing_evidence_refusal_as_explicit_no_new_position() -> None:
@@ -1287,6 +1401,7 @@ def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknow
                 decision_date="2026-07-06",
                 data_as_of_date="2026-07-06",
                 execution_feasibility="FEASIBLE",
+                source_evidence=("篩選：階段=legacy:technical_gate；結果=通過；資料品質=已觀測",),
                 source_trace=("fixture:advice",),
             ),
         ),
@@ -1315,9 +1430,11 @@ def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknow
 
     view.advice_lineage_button.click()
     assert "機率依據詳情（唯讀）" not in view.advice_presentation_detail.text()
-    assert "適用期間：swing" in detail_text
+    assert "策略持有期間：swing" in detail_text
     assert "資料日：2026-07-06" in detail_text
     assert "來源追溯：fixture:advice" in detail_text
+    assert "保存來源逐股證據：篩選：階段=legacy:technical_gate" in view.advice_selection_card.text()
+    assert "保存來源逐股證據：篩選：階段=legacy:technical_gate" in view.advice_selection_card.toolTip()
 
 
 def test_unified_workbench_exposes_single_research_workflow_and_keyboard_tables() -> None:

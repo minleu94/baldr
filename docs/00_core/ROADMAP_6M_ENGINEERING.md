@@ -12,13 +12,14 @@
 
 ```text
 Gate 0 Safe Refactor Closeout
-→ Gate 1 Daily Usable Advice
+→ Gate 1 Daily Strategy Advice
 → Gate 2 Real Evidence Operating Loop
 → Gate 3 P0 Data Acceptance
-→ Gate 4 Portfolio Coach v1
 → Gate 5 Signal Effectiveness & Pruning
 → Gate 6 Position Health & Exit v1
 ```
+
+Gate 4 Portfolio Coach 是以使用者手動持倉紀錄為輸入的可選延伸，不是日常策略 Advice 的依賴或完成條件。此產品不連接券商／真實帳戶；沒有手動持倉時，Gate 1 仍須能提供帳戶無關的策略建議。
 
 Gate 7 ML Shadow Layer 只作條件式後續：若 Gate 5 在第六個月以前具備可判讀 baseline，才可建立 shadow experiment；它不是六個月必須上 production 的承諾。
 
@@ -43,10 +44,10 @@ Month 1–6 是依 Gate 依賴排列的相對月份，目前沒有指定日曆�
 
 | 月份 | 主要 Gate | 交付結果 |
 |---|---|---|
-| Month 1 | Gate 0 + Gate 1 Contract | 關閉安全重構；凍結 Advice / Portfolio Advice / Mode 契約與 golden baseline。 |
+| Month 1 | Gate 0 + Gate 1 Contract | 關閉安全重構；凍結策略 Advice / Mode 契約與 golden baseline。 |
 | Month 2 | Gate 1 + Gate 2 | 建立每日 Advice read model 與真實 evidence review / action-item 節奏。 |
 | Month 3 | Gate 2 + Gate 3 | 受批准的 evidence write-mode 與 P0 source diagnostics / shadow acceptance。 |
-| Month 4 | Gate 4 | Portfolio Coach v1、Equal Weight benchmark、paper portfolio、execution feasibility。 |
+| Month 4 | Gate 4（可選延伸） | 有手動持倉紀錄時提供 Portfolio Coach v1、Equal Weight benchmark、paper portfolio、execution feasibility。 |
 | Month 5 | Gate 5 | Score / signal / gate / alert effectiveness、ablation、pruning / retirement 決議。 |
 | Month 6 | Gate 6；Gate 7 conditional | Position Health / Exit v1；只有 Gate 5 可判讀時才開 ML shadow。 |
 
@@ -96,24 +97,24 @@ Month 1–6 是依 Gate 依賴排列的相對月份，目前沒有指定日曆�
 
 ### Investment Question
 
-今天應研究哪些股票、是否能建立新部位、建議配置多少；現有持倉應 Add / Hold / Reduce / Exit 嗎？
+今天哪些市場／個股策略值得研究，依據、風險、適用條件與失效點是什麼？手動持倉與 sizing 是可選脈絡，不是策略建議的前置條件。
 
 ### Dependencies
 
 - Gate 0 closeout。
 - 既有 Recommendation / screening / Workbench / Portfolio source trace。
-- Product Roadmap 的 Advice / Portfolio Advice Contract。
+- Product Roadmap 的 Recommendation Strategy Advice Contract。
 
 ### Engineering Deliverables
 
 1. Advice action enum：`RESEARCH`、`ADD_CANDIDATE`、`HOLD`、`REDUCE_CANDIDATE`、`EXIT_CANDIDATE`、`AVOID`、`NO_NEW_POSITION`。
 2. Recommendation Advice Contract：Why、Why Not、Risk、Evidence tier、confidence tier、thesis、invalidation、horizon、liquidity、execution feasibility、strategy/data date。
-3. Portfolio Advice Contract：`target_weight_bp`、`current_weight_bp`、`weight_gap_bp`、review date。
+3. 策略 Advice 不依賴 Portfolio：不要求真實帳戶、風險預算或配置權重即可輸出有證據的研究候選；手動持倉可供獨立的選用 overlay 使用。
 4. Guided Mode policy：只允許 promoted / locked / disclosure-complete strategy。
 5. Professional Mode policy：candidate experiments 與 formal Advice 嚴格分離。
 6. 共核驗證：兩種 Mode 使用相同 Recommendation / Portfolio / Evidence engine 與相同 DTO schema。
-7. Advice refusal policy：資料不足、risk budget 滿、不可成交或市場風險過高時輸出 `RESEARCH` / `AVOID` / `NO_NEW_POSITION`。
-8. Workbench read model / UI slice：先呈現建議、風險、證據與權重差距；不直接在 UI 計算。
+7. Advice refusal policy：策略／市場證據不足、不可成交或整體風險過高時輸出 `RESEARCH` / `AVOID` / `NO_NEW_POSITION`；個人 risk budget 只限制可選 sizing，不阻擋策略建議。
+8. Workbench read model / UI slice：先呈現策略建議、風險、證據與失效條件；不直接在 UI 計算。
 
 ### Testing
 
@@ -130,11 +131,11 @@ Month 1–6 是依 Gate 依賴排列的相對月份，目前沒有指定日曆�
 - Advice completeness：正式樣本 100% 含必要欄位與 source trace。
 - Deterministic replay：相同 frozen data / strategy / policy 產生相同 Advice。
 - Human review：Why / Why Not / Risk / Evidence 不暗示保證獲利或自動交易。
-- Paper dry-run：Advice 可轉成 paper allocation，但不建立 broker order。
+- Manual-record review：策略 Advice 可與使用者手動持倉紀錄分開或併列覆盤，不讀取真實帳戶、不建立 broker order。
 
 ### Exit Criteria
 
-- 每日流程能回答「研究誰、能否新增、配置多少、持倉動作候選」。
+- 每日流程能回答「哪些策略／候選值得研究，依據與失效條件為何」；沒有手動持倉時仍可完成。
 - Advice 可拒絕輸出、可回溯、可重算、可版本化。
 - Guided / Professional 共核，沒有第二套 calculation path。
 - 目前仍可只在 read-only / paper mode closeout；不要求 production evidence scheduler 或真實交易。
@@ -256,13 +257,15 @@ Recommendation、Portfolio Advice、Alert 與 Exit 是否被持續、可比較�
 
 ## 8. Gate 4：Portfolio Coach v1
 
+此 Gate 是以使用者手動持倉紀錄為輸入的可選延伸，不是核心策略 Advice 的前置條件。
+
 ### Investment Question
 
-在資金、風險、流動性與成本限制下，應如何配置與再平衡？
+若使用者已維護手動持倉並明確設定風險政策，在資金、風險、流動性與成本限制下，如何研究配置與再平衡？
 
 ### Dependencies
 
-- Gate 1 Portfolio Advice Contract。
+- Gate 1 Strategy Advice；此 Gate 不回頭阻擋或改寫帳戶無關的策略 Advice。
 - Gate 3 accepted / explicitly limited data。
 - current positions / cash / prices / liquidity / execution assumptions。
 

@@ -23,6 +23,8 @@ from app_module.pre_v2_readiness_service import (
 from app_module.workbench_dtos import (
     WorkbenchDashboardDTO,
     WorkbenchLatestCaptureStatus,
+    WorkbenchPaperAccountContextDTO,
+    WorkbenchPaperAccountPosition,
 )
 from app_module.advice_composer import AdviceComposer
 from app_module.advice_dtos import AdviceDashboardDTO, AdviceMode, AdvicePolicyConfig
@@ -117,6 +119,7 @@ class WorkbenchSourceService:
             ) if journal_paths is not None else None
         )
         self.config = config
+        self._selected_paper_account_comparison: Any | None = None
         self._clock = clock or (lambda: datetime.now(TAIWAN_MARKET_TIMEZONE))
         self.recommendation_queries = (
             recommendation_queries
@@ -161,6 +164,24 @@ class WorkbenchSourceService:
             or selected_continuity
             or ContinuityReviewProjectionService.from_output_root(config.output_root)
         )
+
+    def select_paper_account_context(self, comparison: Any) -> None:
+        """保留 UI 明確選取的 exact Paper 比較；僅供 Workbench 背景呈現。"""
+        from app_module.portfolio_research_scenario_service import (
+            PortfolioResearchScenarioComparison,
+        )
+
+        if not isinstance(comparison, PortfolioResearchScenarioComparison):
+            raise ValueError("typed_portfolio_research_comparison_required")
+        if comparison.account.account_kind != "paper":
+            raise ValueError("paper_account_context_required")
+        if (
+            comparison.request.account_kind != "paper"
+            or comparison.request.portfolio_id != comparison.account.portfolio_id
+            or comparison.request.snapshot_id != comparison.account.snapshot_id
+        ):
+            raise ValueError("paper_account_identity_mismatch")
+        self._selected_paper_account_comparison = comparison
 
     def inspect(
         self,
@@ -280,6 +301,11 @@ class WorkbenchSourceService:
             daily_evidence=daily_evidence,
             decision_date=dashboard.as_of_date.isoformat(),
         )
+        advice_dashboard = self._bind_advice_source_identity(
+            advice_dashboard,
+            recommendation_read_model,
+            daily_evidence=daily_evidence,
+        )
         position_health = self.position_health_read_service.read_latest(
             expected_decision_date=dashboard.as_of_date.isoformat(),
         )
@@ -289,7 +315,125 @@ class WorkbenchSourceService:
             advice_dashboard=advice_dashboard,
             daily_evidence=daily_evidence,
             position_health=position_health,
+            paper_account_context=self._paper_account_context(
+                dashboard.as_of_date,
+                evaluation_at,
+            ),
         )
+
+    def _paper_account_context(
+        self, decision_date: date, evaluation_at: datetime
+    ) -> WorkbenchPaperAccountContextDTO | None:
+        comparison = self._selected_paper_account_comparison
+        if comparison is None:
+            return None
+        from app_module.portfolio_research_scenario_service import (
+            PortfolioResearchScenarioComparison,
+        )
+
+        if not isinstance(comparison, PortfolioResearchScenarioComparison):
+            return None
+        account = comparison.account
+        comparison_date = comparison.decision_at.astimezone(
+            TAIWAN_MARKET_TIMEZONE
+        ).date()
+        account_date = date.fromisoformat(account.as_of_date)
+        stale_reason = ""
+        if comparison_date != decision_date or account_date > decision_date:
+            stale_reason = "所選 Paper snapshot 晚於 Workbench 決策日，或比較日期不符。"
+        elif account.available_at > comparison.decision_at:
+            stale_reason = "Paper snapshot 的可得時間晚於比較決策時鐘。"
+        elif comparison.decision_at > evaluation_at:
+            stale_reason = "比較決策時鐘晚於 Workbench 評估時鐘。"
+        if stale_reason:
+            return WorkbenchPaperAccountContextDTO(
+                status="stale",
+                decision_date=decision_date,
+                portfolio_id=account.portfolio_id,
+                snapshot_id=account.snapshot_id,
+                as_of_date=account_date,
+                available_at=account.available_at,
+                source_hash=account.source_hash,
+                diagnostic=stale_reason,
+            )
+        positions = tuple(
+            WorkbenchPaperAccountPosition(
+                stock_code=row.stock_code,
+                quantity=row.quantity,
+                mark_price=row.mark_price,
+                market_value=row.market_value,
+                weight_bp=account.current_weights.weight_for(row.stock_code),
+            )
+            for row in account.valuation.positions
+        )
+        return WorkbenchPaperAccountContextDTO(
+            status="available",
+            decision_date=decision_date,
+            portfolio_id=account.portfolio_id,
+            snapshot_id=account.snapshot_id,
+            as_of_date=account_date,
+            available_at=account.available_at,
+            source_hash=account.source_hash,
+            total_value=account.valuation.total_value,
+            cash_amount=account.valuation.cash_amount,
+            positions=positions,
+            diagnostic=(
+                "已核對明確選取的 Paper snapshot；來源日如早於決策日，僅作歷史背景。"
+                "不代表 Advice 風險預算。"
+            ),
+        )
+
+    @staticmethod
+    def _bind_advice_source_identity(
+        advice_dashboard: AdviceDashboardDTO,
+        recommendation_read_model: Any | None,
+        *,
+        daily_evidence: Any,
+    ) -> AdviceDashboardDTO:
+        """只把已由每日旅程對齊的 exact read-model identity 綁到 Advice 列。"""
+        if (
+            recommendation_read_model is None
+            or daily_evidence.candidate_status != "candidate"
+            or not daily_evidence.candidate_result_id
+            or not daily_evidence.candidate_symbols
+        ):
+            return advice_dashboard
+        try:
+            result_id = recommendation_read_model.result_id
+        except (AttributeError, TypeError, ValueError):
+            return advice_dashboard
+        if result_id != daily_evidence.candidate_result_id:
+            return advice_dashboard
+        result_hash: str | None = None
+        if (
+            getattr(recommendation_read_model, "execution", None) is not None
+            and getattr(recommendation_read_model, "integrity_basis", None)
+            == "canonical_payload_and_index_verified"
+        ):
+            payload_hash = getattr(recommendation_read_model, "payload_hash", None)
+            if isinstance(payload_hash, str) and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", payload_hash
+            ) is not None:
+                result_hash = payload_hash
+        eligible_symbols = set(daily_evidence.candidate_symbols)
+        bound_rows = tuple(
+            replace(
+                row,
+                source_result_id=result_id,
+                source_payload_sha256=result_hash,
+            )
+            if (
+                row.stock_code in eligible_symbols
+                and row.decision_date == daily_evidence.decision_date
+                and row.data_as_of_date
+                == (daily_evidence.candidate_data_date or "")
+            )
+            else row
+            for row in advice_dashboard.recommendations
+        )
+        if bound_rows == advice_dashboard.recommendations:
+            return advice_dashboard
+        return replace(advice_dashboard, recommendations=bound_rows)
 
     @staticmethod
     def _compose_scheduled_candidate_advice(
@@ -367,7 +511,7 @@ class WorkbenchSourceService:
         )
         warnings = (
             "排程候選已核對保存結果與日期／cohort；目前僅供研究，不代表策略已通過正式採用 Gate。",
-            "未載入同一決策日的帳戶持倉、現金與風險預算，因此不提供配置或加碼判斷。",
+            "此策略建議不需要連接真實帳戶；持倉與交易由使用者手動記錄。這裡不計算個人配置或加碼金額。",
         )
         return AdviceComposer(AdvicePolicy(policy_config)).compose(
             recommendations=recommendation_read_model,

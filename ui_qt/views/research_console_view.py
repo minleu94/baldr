@@ -474,6 +474,9 @@ class ResearchConsoleView(QWidget):
         self.quarterly_resource_table.itemSelectionChanged.connect(
             self._render_quarterly_candidate_row_profiles
         )
+        self.quarterly_resource_table.itemSelectionChanged.connect(
+            self._render_quarterly_announcement_crosswalk_resource
+        )
         self.quarterly_field_table = _table(
             ("原始財務欄位", "空白", "非空", "CSV 空白率", "placeholder")
         )
@@ -571,6 +574,87 @@ class ResearchConsoleView(QWidget):
         )
         quarterly_panel.layout.addWidget(self.quarterly_coverage_detail_label)
         gates_panel.layout.addWidget(quarterly_panel)
+        announcement_panel = SectionPanel(
+            "季報與 MOPS 公告候選對照（availability-only）"
+        )
+        self.mops_announcement_candidate_roots_label = QLabel()
+        self.mops_announcement_candidate_roots_label.setWordWrap(True)
+        self.mops_announcement_candidate_roots_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self._update_mops_announcement_candidate_roots_label()
+        announcement_controls = QHBoxLayout()
+        self.choose_mops_announcement_candidate_roots_button = QPushButton(
+            "選擇 MOPS 公告候選 JSON…"
+        )
+        self.choose_mops_announcement_candidate_roots_button.setToolTip(
+            "可多選已封存的 mops-statement-availability.json；只核對同目錄候選 CSV、來源雜湊與查詢窗口，不連網、不匯入或授予資格。"
+        )
+        self.choose_mops_announcement_candidate_roots_button.clicked.connect(
+            self._choose_mops_announcement_candidate_roots
+        )
+        self.reset_mops_announcement_candidate_roots_button = QPushButton(
+            "還原啟動設定"
+        )
+        self.reset_mops_announcement_candidate_roots_button.clicked.connect(
+            self._reset_mops_announcement_candidate_roots
+        )
+        has_announcement_selector = callable(
+            getattr(self.source_service, "set_p0_mops_announcement_candidate_roots", None)
+        )
+        self.choose_mops_announcement_candidate_roots_button.setEnabled(
+            has_announcement_selector
+        )
+        self.reset_mops_announcement_candidate_roots_button.setEnabled(
+            has_announcement_selector
+        )
+        announcement_controls.addWidget(
+            self.mops_announcement_candidate_roots_label, stretch=1
+        )
+        announcement_controls.addWidget(
+            self.choose_mops_announcement_candidate_roots_button
+        )
+        announcement_controls.addWidget(
+            self.reset_mops_announcement_candidate_roots_button
+        )
+        self.quarterly_announcement_crosswalk_summary_label = QLabel(
+            "需同時選取季報 CSV 與公告候選；目前不推定公告缺漏或資料可得。"
+        )
+        self.quarterly_announcement_crosswalk_summary_label.setWordWrap(True)
+        self.quarterly_announcement_crosswalk_table = _table(
+            ("市場", "報表", "CSV profile 數", "單一公告候選", "多筆／歧義", "選取窗口未觀測", "查詢窗口不完整", "身份缺漏")
+        )
+        self.quarterly_announcement_crosswalk_detail_label = QLabel(
+            "選取上方季度 CSV 資源，查看該資源的同公司／報表／期別公告候選。"
+        )
+        self.quarterly_announcement_crosswalk_detail_label.setWordWrap(True)
+        self.quarterly_announcement_crosswalk_detail_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.quarterly_announcement_crosswalk_resource_table = _table(
+            ("公司代碼", "財報期別", "公告對照狀態", "MOPS 公告日時間（台北）", "候選數", "公告 response SHA-256")
+        )
+        self._quarterly_announcement_crosswalk: dict[str, Any] | None = None
+        self._update_mops_announcement_candidate_roots_label()
+        announcement_panel.layout.addLayout(announcement_controls)
+        announcement_panel.layout.addWidget(
+            self.quarterly_announcement_crosswalk_summary_label
+        )
+        announcement_panel.layout.addWidget(self.quarterly_announcement_crosswalk_table)
+        announcement_panel.layout.addWidget(
+            QLabel(
+                "同鍵表示市場、公司、報表種類與期別一致；依 Owner 授權，明確匹配的 MOPS 顯示日期與時間可作公告時間戳。"
+                "若有多筆公告，保留版本歧義。此候選對照不會回寫正式財報資料，也不證明 CSV 數值版本、首次可得時間或來源資格。"
+                "選取窗口未觀測不等於未申報；本區不授歷史 PIT／Gate credit。"
+            )
+        )
+        announcement_panel.layout.addWidget(
+            self.quarterly_announcement_crosswalk_detail_label
+        )
+        announcement_panel.layout.addWidget(
+            self.quarterly_announcement_crosswalk_resource_table
+        )
+        gates_panel.layout.addWidget(announcement_panel)
         gates_panel.layout.addWidget(QLabel("Artifact Inspector"))
         gates_panel.layout.addWidget(self.artifact_table)
         layout.addWidget(gates_panel)
@@ -1031,6 +1115,7 @@ class ResearchConsoleView(QWidget):
                 status_dimension="qualification",
             )
         self._render_quarterly_candidate_audit()
+        self._render_quarterly_announcement_crosswalk()
         _set_rows(
             self.artifact_table,
             ((row.artifact_type, row.artifact_id, row.status, row.citation) for row in console.artifacts),
@@ -1051,6 +1136,49 @@ class ResearchConsoleView(QWidget):
         self.issuer_directory_candidate_root_label.setText(
             f"目前名錄候選：{root}" if root is not None else "目前名錄候選：未設定"
         )
+
+    def _update_mops_announcement_candidate_roots_label(self) -> None:
+        roots = getattr(
+            self.source_service, "p0_mops_announcement_candidate_roots", ()
+        )
+        self.mops_announcement_candidate_roots_label.setText(
+            "目前公告候選：\n" + "\n".join(str(root) for root in roots)
+            if roots
+            else "目前公告候選：未設定"
+        )
+
+    def _choose_mops_announcement_candidate_roots(self) -> None:
+        current = getattr(
+            self.source_service, "p0_mops_announcement_candidate_roots", ()
+        )
+        start_directory = str(Path(current[0]).parent) if current else str(Path.home())
+        selected, _filter = QFileDialog.getOpenFileNames(
+            self,
+            "選取一個或多個已封存的 MOPS 公告候選 JSON",
+            start_directory,
+            "MOPS 公告候選 (mops-statement-availability.json)",
+        )
+        if not selected:
+            return
+        setter = getattr(
+            self.source_service, "set_p0_mops_announcement_candidate_roots", None
+        )
+        if not callable(setter):
+            return
+        roots = tuple(dict.fromkeys(str(Path(path).parent) for path in selected))
+        setter(roots)
+        self._update_mops_announcement_candidate_roots_label()
+        self.refresh_console()
+
+    def _reset_mops_announcement_candidate_roots(self) -> None:
+        setter = getattr(
+            self.source_service, "set_p0_mops_announcement_candidate_roots", None
+        )
+        if not callable(setter):
+            return
+        setter(None)
+        self._update_mops_announcement_candidate_roots_label()
+        self.refresh_console()
 
     def _choose_issuer_directory_candidate_root(self) -> None:
         selected = QFileDialog.getExistingDirectory(
@@ -1108,6 +1236,174 @@ class ResearchConsoleView(QWidget):
         set_candidate_root(None)
         self._update_quarterly_candidate_root_label()
         self.refresh_console()
+
+    def _render_quarterly_announcement_crosswalk(self) -> None:
+        rows = getattr(self, "_control_center_rows", [])
+        source_row = next(
+            (
+                row
+                for row in rows
+                if row.get("source_id") == "pit.quarterly_financials"
+            ),
+            None,
+        )
+        crosswalk = (
+            source_row.get("quarterly_announcement_crosswalk")
+            if source_row
+            else None
+        )
+        self._quarterly_announcement_crosswalk = (
+            crosswalk if isinstance(crosswalk, dict) else None
+        )
+        self.quarterly_announcement_crosswalk_table.setRowCount(0)
+        self.quarterly_announcement_crosswalk_resource_table.setRowCount(0)
+        if self._quarterly_announcement_crosswalk is None:
+            self.quarterly_announcement_crosswalk_summary_label.setText(
+                "公告候選尚未與季報 CSV 同時讀取；本區不推定未公告、available-at 或來源資格。"
+            )
+            self.quarterly_announcement_crosswalk_detail_label.setText(
+                "選取季報資源並明選一個或多個公告候選後，才會顯示有限窗口對照。"
+            )
+            return
+
+        crosswalk = self._quarterly_announcement_crosswalk
+        state = str(crosswalk.get("status", "unknown"))
+        start = crosswalk.get("query_window_start") or "未知"
+        end = crosswalk.get("query_window_end") or "未知"
+        bundle_rows = crosswalk.get("announcement_candidate_bundles", [])
+        bundle_text = "、".join(
+            str(item.get("candidate_name", "候選"))
+            for item in bundle_rows
+            if isinstance(item, dict)
+        ) or "未驗證"
+        summary = (
+            f"狀態：{_announcement_crosswalk_state(state)}｜候選 bundle：{crosswalk.get('announcement_candidate_bundle_count', 0)}"
+            f"｜查詢窗口：{start} 至 {end}\n"
+            f"唯一公告時間候選：{crosswalk.get('unique_announcement_timestamp_match_count', 0)} 筆；"
+            f"多版本歧義：{crosswalk.get('ambiguous_announcement_version_match_count', 0)} 筆。\n"
+            f"候選：{bundle_text}\n"
+            "依 Owner 授權，明確匹配的 MOPS 顯示日期與時間作為公告時間戳。這是候選對照，尚未回寫正式資料；"
+            "不證明 CSV 數值版本、全市場 coverage、歷史 PIT 或來源授權；source acceptance=false、Gate credit=false。"
+        )
+        errors = crosswalk.get("errors", [])
+        if isinstance(errors, list) and errors:
+            summary += "\n讀取問題：" + "、".join(str(item) for item in errors)
+        self.quarterly_announcement_crosswalk_summary_label.setText(summary)
+
+        summary_rows = crosswalk.get("summary_by_market_statement", [])
+        if not isinstance(summary_rows, list):
+            summary_rows = []
+        _set_rows(
+            self.quarterly_announcement_crosswalk_table,
+            (
+                (
+                    item.get("market", "未知"),
+                    item.get("statement_type", "未知"),
+                    item.get("profile_count", 0),
+                    item.get("one_announcement_candidate", 0),
+                    item.get("multiple_announcement_candidates", 0),
+                    item.get("not_observed_in_selected_windows", 0),
+                    item.get("query_window_incomplete", 0),
+                    item.get("identity_incomplete", 0),
+                )
+                for item in summary_rows
+                if isinstance(item, dict)
+            ),
+            status_column=-1,
+        )
+        self._render_quarterly_announcement_crosswalk_resource()
+
+    def _render_quarterly_announcement_crosswalk_resource(self) -> None:
+        table = self.quarterly_announcement_crosswalk_resource_table
+        table.setRowCount(0)
+        crosswalk = self._quarterly_announcement_crosswalk
+        selected = self._selected_quarterly_candidate_resource()
+        if crosswalk is None or selected is None:
+            self.quarterly_announcement_crosswalk_detail_label.setText(
+                "選取上方季度 CSV 資源，查看該資源的同公司／報表／期別公告候選。"
+            )
+            return
+        resources = crosswalk.get("resources", [])
+        if not isinstance(resources, list):
+            resources = []
+        match = next(
+            (
+                item
+                for item in resources
+                if isinstance(item, dict)
+                and item.get("dataset_id") == selected.get("dataset_id")
+                and item.get("market") == selected.get("market")
+                and item.get("statement") == selected.get("statement")
+                and item.get("industry") == selected.get("industry")
+            ),
+            None,
+        )
+        if match is None:
+            self.quarterly_announcement_crosswalk_detail_label.setText(
+                "此資源沒有可核對的完整公司／期別 profile；不從部分列推論公告對照。"
+            )
+            return
+        profile_rows = match.get("rows", [])
+        if not isinstance(profile_rows, list):
+            profile_rows = []
+        summary = match.get("summary", {})
+        if not isinstance(summary, dict):
+            summary = {}
+        self.quarterly_announcement_crosswalk_detail_label.setText(
+            f"目前資源：{match.get('market')}／{match.get('statement')}／{match.get('industry')}；"
+            f"單一公告候選 {summary.get('one_announcement_candidate', 0)}，"
+            f"多筆歧義 {summary.get('multiple_announcement_candidates', 0)}，"
+            f"窗口內未觀測 {summary.get('not_observed_in_selected_windows', 0)}，"
+            f"查詢窗口不完整 {summary.get('query_window_incomplete', 0)}。"
+        )
+        table.setRowCount(len(profile_rows))
+        for row_index, item in enumerate(profile_rows):
+            if not isinstance(item, dict):
+                continue
+            candidates = item.get("announcement_candidates", [])
+            if not isinstance(candidates, list):
+                candidates = []
+            dates = sorted(
+                {
+                    str(candidate.get("announced_date"))
+                    for candidate in candidates
+                    if isinstance(candidate, dict)
+                }
+            )
+            hashes = sorted(
+                {
+                    str(candidate.get("source_sha256"))
+                    for candidate in candidates
+                    if isinstance(candidate, dict)
+                }
+            )
+            values = (
+                str(item.get("issuer_code") or "未知"),
+                str(item.get("fiscal_period") or "未知"),
+                _announcement_crosswalk_state(str(item.get("status", "unknown"))),
+                "、".join(
+                    sorted(
+                        str(candidate.get("announcement_at") or "")
+                        for candidate in candidates
+                        if isinstance(candidate, dict)
+                    )
+                ) or ("、".join(dates) if dates else "未觀測"),
+                str(item.get("announcement_count", 0)),
+                "、".join(value[:12] + "…" for value in hashes) if hashes else "未提供",
+            )
+            for column, value in enumerate(values):
+                cell = QTableWidgetItem(value)
+                if column == 5 and hashes:
+                    cell.setToolTip("\n".join(hashes))
+                elif column == 3 and candidates:
+                    cell.setToolTip(
+                        "\n".join(
+                            f"event SHA-256: {candidate.get('event_sha256', '未提供')}"
+                            for candidate in candidates
+                            if isinstance(candidate, dict)
+                        )
+                    )
+                table.setItem(row_index, column, cell)
 
     def _render_quarterly_candidate_audit(self) -> None:
         rows = getattr(self, "_control_center_rows", [])
@@ -1536,6 +1832,17 @@ class ResearchConsoleView(QWidget):
             table.setRowHidden(row_index, hidden)
             if not hidden:
                 visible += 1
+        crosswalk_table = self.quarterly_announcement_crosswalk_resource_table
+        for row_index in range(crosswalk_table.rowCount()):
+            searchable = " ".join(
+                crosswalk_table.item(row_index, column).text()
+                for column in (0, 1)
+                if crosswalk_table.item(row_index, column) is not None
+            ).casefold()
+            crosswalk_table.setRowHidden(
+                row_index,
+                bool(needle and needle not in searchable),
+            )
         resource = self._selected_quarterly_candidate_resource()
         profiles = resource.get("row_profiles") if resource is not None else None
         total_profiles = (
@@ -1678,6 +1985,20 @@ def _quarterly_candidate_state(value: object) -> str:
         "missing": "candidate_file_missing",
         "invalid": "candidate_file_invalid",
     }.get(str(value), "unknown")
+
+
+def _announcement_crosswalk_state(value: str) -> str:
+    return {
+        "available": "候選對照完成",
+        "partial": "部分窗口／profile 不完整",
+        "invalid": "候選驗證失敗",
+        "one_announcement_candidate": "有一筆公告候選",
+        "multiple_announcement_candidates": "多筆公告候選／歧義",
+        "not_observed_in_selected_windows": "選取窗口內未觀測",
+        "query_window_incomplete": "查詢窗口不完整",
+        "identity_incomplete": "季報身份欄缺漏",
+        "unknown": "未知",
+    }.get(value, value.replace("_", " "))
 
 
 def _quarterly_audit_state(value: object) -> str:

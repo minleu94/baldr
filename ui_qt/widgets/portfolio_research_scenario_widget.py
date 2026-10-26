@@ -42,6 +42,7 @@ class PortfolioResearchScenarioWidget(QWidget):
     """必須明選帳種、portfolio 與 artifact；只沿 frozen workspace 讀寫。"""
 
     stockResearchRequested = Signal(str)
+    accountContextSelected = Signal(object)
 
     def __init__(
         self,
@@ -166,6 +167,18 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.initial_save_button = QPushButton("另存初次研究結果", initial_group)
         self.initial_save_button.clicked.connect(self.save_initial)
         initial_buttons.addWidget(self.initial_save_button)
+        self.send_account_context_button = QPushButton(
+            "傳至 Workbench 顯示帳戶背景", initial_group
+        )
+        self.send_account_context_button.setToolTip(
+            "只傳送目前明選且已核驗的 Paper snapshot 供背景顯示；不接入 Advice、"
+            "不建立風險預算，也不代表來源或 Gate 已獲接受。"
+        )
+        self.send_account_context_button.clicked.connect(
+            self._send_initial_account_context
+        )
+        self.send_account_context_button.hide()
+        initial_buttons.addWidget(self.send_account_context_button)
         initial_layout.addRow("步驟 4／5｜比較、保存", initial_buttons)
         self.initial_sources_status_label = QLabel(
             "未載入成對來源；請明確選擇策略、版本與帳本 namespace，再選全部持股或輸入股票代碼。",
@@ -371,6 +384,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._initial_preview = None
         self._initial_preview_selection = None
         self._initial_preview_symbols = ()
+        self.send_account_context_button.hide()
         self._clear_artifact_ids()
         self._clear_display()
         self._queue("initial_compare", (selection, symbols, self.initial_use_account_positions_check.isChecked()))
@@ -620,6 +634,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._initial_preview = None
         self._initial_preview_selection = None
         self._initial_preview_symbols = ()
+        self.send_account_context_button.hide()
         if had_initial_display:
             self._clear_display()
 
@@ -1088,6 +1103,7 @@ class PortfolioResearchScenarioWidget(QWidget):
             self._initial_preview = value
             self._initial_preview_selection = selection
             self._initial_preview_symbols = symbols
+            self.send_account_context_button.setVisible(value.account.account_kind == "paper")
             self._render_comparison(value)
             self.initial_sources_status_label.setText(
                 "初次比較已完成，尚未保存；未綁定舊 artifact，保存前不能從此預覽下鑽。"
@@ -1244,6 +1260,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._initial_preview = None
         self._initial_preview_selection = None
         self._initial_preview_symbols = ()
+        self.send_account_context_button.hide()
         self._initialize_target_controls(saved.comparison)
         self._render_comparison(saved.comparison)
         self._select_artifact_id(saved.artifact_id)
@@ -1415,6 +1432,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._initial_preview = None
         self._initial_preview_selection = None
         self._initial_preview_symbols = ()
+        self.send_account_context_button.hide()
         self.account_summary_label.setText("尚無已開啟帳本。")
         self.valuation_summary_label.setText("精確現金與 NAV 尚未載入。")
         self.positions_table.setRowCount(0)
@@ -1448,6 +1466,7 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.initial_candidate_symbols_edit.setEnabled(False)
             self.initial_compare_button.setEnabled(False)
             self.initial_save_button.setEnabled(False)
+            self.send_account_context_button.setEnabled(False)
             return
         locked = self._is_save_action(self._worker_action)
         identity = self._selected_identity() is not None
@@ -1528,6 +1547,37 @@ class PortfolioResearchScenarioWidget(QWidget):
             and self._initial_preview_symbols == self._initial_candidate_symbols()
             and not busy
             and not self._closing
+        )
+        self.send_account_context_button.setEnabled(
+            self._initial_preview is not None
+            and self._initial_preview.account.account_kind == "paper"
+            and self._initial_preview_selection == self._selected_initial_selection()
+            and self._initial_preview_symbols == self._initial_candidate_symbols()
+            and not busy
+            and not self._closing
+        )
+
+    @Slot()
+    def _send_initial_account_context(self) -> None:
+        comparison = self._initial_preview
+        if (
+            comparison is None
+            or comparison.account.account_kind != "paper"
+            or self._initial_preview_selection != self._selected_initial_selection()
+            or self._initial_preview_symbols != self._initial_candidate_symbols()
+            or comparison.account.portfolio_id != comparison.request.portfolio_id
+            or comparison.account.snapshot_id != comparison.request.snapshot_id
+            or comparison.request.account_kind != "paper"
+        ):
+            self.initial_sources_status_label.setText(
+                "來源選取或候選已變更；未傳送，請重新比較目前來源。"
+            )
+            self._clear_initial_preview()
+            self._sync_enabled()
+            return
+        self.accountContextSelected.emit(comparison)
+        self.initial_sources_status_label.setText(
+            "已將明選 Paper snapshot 傳至 Workbench 作背景顯示；仍不會成為 Advice 輸入。"
         )
 
 

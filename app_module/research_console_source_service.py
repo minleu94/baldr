@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import inspect as pyinspect
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import os
@@ -33,6 +33,11 @@ from data_module.open_data_quarterly_candidate_audit import (
     AUDIT_SCHEMA as _QUARTERLY_CANDIDATE_AUDIT_SCHEMA,
     QuarterlyCandidateAuditError,
     audit_quarterly_candidate_root,
+)
+from data_module.open_data_quarterly_announcement_crosswalk import (
+    AUDIT_SCHEMA as _QUARTERLY_ANNOUNCEMENT_CROSSWALK_SCHEMA,
+    QuarterlyAnnouncementCrosswalkError,
+    build_quarterly_announcement_crosswalk,
 )
 from data_module.open_data_issuer_directory_candidate_audit import (
     AUDIT_SCHEMA as _ISSUER_DIRECTORY_AUDIT_SCHEMA,
@@ -68,6 +73,26 @@ P0_SOURCE_IDS = (
     "tpex.monthly_revenue_announcement",
     "pit.quarterly_financials",
 )
+
+
+def _resolve_candidate_roots(
+    value: Sequence[str | Path] | str,
+) -> tuple[Path, ...]:
+    if isinstance(value, str):
+        root_values: tuple[str | Path, ...] = tuple(
+            item.strip() for item in value.split(os.pathsep) if item.strip()
+        )
+    else:
+        root_values = tuple(value)
+    if any(
+        not isinstance(item, (str, Path)) or not str(item).strip()
+        for item in root_values
+    ):
+        raise ValueError("MOPS announcement candidate roots must be non-empty paths")
+    resolved = tuple(Path(item).expanduser().resolve() for item in root_values)
+    if len(set(resolved)) != len(resolved):
+        raise ValueError("MOPS announcement candidate roots must be unique")
+    return resolved
 
 _PIPELINE_LABELS = {
     "dataset": "Development Dataset V0",
@@ -126,6 +151,7 @@ class ResearchConsoleSourceService:
         p0_decision_path: str | Path | None = None,
         p0_quarterly_candidate_root: str | Path | None = None,
         p0_issuer_directory_candidate_root: str | Path | None = None,
+        p0_mops_announcement_candidate_roots: Sequence[str | Path] | str | None = None,
         clock: ClockProvider | None = None,
         max_projection_age: timedelta = _DEFAULT_MAX_PROJECTION_AGE,
     ) -> None:
@@ -178,6 +204,17 @@ class ResearchConsoleSourceService:
         self._p0_issuer_directory_candidate_root_default = (
             self._p0_issuer_directory_candidate_root
         )
+        configured_mops_roots = p0_mops_announcement_candidate_roots
+        if configured_mops_roots is None:
+            configured_mops_roots = os.environ.get(
+                "P0_MOPS_ANNOUNCEMENT_CANDIDATE_ROOTS", ""
+            )
+        self._p0_mops_announcement_candidate_roots = _resolve_candidate_roots(
+            configured_mops_roots
+        )
+        self._p0_mops_announcement_candidate_roots_default = (
+            self._p0_mops_announcement_candidate_roots
+        )
         self._p0_control_center_service = P0SourceControlCenterService()
         if max_projection_age <= timedelta(0):
             raise ValueError("max_projection_age must be positive")
@@ -209,6 +246,22 @@ class ResearchConsoleSourceService:
             )
             return
         self._p0_issuer_directory_candidate_root = Path(path).expanduser().resolve()
+
+    @property
+    def p0_mops_announcement_candidate_roots(self) -> tuple[Path, ...]:
+        return self._p0_mops_announcement_candidate_roots
+
+    def set_p0_mops_announcement_candidate_roots(
+        self, paths: Sequence[str | Path] | str | None
+    ) -> None:
+        """設定本次執行的唯讀 MOPS 公告候選目錄；不保存設定或改寫輸入。"""
+
+        if paths is None or paths == "" or paths == () or paths == []:
+            self._p0_mops_announcement_candidate_roots = (
+                self._p0_mops_announcement_candidate_roots_default
+            )
+            return
+        self._p0_mops_announcement_candidate_roots = _resolve_candidate_roots(paths)
 
     def inspect(
         self,
@@ -514,6 +567,42 @@ class ResearchConsoleSourceService:
                     ],
                     "errors": [str(exc).split(":", 1)[0]],
                 }
+        quarterly_announcement_crosswalk: dict[str, Any] | None = None
+        announcement_roots = self._p0_mops_announcement_candidate_roots
+        if quarterly_candidate_audit is not None and announcement_roots:
+            check_read_cancelled()
+            try:
+                if quarterly_candidate_audit.get("errors"):
+                    raise QuarterlyAnnouncementCrosswalkError(
+                        "quarterly_candidate_audit_invalid"
+                    )
+                quarterly_announcement_crosswalk = build_quarterly_announcement_crosswalk(
+                    quarterly_audit=quarterly_candidate_audit,
+                    announcement_candidate_roots=announcement_roots,
+                )
+            except QuarterlyAnnouncementCrosswalkError as exc:
+                quarterly_announcement_crosswalk = {
+                    "schema_version": _QUARTERLY_ANNOUNCEMENT_CROSSWALK_SCHEMA,
+                    "candidate_only": True,
+                    "formal_db_write": False,
+                    "source_acceptance": False,
+                    "gate_credit": False,
+                    "downstream_eligibility": "none",
+                    "status": "invalid",
+                    "announcement_candidate_bundle_count": len(announcement_roots),
+                    "announcement_candidate_bundles": [],
+                    "query_window_start": None,
+                    "query_window_end": None,
+                    "query_windows_complete_by_market_statement": {},
+                    "query_windows": [],
+                    "summary_by_market_statement": [],
+                    "resources": [],
+                    "limitations": [
+                        "明選季度 CSV 或 MOPS 公告候選未通過結構、hash 或來源身分核對；沒有產生對照結果。",
+                        "不改變來源接受、PIT 或 Gate 資格。",
+                    ],
+                    "errors": [str(exc).split(":", 1)[0]],
+                }
         directory_audit: dict[str, Any] | None = None
         directory_root = self._p0_issuer_directory_candidate_root
         if directory_root is not None:
@@ -631,6 +720,7 @@ class ResearchConsoleSourceService:
             license_evidence=license_evidence,
             decisions=decisions,
             quarterly_candidate_audit=quarterly_candidate_audit,
+            quarterly_announcement_crosswalk=quarterly_announcement_crosswalk,
         )
 
     @staticmethod

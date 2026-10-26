@@ -190,3 +190,17 @@ Research Evidence 的 P0 Source Control Center 新增獨立公司名錄候選選
 隔離回歸以 temp CSV／manifest 核 hash 改動與 source-acceptance 邊界拒絕，並以合成季度資料確認差異計數、表格預設差異篩選及全表切換。第一次 focused run 為 51 passed／1 failed；唯一失敗是測試預期值的市場排序與實際排序不同，修正測試排序後結果 **52 passed**；最後納入日期摘要與啟動環境隔離更新後再跑，結果 **54 passed**。強制 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；`scripts/qa_validate_update_tab.py` **25 passed／0 failed／4 skipped**；全域 mypy **1,149 source files，無錯誤**；14 個修改 Python 檔 `py_compile` 通過。最終收據位於工作區 scratch `quarterly-coverage-qa/focused3.log`、`workbench3.log`、`validator3.log`、`mypy3.log`、`py_compile3.log`；Python 命令由 bounded QA runner 在 8 GiB／12 process 上限下執行並自然排空。
 
 此增量不修改或重新擷取名錄／財報原件；沒有把既有官方 issuer 例外映射成自動狀態，也沒有接受來源、改 Gate 3、正式資料、回測或 ML。名錄與財報快照日期不一致；目前季報選擇仍一次只比一個根目錄。已完成 offscreen GUI 自動化，原生桌面畫面及 Owner UAT 尚未完成。document-control 對架構段、QA 清單與 QA 索引的 scoped check 通過；涵蓋 Snapshot／Manual 的較廣檢查仍被既有 `output` junction WinError 5 阻擋，錯誤只涉及舊 trial／task 引用，沒有指向本次新增章節。
+
+### 2026-10-25 MOPS 公告時間 crosswalk 與 Q2 實際解除數
+
+Owner 已授權把 MOPS 顯示的公告日期與時間直接作為對應公告時間戳。本輪更新候選 crosswalk，保留 MOPS 原始 `announcement_at` 的台北時區、事件 SHA 與來源回應 SHA；候選鍵按市場、公司、報表種類及期間比對，不只沿用日級 projection。這項授權已用於時間候選，不等於 MOPS EZSearch 自動採集授權或正式資料寫入許可。
+
+對 2026-Q2 四份一般業 Open Data CSV 的 **3,878** 個公司／報表 profile，對照 2026-07-01 至 2026-09-30 的三組已封存 MOPS 窗口，**3,864** 筆有唯一時間戳候選、**0** 筆有多個公告版本候選、**14** 筆在所選窗口未觀測。未觀測不表示未申報。候選根目錄和 JSON／CSV SHA 留存於本機 `open-data-quarterly-csv-candidate-20261026retry1` 與 `mops_statement_availability_q2_2026_*_20261025`；crosswalk 明確為 candidate-only，`formal_db_write=false`、`source_acceptance=false`、`gate_credit=false`。
+
+將其接回正式資料時，實際結果是 **0 列品質解除**：
+
+- `fundamental_statement_items` 有 1,645,555 列且公告日全缺，但資料期間僅到 2024-Q1，沒有 2026-Q2 目標列。這批公告候選無法回填至不存在的 Q2 財報列。
+- `fundamental_current_observations` 有 Q2 資料，但 MOPS current statement HTML 在 TWSE 1,084 家、TPEx 891 家公司與三種報表中，每個公司／報表鍵各有 3 個 `source_version`，合計 5,925 個公司／報表鍵。已封存公告事件沒有連至報表內容 hash／版本的 key；僅以公司、期間、報表類型 join 會把同一時間套到多個報表版本。該表全體 `aggregate_feature_eligible=0`，unit／basis 等其他門檻也不會因公告時間而自動解除。因此沒有修改這 306,067 列 Q2 觀測。
+- `fundamental_monthly_revenues` 有 242,651 列缺公告日；現有 1,832 個月營收 availability key 與缺公告日正式 DB key 的精確公司／月份交集為 **0**。沒有各舊月份對應公告時，不拿 2026-Q2 或其他月份時間代填；實際解除 **0 列**。
+
+以上正式 DB 均以唯讀方式檢查，本輪未寫入或重算正式資料。公告匹配候選不能視為 quality projector 已接受的事件映射；要安全解除品質，仍需取得具報表內容版本關聯的公告證據，或 source acceptance 審核建立該連結。MOPS EZSearch endpoint 使用授權、季度 CSV 金額單位／basis、歷史 PIT、舊月營收逐月公告以及其他缺值仍未解。原始 crosswalk 摘要、候選 hash 與唯讀查詢值由 bounded QA runner 產生，詳[本輪公告時間及圖卡 QA](BALDR_INDUSTRY_LEADER_CARDS_20261025.md)。

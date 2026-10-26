@@ -399,8 +399,15 @@ class IndustryThemeMapView(QWidget):
         self.leader_card_topics: dict[str, QLabel] = {}
         self.leader_card_values: dict[str, QLabel] = {}
         self.leader_card_coverages: dict[str, QLabel] = {}
+        self.leader_card_breadth_labels: dict[str, QLabel] = {}
+        self.leader_card_breadth_bars: dict[str, QWidget] = {}
+        self.leader_card_breadth_segments: dict[str, tuple[QFrame, QFrame, QFrame]] = {}
+        self.leader_card_institutional_labels: dict[str, QLabel] = {}
+        self.leader_card_institutional_bars: dict[str, QWidget] = {}
+        self.leader_card_institutional_segments: dict[str, tuple[QFrame, QFrame, QFrame]] = {}
         card_titles = (
-            ("return", "較高日漲跌幅"),
+            ("return", "領先題材｜平均日漲幅"),
+            ("return_laggard", "落後題材｜平均日漲幅"),
             ("turnover", "較高成交金額"),
             ("institutional", "法人淨流向"),
             ("volume", "五日量能"),
@@ -422,6 +429,67 @@ class IndustryThemeMapView(QWidget):
             coverage_label.setWordWrap(True)
             card_layout.addWidget(topic_label)
             card_layout.addWidget(value_label)
+            if key in {"return", "return_laggard"}:
+                breadth_label = QLabel("題材成員漲跌：尚未載入")
+                breadth_label.setAccessibleName(f"{title}題材成員漲跌分布")
+                breadth_label.setWordWrap(True)
+                bar = QWidget(card)
+                bar.setAccessibleName(f"{title}題材成員漲跌比例圖")
+                bar_layout = QHBoxLayout(bar)
+                bar_layout.setContentsMargins(0, 0, 0, 0)
+                bar_layout.setSpacing(2)
+                segments = []
+                for name, color in (
+                    ("上漲成員", MIDNIGHT_ANALYST.market_up),
+                    ("下跌成員", MIDNIGHT_ANALYST.market_down),
+                    ("平盤成員", MIDNIGHT_ANALYST.market_flat),
+                ):
+                    segment = QFrame(bar)
+                    segment.setAccessibleName(name)
+                    segment.setMinimumHeight(8)
+                    segment.setMaximumHeight(8)
+                    segment.setStyleSheet(
+                        f"background-color: {color}; border-radius: 4px;"
+                    )
+                    segment.hide()
+                    bar_layout.addWidget(segment, 0)
+                    segments.append(segment)
+                card_layout.addWidget(breadth_label)
+                card_layout.addWidget(bar)
+                self.leader_card_breadth_labels[key] = breadth_label
+                self.leader_card_breadth_bars[key] = bar
+                self.leader_card_breadth_segments[key] = tuple(segments)
+                institutional_label = QLabel("題材成員法人淨額：尚未載入")
+                institutional_label.setAccessibleName(f"{title}題材成員法人淨額分布")
+                institutional_label.setWordWrap(True)
+                institutional_bar = QWidget(card)
+                institutional_bar.setAccessibleName(f"{title}題材成員法人淨額比例圖")
+                institutional_bar_layout = QHBoxLayout(institutional_bar)
+                institutional_bar_layout.setContentsMargins(0, 0, 0, 0)
+                institutional_bar_layout.setSpacing(2)
+                institutional_segments = []
+                for name, color in (
+                    ("法人淨買超成員", MIDNIGHT_ANALYST.market_up),
+                    ("法人淨賣超成員", MIDNIGHT_ANALYST.market_down),
+                    ("法人淨額持平成員", MIDNIGHT_ANALYST.market_flat),
+                ):
+                    segment = QFrame(institutional_bar)
+                    segment.setAccessibleName(name)
+                    segment.setMinimumHeight(8)
+                    segment.setMaximumHeight(8)
+                    segment.setStyleSheet(
+                        f"background-color: {color}; border-radius: 4px;"
+                    )
+                    segment.hide()
+                    institutional_bar_layout.addWidget(segment, 0)
+                    institutional_segments.append(segment)
+                card_layout.addWidget(institutional_label)
+                card_layout.addWidget(institutional_bar)
+                self.leader_card_institutional_labels[key] = institutional_label
+                self.leader_card_institutional_bars[key] = institutional_bar
+                self.leader_card_institutional_segments[key] = tuple(
+                    institutional_segments
+                )
             card_layout.addWidget(coverage_label)
             self.observation_cards[key] = card
             self.observation_cards_layout.addWidget(card, 0, len(self.observation_cards) - 1)
@@ -430,6 +498,9 @@ class IndustryThemeMapView(QWidget):
             self.leader_card_values[key] = value_label
             self.leader_card_coverages[key] = coverage_label
         content_layout.addWidget(self.observations_group)
+        # 使用者先看方向、數值和成員分母；版本來源細節仍保留在下方摘要。
+        content_layout.removeWidget(self.observations_group)
+        content_layout.insertWidget(1, self.observations_group)
 
         self.return_tiles_toggle = QPushButton("瀏覽完整覆蓋漲跌格（展開）")
         self.return_tiles_toggle.setObjectName("industryThemeReturnTilesToggle")
@@ -1750,6 +1821,10 @@ class IndustryThemeMapView(QWidget):
     def _apply_snapshot(self, snapshot: ThemeResearchSnapshot) -> None:
         self._clear_snapshot_view()
         self._presentation = build_theme_research_presentation(snapshot)
+        self._ascending_presentation = build_theme_research_presentation(
+            snapshot,
+            ascending=True,
+        )
         report = snapshot.report
         rows = tuple(report.rows)
         self._rows_by_theme = {
@@ -1894,6 +1969,24 @@ class IndustryThemeMapView(QWidget):
             self.leader_card_values[key].setText("資料不足")
             self.leader_card_values[key].setToolTip("")
             self.leader_card_coverages[key].setText("尚未載入題材觀察值。")
+            breadth_label = self.leader_card_breadth_labels.get(key)
+            breadth_bar = self.leader_card_breadth_bars.get(key)
+            institutional_label = self.leader_card_institutional_labels.get(key)
+            institutional_bar = self.leader_card_institutional_bars.get(key)
+            if breadth_label is not None:
+                breadth_label.setText("題材成員漲跌：尚未載入")
+            if breadth_bar is not None:
+                breadth_bar.setAccessibleDescription("尚未載入題材成員漲跌資料。")
+                for segment in self.leader_card_breadth_segments[key]:
+                    segment.hide()
+            if institutional_label is not None:
+                institutional_label.setText("題材成員法人淨額：尚未載入")
+            if institutional_bar is not None:
+                institutional_bar.setAccessibleDescription(
+                    "尚未載入題材成員法人淨額分布資料。"
+                )
+                for segment in self.leader_card_institutional_segments[key]:
+                    segment.hide()
         self.observation_missing_label.setText("尚未載入題材觀察值；不能推定為零。")
         self.observation_missing_label.show()
         self._arrange_observation_cards()
@@ -2253,6 +2346,11 @@ class IndustryThemeMapView(QWidget):
         self._render_turnover_treemap()
         leader_lists = {
             "return": presentation.return_leaders,
+            "return_laggard": (
+                self._ascending_presentation.return_leaders
+                if self._ascending_presentation is not None
+                else ()
+            ),
             "turnover": presentation.turnover_leaders,
             "institutional": presentation.institutional_leaders,
             "volume": presentation.volume_leaders,
@@ -2272,17 +2370,135 @@ class IndustryThemeMapView(QWidget):
                 )
                 continue
             row = rows[0]
-            value, available, members = self._leader_value_and_coverage(key, row)
+            value_key = "return" if key == "return_laggard" else key
+            value, available, members = self._leader_value_and_coverage(value_key, row)
             self.leader_card_topics[key].setText(
                 f"{row.chain_name}／{row.theme_name}"
             )
             self.leader_card_values[key].setText(value)
+            if key in {"return", "return_laggard"}:
+                direction_color = (
+                    MIDNIGHT_ANALYST.market_up
+                    if row.mean_return_pct is not None and row.mean_return_pct > 0
+                    else MIDNIGHT_ANALYST.market_down
+                    if row.mean_return_pct is not None and row.mean_return_pct < 0
+                    else MIDNIGHT_ANALYST.market_flat
+                )
+                self.leader_card_values[key].setStyleSheet(
+                    f"color: {direction_color}; font-size: 15px; font-weight: 700;"
+                )
             self.leader_card_values[key].setToolTip(
-                self._leader_original_value(key, row)
+                self._leader_original_value(value_key, row)
             )
-            self.leader_card_coverages[key].setText(
-                self._coverage(available, members)
-            )
+            coverage_text = self._coverage(available, members)
+            if key in {"return", "return_laggard"}:
+                counts = (row.up_count, row.down_count, row.flat_count)
+                direction_names = ("漲", "跌", "平")
+                return_counts_are_ints = all(type(count) is int for count in counts)
+                count_total = sum(counts) if return_counts_are_ints else -1
+                return_coverage = row.coverage.returns
+                member_total = row.coverage.members
+                breadth_label = self.leader_card_breadth_labels[key]
+                breadth_bar = self.leader_card_breadth_bars[key]
+                segments = self.leader_card_breadth_segments[key]
+                returns_counts_valid = (
+                    return_counts_are_ints
+                    and all(count >= 0 for count in counts)
+                    and type(return_coverage) is int
+                    and return_coverage > 0
+                    and type(member_total) is int
+                    and member_total >= 0
+                    and return_coverage <= member_total
+                    and count_total == return_coverage
+                )
+                if returns_counts_valid:
+                    breadth_text = (
+                        "題材成員："
+                        + "／".join(
+                            f"{name} {count}"
+                            for name, count in zip(direction_names, counts)
+                        )
+                        + f"（{return_coverage} 位有漲跌資料；非全市場廣度）"
+                    )
+                    ratio = row.advancing_ratio
+                    ratio_valid = (
+                        type(ratio) is Decimal
+                        and ratio.is_finite()
+                        and Decimal(0) <= ratio <= Decimal(1)
+                        and ratio == Decimal(row.up_count) / Decimal(return_coverage)
+                    )
+                    if ratio_valid:
+                        ratio_text = self._display_decimal(ratio, percentage=True)
+                        breadth_text += f"｜題材內上漲率 {ratio_text}"
+                    else:
+                        breadth_text += "｜題材內上漲率未知"
+                    breadth_label.setText(breadth_text)
+                    breadth_bar.setAccessibleDescription(breadth_text)
+                    for segment, count in zip(segments, counts):
+                        segment.hide()
+                        if count > 0:
+                            segment.show()
+                            breadth_bar.layout().setStretch(
+                                breadth_bar.layout().indexOf(segment), count
+                            )
+                else:
+                    breadth_label.setText(
+                        "題材成員漲跌：未知（家數型別、非負值或有效覆蓋分母不一致）"
+                    )
+                    breadth_bar.setAccessibleDescription(
+                        breadth_label.text()
+                    )
+                    for segment in segments:
+                        segment.hide()
+                institutional_label = self.leader_card_institutional_labels[key]
+                institutional_bar = self.leader_card_institutional_bars[key]
+                institutional_segments = self.leader_card_institutional_segments[key]
+                institutional_counts = (
+                    row.institutional_buy_count,
+                    row.institutional_sell_count,
+                    row.institutional_flat_count,
+                )
+                institutional_coverage = row.coverage.institutional_shares
+                if (
+                    all(
+                        type(count) is int and count >= 0
+                        for count in institutional_counts
+                    )
+                    and type(institutional_coverage) is int
+                    and institutional_coverage > 0
+                    and type(row.coverage.members) is int
+                    and row.coverage.members >= 0
+                    and institutional_coverage <= row.coverage.members
+                    and sum(institutional_counts) == institutional_coverage
+                ):
+                    institutional_text = (
+                        "題材成員法人淨額：買超 "
+                        f"{institutional_counts[0]}／賣超 {institutional_counts[1]}／"
+                        f"持平 {institutional_counts[2]}（有淨股數 {institutional_coverage}／"
+                        f"{row.coverage.members} 位成員；非全市場廣度；非多家法人共同買進同股統計）"
+                    )
+                    institutional_label.setText(institutional_text)
+                    institutional_bar.setAccessibleDescription(institutional_text)
+                    for segment, count in zip(
+                        institutional_segments, institutional_counts
+                    ):
+                        segment.hide()
+                        if count > 0:
+                            segment.show()
+                            institutional_bar.layout().setStretch(
+                                institutional_bar.layout().indexOf(segment), count
+                            )
+                else:
+                    institutional_label.setText(
+                        "題材成員法人淨額：未知（沒有一致的有效淨股數覆蓋；非全市場廣度，"
+                        "也不是多家法人共同買進同股統計）"
+                    )
+                    institutional_bar.setAccessibleDescription(
+                        institutional_label.text()
+                    )
+                    for segment in institutional_segments:
+                        segment.hide()
+            self.leader_card_coverages[key].setText(coverage_text)
         self.observation_missing_label.setText(
             "資料不足：" + "、".join(missing) + "。沒有完整覆蓋觀察值，不能推定為零。"
             if missing else ""
@@ -2327,11 +2543,28 @@ class IndustryThemeMapView(QWidget):
             return
         columns = 1 if self.width() < 650 else 2 if self.width() < 1100 else 4
         visible = [card for card in self.observation_cards.values() if not card.isHidden()]
-        columns = min(columns, max(1, len(visible)))
+        direction_cards = {
+            self.observation_cards["return"],
+            self.observation_cards["return_laggard"],
+        }
+        if not any(card in direction_cards for card in visible):
+            columns = min(columns, max(1, len(visible)))
         for card in self.observation_cards.values():
             self.observation_cards_layout.removeWidget(card)
-        for index, card in enumerate(visible):
-            self.observation_cards_layout.addWidget(card, index // columns, index % columns)
+        row_index = 0
+        column_index = 0
+        for card in visible:
+            span = 2 if card in direction_cards and columns >= 4 else 1
+            if column_index + span > columns:
+                row_index += 1
+                column_index = 0
+            self.observation_cards_layout.addWidget(
+                card, row_index, column_index, 1, span
+            )
+            column_index += span
+            if column_index >= columns:
+                row_index += 1
+                column_index = 0
         for column in range(4):
             self.observation_cards_layout.setColumnStretch(column, int(column < columns))
 

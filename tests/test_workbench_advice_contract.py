@@ -5,6 +5,8 @@ import sys
 from dataclasses import replace
 from datetime import date, datetime
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
@@ -19,7 +21,11 @@ from app_module.advice_dtos import (
     PortfolioAdviceDTO,
     RecommendationAdviceDTO,
 )
-from app_module.workbench_dtos import WorkbenchAccessBoundary, WorkbenchDashboardDTO
+from app_module.workbench_dtos import (
+    WorkbenchAccessBoundary,
+    WorkbenchDashboardDTO,
+    WorkbenchDailyEvidence,
+)
 from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
 
 
@@ -305,6 +311,191 @@ def test_advice_selection_card_bounds_height_and_keeps_full_text_reachable() -> 
     assert long_risk in view.advice_selection_card.toolTip()
     assert long_invalidation in view.advice_selection_card.accessibleDescription()
     assert long_risk in view.advice_presentation_detail.text()
+
+
+def test_advice_exact_saved_source_button_requires_current_row_identity() -> None:
+    _app()
+    base = _dashboard_with_advice()
+    result_id = "saved-result-20260711"
+    recommendation = replace(
+        base.advice_dashboard.recommendations[0],
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        source_result_id=result_id,
+        source_payload_sha256="sha256:" + "a" * 64,
+    )
+    daily = WorkbenchDailyEvidence(
+        status="candidate",
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        headline="候選已保存",
+        next_action="回查保存結果",
+        market_summary="",
+        industry_summary="",
+        stock_summary="",
+        watchlist_summary="",
+        portfolio_summary="",
+        candidate_symbols=("2330",),
+        candidate_count=1,
+        candidate_status="candidate",
+        candidate_result_id=result_id,
+        candidate_data_date="2026-07-11",
+    )
+    advice = replace(base.advice_dashboard, recommendations=(recommendation,))
+    dashboard = replace(base, advice_dashboard=advice, daily_evidence=daily)
+    opened: list[str] = []
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=dashboard,
+        navigate_to_saved_recommendation_callback=lambda selected: opened.append(selected) or True,
+        auto_refresh=False,
+    )
+
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    assert not view.advice_source_result_button.isHidden()
+    assert "result_id=" + result_id in view.advice_source_result_button.toolTip()
+    assert "payload SHA-256=sha256:" + "a" * 64 in view.advice_source_result_button.toolTip()
+    view.advice_source_result_button.click()
+    assert opened == [result_id]
+    view._display_exception_dashboard("source read failed")
+    assert view.advice_source_result_button.isHidden()
+
+    mismatched_daily = replace(daily, candidate_result_id="another-result")
+    mismatch_view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(dashboard, daily_evidence=mismatched_daily),
+        navigate_to_saved_recommendation_callback=lambda selected: opened.append(selected) or True,
+        auto_refresh=False,
+    )
+    mismatch_view._show_advice_row_presentation(
+        mismatch_view.advice_recommendation_model, 0
+    )
+    assert mismatch_view.advice_source_result_button.isHidden()
+    assert not mismatch_view._open_selected_advice_source_result()
+    assert opened == [result_id]
+
+
+def test_advice_manual_research_decision_requires_exact_current_identity() -> None:
+    from types import SimpleNamespace
+
+    _app()
+    base = _dashboard_with_advice()
+    result_id = "saved-result-manual-decision"
+    recommendation = replace(
+        base.advice_dashboard.recommendations[0],
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        source_result_id=result_id,
+    )
+    daily = WorkbenchDailyEvidence(
+        status="candidate",
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        headline="候選已保存",
+        next_action="記錄研究決定",
+        market_summary="",
+        industry_summary="",
+        stock_summary="",
+        watchlist_summary="",
+        portfolio_summary="",
+        candidate_symbols=("2330",),
+        candidate_status="candidate",
+        candidate_result_id=result_id,
+        candidate_source_snapshot_id="source-snapshot-1",
+        candidate_data_date="2026-07-11",
+    )
+    dashboard = replace(
+        base,
+        advice_dashboard=replace(base.advice_dashboard, recommendations=(recommendation,)),
+        daily_evidence=daily,
+    )
+    saved: list[tuple[str, dict[str, str], str]] = []
+    readback_result: list[object] = []
+
+    def save(action: str, identity: dict[str, str], note: str) -> object:
+        saved.append((action, identity, note))
+        if action == "readback":
+            return readback_result[0]
+        return SimpleNamespace(success=True, readback_verified=True, message="測試讀回成功")
+
+    def state(identity: dict[str, str], *, status: str = "linked", conflict: str = "") -> object:
+        return SimpleNamespace(
+            identity=SimpleNamespace(**{**identity, "identity_status": status}),
+            read_error="",
+            identity_conflict_reason=conflict,
+            decision_status="skipped",
+            active_note_count=0,
+            next_review_at="",
+        )
+
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=dashboard,
+        save_advice_research_decision_callback=save,
+        auto_refresh=False,
+    )
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    assert view.advice_skip_decision_button.isEnabled()
+    assert "hash 未提供" in view.advice_research_decision_status.text()
+    view.advice_skip_decision_button.click()
+    assert saved == [(
+        "skipped",
+        {
+            "result_id": result_id,
+            "stock_code": "2330",
+            "decision_date": "2026-07-12",
+            "source_snapshot_id": "source-snapshot-1",
+            "source_snapshot_hash": "",
+            "identity_status": "linked",
+        },
+        "",
+    )]
+    assert "已保存並讀回核對" in view.advice_research_decision_status.text()
+    assert "不建立交易或 fill" in view.advice_research_decision_status.text()
+    expected_identity = saved[0][1]
+    readback_result.append(state(expected_identity))
+    view.advice_readback_decision_button.click()
+    assert saved[-1][0] == "readback"
+    assert "同筆狀態已讀回" in view.advice_research_decision_status.text()
+
+    readback_result[0] = state(
+        expected_identity,
+        status="conflict",
+        conflict="來源 snapshot 與歷史紀錄衝突",
+    )
+    assert not view._save_selected_advice_research_decision("readback")
+    assert "讀回身分衝突" in view.advice_research_decision_status.text()
+    assert "來源 snapshot 與歷史紀錄衝突" in view.advice_research_decision_status.text()
+
+    mismatched_identity = {**expected_identity, "result_id": "other-result"}
+    readback_result[0] = state(mismatched_identity)
+    assert not view._save_selected_advice_research_decision("readback")
+    assert "欄位不符=result_id" in view.advice_research_decision_status.text()
+    view._display_exception_dashboard("stale source")
+    assert not view.advice_skip_decision_button.isEnabled()
+    assert "已 stale" in view.advice_research_decision_status.text()
+
+    mismatched = replace(recommendation, decision_date="2026-07-13")
+    blocked_view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(
+            dashboard,
+            advice_dashboard=replace(base.advice_dashboard, recommendations=(mismatched,)),
+        ),
+        save_advice_research_decision_callback=save,
+        auto_refresh=False,
+    )
+    blocked_view._show_advice_row_presentation(blocked_view.advice_recommendation_model, 0)
+    assert not blocked_view.advice_skip_decision_button.isEnabled()
+    assert saved[0][0] == "skipped"
+
+
+def test_advice_source_identity_round_trips_and_rejects_invalid_hash() -> None:
+    row = RecommendationAdviceDTO(
+        stock_code="2330",
+        advice_action=AdviceAction.RESEARCH,
+        source_result_id="saved-result-1",
+        source_payload_sha256="sha256:" + "b" * 64,
+    )
+    assert RecommendationAdviceDTO.from_dict(row.to_dict()) == row
+    with pytest.raises(ValueError, match="canonical SHA-256"):
+        replace(row, source_payload_sha256="not-a-hash")
 
 
 def test_advice_tables_hide_empty_models_and_bound_nonempty_rows() -> None:

@@ -306,6 +306,33 @@ def test_initial_compare_save_returns_to_exact_saved_target_and_stock_flow(tmp_p
     widget.close()
 
 
+def test_initial_paper_comparison_can_be_explicitly_sent_to_workbench(tmp_path) -> None:
+    app = _app()
+    _, _, base, _saved = _seed_workspace(tmp_path)
+    selection = _initial_selection()
+    widget = PortfolioResearchScenarioWidget(_InitialWorkspace(base, selection))
+    _fill_initial_controls(app, widget, selection)
+    emitted: list[PortfolioResearchScenarioComparison] = []
+    widget.accountContextSelected.connect(emitted.append)
+
+    assert widget.send_account_context_button.isHidden()
+    widget.initial_compare_button.click()
+    _wait_until(app, lambda: not widget.has_running_worker() and widget.current_comparison is not None)
+    comparison = widget.current_comparison
+    assert comparison is not None
+    assert not widget.send_account_context_button.isHidden()
+    assert "不接入 Advice" in widget.send_account_context_button.toolTip()
+
+    widget.send_account_context_button.click()
+    assert emitted == [comparison]
+    assert emitted[0].account.snapshot_id == "snapshot-a"
+
+    widget.initial_candidate_symbols_edit.setText("2330")
+    assert widget.send_account_context_button.isHidden()
+    assert emitted == [comparison]
+    widget.close()
+
+
 def test_initial_all_held_choice_saves_exact_account_positions_without_typed_code(tmp_path) -> None:
     app = _app()
     _, repository, base, _saved = _seed_workspace(tmp_path)

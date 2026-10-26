@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
 from app_module.advice_dtos import AdviceDashboardDTO
@@ -783,6 +784,103 @@ class WorkbenchLatestCaptureStatus:
 
 
 @dataclass(frozen=True)
+class WorkbenchPaperAccountPosition:
+    stock_code: str
+    quantity: int
+    mark_price: Decimal
+    market_value: Decimal
+    weight_bp: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stock_code": self.stock_code,
+            "quantity": self.quantity,
+            "mark_price": str(self.mark_price),
+            "market_value": str(self.market_value),
+            "weight_bp": self.weight_bp,
+        }
+
+
+@dataclass(frozen=True)
+class WorkbenchPaperAccountContextDTO:
+    """明確選取的 Paper snapshot 背景；絕不代表 Advice 風險預算輸入。"""
+
+    status: Literal["available", "stale"]
+    decision_date: date
+    portfolio_id: str
+    snapshot_id: str
+    as_of_date: date
+    available_at: datetime
+    source_hash: str
+    total_value: Decimal | None = None
+    cash_amount: Decimal | None = None
+    positions: tuple[WorkbenchPaperAccountPosition, ...] = ()
+    diagnostic: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "positions", tuple(self.positions))
+        if self.status not in {"available", "stale"}:
+            raise ValueError("unsupported Paper account context status")
+        if type(self.decision_date) is not date or type(self.as_of_date) is not date:
+            raise ValueError("Paper context dates must be date values")
+        if (
+            not isinstance(self.available_at, datetime)
+            or self.available_at.tzinfo is None
+            or self.available_at.utcoffset() is None
+        ):
+            raise ValueError("Paper context available_at must be timezone-aware")
+        if (
+            len(self.source_hash) != 71
+            or not self.source_hash.startswith("sha256:")
+            or any(character not in "0123456789abcdef" for character in self.source_hash[7:])
+        ):
+            raise ValueError("Paper context source_hash must be canonical SHA-256")
+        if any(
+            not isinstance(position, WorkbenchPaperAccountPosition)
+            or not position.stock_code
+            or type(position.quantity) is not int
+            or position.quantity < 1
+            or not isinstance(position.mark_price, Decimal)
+            or not position.mark_price.is_finite()
+            or position.mark_price <= 0
+            or not isinstance(position.market_value, Decimal)
+            or not position.market_value.is_finite()
+            or position.market_value < 0
+            or type(position.weight_bp) is not int
+            or not 0 <= position.weight_bp <= 10000
+            for position in self.positions
+        ):
+            raise ValueError("Paper context positions must contain valid exact values")
+        if self.status == "available":
+            if (
+                not isinstance(self.total_value, Decimal)
+                or not self.total_value.is_finite()
+                or not isinstance(self.cash_amount, Decimal)
+                or not self.cash_amount.is_finite()
+            ):
+                raise ValueError("available Paper context requires exact valuation")
+            if any(value < 0 for value in (self.total_value, self.cash_amount)):
+                raise ValueError("Paper account values must be non-negative")
+        elif self.total_value is not None or self.cash_amount is not None or self.positions:
+            raise ValueError("stale Paper context must not expose account values")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "decision_date": self.decision_date.isoformat(),
+            "portfolio_id": self.portfolio_id,
+            "snapshot_id": self.snapshot_id,
+            "as_of_date": self.as_of_date.isoformat(),
+            "available_at": self.available_at.isoformat(),
+            "source_hash": self.source_hash,
+            "total_value": str(self.total_value) if self.total_value is not None else None,
+            "cash_amount": str(self.cash_amount) if self.cash_amount is not None else None,
+            "positions": [row.to_dict() for row in self.positions],
+            "diagnostic": self.diagnostic,
+        }
+
+
+@dataclass(frozen=True)
 class WorkbenchDashboardDTO:
     as_of_date: date
     generated_at: datetime
@@ -801,6 +899,7 @@ class WorkbenchDashboardDTO:
     advice_dashboard: AdviceDashboardDTO | None = None
     daily_evidence: WorkbenchDailyEvidence | None = None
     position_health: PositionHealthReadModel | None = None
+    paper_account_context: WorkbenchPaperAccountContextDTO | None = None
     snapshot_date: date | None = None
     market_data_as_of_date: date | None = None
     market_index_as_of_date: date | None = None
@@ -866,6 +965,11 @@ class WorkbenchDashboardDTO:
             "position_health": (
                 self.position_health.to_dict()
                 if self.position_health is not None
+                else None
+            ),
+            "paper_account_context": (
+                self.paper_account_context.to_dict()
+                if self.paper_account_context is not None
                 else None
             ),
         }

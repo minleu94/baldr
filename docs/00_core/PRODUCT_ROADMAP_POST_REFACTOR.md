@@ -11,16 +11,20 @@
 
 baldr 沒有走錯技術方向；SQLite-first、資料可得日治理、Research Run Registry、Recommendation、Backtest、Evidence、Portfolio 來源追溯與 Workbench 都是可延續的資產。問題在於工程完成度已跑在日常產品價值與投資有效性之前：使用者看得到 readiness、dry-run、scheduler、gate 與 closeout，卻還不能穩定取得「今天研究誰、是否建立部位、配置多少、持倉該加碼／持有／減碼／退出」的結構化答案。
 
+本產品的主要使用方式是手動維護持倉／交易紀錄，由 baldr 依市場資料與可追溯策略證據給出可解釋的策略研究建議；不連接券商或真實帳戶。配置金額與帳戶風險預算不是日常策略建議的必要輸入。手動紀錄可選擇性用於持倉健康與 paper 研究，不得被描述為即時券商狀態或 verified live account。
+
 Post-Refactor 主線改為：
 
 ```text
 受治理資料
-→ 結構化 Recommendation Advice
-→ Portfolio Advice
-→ Position Health / Exit
-→ Forward / Paper / Live Evidence
+→ 有來源與版本的策略 Recommendation
+→ Why / Why Not / Risk / Evidence 與失效條件
+→ 使用者手動紀錄與覆盤
+→ Forward / Paper Evidence
 → 保留、降權、限制或退休
 ```
+
+Portfolio sizing／風險預算是以手動紀錄為輸入的可選進階分析，不是核心策略建議流程的前置條件；不得因沒有真實帳戶連線而拒絕顯示有證據支持的策略候選。
 
 產品成功不以功能數量或勝率單點判定，而以「可驗證的決策品質、成本後風險調整表現、重大回撤控制、可解釋的 research-to-live gap，以及能主動淘汰無效訊號」判定。
 
@@ -28,13 +32,14 @@ Post-Refactor 主線改為：
 
 ### 2.1 使用者每天仍缺少的答案
 
-1. 今天市場允許新增風險嗎？
-2. 哪些股票值得研究、哪些可列為建立部位候選？
-3. 為什麼選它、為什麼不選其他股票？
-4. 每檔候選的建議目標權重、目前權重與差距是多少？
-5. 現有持倉是 `ADD_CANDIDATE`、`HOLD`、`REDUCE_CANDIDATE` 還是 `EXIT_CANDIDATE`？
-6. Recommendation、Alert、Exit 與 Portfolio Advice 是否真的有效？
-7. 哪些資料、訊號、Profile 與工具應保留、降權、限制或退休？
+1. 今天哪些市場狀態與策略值得留意？
+2. 哪些股票符合有證據支持的策略條件，哪些應觀望或避免？
+3. 為什麼選它、為什麼不選其他股票？依據哪些資料、策略版本及失效條件？
+4. 使用者手動記錄的持倉有沒有觸發策略 review／風險提示？
+5. Recommendation、Alert 與手動覆盤是否真的有用？
+6. 哪些資料、訊號、Profile 與工具應保留、降權、限制或退休？
+
+真實帳戶同步、個人資金配置及券商交易不是此產品的核心問題；沒有手動持倉時仍應能提供獨立於個人帳戶的策略研究建議。
 
 ### 2.2 產品資格判讀
 
@@ -51,7 +56,7 @@ Post-Refactor 主線改為：
 | Gap | 對產品的影響 | 優先處置 | Done Definition |
 |---|---|---|---|
 | Recommendation Advice Contract 不完整 | 無法從分數轉成一致、可稽核建議 | Gate 1 | 每筆 advice 含 action、Why、Why Not、Risk、Evidence、資料日期、失效條件與可成交性 |
-| 完整 Portfolio Advice 能力未成立 | 推薦清單尚不能提供經 policy 與 evidence 驗證的配置建議 | Gate 1：輸出契約；Gate 4：配置政策、sizing、成本後 evidence | Gate 1 定義 target/current/gap、action、理由／風險／證據與可成交性，並可進行 paper dry-run；Gate 4 建立版本化 risk budget、rebalance bands 與 candidate sizing，使用 paper portfolio 做成本後比較 |
+| 手動紀錄上的 Portfolio Coach 尚未成立 | 有手動持倉時尚不能提供經 policy 與 evidence 驗證的配置／再平衡輔助 | 可選 Gate 4：配置政策、sizing、成本後 evidence | 以手動紀錄為明確輸入，建立版本化 risk budget、rebalance bands 與 candidate sizing，使用 paper portfolio 做成本後比較；缺少此能力不阻擋核心策略建議 |
 | Evidence operating loop 仍偏 read-only / dry-run | 無法持續驗證與修正 | Gate 2 | 形成 weekly review、action item、append-only evidence、backup/rollback/recovery 的真實節奏 |
 | P0 資料未正式接受 | 回測與持倉可信度受限 | Gate 3 | 每個來源通過 available-date、quality、license、missing 與 shadow acceptance Gate |
 | Signal / Gate / Alert 未做淘汰決策 | 系統只增不減、噪音累積 | Gate 5 | 有保留／限制／降權／退休決議與 evidence |
@@ -66,13 +71,15 @@ Post-Refactor 主線改為：
 | B. Evidence-only | 停止產品能力，只累積 evidence | 風險低、治理清楚 | 使用者仍得不到日常建議，無法驗證 Advice 產品 | 不採用 |
 | C. Bounded Advice + Evidence Gate | 先建立受限建議契約，與 evidence、Portfolio、Exit 同步演進 | 直接回答每日問題，且每一步有驗收與降級機制 | 需嚴格控制建議語意與 production 邊界 | **採用** |
 
-採用方案 C，但不提前接 broker execution。所有正式 Advice 都必須可被規則重算、可追溯、可拒絕輸出，並允許 `NO_NEW_POSITION` 成為有效答案。
+採用方案 C，但日常核心先交付可重算、可追溯、能拒絕不充分證據的策略建議；Portfolio sizing 是建立在使用者手動紀錄上的選用能力，不要求帳戶連線。正式輸出可用 `RESEARCH`、`AVOID` 或 `NO_NEW_POSITION` 表達限制，不得把排名分數直接寫成下單或個人配置指令。
 
 ## 4. 產品北極星
 
-baldr 的長期定位是：
+baldr 的核心定位是：
 
-> 一套可以觀察台股市場、篩選候選股票、產生結構化投資建議、建立建議投資組合、追蹤持倉健康、協助加減碼與退出判斷，並持續驗證自身建議是否有效的投資決策系統。
+> 一套可以觀察台股市場、依據具名策略篩選候選股票、解釋建議成立與失效條件，並透過使用者手動紀錄持續覆盤策略效果的研究與決策系統。
+
+持倉健康與配置研究可使用手動記錄延伸；它們不要求真實帳戶連線，也不取代核心策略建議。
 
 baldr 可以輸出：
 
@@ -92,19 +99,19 @@ baldr 可以輸出：
 |---|---|---|
 | 市場 | 現在可積極研究、保守研究或不新增部位？ | Regime、Breadth、流動性、資料品質、風險事件 |
 | 股票 | 哪些股票為研究／建立部位候選，哪些應避免？ | Recommendation、Why / Why Not、Risk、Evidence tier |
-| Portfolio | 資金如何配置，需保留多少現金？ | Risk budget、target weights、constraints、execution feasibility |
-| 持倉 | 每檔是加碼、持有、減碼或退出候選？ | Entry thesis、health state、invalidation、relative deterioration |
+| 手動持倉（可選） | 手動紀錄中的持倉是否觸發策略 review／風險提示？ | 明確手動紀錄、entry thesis、health state、invalidation、relative deterioration |
+| Portfolio 配置（可選） | 在明確手動紀錄及風險設定下，如何做研究 sizing？ | 使用者設定的 risk budget、target weights、constraints、execution feasibility；不要求真實帳戶同步 |
 | 改善 | 哪些訊號／警示／Profile 有效或應退休？ | Forward、paper、live、OOS、regime 與成本後 evidence |
 
 ## 6. Guided Mode 與 Professional Mode
 
 ### 6.1 Guided Mode（引導模式／無腦模式）
 
-定位：只使用已通過 Promotion Gate、參數鎖定且 evidence disclosure 完整的正式策略，協助使用者建立與管理 Portfolio。
+定位：只使用已通過 Promotion Gate、參數鎖定且 evidence disclosure 完整的正式策略，提供市場／個股策略建議。沒有手動持倉紀錄時仍能呈現策略研究結果；配置或持倉管理屬選用功能。
 
-使用者只選：投資週期、風險容忍度、資金規模、是否接受小型股、是否接受低流動性、最大持倉數。
+使用者可選：投資週期、風險容忍度、是否接受小型股及低流動性等策略篩選條件。資金規模、持倉與現金不是策略建議的必要欄位；若啟用 sizing，須由使用者明確提供或手動紀錄。
 
-系統負責：市場狀態、Profile 建議、候選篩選、Why / Why Not / Risk、目標 Portfolio、權重、Add / Hold / Reduce / Exit Candidate 與 `NO_NEW_POSITION`。
+系統負責：市場狀態、Profile 建議、候選篩選、Why / Why Not / Risk、策略版本、適用條件與失效條件。可選的手動持倉分析另行提供持倉提示；不接券商、不送委託。
 
 Guided Mode 禁止使用 candidate Profile、未鎖定參數、未通過 forward evidence 的實驗結果或 ML shadow output。
 
@@ -152,9 +159,11 @@ Hypothesis
 | `data_quality` | OBSERVED / ESTIMATED / DEGRADED / MISSING 與 warnings。 |
 | `decision_date` / `data_as_of_date` | 決策與資料截止日。 |
 
-Advice Policy 必須能拒絕輸出。資料不足、Portfolio risk budget 已滿、整體市場風險過高或 execution 不可行時，輸出 `RESEARCH`、`AVOID` 或 `NO_NEW_POSITION`，不得硬湊候選。
+Advice Policy 必須能拒絕輸出。策略／市場證據不足、整體市場風險過高或 execution 資料不可判讀時，輸出 `RESEARCH`、`AVOID` 或 `NO_NEW_POSITION`，不得硬湊候選。Portfolio risk budget 只限制可選的個人化 sizing／配置，不得阻擋帳戶無關的策略研究建議。
 
-## 8. Portfolio Advice Contract
+## 8. 可選的手動紀錄 Portfolio Advice Contract
+
+此能力僅供使用者明確選用。輸入來自使用者自行維護的手動紀錄與明示風險政策；不連接、同步或推斷真實帳戶，也不要求它先於核心策略建議完成。
 
 每次 Portfolio Advice 至少輸出：
 
@@ -457,7 +466,7 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 2026-10-24，Owner 明確授權總負責者以可回退的保守預設解除既有產品選擇阻塞。選定方向如下；未取得相應資料或驗收證據時仍 fail-closed，政策決定不等於 Gate 接受：
 
 1. **Guided Mode 預設風險**：預設採保守級別，沿用現行 `AdvicePolicyConfig` 控制值：現金保留至少 2,000 bp、最多 8 檔、單檔上限 1,500 bp。它們是產品預設上限／底線，不代表已知使用者帳戶餘額或個人風險承受度；現金、持倉與風險預算未由同一可信 snapshot 核實時，Advice 必須拒絕配置並顯示缺件。
-2. **Paper／Broker CSV**：Paper 成交優先既有 `paper-trade-import.v1` 完整 fill 欄位與可核對別名；預覽需檢查檔案 hash 與全部列，明確確認後才 append 到 Paper Trade Ledger。券商原生 CSV adapter 延後至指定券商後再做欄位映射，不將一般 `trade-import.v1` 手動帳匯入路徑當作 Paper 成交；不連券商 API、不送委託。
+2. **手動交易紀錄／Paper CSV**：使用者手動維護持倉與交易紀錄；Paper 成交可使用既有 `paper-trade-import.v1` 完整 fill 欄位與可核對別名，預覽檢查檔案 hash 及全部列，明確確認後才 append 到 Paper Trade Ledger。券商原生 CSV adapter 不在目前產品範圍內；不連接真實帳戶／券商 API，也不送委託。
 3. **Gate 2 evidence write-mode scheduler**：不以日期自動啟用。須先滿足至少 3 個真實 weekly review period、3 個真實操作日 evidence record，完成 backup／restore 與 disable-first recovery rehearsal，再以明確 approval artifact 啟用；在此之前保持 disabled／dry-run。
 4. **P0 資料來源成本**：先採可取得且可核驗的官方來源。未接受來源只進 diagnostics／shadow，不能進 formal decision layer；不採購付費資料。若官方來源留下 Gate 缺口，先列出欄位、覆蓋與報價，再另作具體預算決策。
 5. **ML 正式影響**：ML challenger 只可在 Gate 7 前置條件滿足後進 shadow；正式排序影響須 Gate 7 全部 promotion 證據、rollback 與獨立 approval artifact 齊備。這不授權自動交易。

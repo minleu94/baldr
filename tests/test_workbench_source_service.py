@@ -31,6 +31,7 @@ from app_module.evidence_event_dtos import (
 )
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.workbench_source_service import WorkbenchSourceService
+from test_portfolio_research_scenario_repository import _comparison as _paper_research_comparison
 from app_module.advice_dtos import AdviceAction, AdviceClassification
 from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.recommendation.queries import RecommendationExecutionReadModel
@@ -653,10 +654,21 @@ def test_workbench_source_service_injects_exact_current_legacy_candidate_read(
     assert len(dashboard.advice_dashboard.recommendations) == 1
     advice = dashboard.advice_dashboard.recommendations[0]
     assert advice.stock_code == "2330"
+    assert advice.stock_name == "TSMC"
     assert advice.advice_action.value == "RESEARCH"
     assert advice.classification.value == "PROFESSIONAL_CANDIDATE"
+    assert advice.execution_feasibility == "UNKNOWN"
     assert result_id in advice.source_trace
+    assert advice.source_result_id == result_id
+    assert advice.source_payload_sha256 is None
     assert dashboard.advice_dashboard.portfolio_rows == ()
+    assert "risk_budget_not_confirmed" not in advice.risk_reasons
+    assert any(
+        "不需要連接真實帳戶" in warning
+        and "手動記錄" in warning
+        and "不計算個人配置" in warning
+        for warning in dashboard.advice_dashboard.warnings
+    )
 
 
 def test_workbench_source_service_excludes_future_snapshot_from_default_current_view(
@@ -869,6 +881,8 @@ def test_workbench_shares_recommendation_snapshot_only_within_each_inspect(
     )
 
     assert queries.list_calls == 1
+
+
     assert readiness_sessions[0] is scheduled_sessions[0]
     first_session = readiness_sessions[0]
     assert first_session.list() is queries.read_snapshots[0]
@@ -938,3 +952,33 @@ def test_workbench_recommendation_snapshot_cancellation_remains_fail_closed(
         service.inspect(cancel_callback=lambda: queries.cancelled)
 
     assert queries.list_calls == 1
+
+
+def test_selected_paper_account_context_is_separate_and_stale_values_are_cleared(
+    tmp_path: Path,
+) -> None:
+    service = WorkbenchSourceService(_config(tmp_path))
+    comparison = _paper_research_comparison()
+    service.select_paper_account_context(comparison)
+
+    visible = service._paper_account_context(
+        date(2026, 10, 9), datetime(2026, 10, 10, tzinfo=timezone.utc)
+    )
+    assert visible is not None
+    assert visible.status == "available"
+    assert visible.as_of_date == date(2026, 10, 8)
+    assert visible.total_value is not None
+    assert visible.cash_amount is not None
+    assert visible.positions[0].stock_code == "2330"
+    assert visible.positions[0].weight_bp == 1000
+    assert visible.to_dict()["source_hash"] == comparison.account.source_hash
+
+    stale = service._paper_account_context(
+        date(2026, 10, 8), datetime(2026, 10, 10, tzinfo=timezone.utc)
+    )
+    assert stale is not None
+    assert stale.status == "stale"
+    assert stale.total_value is None
+    assert stale.cash_amount is None
+    assert stale.positions == ()
+    assert stale.to_dict()["positions"] == []

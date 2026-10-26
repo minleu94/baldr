@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeGuard
-
 from app_module.advice_dtos import AdviceAction, AdviceMode, AdvicePolicyConfig
 
 
@@ -13,7 +11,7 @@ class AdvicePolicyDecision:
 
 
 class AdvicePolicy:
-    """以明確輸入產生可拒絕的新增持倉政策決策。"""
+    """以策略資格與市場證據產生研究建議；不以帳戶預算決定策略是否顯示。"""
 
     def __init__(self, config: AdvicePolicyConfig | None = None) -> None:
         self._config = config or AdvicePolicyConfig()
@@ -32,13 +30,11 @@ class AdvicePolicy:
         parameters_locked: bool | None = None,
         disclosure_complete: bool | None = None,
     ) -> AdvicePolicyDecision:
+        """只判斷策略資格與輸入品質；帳戶欄位保留相容但不參與策略 action。"""
         if not isinstance(mode, AdviceMode) or not isinstance(self._config.mode, AdviceMode):
             return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("invalid_mode",))
         if mode is not self._config.mode:
             return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("mode_config_mismatch",))
-        if not self._is_position_cap(self._config.max_positions):
-            return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("invalid_policy_max_positions",))
-
         strategy_decision = self._strategy_decision(
             mode,
             strategy_status,
@@ -52,27 +48,10 @@ class AdvicePolicy:
         if quality_decision is not None:
             return quality_decision
 
-        if execution_feasible is not True:
+        if execution_feasible is False:
             return AdvicePolicyDecision(AdviceAction.AVOID, ("execution_not_feasible",))
-
-        if risk_budget_available is not True:
-            return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("risk_budget_unavailable",))
-
-        if not self._is_non_negative_integer(current_position_count):
-            return AdvicePolicyDecision(AdviceAction.RESEARCH, ("position_count_missing_or_invalid",))
-        if current_position_count >= self._config.max_positions:
-            return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("max_positions_reached",))
-
-        if not self._is_bp(cash_reserve_bp):
-            return AdvicePolicyDecision(AdviceAction.RESEARCH, ("cash_reserve_missing_or_invalid",))
-        if cash_reserve_bp < self._config.min_cash_reserve_bp:
-            return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("min_cash_reserve_not_met",))
-
-        if not self._is_bp(target_weight_bp):
-            return AdvicePolicyDecision(AdviceAction.RESEARCH, ("target_weight_missing_or_invalid",))
-        if target_weight_bp > self._config.max_single_position_bp:
-            return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("max_single_position_exceeded",))
-
+        # risk_budget／current positions／cash／target weight 屬於可選的
+        # Portfolio sizing；不得把它們套成策略 Advice 的帳戶前置條件。
         return AdvicePolicyDecision(AdviceAction.ADD_CANDIDATE)
 
     @staticmethod
@@ -118,15 +97,3 @@ class AdvicePolicy:
         if data_quality == "DEGRADED":
             return AdvicePolicyDecision(AdviceAction.RESEARCH, ("data_quality_degraded",))
         return AdvicePolicyDecision(AdviceAction.RESEARCH, ("data_quality_not_observed",))
-
-    @staticmethod
-    def _is_non_negative_integer(value: int | None) -> TypeGuard[int]:
-        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-    @staticmethod
-    def _is_position_cap(value: object) -> TypeGuard[int]:
-        return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 8
-
-    @classmethod
-    def _is_bp(cls, value: int | None) -> TypeGuard[int]:
-        return cls._is_non_negative_integer(value) and value <= 10000

@@ -98,6 +98,78 @@ def test_quarterly_resource_next_step_keeps_candidate_boundaries(
     assert "fixture audit note" in guidance
 
 
+def test_announcement_crosswalk_renders_owner_authorized_mops_timestamp():
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+    view._quarterly_candidate_resources = [
+        {
+            "dataset_id": "94831",
+            "market": "TWSE",
+            "statement": "balance_sheet",
+            "industry": "general",
+        }
+    ]
+    view.quarterly_resource_table.setRowCount(1)
+    view.quarterly_resource_table.setCurrentCell(0, 0)
+    view._control_center_rows = [
+        {
+            "source_id": "pit.quarterly_financials",
+            "quarterly_announcement_crosswalk": {
+                "status": "available",
+                "announcement_candidate_bundle_count": 1,
+                "query_window_start": "2026-07-01",
+                "query_window_end": "2026-09-30",
+                "unique_announcement_timestamp_match_count": 1,
+                "ambiguous_announcement_version_match_count": 0,
+                "announcement_candidate_bundles": [{"candidate_name": "fixture"}],
+                "summary_by_market_statement": [
+                    {
+                        "market": "TWSE",
+                        "statement_type": "balance_sheet",
+                        "profile_count": 1,
+                        "one_announcement_candidate": 1,
+                    }
+                ],
+                "resources": [
+                    {
+                        "dataset_id": "94831",
+                        "market": "TWSE",
+                        "statement": "balance_sheet",
+                        "industry": "general",
+                        "summary": {"one_announcement_candidate": 1},
+                        "rows": [
+                            {
+                                "issuer_code": "1101",
+                                "fiscal_period": "2026-Q2",
+                                "status": "one_announcement_candidate",
+                                "announcement_count": 1,
+                                "announcement_candidates": [
+                                    {
+                                        "announced_date": "2026-08-12",
+                                        "announcement_at": "2026-08-12T20:14:11+08:00",
+                                        "event_sha256": "a" * 64,
+                                        "source_sha256": "b" * 64,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+    ]
+
+    view._render_quarterly_announcement_crosswalk()
+
+    assert "唯一公告時間候選：1 筆" in view.quarterly_announcement_crosswalk_summary_label.text()
+    assert "尚未回寫正式資料" in view.quarterly_announcement_crosswalk_summary_label.text()
+    assert view.quarterly_announcement_crosswalk_resource_table.item(0, 3).text() == (
+        "2026-08-12T20:14:11+08:00"
+    )
+    assert "a" * 64 in view.quarterly_announcement_crosswalk_resource_table.item(0, 3).toolTip()
+    view.close()
+
+
 @pytest.mark.parametrize(
     ("status", "expected_color"),
     (
@@ -419,6 +491,8 @@ def test_view_has_no_apply_promote_retrain_blend_accept_or_trade_controls() -> N
         "選擇 csv 候選目錄…",
         "還原啟動設定",
         "選擇公司名錄候選目錄…",
+        "還原啟動設定",
+        "選擇 mops 公告候選 json…",
         "還原啟動設定",
     ]
     assert not any(token in text for text in button_texts for token in forbidden)

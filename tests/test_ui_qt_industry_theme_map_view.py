@@ -1717,6 +1717,215 @@ def test_zero_and_negative_observations_remain_visible_in_presenter_order():
     assert view.ranking_table.item(1, 3).text() == "-4 股"
 
 
+def test_first_screen_return_cards_show_leading_and_lagging_themes_with_member_breadth():
+    app()
+    view = IndustryThemeMapView()
+    view.resize(1200, 850)
+    view.set_snapshot(_snapshot_with_directional_rankings())
+    view.show()
+    app().processEvents()
+
+    assert view.observation_cards["return"].title() == "領先題材｜平均日漲幅"
+    assert view.observation_cards["return_laggard"].title() == "落後題材｜平均日漲幅"
+    assert view.leader_card_topics["return"].text() == "鏈G／題材G"
+    assert view.leader_card_values["return"].text() == "3.00 %"
+    assert view.leader_card_topics["return_laggard"].text() == "鏈A／題材A"
+    assert view.leader_card_values["return_laggard"].text() == "-3.00 %"
+    assert "題材成員：漲 0／跌 1／平 0（1 位有漲跌資料；非全市場廣度）" in view.leader_card_breadth_labels["return_laggard"].text()
+    assert "題材內上漲率未知" in view.leader_card_breadth_labels["return_laggard"].text()
+    assert view.leader_card_breadth_bars["return_laggard"].accessibleDescription() == view.leader_card_breadth_labels["return_laggard"].text()
+    assert view.leader_card_breadth_segments["return_laggard"][1].isVisible()
+    assert not view.leader_card_breadth_segments["return_laggard"][0].isVisible()
+    institutional_text = view.leader_card_institutional_labels["return_laggard"].text()
+    assert (
+        "買超 0／賣超 1／持平 0（有淨股數 1／1 位成員"
+        in institutional_text
+    )
+    assert "非全市場廣度" in institutional_text
+    assert "非多家法人共同買進同股統計" in institutional_text
+    assert (
+        view.leader_card_institutional_bars["return_laggard"].accessibleDescription()
+        == institutional_text
+    )
+    assert view.leader_card_institutional_segments["return_laggard"][1].isVisible()
+    assert view.leader_card_institutional_segments["return"][0].isVisible()
+    assert view.observation_cards_layout.getItemPosition(
+        view.observation_cards_layout.indexOf(view.observation_cards["return"])
+    ) == (0, 0, 1, 2)
+    assert view.observation_cards_layout.getItemPosition(
+        view.observation_cards_layout.indexOf(view.observation_cards["return_laggard"])
+    ) == (0, 2, 1, 2)
+    view.resize(900, 850)
+    app().processEvents()
+    assert view.observation_cards_layout.getItemPosition(
+        view.observation_cards_layout.indexOf(view.observation_cards["return"])
+    ) == (0, 0, 1, 1)
+    assert view.observation_cards_layout.getItemPosition(
+        view.observation_cards_layout.indexOf(view.observation_cards["return_laggard"])
+    ) == (0, 1, 1, 1)
+    view.resize(540, 850)
+    app().processEvents()
+    assert view.observation_cards_layout.getItemPosition(
+        view.observation_cards_layout.indexOf(view.observation_cards["return"])
+    ) == (0, 0, 1, 1)
+    assert view.observation_cards_layout.getItemPosition(
+        view.observation_cards_layout.indexOf(view.observation_cards["return_laggard"])
+    ) == (1, 0, 1, 1)
+    assert view.content.layout().itemAt(1).widget() is view.observations_group
+    view.close()
+
+
+def _render_after_invalid_row_injection(
+    view: IndustryThemeMapView,
+    snapshot: ThemeResearchSnapshot,
+    theme_name: str,
+    *,
+    row_updates: dict[str, object] | None = None,
+    coverage_updates: dict[str, object] | None = None,
+) -> None:
+    """先建立有效呈現，再只於測試中繞過 frozen DTO 注入壞值。"""
+    view.set_snapshot(snapshot)
+    row = next(item for item in snapshot.report.rows if item.theme_name == theme_name)
+    if coverage_updates:
+        object.__setattr__(row, "coverage", replace(row.coverage, **coverage_updates))
+    for field, value in (row_updates or {}).items():
+        object.__setattr__(row, field, value)
+    # 保留前一步建立的 presentation，讓同一筆候選列抵達 UI 資料品質守衛。
+    view._render_presentation()
+
+
+def test_first_screen_institutional_distribution_is_unknown_without_coverage():
+    application = app()
+    view = IndustryThemeMapView()
+    snapshot = _snapshot_with_directional_rankings()
+    _render_after_invalid_row_injection(
+        view,
+        snapshot,
+        "題材G",
+        row_updates={
+            "institutional_buy_count": 0,
+            "institutional_sell_count": 0,
+            "institutional_flat_count": 0,
+        },
+        coverage_updates={"institutional_shares": 0},
+    )
+    application.processEvents()
+
+    label = view.leader_card_institutional_labels["return"]
+    assert "未知" in label.text()
+    assert "尚未載入" not in label.text()
+    assert "非全市場廣度" in label.text()
+    assert "多家法人共同買進同股統計" in label.text()
+    assert "未知" in view.leader_card_institutional_bars["return"].accessibleDescription()
+    assert all(
+        segment.isHidden()
+        for segment in view.leader_card_institutional_segments["return"]
+    )
+    view.close()
+
+
+@pytest.mark.parametrize(
+    ("row_updates", "coverage_updates"),
+    (
+        ({"up_count": 0}, {}),
+        ({"up_count": -1, "down_count": 2}, {}),
+        ({"up_count": True}, {}),
+        ({}, {"returns": True}),
+        ({}, {"returns": -1}),
+        ({}, {"members": 0}),
+    ),
+)
+def test_first_screen_return_distribution_rejects_invalid_counts_and_coverage(
+    row_updates, coverage_updates,
+):
+    application = app()
+    view = IndustryThemeMapView()
+    snapshot = _snapshot_with_directional_rankings()
+    _render_after_invalid_row_injection(
+        view,
+        snapshot,
+        "題材G",
+        row_updates=row_updates,
+        coverage_updates=coverage_updates,
+    )
+    application.processEvents()
+
+    assert "未知" in view.leader_card_breadth_labels["return"].text()
+    assert "尚未載入" not in view.leader_card_breadth_labels["return"].text()
+    assert view.leader_card_topics["return"].text() == "鏈G／題材G"
+    assert "未知" in view.leader_card_breadth_bars["return"].accessibleDescription()
+    assert all(
+        segment.isHidden()
+        for segment in view.leader_card_breadth_segments["return"]
+    )
+    view.close()
+
+
+@pytest.mark.parametrize(
+    ("row_updates", "coverage_updates"),
+    (
+        ({"institutional_buy_count": 0}, {}),
+        ({"institutional_buy_count": -1, "institutional_sell_count": 2}, {}),
+        ({"institutional_buy_count": True}, {}),
+        ({}, {"institutional_shares": True}),
+        ({}, {"institutional_shares": -1}),
+        ({}, {"members": 0}),
+    ),
+)
+def test_first_screen_institutional_distribution_rejects_invalid_counts_and_coverage(
+    row_updates, coverage_updates,
+):
+    application = app()
+    view = IndustryThemeMapView()
+    snapshot = _snapshot_with_directional_rankings()
+    _render_after_invalid_row_injection(
+        view,
+        snapshot,
+        "題材G",
+        row_updates=row_updates,
+        coverage_updates=coverage_updates,
+    )
+    application.processEvents()
+
+    assert "未知" in view.leader_card_institutional_labels["return"].text()
+    assert "尚未載入" not in view.leader_card_institutional_labels["return"].text()
+    assert view.leader_card_topics["return"].text() == "鏈G／題材G"
+    assert "未知" in view.leader_card_institutional_bars["return"].accessibleDescription()
+    assert all(
+        segment.isHidden()
+        for segment in view.leader_card_institutional_segments["return"]
+    )
+    view.close()
+
+
+@pytest.mark.parametrize(
+    "ratio",
+    (
+        Decimal("NaN"),
+        Decimal("-0.01"),
+        Decimal("1.01"),
+        0.5,
+        Decimal("0.00"),
+    ),
+)
+def test_first_screen_advancing_ratio_requires_finite_decimal_matching_counts(ratio):
+    application = app()
+    view = IndustryThemeMapView()
+    snapshot = _snapshot_with_directional_rankings()
+    _render_after_invalid_row_injection(
+        view,
+        snapshot,
+        "題材G",
+        row_updates={"advancing_ratio": ratio},
+    )
+    application.processEvents()
+
+    label = view.leader_card_breadth_labels["return"].text()
+    assert "題材內上漲率未知" in label
+    assert "題材內上漲率 50" not in label
+    view.close()
+
+
 def test_return_tiles_show_eligible_source_context_and_drill_down_by_mouse_and_keyboard():
     application = app()
     view = IndustryThemeMapView()

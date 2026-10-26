@@ -68,6 +68,7 @@ def test_recommendation_adapter_does_not_invent_probability() -> None:
     assert presentation.calibrated_probability_status == "research"
     assert presentation.after_cost_profit_probability_bp is None
     assert presentation.after_cost_profit_probability_status == "research"
+    assert presentation.holding_horizon == "swing"
 
 
 def test_recommendation_adapter_forwards_shadow_lineage_without_promoting_it() -> None:
@@ -79,7 +80,8 @@ def test_recommendation_adapter_forwards_shadow_lineage_without_promoting_it() -
         calibrated_probability_status="active_effective",
         evidence_confidence="shadow_candidate",
         sample_size=1528,
-        holding_horizon="20 trading days",
+        holding_horizon="swing",
+        calibration_horizon="20 trading days",
         calibration_model_version="rec-cal-candidate-20260914",
         calibration_dataset_version="recommendation-dataset-20260914",
         calibration_source="RecommendationCalibrationConsumer",
@@ -92,7 +94,11 @@ def test_recommendation_adapter_forwards_shadow_lineage_without_promoting_it() -
     assert presentation.calibration_model_version == "rec-cal-candidate-20260914"
     assert presentation.calibration_dataset_version == "recommendation-dataset-20260914"
     assert presentation.calibration_source == "RecommendationCalibrationConsumer"
+    assert presentation.horizon == "20 trading days"
+    assert presentation.holding_horizon == "swing"
     assert "校準機率：80.00%（研究中／shadow）" in text
+    assert "校準適用期間：20 trading days" in text
+    assert "策略持有期間：swing" in text
     assert "自然前瞻驗證" not in text
 
 
@@ -298,7 +304,8 @@ def test_historical_probability_remains_visible_as_research_only() -> None:
     assert "校準機率：80.00%（研究中／歷史研究）" in text
     assert "成本後獲利機率：65.00%（研究中／歷史研究）" in text
     assert "自然前瞻驗證" not in text
-    assert "適用期間：20 trading days" in text
+    assert "校準適用期間：20 trading days" in text
+    assert "策略持有期間：未提供" in text
 
 
 def test_untyped_verified_status_does_not_claim_natural_validation() -> None:

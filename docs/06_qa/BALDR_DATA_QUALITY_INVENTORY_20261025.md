@@ -248,6 +248,6 @@ Owner 已授權把 MOPS 顯示的「公告日期／時間」當作相符公告�
 
 本次僅作一次無登入、單一公司（2330）、單一日期的 F22 查詢探測；本機 DNS 無法解析 `mopsov.twse.com.tw`，HTTP request 未建立，沒有 response body、receipt 或資料候選。沒有因此建立正式公告日期 mapping。
 
-另查核[富邦歷史 K 線文件](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/historical/candles/)：其市場行情 API 文件列出上市櫃日線最遠可回溯至 2010 年，單次查詢小於一年。它可能提供缺漏日的行情候選，但不是 MOPS 公告時間、公司財報月份或 filing version 的證據。單筆 2330／2026-10-23 日 K 查詢尚未送出：本機執行環境的自動審查拒絕讀取 Windows Credential Manager 並登入真實券商 API，理由是尚未收到明確的憑證／登入授權。這次拒絕前沒有讀取任何憑證或呼叫富邦 API；因此行情補值、來源候選及正式解除筆數均為 **0**。
+另查核[富邦歷史 K 線文件](https://www.fbs.com.tw/TradeAPI/docs/market-data/http-api/historical/candles/)：其市場行情 API 文件列出上市櫃日線最遠可回溯至 2010 年，單次查詢小於一年。它可能提供缺漏日的行情候選，但不是 MOPS 公告時間、公司財報月份或 filing version 的證據。工作區安裝 `fubon-neo` **2.2.8**；不帶任何憑證初始化 `FubonSDK()` 時收到 `ValueError: No such host is known (os error 11001)`，無登入、無歷史 candles endpoint 回應。單筆 2330／2026-10-23 日 K 查詢仍未送出：自動審查拒絕讀取 Windows Credential Manager 並登入真實券商 API，要求先明確確認憑證／登入範圍。沒有讀取任何憑證；行情補值、來源候選及正式解除筆數均為 **0**。目前只待本對話所送出的限定一次性行情試查授權回覆。
 
 結論：F22 與富邦文件各自提供值得後續驗證的候選路徑，但目前前者受 EZSearch 自動採集授權與 DNS 限制，後者受明確登入授權限制；仍未對正式資料產生任何變更，Gate／PIT／ML 資格不變。

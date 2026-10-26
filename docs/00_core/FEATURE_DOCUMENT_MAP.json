@@ -115,7 +115,8 @@
         "app_module/technical_source_copy.py",
         "app_module/theme_research_presentation.py",
         "app_module/theme_research_notes.py",
-        "ui_qt/widgets/theme_research_notes_widget.py"
+        "ui_qt/widgets/theme_research_notes_widget.py",
+        "app_module/market_data_visibility_service.py"
       ],
       "tests": [
         "tests/test_theme_snapshot_catalog.py",
@@ -145,7 +146,8 @@
         "tests/test_ui_qt_theme_research_notes_widget.py",
         "tests/test_theme_stock_context_guard.py",
         "tests/test_ui_qt_industry_theme_stock_lookup.py",
-        "tests/test_ui_qt_theme_research_clear.py"
+        "tests/test_ui_qt_theme_research_clear.py",
+        "tests/test_market_data_visibility_service.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -154,7 +156,8 @@
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
         "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md",
-        "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md"
+        "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
+        "docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -370,7 +373,8 @@
         "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md"
       ],
       "evidence": [
-        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"

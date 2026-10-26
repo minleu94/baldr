@@ -15,6 +15,7 @@ from app_module.market_data_visibility_service import MarketDataVisibilityServic
 
 SOURCE_IDS = {
     "fundamental_monthly_revenues",
+    "fundamental_statement_items",
     "institutional_flows",
     "credit_transactions",
     "tdcc_shareholding",
@@ -38,6 +39,20 @@ def _create_visibility_db(path: Path) -> None:
                 quality TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (stock_code, period, source_version)
+            );
+            CREATE TABLE fundamental_statement_items (
+                stock_code TEXT NOT NULL,
+                statement_type TEXT NOT NULL,
+                period TEXT NOT NULL,
+                as_of_date TEXT NOT NULL,
+                announced_date TEXT,
+                available_date TEXT NOT NULL,
+                item_code TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                value TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_version TEXT NOT NULL,
+                quality TEXT NOT NULL
             );
             CREATE TABLE institutional_flows (
                 stock_code TEXT,
@@ -70,6 +85,42 @@ def _create_visibility_db(path: Path) -> None:
             );
             """
         )
+
+
+def test_statement_visibility_summarizes_legal_rows_without_qualifying_degraded_source(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "visibility.db"
+    _create_visibility_db(db_file)
+    with sqlite3.connect(db_file) as conn:
+        conn.executemany(
+            """
+            INSERT INTO fundamental_statement_items VALUES (
+                ?, 'income', ?, ?, NULL, ?, ?, '營業收入', '100', 'csv.source', 'v1', ?
+            )
+            """,
+            (
+                ("2330", "2024-03-31", "2024-03-31", "2026-06-17", "revenue", "degraded"),
+                ("2317", "2024-03-31", "2024-03-31", "2026-06-17", "revenue", "degraded"),
+                ("9999", "2025-03-31", "2025-03-31", "2026-07-01", "revenue", "observed"),
+            ),
+        )
+
+    summary = MarketDataVisibilityService(db_file).build_summary(
+        as_of_date=date(2026, 6, 30)
+    )
+    status = next(
+        status for status in summary.source_statuses
+        if status.source_id == "fundamental_statement_items"
+    )
+    assert status.row_count == 2
+    assert status.stock_count == 2
+    assert status.latest_observation_date == "2024-03-31"
+    assert status.available_date == "2026-06-17"
+    assert status.quality == "DEGRADED"
+    assert status.pit_status == "historical_pit_unverified"
+    assert status.eligibility == "research_only"
+    assert "license／coverage／PIT 尚未由此狀態驗收" in status.warnings
 
 
 def _insert_revenue(

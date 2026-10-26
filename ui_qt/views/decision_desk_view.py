@@ -1227,6 +1227,7 @@ class DecisionDeskView(QWidget):
         source_lines = [
             (
                 f"{status.display_name}：{self._visibility_quality_label(status.quality)}｜"
+                f"{status.row_count:,} 列/{status.stock_count:,} 檔｜"
                 f"觀測 {status.latest_observation_date or 'N/A'}｜可得 {status.available_date or 'N/A'}｜"
                 f"PIT {status.pit_status}｜資格 {status.eligibility}"
             )

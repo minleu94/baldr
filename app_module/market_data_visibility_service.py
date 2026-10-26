@@ -24,6 +24,7 @@ from app_module.market_data_visibility_dtos import (
 _MISSING_WARNING = "尚未匯入（0 筆）"
 _SOURCE_LABELS = {
     "fundamental_monthly_revenues": "月營收",
+    "fundamental_statement_items": "季財報項目",
     "institutional_flows": "三大法人",
     "credit_transactions": "信用交易",
     "tdcc_shareholding": "集保股權分散",
@@ -51,6 +52,7 @@ class MarketDataVisibilityService:
                     FROM fundamental_monthly_revenues
                     """,
                 )
+                statement_status = self._load_statement_status(conn, as_of_date)
                 institutional_rows, institutional_error = self._load_rows(
                     conn,
                     """
@@ -103,6 +105,7 @@ class MarketDataVisibilityService:
                 error=revenue_error,
                 summary_quality=monthly_revenue.quality,
             ),
+            statement_status,
             _source_status(
                 source_id="institutional_flows",
                 as_of_date=as_of_date,
@@ -155,6 +158,52 @@ class MarketDataVisibilityService:
             conn.close()
             raise _VisibilityReadError("SQLite query_only 未啟用")
         return conn
+
+    @staticmethod
+    def _load_statement_status(
+        conn: sqlite3.Connection, as_of_date: date
+    ) -> SourceVisibilityStatus:
+        source_id = "fundamental_statement_items"
+        try:
+            row = conn.execute(
+                """
+                SELECT COUNT(*),
+                       COUNT(DISTINCT NULLIF(TRIM(stock_code), '')),
+                       MAX(period),
+                       MAX(available_date),
+                       SUM(CASE WHEN lower(trim(coalesce(quality, ''))) != 'observed'
+                                THEN 1 ELSE 0 END)
+                FROM fundamental_statement_items
+                WHERE available_date <= ? AND as_of_date <= ?
+                """,
+                (as_of_date.isoformat(), as_of_date.isoformat()),
+            ).fetchone()
+        except sqlite3.Error as exc:
+            return _statement_status_missing(
+                as_of_date, f"資料表或 schema 無法讀取：{exc}"
+            )
+        if row is None or int(row[0] or 0) == 0:
+            return _statement_status_missing(as_of_date, _MISSING_WARNING)
+        degraded_count = int(row[4] or 0)
+        quality = "DEGRADED" if degraded_count else "OBSERVED"
+        warning = (
+            "來源資料已標記 degraded"
+            if degraded_count
+            else "資料可見但未完成來源資格驗收"
+        )
+        return SourceVisibilityStatus(
+            source_id=source_id,
+            display_name=_SOURCE_LABELS[source_id],
+            as_of_date=as_of_date.isoformat(),
+            latest_observation_date=str(row[2]) if row[2] is not None else None,
+            available_date=str(row[3]) if row[3] is not None else None,
+            row_count=int(row[0]),
+            stock_count=int(row[1] or 0),
+            quality=quality,
+            pit_status="historical_pit_unverified",
+            eligibility="research_only",
+            warnings=(warning, "license／coverage／PIT 尚未由此狀態驗收"),
+        )
 
     @staticmethod
     def _load_rows(
@@ -446,6 +495,22 @@ def _missing_institutional_summary(warning: str) -> InstitutionalFlowMarketSumma
         investment_trust_net_shares=None,
         dealer_net_shares=None,
         quality="MISSING",
+        warnings=(warning,),
+    )
+
+
+def _statement_status_missing(as_of_date: date, warning: str) -> SourceVisibilityStatus:
+    return SourceVisibilityStatus(
+        source_id="fundamental_statement_items",
+        display_name=_SOURCE_LABELS["fundamental_statement_items"],
+        as_of_date=as_of_date.isoformat(),
+        latest_observation_date=None,
+        available_date=None,
+        row_count=0,
+        stock_count=0,
+        quality="MISSING",
+        pit_status="missing",
+        eligibility="none",
         warnings=(warning,),
     )
 

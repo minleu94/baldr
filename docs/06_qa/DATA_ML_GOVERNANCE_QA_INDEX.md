@@ -1,5 +1,7 @@
 # 資料、ML 與來源治理 QA 索引
 
+- [本機資料品質唯讀盤點（2026-10-25）](BALDR_DATA_QUALITY_INVENTORY_20261025.md)：確認 fundamental 表有實際資料但多數 `degraded`／日期偏舊，並在 Decision Desk 顯示季報列數、期間、可用日與 research-only 邊界；未接受來源，也未完成 coverage、PIT、license 或完整 key-collision 驗證。
+
 - [Prospective Formal Owner 清障與新 clock 候選（2026-10-25）](BALDR_FORMAL_OWNER_CLEARANCE_20261025.md)：Owner Champion 已接受；官方日曆與候選 clock 已建，但 TWSE 10/23 兩種 MI_INDEX 查詢均無資料、原因未解，strict readiness 三個輸入仍缺；不代表啟動或 Gate 通過。
 
 - [月營收全用途整合](MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)：Owner 全用途授權、官方授權原件、未知金額單位、雙市場版本歸檔、百分率研究及逐用途 Gate。

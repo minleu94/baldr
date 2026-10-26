@@ -1764,6 +1764,7 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "降級" in view.visibility_quality_badge.text()
     assert "僅供研究可見性" in view.visibility_action_hint.text()
     assert "三大法人" in view.visibility_sources_label.text()
+    assert "3,600 列/1,200 檔" in view.visibility_sources_label.text()
     assert "資料缺件" in view.visibility_sources_label.text()
 
 

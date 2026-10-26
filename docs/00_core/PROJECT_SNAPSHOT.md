@@ -1,5 +1,9 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-25 本機資料品質唯讀盤點：本機 SQLite 有 246,331 筆月營收及 1,645,555 筆報表項目，但月營收 98.5% 標記為 `degraded`，報表項目全數 `degraded`；月營收可用日最晚 2026-07-15，報表項目可用日僅 2026-06-17。Current observations 與 PE 指標另有資料，但尚未由此證明來源授權、PIT、coverage 或下游資格。Statement availability CSV 不存在；該 SQLite 未找到 Watchlist 命名表，但 Watchlist 可能使用不同 store。這表示缺口不是單純「資料庫沒資料」，而是品質、時效與來源資格證據未齊。詳[資料品質唯讀盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md)；不接受來源、不改 Gate。
+
+2026-10-25 Decision Desk 市場資料可見性補上季財報項目唯讀 aggregate：依決策日過濾後顯示列數、股票數、最新觀測期間與可用日；資料已標 degraded 時明示降級，eligibility 維持 research_only，PIT 與 license／coverage 資格不會由資料存在推定。Service/UI focused tests 60 passed；原生 GUI 與 Owner UAT 未完成。結果記錄於[資料品質盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#follow-up決策台季財報可見性)。
+
 2026-10-25 Evidence blocker 卡再補 source qualification 明細：每日排程狀態 read model 現保留 receipt 的 qualification flag 與 source ID；卡片可逐項列出月營收、季財報等資格缺件及其原始 ID，並提示需逐來源核對 availability／quality／license／PIT／coverage。這只改善缺件呈現，不接受來源或改 Gate。測試結果見[Scheduled Evidence Replay 隔離 QA](../06_qa/BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md#follow-up顯示來源資格缺件)。
 
 2026-10-25 Evidence Review blocker 可讀摘要：每日排程證據狀態新增「主要缺口與下一步」卡，將已知 pipeline blocker 顯示成安全的檢查方向；未知碼保留原碼並標示未登錄說明，無 blocker 也不宣稱 Gate 通過。Qt offscreen UI tests 2 passed；原生 GUI 重啟、實際頁面尺寸檢視及 Owner UAT 尚未完成。此呈現不改資料或 readiness。詳[Scheduled Evidence Replay 隔離 QA](../06_qa/BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md#follow-upevidence-blocker-可讀摘要)。

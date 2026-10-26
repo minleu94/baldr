@@ -438,6 +438,9 @@ class ResearchConsoleView(QWidget):
             self._render_quarterly_candidate_fields
         )
         self.quarterly_resource_table.itemSelectionChanged.connect(
+            self._render_quarterly_candidate_next_step
+        )
+        self.quarterly_resource_table.itemSelectionChanged.connect(
             self._render_quarterly_candidate_row_profiles
         )
         self.quarterly_field_table = _table(
@@ -483,6 +486,15 @@ class ResearchConsoleView(QWidget):
         quarterly_panel.layout.addLayout(quarterly_controls)
         quarterly_panel.layout.addWidget(self.quarterly_candidate_summary_label)
         quarterly_panel.layout.addWidget(self.quarterly_resource_table)
+        self.quarterly_resource_next_step_label = QLabel(
+            "選取資源查看目前候選狀態與下一個核查步驟。"
+        )
+        self.quarterly_resource_next_step_label.setWordWrap(True)
+        self.quarterly_resource_next_step_label.setTextFormat(Qt.PlainText)
+        self.quarterly_resource_next_step_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        quarterly_panel.layout.addWidget(self.quarterly_resource_next_step_label)
         quarterly_panel.layout.addWidget(self.quarterly_field_table)
         quarterly_panel.layout.addWidget(QLabel("逐公司／期別空白分布"))
         quarterly_panel.layout.addWidget(self.quarterly_row_profile_filter)
@@ -1164,6 +1176,17 @@ class ResearchConsoleView(QWidget):
             )
             self.quarterly_field_table.setCellWidget(field_row, 3, bar)
 
+    def _render_quarterly_candidate_next_step(self) -> None:
+        resource = self._selected_quarterly_candidate_resource()
+        if resource is None:
+            self.quarterly_resource_next_step_label.setText(
+                "選取資源查看目前候選狀態與下一個核查步驟。"
+            )
+            return
+        self.quarterly_resource_next_step_label.setText(
+            _quarterly_resource_next_step(resource)
+        )
+
     def _selected_quarterly_candidate_resource(self) -> dict[str, Any] | None:
         row_index = self.quarterly_resource_table.currentRow()
         resources = getattr(self, "_quarterly_candidate_resources", [])
@@ -1426,6 +1449,57 @@ def _quarterly_profile_name(profile: dict[str, Any]) -> str:
         return "名稱有多版本"
     value = profile.get("issuer_name")
     return str(value) if isinstance(value, str) and value else "未提供"
+
+
+def _quarterly_resource_next_step(resource: dict[str, Any]) -> str:
+    identity = "／".join(
+        str(resource.get(key) or fallback)
+        for key, fallback in (
+            ("market", "市場未知"),
+            ("dataset_id", "dataset 未知"),
+            ("artifact", "artifact 未提供"),
+        )
+    )
+    state = resource.get("state")
+    if state == "available":
+        guidance = (
+            "候選 CSV 結構與檔案雜湊可解析；可查看欄位空白率及公司／期別剖面。"
+            "下一步須分別核對可得時間／PIT、授權、單位與報表基準、以及時間相符的 issuer coverage。"
+        )
+    elif state == "empty_response":
+        guidance = (
+            "本次候選回應沒有可解析的財報資料列。下一步核對 capture manifest 的原始回應、dataset、"
+            "市場、HTTP 與 readback 收據；這不表示市場沒有申報或該欄位不適用。若需重採，另建新候選並保留原件。"
+        )
+    elif state == "missing":
+        guidance = (
+            "manifest 列出的候選檔案目前缺失。下一步核對隔離候選目錄與 readback 原件；若無法恢復，"
+            "重新擷取時另建新候選，不改寫既存 manifest 或原件。"
+        )
+    elif state == "invalid":
+        guidance = (
+            "此候選未通過檔案／收據／CSV 結構驗證。下一步依下方稽核註記檢查原始 manifest 與檔案；"
+            "修復後另建新候選並保留原件。"
+        )
+    else:
+        guidance = (
+            "候選狀態未知。下一步先確認 manifest 與隔離檔案收據；狀態釐清前不使用該資源。"
+        )
+    warnings = resource.get("warnings")
+    warning_items = (
+        [item for item in warnings if isinstance(item, str) and item]
+        if isinstance(warnings, list)
+        else []
+    )
+    warning_text = (
+        "\n稽核註記：" + "；".join(warning_items[:3])
+        if warning_items
+        else ""
+    )
+    return (
+        f"選取資源：{identity}\n{guidance}{warning_text}\n"
+        "資格邊界：仍為 candidate-only；來源接受為 false、無 Gate credit、下游 eligibility 為 none。"
+    )
 
 
 def _quarterly_resource_cell_summary(resource: dict[str, Any]) -> str:

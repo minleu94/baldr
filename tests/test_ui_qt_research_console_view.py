@@ -41,6 +41,7 @@ from ui_qt.views.research_console_view import (
     _learning_record_summary,
     _quarterly_blank_rate_text,
     _quarterly_blank_rate_tenths,
+    _quarterly_resource_next_step,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
 import ui_qt.views.research_console_view as research_console_view_module
@@ -65,6 +66,36 @@ def test_quarterly_csv_blank_rate_uses_safe_integer_denominator(
 ) -> None:
     assert _quarterly_blank_rate_text(blank_count, nonblank_count) == expected_text
     assert _quarterly_blank_rate_tenths(blank_count, nonblank_count) == expected_tenths
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_phrase"),
+    (
+        ("available", "可得時間／PIT、授權"),
+        ("empty_response", "不表示市場沒有申報"),
+        ("missing", "候選檔案目前缺失"),
+        ("invalid", "未通過檔案／收據／CSV 結構驗證"),
+    ),
+)
+def test_quarterly_resource_next_step_keeps_candidate_boundaries(
+    state: str,
+    expected_phrase: str,
+) -> None:
+    guidance = _quarterly_resource_next_step(
+        {
+            "market": "TWSE",
+            "dataset_id": "94831",
+            "artifact": "candidate.csv",
+            "state": state,
+            "warnings": ["fixture audit note"],
+        }
+    )
+    assert expected_phrase in guidance
+    assert "candidate-only" in guidance
+    assert "來源接受為 false" in guidance
+    assert "無 Gate credit" in guidance
+    assert "下游 eligibility 為 none" in guidance
+    assert "fixture audit note" in guidance
 
 
 @pytest.mark.parametrize(

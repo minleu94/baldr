@@ -95,6 +95,8 @@ def test_candidate_root_is_audited_and_rendered_without_granting_eligibility(
     assert "candidate-only" in visible
     assert "無 Gate credit" in visible
     assert "115" not in visible
+    assert "可得時間／PIT、授權" in view.quarterly_resource_next_step_label.text()
+    assert "來源接受為 false" in view.quarterly_resource_next_step_label.text()
     revenue_row = next(
         row
         for row in range(view.quarterly_field_table.rowCount())

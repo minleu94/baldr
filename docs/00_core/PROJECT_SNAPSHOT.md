@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-2026-10-26 P0 季報候選資料品質可見性：Research Evidence 的 P0 Source Control Center 可明選一般業或產業 CSV 候選目錄，唯讀驗 manifest／檔案 SHA 並顯示逐資源、逐欄位及逐公司／期別空白、非空與 placeholder 計數。欄位表增加以有效列為分母的空白率橫條，保留原始計數且不設缺失門檻。兩個封存候選目前有 3,962 個 issuer-period 資源列／profile（一般業 3,878、產業 84），31,077 空白、66,631 非空、0 重複業務鍵；產業 7 份為空回應。profile 可搜尋與依空白數排序，每資源輸出上限 5,000 並標示掃描數／完整性。這只描述候選 CSV 觀測，不代表市場分母；空白意義、授權涵蓋、歷史 PIT、coverage 與來源接受仍未解；Gate 3／ML 狀態不變。詳[逐欄位 QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-p0-季報逐資源逐欄位唯讀稽核接線)。
+2026-10-26 P0 季報候選資料品質可見性：Research Evidence 的 P0 Source Control Center 可明選一般業或產業 CSV 候選目錄，唯讀驗 manifest／檔案 SHA 並顯示逐資源、逐欄位及逐公司／期別空白、非空與 placeholder 計數。欄位表增加以有效列為分母的空白率橫條，保留原始計數且不設缺失門檻；資源細節依可解析／空回應／缺檔／無效提供下一步核查指引，不把空回應當成沒有申報。兩個封存候選目前有 3,962 個 issuer-period 資源列／profile（一般業 3,878、產業 84），31,077 空白、66,631 非空、0 重複業務鍵；產業 7 份為空回應。profile 可搜尋與依空白數排序，每資源輸出上限 5,000 並標示掃描數／完整性。這只描述候選 CSV 觀測，不代表市場分母；空白意義、授權涵蓋、歷史 PIT、coverage 與來源接受仍未解；Gate 3／ML 狀態不變。詳[逐欄位 QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-p0-季報逐資源逐欄位唯讀稽核接線)。
 
 2026-10-26 Gate 2／Gate 3 可見性增量：Evidence Review 可切換至 `LEGACY_COMPAT` 下既有、非正式的 working-copy DB；週報列表與 Owner hash 重查讀同一副本，唯讀、不建 schema，Owner projection 仍獨立。Decision Desk 新增 current observations 的 SQL 彙總可見性，包含市場／來源版本／基準與 available-at 計數，明示 research-only 與 PIT 未驗證。聚焦 150 passed、Workbench 93 passed、validator 25／0／4、mypy 1,147 檔 clean、15 個修改 Python 檔 compile 通過。未執行原生 GUI／實際 Owner UAT，未觸碰正式 DB、未接受來源、未授 Gate／ML credit。詳[工作副本與現況觀測 QA](../06_qa/BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md)。
 

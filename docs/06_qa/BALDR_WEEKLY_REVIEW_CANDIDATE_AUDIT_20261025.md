@@ -12,6 +12,8 @@
 
 此候選已足以供人核查本週行情列、已知官方缺值與覆蓋界線，但不是 V2.2 weekly review history，也不足以給 Gate 2 credit。
 
+接著使用 `build_evidence_weekly_approval_input.py` 從該週隔離 sidecar 產生非核准型 packet。Packet SHA-256 為 `ead885ac2e579b8a2990f51042e856bbc5d3213fbf9f0bbece482b8be9b695fc`，綁定的 sidecar SHA 為 `sha256:8be28042ee627e225733b399c8e839b81b532645ee673631e28a34ea9429b728`；1 筆 pending row 為 `reviewable_candidate`、packet status 為 `needs_named_owner_reviewer`，reviewer／owner role 仍空白。`write_performed=false`、`formal_credit_authorized=false`、`production_scheduler_allowed=false`。這讓新週候選進入可供具名人員逐筆檢視的 packet，但不等於 runbook 的完整 weekly review。
+
 ## Runbook 配套實際檢查
 
 依 [V2.2 Weekly Review Runbook](../07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md) 建立 4.15 GB working copy，確認 source DB 與副本路徑不同，並只在副本執行操作。第一輪 Evidence Pipeline report 的 run ID 為 `epr_439216bf5090`，執行參數記錄 `dry_run=false`、`confirm=true`；其來源覆蓋指出 `recommendation_persisted_missing`、`watchlist_trigger_snapshot_quality_not_ready`、`risk_prompt_snapshot_quality_not_ready`，scheduler readiness 為 `not_ready`。兩輪 smoke wrapper 在 180 秒上限逾時，receipt 為 `timed_out=true`、`forced_cleanup=true`，所以沒有可用的兩輪 idempotency 結果；不宣稱 smoke 通過。正式 source DB 的大小及修改時間在執行前後相同。
@@ -20,6 +22,6 @@
 
 ## 尚缺條件與裁定
 
-依 runbook，完整週 review 尚缺可核對的 scheduled/manual dry-run 與 dashboard 配套、smoke 兩輪完成結果、warnings/blocking gaps 判讀、具名 reviewer 的 reviewed/dismissed/follow-up、action owner，以及 backup/rollback/recovery 演練。既有正式 weekly sidecar 的 17 筆舊列仍是 `recollection_required`；新週行情候選沒有被轉為可審 packet 或 append 到正式 sidecar。
+依 runbook，完整週 review 尚缺可核對的 scheduled/manual dry-run 與 dashboard 配套、smoke 兩輪完成結果、warnings/blocking gaps 判讀、具名 reviewer 的 reviewed/dismissed/follow-up、action owner，以及 backup/rollback/recovery 演練。既有正式 weekly sidecar 的 17 筆舊列仍是 `recollection_required`；新週候選目前只在隔離 sidecar 的 packet 中可審，尚未 append 到正式 sidecar，也沒有人工審查結論。
 
 本次只產生收集候選及非核准型唯讀週報，未執行 `--confirm-action-items`、`--save-history`，未更新正式 sidecar、Gate credit 或 production scheduler。下一步是補齊同週 runbook 配套並交具名 reviewer 判讀；真正的三週 history 仍須由各週真實時間證據逐週形成。

@@ -10,6 +10,7 @@
 - `/meta_data/`：repo 根目錄下的背景任務狀態與 runtime log；正式資料根目錄 `{DATA_ROOT}/meta_data/` 不在 repo 內，不受此規則影響。
 - `**/.tmp.driveupload/`：文件或工具在任意工作目錄建立的雲端上傳暫存目錄。
 - `/.tmp_*/`：repo 根目錄下以 `.tmp_` 開頭的隔離測試／pytest `--basetemp` 輸出；只排除根目錄此命名模式，不涵蓋其他目錄中的同名資料。
+- `/.pytest-owned-temp/`、`/.q/`：repo 根目錄下由 pytest／QA 執行建立的專用 `--basetemp` 輸出，包含 fixture JSON、SQLite、HTML 與診斷日誌；測試可重新生成，不提交。保留本機輸出供當次診斷，若要清理須先確認不再需要。
 - `/.tf_*/`、`/.tc1/`、`/.tc2/`：2026-09-27 R031 QA runner 產生的根目錄短 TEMP／C1 隔離輸出；這些精確前綴與目錄只供該次 QA 暫存，不涵蓋其他根目錄來源或一般新建 source files。
 - `/.t/`：repo 根目錄下的本機 QA 暫存（例如 capture、full-stack、OS temp 與 replay diagnostics）。只忽略此根目錄，不要刪除或提交其內容；來源不明時先保留並查明 owner。
 - `/.obsidian/`、`/Untitled.canvas`：本機 Obsidian 設定與根目錄 Canvas 的單一本機排除項；不使用全域 `*.canvas` 規則，以免排除其他可供專案共用的白板。移機時先確認實際存在的設定與檔案，再決定是否另行備份。

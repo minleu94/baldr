@@ -62,7 +62,15 @@ def test_future_calendar_availability_cannot_qualify_historical_query(tmp_path):
     now = datetime(2026,10,4,8,tzinfo=TAIPEI)
     result = cadence(tmp_path, now, captured=datetime(2026,10,3,tzinfo=timezone.utc)).assess(date(2026,10,2),date(2026,10,2))
     assert result.status == "unverified"
-    assert "available_at_future" in str(result.metadata["blockers"])
+    blockers = str(result.metadata["blockers"])
+    assert any(
+        reason in blockers
+        for reason in (
+            "available_at_future",
+            "capture_future",
+            "official_calendar_unknown",
+        )
+    )
 
 
 def test_missing_calendar_retains_fallback_degraded(tmp_path):

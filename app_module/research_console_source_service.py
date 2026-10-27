@@ -44,7 +44,10 @@ from data_module.formal_announcement_impact_reader import (
 )
 from data_module.formal_monthly_revenue_quality_reader import (
     FORMAL_MONTHLY_REVENUE_QUALITY_SCHEMA,
+    FORMAL_MONTHLY_REVENUE_QUALITY_DETAIL_SCHEMA,
+    DEFAULT_DETAIL_PAGE_SIZE,
     read_formal_monthly_revenue_quality_by_period,
+    read_formal_monthly_revenue_quality_missing_rows,
 )
 from data_module.open_data_issuer_directory_candidate_audit import (
     AUDIT_SCHEMA as _ISSUER_DIRECTORY_AUDIT_SCHEMA,
@@ -158,6 +161,7 @@ class ResearchConsoleSourceService:
         p0_decision_path: str | Path | None = None,
         p0_quarterly_candidate_root: str | Path | None = None,
         p0_formal_db_path: str | Path | None = None,
+        p0_monthly_revenue_availability_path: str | Path | None = None,
         p0_issuer_directory_candidate_root: str | Path | None = None,
         p0_mops_announcement_candidate_roots: Sequence[str | Path] | str | None = None,
         clock: ClockProvider | None = None,
@@ -202,6 +206,11 @@ class ResearchConsoleSourceService:
         self._p0_formal_db_path = (
             Path(p0_formal_db_path).expanduser()
             if p0_formal_db_path is not None
+            else None
+        )
+        self._p0_monthly_revenue_availability_path = (
+            Path(p0_monthly_revenue_availability_path).expanduser()
+            if p0_monthly_revenue_availability_path is not None
             else None
         )
         configured_directory_root = (
@@ -495,6 +504,38 @@ class ResearchConsoleSourceService:
             blockers=(blocker,),
         )
 
+    def read_formal_monthly_revenue_quality_missing_rows(
+        self,
+        period: str,
+        offset: int = 0,
+        limit: int = DEFAULT_DETAIL_PAGE_SIZE,
+    ) -> dict[str, Any]:
+        """讀取明選月份公告日缺漏與報表日期待核實識別資料頁。"""
+
+        if self._p0_formal_db_path is None:
+            return {
+                "schema_version": FORMAL_MONTHLY_REVENUE_QUALITY_DETAIL_SCHEMA,
+                "status": "unavailable",
+                "period": period,
+                "rows": None,
+                "mapping_status": "unknown",
+                "total_count": None,
+                "limit": limit,
+                "offset": offset,
+                "has_more": None,
+                "blockers": ["formal_monthly_revenue_database_path_not_configured"],
+                "scope": "unknown",
+                "formal_db_write": False,
+                "financial_values_returned": False,
+            }
+        return read_formal_monthly_revenue_quality_missing_rows(
+            self._p0_formal_db_path,
+            period=period,
+            offset=offset,
+            limit=limit,
+            availability_mapping_path=self._p0_monthly_revenue_availability_path,
+        )
+
     def _build_p0_source_control_center(
         self,
         governance: Mapping[str, object] | None,
@@ -514,7 +555,8 @@ class ResearchConsoleSourceService:
         else:
             formal_monthly_revenue_quality = (
                 read_formal_monthly_revenue_quality_by_period(
-                    self._p0_formal_db_path
+                    self._p0_formal_db_path,
+                    self._p0_monthly_revenue_availability_path,
                 )
             )
         check_read_cancelled()

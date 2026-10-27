@@ -1,6 +1,7 @@
 import os
 import sys
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,6 +9,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
+from app_module.advice_dtos import (
+    AdviceAction,
+    AdviceClassification,
+    AdviceDashboardDTO,
+    AdviceMode,
+    AdvicePolicyConfig,
+    RecommendationAdviceDTO,
+)
 from app_module.research_session import ResearchStockContextDTO
 from app_module.workbench_dtos import WorkbenchDailyEvidence
 from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
@@ -53,15 +62,164 @@ def _daily(
     )
 
 
-def _view(daily: WorkbenchDailyEvidence):
+def _view(
+    daily: WorkbenchDailyEvidence,
+    advice: AdviceDashboardDTO | None = None,
+    *,
+    decision_callback=None,
+):
     contexts: list[ResearchStockContextDTO] = []
-    dashboard = replace(_dashboard_with_replay(), daily_evidence=daily)
+    dashboard = replace(
+        _dashboard_with_replay(), daily_evidence=daily, advice_dashboard=advice
+    )
     view = UnifiedDecisionWorkbenchView(
         dashboard=dashboard,
         auto_refresh=False,
         navigate_to_stock_research_callback=contexts.append,
+        save_advice_research_decision_callback=decision_callback,
     )
     return view, contexts
+
+
+def _advice_row(
+    stock_code: str,
+    *,
+    result_id: str = "result-1",
+    decision_date: str = "2026-10-16",
+    data_date: str = "2026-10-15",
+) -> RecommendationAdviceDTO:
+    return RecommendationAdviceDTO(
+        stock_code=stock_code,
+        advice_action=AdviceAction.RESEARCH,
+        classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+        why_reasons=(f"{stock_code} 僅供研究。",),
+        confidence_tier="low",
+        evidence_tier="insufficient",
+        strategy_version="research-v1",
+        decision_date=decision_date,
+        data_as_of_date=data_date,
+        source_result_id=result_id,
+        source_trace=(result_id,),
+    )
+
+
+def _advice_dashboard(*rows: RecommendationAdviceDTO) -> AdviceDashboardDTO:
+    return AdviceDashboardDTO(
+        decision_date="2026-10-16",
+        data_as_of_date="2026-10-15",
+        mode=AdviceMode.PROFESSIONAL,
+        policy=AdvicePolicyConfig(),
+        recommendations=tuple(rows),
+    )
+
+
+def test_selected_daily_candidate_opens_only_its_exact_matching_advice_row() -> None:
+    application = _app()
+    daily = _daily(("2330", "2603"))
+    advice = _advice_dashboard(_advice_row("2330"), _advice_row("2603"))
+    view, _contexts = _view(daily, advice)
+    view.show()
+    application.processEvents()
+
+    assert not view.daily_candidate_advice_button.isEnabled()
+    view.daily_candidate_selector.setCurrentIndex(
+        view.daily_candidate_selector.findData("2603")
+    )
+    assert view.daily_candidate_advice_button.isEnabled()
+    assert view.daily_candidate_advice_button.text() == "查看 2603 的策略判讀"
+
+    view.daily_candidate_advice_button.click()
+
+    assert view.advice_candidate_table.selectionModel().currentIndex().row() == 1
+    assert view._selected_advice_presentation is not None
+    assert "2603 僅供研究" in view.advice_selection_card.text()
+    assert view.overview_scroll_area.widget() is not None
+    view.close()
+
+
+@pytest.mark.parametrize(
+    "rows, advice_data_date",
+    [
+        ((_advice_row("2603", result_id="other-result"),), "2026-10-15"),
+        ((_advice_row("2603", decision_date="2026-10-15"),), "2026-10-15"),
+        ((_advice_row("2603", data_date="2026-10-14"),), "2026-10-15"),
+        ((_advice_row("2603"), _advice_row("2603")), "2026-10-15"),
+        ((_advice_row("2603"),), ""),
+    ],
+)
+def test_daily_candidate_advice_link_fails_closed_on_identity_date_or_ambiguity(
+    rows: tuple[RecommendationAdviceDTO, ...], advice_data_date: str
+) -> None:
+    _app()
+    daily = _daily(("2603",))
+    advice = AdviceDashboardDTO(
+        decision_date="2026-10-16",
+        data_as_of_date=advice_data_date,
+        mode=AdviceMode.PROFESSIONAL,
+        policy=AdvicePolicyConfig(),
+        recommendations=rows,
+    )
+    view, _contexts = _view(daily, advice)
+    try:
+        assert not view.daily_candidate_advice_button.isEnabled()
+        assert view._open_daily_candidate_advice() is False
+        assert view.advice_candidate_table.selectionModel().currentIndex().row() == -1
+    finally:
+        view.close()
+
+
+def test_selecting_exact_advice_candidate_reads_research_state_without_writing() -> None:
+    application = _app()
+    calls: list[tuple[str, dict[str, str], str]] = []
+
+    def read_decision(action: str, identity: dict[str, str], note: str = ""):
+        calls.append((action, identity, note))
+        return SimpleNamespace(
+            identity=SimpleNamespace(
+                result_id="result-1",
+                stock_code="2603",
+                decision_date="2026-10-16",
+                source_snapshot_id="snapshot-1",
+                source_snapshot_hash="",
+                identity_status="linked",
+            ),
+            read_error="",
+            identity_conflict_reason="",
+            decision_status="accepted",
+            active_note_count=2,
+            next_review_at="2026-10-27T09:00:00+08:00",
+        )
+
+    view, _contexts = _view(
+        _daily(("2603",)),
+        _advice_dashboard(_advice_row("2603")),
+        decision_callback=read_decision,
+    )
+    try:
+        view.show()
+        application.processEvents()
+        view.advice_candidate_table.selectRow(0)
+        application.processEvents()
+        view.advice_candidate_table.clicked.emit(view.advice_candidate_model.index(0, 0))
+        application.processEvents()
+
+        assert [action for action, _identity, _note in calls] == ["readback"]
+        assert calls[0][1] == {
+            "result_id": "result-1",
+            "stock_code": "2603",
+            "decision_date": "2026-10-16",
+            "source_snapshot_id": "snapshot-1",
+            "source_snapshot_hash": "",
+            "identity_status": "linked",
+        }
+        status = view.advice_research_decision_status.text()
+        assert "目前人工決定=已納入研究" in status
+        assert "研究註記=2 筆" in status
+        assert "下次檢視=2026-10-27T09:00:00+08:00" in status
+        assert view.advice_accept_decision_button.isEnabled()
+        assert view.advice_research_decision_status.isVisible()
+    finally:
+        view.close()
 
 
 def test_second_candidate_opens_exact_selected_context_through_candidate_shortcut() -> None:

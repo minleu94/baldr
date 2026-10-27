@@ -192,3 +192,89 @@ def test_cli_uses_explicit_paper_source_root_for_read_only_inputs(tmp_path: Path
     runner_kwargs = captured["runner"]
     assert isinstance(runner_kwargs, dict)
     assert runner_kwargs["paper_evidence_source"] is not None
+
+
+def test_cli_defaults_market_quote_custody_to_recommendation_source_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    class DummySummary:
+        def to_dict(self) -> dict[str, object]:
+            return {"dry_run": True}
+
+    class DummyRunner:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            captured["runner"] = kwargs
+
+        def run(self, request: object) -> DummySummary:
+            return DummySummary()
+
+    monkeypatch.setattr(run_evidence_pipeline, "EvidencePipelineRunner", DummyRunner)
+    source_root = tmp_path / "canonical-output"
+    scratch_root = tmp_path / "scratch-output"
+
+    exit_code = run_evidence_pipeline.main(
+        [
+            "--decision-date",
+            "2026-10-27",
+            "--db-path",
+            str(tmp_path / "working-copy.sqlite"),
+            "--data-root",
+            str(tmp_path / "data"),
+            "--output-root",
+            str(scratch_root),
+            "--recommendation-source-root",
+            str(source_root),
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    runner_kwargs = captured["runner"]
+    assert isinstance(runner_kwargs, dict)
+    assert runner_kwargs["market_quote_custody_root"] == str(source_root)
+
+
+def test_cli_explicit_market_quote_custody_root_overrides_recommendation_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    class DummySummary:
+        def to_dict(self) -> dict[str, object]:
+            return {"dry_run": True}
+
+    class DummyRunner:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            captured["runner"] = kwargs
+
+        def run(self, request: object) -> DummySummary:
+            return DummySummary()
+
+    monkeypatch.setattr(run_evidence_pipeline, "EvidencePipelineRunner", DummyRunner)
+    source_root = tmp_path / "canonical-output"
+    custody_root = tmp_path / "market-custody"
+
+    exit_code = run_evidence_pipeline.main(
+        [
+            "--decision-date",
+            "2026-10-27",
+            "--db-path",
+            str(tmp_path / "working-copy.sqlite"),
+            "--data-root",
+            str(tmp_path / "data"),
+            "--output-root",
+            str(tmp_path / "scratch-output"),
+            "--recommendation-source-root",
+            str(source_root),
+            "--market-quote-custody-root",
+            str(custody_root),
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    runner_kwargs = captured["runner"]
+    assert isinstance(runner_kwargs, dict)
+    assert runner_kwargs["market_quote_custody_root"] == str(custody_root)

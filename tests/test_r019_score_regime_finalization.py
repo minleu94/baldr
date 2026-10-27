@@ -45,9 +45,12 @@ def test_late_score_gate_keeps_missing_exception_and_success_accounting(
     assert body.dispositions[0].status == expected_status
     assert expected_summary in caplog.text
     if expected_status == "missing":
-        assert capture["compatibility_snapshot"].materialize()["last_screening_matrix"][0]["reason_codes"] == [
-            "total_score_missing_or_nonfinite"
-        ]
+        missing_row = capture["compatibility_snapshot"].materialize()["last_screening_matrix"][0]
+        assert missing_row["reason_codes"] == ["total_score_missing_or_nonfinite"]
+        assert len(missing_row["warnings"]) == 1
+        assert missing_row["warnings"][0].startswith(
+            ("score_input_missing:", "score_inputs_not_identified")
+        )
     elif expected_status == "degraded":
         assert body.dispositions[0].warnings == (
             "screening_exception:InvalidOperation",

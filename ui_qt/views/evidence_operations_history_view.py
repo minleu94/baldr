@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -54,6 +57,8 @@ class EvidenceOperationsHistoryView(QWidget):
         approval_service=None,
         history_service_factory=None,
         approval_service_factory=None,
+        action_lifecycle_service_factory=None,
+        candidate_history_save_service_factory=None,
         history_source_path: str = "",
         auto_refresh: bool = True,
         async_refresh: bool = True,
@@ -64,7 +69,11 @@ class EvidenceOperationsHistoryView(QWidget):
         self.approval_service = approval_service
         self.history_service_factory = history_service_factory
         self.approval_service_factory = approval_service_factory
+        self.action_lifecycle_service_factory = action_lifecycle_service_factory
+        self.candidate_history_save_service_factory = candidate_history_save_service_factory
         self.history_source_path = str(history_source_path or "").strip()
+        self._history_source_is_explicit = False
+        self.action_item_projection_path = ""
         self.async_refresh = async_refresh
         self._active_request_id = 0
         self._workers: list[TaskWorker] = []
@@ -73,10 +82,12 @@ class EvidenceOperationsHistoryView(QWidget):
         self._cursor_stack = [None]
         self._page_index = 0
         self._loading = False
+        self._candidate_history_save_in_progress = False
         self._filters_dirty = False
         self._active_filter = (None, None)
         self._card_columns = 0
         self._setup_ui()
+        self._update_candidate_history_save_state()
         self._update_pagination_buttons(None)
         self._set_all_cards("尚未載入")
         if auto_refresh:
@@ -110,7 +121,7 @@ class EvidenceOperationsHistoryView(QWidget):
 
         history_source_row = QHBoxLayout()
         self.history_source_label = QLabel(
-            f"週報歷史來源：{self.history_source_path or '應用程式預設路由'}（唯讀）"
+            f"週報歷史來源：{self.history_source_path or '應用程式預設路由'}（列表唯讀；僅明選 working-copy 可追加候選週報）"
         )
         self.history_source_label.setWordWrap(True)
         self.history_source_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -136,6 +147,37 @@ class EvidenceOperationsHistoryView(QWidget):
         history_source_row.addWidget(self.default_history_source_button)
         root.addLayout(history_source_row)
 
+        action_lifecycle_row = QHBoxLayout()
+        self.action_item_projection_label = QLabel("Action Item 狀態投影：尚未選擇（唯讀週報來源不會被修改）")
+        self.action_item_projection_label.setWordWrap(True)
+        self.action_item_projection_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        action_lifecycle_row.addWidget(self.action_item_projection_label, stretch=1)
+        self.choose_action_item_projection_button = QPushButton("選擇 Action Item 投影檔…")
+        self.choose_action_item_projection_button.setEnabled(
+            self.action_lifecycle_service_factory is not None
+            and self._history_source_is_explicit
+        )
+        self.choose_action_item_projection_button.setToolTip(
+            "選擇獨立的 append-only JSON 投影；不會寫週報 SQLite 或 Owner 核准投影。"
+        )
+        self.choose_action_item_projection_button.clicked.connect(
+            self._choose_action_item_projection
+        )
+        action_lifecycle_row.addWidget(self.choose_action_item_projection_button)
+        self.review_action_items_button = QPushButton("檢視／更新 Action Items…")
+        self.review_action_items_button.setEnabled(False)
+        self.review_action_items_button.setToolTip(
+            "需先明選安全的 working-copy DB 與獨立 Action Item 投影檔。"
+        )
+        self.review_action_items_button.clicked.connect(self._review_action_items)
+        action_lifecycle_row.addWidget(self.review_action_items_button)
+        root.addLayout(action_lifecycle_row)
+        self.action_item_lifecycle_status_label = QLabel(
+            "Action Item 處置是人工自我聲明，不代表週報核准或 Gate 2 通過。"
+        )
+        self.action_item_lifecycle_status_label.setWordWrap(True)
+        root.addWidget(self.action_item_lifecycle_status_label)
+
         approval_row = QGridLayout()
         self.owner_approval_button = QPushButton("Owner 覆核此週報…")
         self.owner_approval_button.setToolTip(
@@ -149,6 +191,19 @@ class EvidenceOperationsHistoryView(QWidget):
         self.owner_approval_status_label.setWordWrap(True)
         approval_row.addWidget(self.owner_approval_button, 0, 0)
         approval_row.addWidget(self.owner_approval_status_label, 0, 1)
+        self.save_candidate_history_button = QPushButton("保存候選決定至週報 history…")
+        self.save_candidate_history_button.setToolTip(
+            "重新核驗候選 artifact 與 sidecar，重建週報並只保存至明選的非正式 working-copy DB。"
+        )
+        self.save_candidate_history_button.clicked.connect(
+            self._save_candidate_decision_to_history
+        )
+        approval_row.addWidget(self.save_candidate_history_button, 1, 0)
+        self.save_candidate_history_status_label = QLabel(
+            "這只保存週報 history；不建立 Owner 核准、不處理 Action Items，也不授 Gate credit。"
+        )
+        self.save_candidate_history_status_label.setWordWrap(True)
+        approval_row.addWidget(self.save_candidate_history_status_label, 1, 1)
         root.addLayout(approval_row)
 
         self.cards_layout = QGridLayout()
@@ -182,7 +237,11 @@ class EvidenceOperationsHistoryView(QWidget):
         root.addWidget(self.detail_panel, stretch=1)
 
     def _choose_history_source(self) -> None:
-        if self.history_service_factory is None or self.approval_service_factory is None:
+        if (
+            self._candidate_history_save_in_progress
+            or self.history_service_factory is None
+            or self.approval_service_factory is None
+        ):
             return
         selected_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -193,8 +252,41 @@ class EvidenceOperationsHistoryView(QWidget):
         if selected_path:
             self._apply_history_source(selected_path)
 
+    def _choose_action_item_projection(self) -> None:
+        if (
+            self._candidate_history_save_in_progress
+            or self.action_lifecycle_service_factory is None
+            or not self._history_source_is_explicit
+        ):
+            return
+        selected_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "選擇 Action Item append-only 投影檔",
+            self.action_item_projection_path,
+            "JSON files (*.json)",
+        )
+        if not selected_path:
+            return
+        try:
+            service = self.action_lifecycle_service_factory(
+                self.history_source_path, selected_path
+            )
+            service.list_action_items()
+        except Exception as exc:  # noqa: BLE001 - show a concise safe-path diagnostic.
+            QMessageBox.warning(self, "Action Item 投影未設定", str(exc))
+            return
+        self.action_item_projection_path = selected_path
+        self.action_item_projection_label.setText(
+            f"Action Item 狀態投影：{selected_path}（append-only；formal credit=false）"
+        )
+        self._update_action_lifecycle_controls()
+
     def _apply_history_source(self, db_path: str | None) -> bool:
-        if self.history_service_factory is None or self.approval_service_factory is None:
+        if (
+            self._candidate_history_save_in_progress
+            or self.history_service_factory is None
+            or self.approval_service_factory is None
+        ):
             return False
         try:
             dashboard_service = self.history_service_factory(db_path)
@@ -206,14 +298,210 @@ class EvidenceOperationsHistoryView(QWidget):
                 _history_source_error_message(exc),
             )
             return False
+        selected_path = str(db_path or "").strip()
+        if selected_path != self.history_source_path:
+            self.action_item_projection_path = ""
+            if hasattr(self, "action_item_projection_label"):
+                self.action_item_projection_label.setText(
+                    "Action Item 狀態投影：尚未選擇（唯讀週報來源不會被修改）"
+                )
         self.dashboard_service = dashboard_service
         self.approval_service = approval_service
-        self.history_source_path = str(db_path or "").strip()
+        self.history_source_path = selected_path
+        self._history_source_is_explicit = bool(self.history_source_path)
         self.history_source_label.setText(
-            f"週報歷史來源：{self.history_source_path or '應用程式預設路由'}（唯讀）"
+            f"週報歷史來源：{self.history_source_path or '應用程式預設路由'}（列表唯讀；僅明選 working-copy 可追加候選週報）"
         )
         self.refresh_dashboard()
+        self._update_action_lifecycle_controls()
+        self._update_candidate_history_save_state()
         return True
+
+    def _update_action_lifecycle_controls(self) -> None:
+        available = not self._candidate_history_save_in_progress
+        if hasattr(self, "review_action_items_button"):
+            self.review_action_items_button.setEnabled(
+                available
+                and self.action_lifecycle_service_factory is not None
+                and self._history_source_is_explicit
+                and bool(self.action_item_projection_path)
+            )
+        if hasattr(self, "choose_action_item_projection_button"):
+            self.choose_action_item_projection_button.setEnabled(
+                available
+                and self.action_lifecycle_service_factory is not None
+                and self._history_source_is_explicit
+            )
+
+    def _set_candidate_history_operation_busy(self, busy: bool) -> None:
+        """Freeze source and review controls while a candidate write is in flight."""
+        self._candidate_history_save_in_progress = busy
+        source_available = (
+            self.history_service_factory is not None
+            and self.approval_service_factory is not None
+        )
+        self.choose_history_source_button.setEnabled(source_available and not busy)
+        self.default_history_source_button.setEnabled(source_available and not busy)
+        self.start_date_input.setEnabled(not busy)
+        self.end_date_input.setEnabled(not busy)
+        self.refresh_button.setEnabled(not busy and not self._loading)
+        self._update_pagination_buttons(self._current_result)
+        self._update_owner_approval_state()
+        self._update_action_lifecycle_controls()
+        self._update_candidate_history_save_state()
+
+    def _update_candidate_history_save_state(self) -> None:
+        button = getattr(self, "save_candidate_history_button", None)
+        if button is None:
+            return
+        button.setEnabled(
+            self.candidate_history_save_service_factory is not None
+            and self._history_source_is_explicit
+            and not self._loading
+            and not self._candidate_history_save_in_progress
+        )
+
+    def _save_candidate_decision_to_history(self) -> None:
+        if (
+            self._candidate_history_save_in_progress
+            or self._loading
+            or self.candidate_history_save_service_factory is None
+            or not self._history_source_is_explicit
+        ):
+            return
+        start_date = date_filter_value(self.start_date_input)
+        end_date = date_filter_value(self.end_date_input)
+        if not start_date or not end_date:
+            QMessageBox.warning(
+                self,
+                "需要明確週期",
+                "請先填入開始日與結束日；系統會用這兩天重建週報並核對候選期別。",
+            )
+            return
+
+        artifact_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "選擇候選覆核決定 artifact",
+            self.history_source_path,
+            "JSON artifact (*.json)",
+        )
+        if not artifact_path:
+            return
+        sidecar_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "選擇 artifact 綁定的 weekly collection sidecar",
+            str(Path(artifact_path).parent),
+            "SQLite database (*.db *.sqlite *.sqlite3);;All files (*.*)",
+        )
+        if not sidecar_path:
+            return
+        confirmation = (
+            "將重建指定期間週報並把候選處置附加到所選 history working-copy。\n\n"
+            f"期間：{start_date} 至 {end_date}\n"
+            f"Working-copy：{self.history_source_path}\n"
+            f"Candidate artifact：{artifact_path}\n"
+            f"Collection sidecar：{sidecar_path}\n\n"
+            "只寫週報 history。Owner 核准仍需下一步另行執行；不寫 sidecar／正式資料、不建立 Action Items、不授 Gate 或排程資格。"
+        )
+        if (
+            QMessageBox.question(
+                self,
+                "確認保存候選決定至週報 history",
+                confirmation,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        self._set_candidate_history_operation_busy(True)
+        self.save_candidate_history_status_label.setText(
+            "正在重建週報並重新核驗候選 artifact、sidecar 與工作副本；完成前不會寫入。"
+        )
+        if self.async_refresh:
+            worker = TaskWorker(
+                self.candidate_history_save_service_factory,
+                self.history_source_path,
+                start_date=start_date,
+                end_date=end_date,
+                decision_artifact_path=artifact_path,
+                sidecar_path=sidecar_path,
+            )
+            worker.finished.connect(self._on_candidate_history_saved)
+            worker.error.connect(self._on_candidate_history_save_error)
+            worker.finished.connect(lambda _result, item=worker: self._release_worker(item))
+            worker.error.connect(lambda _message, item=worker: self._release_worker(item))
+            self._workers.append(worker)
+            worker.start()
+            return
+        try:
+            record = self.candidate_history_save_service_factory(
+                self.history_source_path,
+                start_date=start_date,
+                end_date=end_date,
+                decision_artifact_path=artifact_path,
+                sidecar_path=sidecar_path,
+            )
+        except Exception as exc:  # noqa: BLE001 - preserve bridge validation diagnostics.
+            self._on_candidate_history_save_error(f"{type(exc).__name__}: {exc}")
+            return
+        self._on_candidate_history_saved(record)
+
+    def _on_candidate_history_saved(self, record: Any) -> None:
+        self.save_candidate_history_status_label.setText(
+            f"已保存並讀回週報 history：{record.review_id}／{record.review_hash}。"
+            "下一步請重新整理、核對相同 ID/hash，再由 Owner 另行覆核；這不是 Gate 2 通過。"
+        )
+        self._set_candidate_history_operation_busy(False)
+        self.refresh_dashboard()
+
+    def _on_candidate_history_save_error(self, message: str) -> None:
+        QMessageBox.warning(
+            self,
+            "週報 history 未保存",
+            f"{message.splitlines()[0]}\n\n未能確認候選與週期一致；請修正來源後重試。",
+        )
+        self.save_candidate_history_status_label.setText(
+            "保存失敗；沒有核准或 Gate 資格變更。請確認 artifact、sidecar、期間與 working-copy。"
+        )
+        self._set_candidate_history_operation_busy(False)
+
+    def _review_action_items(self) -> None:
+        if (
+            self._candidate_history_save_in_progress
+            or not self.review_action_items_button.isEnabled()
+        ):
+            return
+        try:
+            service = self.action_lifecycle_service_factory(
+                self.history_source_path, self.action_item_projection_path
+            )
+            items = service.list_action_items()
+        except Exception as exc:  # noqa: BLE001 - projection/source errors remain visible.
+            QMessageBox.warning(self, "Action Items 無法載入", str(exc))
+            return
+        if not items:
+            QMessageBox.information(self, "Action Items", "此 working-copy 尚無 Action Item。")
+            return
+        dialog = ActionItemLifecycleDialog(items, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        selection = dialog.selection()
+        try:
+            event = service.record_transition(
+                selection["action_item_id"],
+                new_status=selection["new_status"],
+                actor_name=selection["actor_name"],
+                actor_role=selection["actor_role"],
+                note=selection["note"],
+            )
+        except Exception as exc:  # noqa: BLE001 - do not conceal stale source or broken history.
+            QMessageBox.warning(self, "Action Item 未保存", str(exc))
+            return
+        self.action_item_lifecycle_status_label.setText(
+            f"已追加 {event['to_status']} 處置事件（{event['event_sha256']}）；"
+            "僅為人工追蹤紀錄，不代表週報核准或 Gate 2 通過。"
+        )
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -230,6 +518,8 @@ class EvidenceOperationsHistoryView(QWidget):
         self._card_columns = columns
 
     def refresh_dashboard(self) -> None:
+        if self._candidate_history_save_in_progress:
+            return
         self._active_filter = (
             date_filter_value(self.start_date_input),
             date_filter_value(self.end_date_input),
@@ -245,7 +535,8 @@ class EvidenceOperationsHistoryView(QWidget):
 
     def next_page(self) -> None:
         if (
-            self._loading
+            self._candidate_history_save_in_progress
+            or self._loading
             or self._filters_dirty
             or self._current_result is None
             or self._current_result.next_cursor is None
@@ -256,7 +547,12 @@ class EvidenceOperationsHistoryView(QWidget):
         self._request_dashboard(self._current_page_request())
 
     def previous_page(self) -> None:
-        if self._loading or self._filters_dirty or self._page_index <= 0:
+        if (
+            self._candidate_history_save_in_progress
+            or self._loading
+            or self._filters_dirty
+            or self._page_index <= 0
+        ):
             return
         self._cursor_stack.pop()
         self._page_index -= 1
@@ -270,9 +566,12 @@ class EvidenceOperationsHistoryView(QWidget):
         )
 
     def _request_dashboard(self, request: EvidenceOperationsHistoryDashboardRequest) -> None:
+        if self._candidate_history_save_in_progress:
+            return
         self._active_request_id += 1
         request_id = self._active_request_id
         self._loading = True
+        self._update_candidate_history_save_state()
         self._current_result = None
         self.refresh_button.setEnabled(False)
         self.previous_button.setEnabled(False)
@@ -302,7 +601,8 @@ class EvidenceOperationsHistoryView(QWidget):
         if request_id != self._active_request_id:
             return
         self._loading = False
-        self.refresh_button.setEnabled(True)
+        self.refresh_button.setEnabled(not self._candidate_history_save_in_progress)
+        self._update_candidate_history_save_state()
         self._current_result = result
         if result.source_available:
             for field_name, card in self.cards.items():
@@ -325,7 +625,8 @@ class EvidenceOperationsHistoryView(QWidget):
         if request_id != self._active_request_id:
             return
         self._loading = False
-        self.refresh_button.setEnabled(True)
+        self.refresh_button.setEnabled(not self._candidate_history_save_in_progress)
+        self._update_candidate_history_save_state()
         self._current_result = None
         self._set_all_cards("未知")
         self.table_model.set_rows(())
@@ -338,16 +639,22 @@ class EvidenceOperationsHistoryView(QWidget):
 
     def _update_pagination_buttons(self, result: EvidenceOperationsHistoryDashboardResult | None) -> None:
         self.previous_button.setEnabled(
-            not self._loading and not self._filters_dirty and self._page_index > 0
+            not self._candidate_history_save_in_progress
+            and not self._loading
+            and not self._filters_dirty
+            and self._page_index > 0
         )
         self.next_button.setEnabled(
-            not self._loading
+            not self._candidate_history_save_in_progress
+            and not self._loading
             and not self._filters_dirty
             and result is not None
             and result.next_cursor is not None
         )
 
     def _on_filter_changed(self, _date) -> None:
+        if self._candidate_history_save_in_progress:
+            return
         current_filter = (
             date_filter_value(self.start_date_input),
             date_filter_value(self.end_date_input),
@@ -378,7 +685,8 @@ class EvidenceOperationsHistoryView(QWidget):
     def _update_owner_approval_state(self) -> None:
         row = self._selected_row
         enabled = (
-            self.approval_service is not None
+            not self._candidate_history_save_in_progress
+            and self.approval_service is not None
             and bool(getattr(self.approval_service, "projection_configured", False))
             and row is not None
             and bool(row.review_id)
@@ -405,6 +713,8 @@ class EvidenceOperationsHistoryView(QWidget):
             )
 
     def _approve_selected_weekly_review(self) -> None:
+        if self._candidate_history_save_in_progress:
+            return
         row = self._selected_row
         if self.approval_service is None or row is None or not row.review_hash:
             return
@@ -424,12 +734,7 @@ class EvidenceOperationsHistoryView(QWidget):
         form.addRow("Owner 角色", role)
         form.addRow("覆核理由與後續", note)
         layout.addLayout(form)
-        pin = QLabel(
-            f"週期：{row.period_start} 至 {row.period_end}\n"
-            f"週報 ID：{row.review_id}\n"
-            f"SHA-256：{row.review_hash}\n\n"
-            "這只記錄對週報快照的人工覆核，不會批准 production scheduler、接受資料來源或授予 Gate／ML 資格。"
-        )
+        pin = QLabel(_weekly_review_approval_text(row))
         pin.setWordWrap(True)
         pin.setTextInteractionFlags(pin.textInteractionFlags() | Qt.TextSelectableByMouse)
         layout.addWidget(pin)
@@ -459,7 +764,7 @@ class EvidenceOperationsHistoryView(QWidget):
         self._save_owner_approval(row, owner_name, owner_role, review_note)
 
     def _save_owner_approval(self, row, owner_name: str, owner_role: str, review_note: str) -> bool:
-        if self.approval_service is None:
+        if self._candidate_history_save_in_progress or self.approval_service is None:
             return False
         result = self.approval_service.approve_weekly_review(
             review_id=row.review_id,
@@ -500,6 +805,11 @@ class EvidenceOperationsHistoryView(QWidget):
                     f"Warnings: {row.warnings_count}",
                     f"Record ID: {row.review_id}",
                     f"報告 SHA-256：{row.review_hash or '未知（歷史紀錄未提供）'}",
+                    *(
+                        ["候選人工處置（已綁定此週報 hash）：", *row.candidate_review_decision_summary]
+                        if row.candidate_review_decision_summary
+                        else []
+                    ),
                     "限制: " + " ".join(result.limitations),
                 ]
             )
@@ -536,6 +846,132 @@ def _state_text(raw: object, labels: dict[str, str]) -> str:
     if label is None:
         return f"未識別狀態（原始碼：{token}）"
     return f"{label}（原始碼：{token}）"
+
+
+def _weekly_review_approval_text(row) -> str:
+    lines = [
+        f"週期：{row.period_start} 至 {row.period_end}",
+        f"週報 ID：{row.review_id}",
+        f"SHA-256：{row.review_hash}",
+    ]
+    if row.candidate_review_decision_summary:
+        lines.extend(
+            ["", "候選人工處置（已綁定此週報 hash）：", *row.candidate_review_decision_summary]
+        )
+    lines.extend(
+        [
+            "",
+            "這只記錄對週報快照的人工覆核，不會批准 production scheduler、接受資料來源或授予 Gate／ML 資格。",
+        ]
+    )
+    return "\n".join(lines)
+
+
+class ActionItemLifecycleDialog(QDialog):
+    """Collect a self-declared action-item transition and its review note."""
+
+    _NEXT_STATUSES = {
+        "open": (("reviewed", "已覆盤"), ("dismissed", "不適用／結案"), ("follow_up", "列入後續")),
+        "reviewed": (("follow_up", "列入後續"),),
+        "dismissed": (("follow_up", "重新追蹤"),),
+        "follow_up": (("reviewed", "已覆盤"), ("dismissed", "不適用／結案")),
+    }
+
+    def __init__(self, action_items: list[dict], parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Action Item 人工處置")
+        self.setMinimumWidth(560)
+        self._items_by_id = {str(item["action_item_id"]): item for item in action_items}
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        self.action_combo = QComboBox()
+        for item in action_items:
+            label = (
+                f"{item['description']}｜{item['lifecycle_status']}｜"
+                f"{item['period_start']}–{item['period_end']}"
+            )
+            self.action_combo.addItem(label, str(item["action_item_id"]))
+        self.status_combo = QComboBox()
+        self.action_combo.currentIndexChanged.connect(self._refresh_status_choices)
+        self.action_combo.currentIndexChanged.connect(self._refresh_action_details)
+        self.action_detail = QTextEdit()
+        self.action_detail.setReadOnly(True)
+        self.action_detail.setMaximumHeight(135)
+        self.actor_name_input = QLineEdit()
+        self.actor_role_input = QLineEdit()
+        self.note_input = QTextEdit()
+        self.note_input.setPlaceholderText("記錄處置理由、剩餘資料缺口或下一步；必填。")
+        form.addRow("Action Item", self.action_combo)
+        form.addRow("來源與最近歷程", self.action_detail)
+        form.addRow("新狀態", self.status_combo)
+        form.addRow("處置者姓名（自我聲明）", self.actor_name_input)
+        form.addRow("處置者角色（自我聲明）", self.actor_role_input)
+        form.addRow("處置說明", self.note_input)
+        layout.addLayout(form)
+        layout.addWidget(
+            QLabel("此處置只追加追蹤事件，不核准週報、不變更來源 DB，也不授予 Gate credit。")
+        )
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._accept_if_complete)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self._refresh_status_choices()
+        self._refresh_action_details()
+
+    def _refresh_status_choices(self) -> None:
+        self.status_combo.clear()
+        action_id = str(self.action_combo.currentData() or "")
+        item = self._items_by_id.get(action_id)
+        current_status = str(item.get("lifecycle_status") or "open") if item else "open"
+        for status, label in self._NEXT_STATUSES.get(current_status, ()):
+            self.status_combo.addItem(label, status)
+
+    def _refresh_action_details(self) -> None:
+        action_id = str(self.action_combo.currentData() or "")
+        item = self._items_by_id.get(action_id)
+        if item is None:
+            self.action_detail.clear()
+            return
+        latest = item.get("latest_event")
+        lines = [
+            f"Action Item ID: {item['action_item_id']}",
+            f"來源 Item ID: {item['item_id']}",
+            f"週報 Review ID / hash: {item['review_id']} / {item['review_hash']}",
+            f"期間: {item['period_start']} 至 {item['period_end']}",
+            f"原始負責人: {item['owner'] or '未提供'}",
+        ]
+        if latest:
+            lines.append("完整 append-only 處置歷程:")
+            for event in item.get("lifecycle_history", []):
+                lines.append(
+                    f"{event['recorded_at']}｜{event['from_status']} → {event['to_status']}｜"
+                    f"{event['actor_name']}（{event['actor_role']}）｜{event['note']}"
+                )
+        self.action_detail.setPlainText("\n".join(lines))
+
+    def _accept_if_complete(self) -> None:
+        if not self.actor_name_input.text().strip():
+            QMessageBox.warning(self, "資料未完成", "請填寫處置者姓名。")
+            return
+        if not self.actor_role_input.text().strip():
+            QMessageBox.warning(self, "資料未完成", "請填寫處置者角色。")
+            return
+        if not self.note_input.toPlainText().strip():
+            QMessageBox.warning(self, "資料未完成", "請填寫處置說明。")
+            return
+        if self.status_combo.currentData() is None:
+            QMessageBox.warning(self, "沒有可用狀態", "請先選擇允許的 Action Item 狀態。")
+            return
+        self.accept()
+
+    def selection(self) -> dict[str, str]:
+        return {
+            "action_item_id": str(self.action_combo.currentData() or ""),
+            "new_status": str(self.status_combo.currentData() or ""),
+            "actor_name": self.actor_name_input.text().strip(),
+            "actor_role": self.actor_role_input.text().strip(),
+            "note": self.note_input.toPlainText().strip(),
+        }
 
 
 def _scope_message(result: EvidenceOperationsHistoryDashboardResult, page_index: int = 0) -> str:

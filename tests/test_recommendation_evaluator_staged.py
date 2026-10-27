@@ -432,6 +432,8 @@ def test_strategy_exception_is_typed_degraded_outcome_and_batch_continues() -> N
     assert no_signal_step.outcome is not None
     assert broken_step.outcome is not None
     assert short_step.outcome is not None
+    assert no_signal_step.outcome.status == "skipped"
+    assert no_signal_step.outcome.quality == "observed"
     assert broken_step.outcome.status == "degraded"
     assert broken_step.outcome.quality == "degraded"
     assert broken_step.outcome.reason_codes == ("screening_exception",)

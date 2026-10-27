@@ -143,6 +143,55 @@ def test_recorder_chunks_without_truncation_and_respects_per_file_limit(
     assert [row[0] for row in actual_rows] == [row[0] for row in rows]
 
 
+def test_recorder_accepts_more_than_128_small_queries_within_existing_bounds(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    recorder = ForwardSourceObservationRecorder(
+        run_id=RUN_ID,
+        output_root=output_root,
+        db_path=tmp_path / "market.sqlite3",
+        writer=_create_only,
+    )
+    recorder.begin_outcome(event_id="event-many-small-queries", window_days=5)
+    expected_rows = []
+    for index in range(129):
+        row = (f"202610{index % 28 + 1:02d}", index)
+        expected_rows.append(row)
+        recorder.observe_query(
+            table="daily_prices",
+            query="SELECT date, close FROM daily_prices WHERE symbol = ?",
+            parameters=(f"symbol-{index:03d}",),
+            rows=(row,),
+            symbol=f"symbol-{index:03d}",
+            purpose="daily_price_series",
+        )
+    query_ids = recorder.end_outcome()
+    recorder.record_outcome(
+        event_id="event-many-small-queries",
+        window_days=5,
+        return_basis="close_to_close",
+        outcome_status="ready",
+        outcome_payload={"value": 1},
+        query_ids=query_ids,
+    )
+
+    reference = recorder.persist()
+    manifest = json.loads((output_root / reference["manifest_path"]).read_bytes())
+
+    assert manifest["query_count"] == 129
+    assert reference["chunk_count"] == 129
+    actual_rows = []
+    for query in manifest["queries"]:
+        assert len(query["chunks"]) == 1
+        chunk = query["chunks"][0]
+        raw = (output_root / chunk["path"]).read_bytes()
+        assert len(raw) <= observation.MAX_CHUNK_BYTES
+        actual_rows.extend(json.loads(raw)["rows"])
+    assert actual_rows == [list(row) for row in expected_rows]
+
+
 def test_recorder_write_failure_does_not_publish_a_reference(tmp_path: Path) -> None:
     output_root = tmp_path / "output"
     output_root.mkdir()

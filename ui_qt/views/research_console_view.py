@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor
@@ -27,7 +28,10 @@ from PySide6.QtWidgets import (
 from typing import Any
 
 from app_module.research_console_dtos import ResearchConsoleDTO
-from app_module.research_console_source_service import ResearchConsoleSourceService
+from app_module.research_console_source_service import (
+    FORMAL_MONTHLY_REVENUE_QUALITY_DETAIL_SCHEMA,
+    ResearchConsoleSourceService,
+)
 from app_module.recommendation_learning_evidence_projection_service import (
     RecommendationLearningEvidenceProjection,
     RecommendationLearningEvidenceProjectionService,
@@ -42,8 +46,6 @@ from ui_qt.views.update.update_formatters import (
     format_p0_owner_decision_details,
 )
 from ui_qt.workers.task_worker import TaskWorker
-
-
 _STATUS_COLORS = {
     "observed": MIDNIGHT_ANALYST.status_info,
     "research_baseline": MIDNIGHT_ANALYST.status_info,
@@ -193,6 +195,11 @@ class ResearchConsoleView(QWidget):
         self._refresh_worker: TaskWorker | None = None
         self._refresh_generation = 0
         self._refresh_pending = False
+        self._monthly_quality_detail_worker: TaskWorker | None = None
+        self._monthly_quality_detail_generation = 0
+        self._monthly_quality_detail_period: str | None = None
+        self._monthly_quality_detail_offset = 0
+        self._monthly_quality_detail_total: int | None = None
         self._setup_ui()
         if console is not None:
             self.render_console(console)
@@ -732,6 +739,7 @@ class ResearchConsoleView(QWidget):
                 "營收資料月份",
                 "正式列數",
                 "缺公告日列數",
+                "報表日期來源待核實列數",
                 "公司代碼數",
                 "來源版本數",
             )
@@ -739,16 +747,68 @@ class ResearchConsoleView(QWidget):
         self.formal_monthly_revenue_quality_table.setAccessibleName(
             "正式月營收按月份公告日期品質摘要"
         )
+        self.formal_monthly_revenue_quality_table.itemSelectionChanged.connect(
+            self._update_monthly_quality_detail_controls
+        )
         monthly_quality_panel.layout.addWidget(
             self.formal_monthly_revenue_quality_state_label
         )
         monthly_quality_panel.layout.addWidget(
             self.formal_monthly_revenue_quality_table
         )
+        monthly_quality_detail_controls = QHBoxLayout()
+        self.formal_monthly_revenue_quality_detail_button = QPushButton(
+            "查看選取月份公告日缺漏／報表日期核對"
+        )
+        self.formal_monthly_revenue_quality_detail_button.clicked.connect(
+            self._load_selected_monthly_quality_detail
+        )
+        self.formal_monthly_revenue_quality_previous_button = QPushButton("上一頁")
+        self.formal_monthly_revenue_quality_previous_button.clicked.connect(
+            lambda: self._load_monthly_quality_detail_page(
+                max(0, self._monthly_quality_detail_offset - 100)
+            )
+        )
+        self.formal_monthly_revenue_quality_next_button = QPushButton("下一頁")
+        self.formal_monthly_revenue_quality_next_button.clicked.connect(
+            lambda: self._load_monthly_quality_detail_page(
+                self._monthly_quality_detail_offset + 100
+            )
+        )
+        self.formal_monthly_revenue_quality_previous_button.setEnabled(False)
+        self.formal_monthly_revenue_quality_next_button.setEnabled(False)
+        monthly_quality_detail_controls.addWidget(
+            self.formal_monthly_revenue_quality_detail_button
+        )
+        monthly_quality_detail_controls.addWidget(
+            self.formal_monthly_revenue_quality_previous_button
+        )
+        monthly_quality_detail_controls.addWidget(
+            self.formal_monthly_revenue_quality_next_button
+        )
+        monthly_quality_panel.layout.addLayout(monthly_quality_detail_controls)
+        self.formal_monthly_revenue_quality_detail_state_label = QLabel(
+            "選取有公告日缺漏或報表日期待核實的月份後載入明細；並排顯示正式列日期與精確版本 MOPS mapping 日期。"
+        )
+        self.formal_monthly_revenue_quality_detail_state_label.setWordWrap(True)
+        monthly_quality_panel.layout.addWidget(
+            self.formal_monthly_revenue_quality_detail_state_label
+        )
+        self.formal_monthly_revenue_quality_detail_table = _table(
+            ("公司代碼", "來源", "來源版本", "正式列日期", "MOPS 公告日期", "核對狀態")
+        )
+        self.formal_monthly_revenue_quality_detail_table.setAccessibleName(
+            "正式月營收公告日缺漏與報表日期待核實公司、來源版本及 MOPS mapping 明細"
+        )
+        monthly_quality_panel.layout.addWidget(
+            self.formal_monthly_revenue_quality_detail_table
+        )
         monthly_quality_panel.layout.addWidget(
             QLabel(
-                "只計正式月營收列、缺公告日期、公司代碼與來源版本；不讀取營收值，"
-                "不載入候選 mapping、不回填或判定 Gate／PIT 資格。"
+                "公告日期非空只代表欄位有值；靜態報表來源日期只有與精確 MOPS 公告日期一致才從待核實計數扣除，"
+                "不等同公司別公告事件。只計正式月營收列與識別資訊，不讀取營收值，"
+                "明選月份後每頁最多 100 列。精確 mapping 依公司、月份與 target source version 對照；"
+                "mapping 缺失、無法讀取或含診斷時顯示未知。此對照不回填日期，也不判定 Gate／PIT 資格。"
             )
         )
         gates_panel.layout.addWidget(monthly_quality_panel)
@@ -791,6 +851,7 @@ class ResearchConsoleView(QWidget):
             return
         self._shutdown_requested = True
         self._refresh_generation += 1
+        self._monthly_quality_detail_generation += 1
         self._refresh_pending = False
         worker = self._refresh_worker
         if worker is not None:
@@ -799,6 +860,13 @@ class ResearchConsoleView(QWidget):
                     worker.cancel(cooperative=True, wait=False)
             except RuntimeError:
                 self._refresh_worker = None
+        detail_worker = self._monthly_quality_detail_worker
+        if detail_worker is not None:
+            try:
+                if detail_worker.isRunning():
+                    detail_worker.cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                self._monthly_quality_detail_worker = None
 
     def _start_async_refresh(self) -> None:
         if self._shutdown_requested:
@@ -1484,6 +1552,9 @@ class ResearchConsoleView(QWidget):
             )
 
     def _render_formal_monthly_revenue_quality(self) -> None:
+        self._reset_monthly_quality_detail(
+            "選取有缺公告日的月份後載入明細；公告候選匹配狀態為未知。"
+        )
         table = self.formal_monthly_revenue_quality_table
         table.setRowCount(0)
         value = getattr(self, "_formal_monthly_revenue_quality", None)
@@ -1519,7 +1590,7 @@ class ResearchConsoleView(QWidget):
             return
         self.formal_monthly_revenue_quality_state_label.setText(
             f"正式月營收摘要：已讀回 {len(periods)} 個資料月份。"
-            "缺公告日列數只反映目前正式表欄位，不代表其他資料品質條件已通過。"
+            "讀回成功不代表公告時間已逐公司核實；靜態報表日期另行標示待核實。"
         )
         table.setRowCount(len(periods))
         for row_index, item in enumerate(periods):
@@ -1529,11 +1600,349 @@ class ResearchConsoleView(QWidget):
                 str(item.get("period") or "未知"),
                 str(item.get("formal_row_count", "未知")),
                 str(item.get("missing_announcement_date_row_count", "未知")),
+                str(item.get("report_level_date_unverified_row_count", "未知")),
                 str(item.get("distinct_stock_code_count", "未知")),
                 str(item.get("distinct_source_version_count", "未知")),
             )
             for column, cell_value in enumerate(values):
                 table.setItem(row_index, column, QTableWidgetItem(cell_value))
+            period_item = table.item(row_index, 0)
+            missing_item = table.item(row_index, 2)
+            report_level_item = table.item(row_index, 3)
+            if period_item is not None:
+                period_item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    str(item.get("period") or ""),
+                )
+            if missing_item is not None:
+                missing_item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    item.get("missing_announcement_date_row_count"),
+                )
+            if report_level_item is not None:
+                report_level_item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    item.get("report_level_date_unverified_row_count"),
+                )
+        self._update_monthly_quality_detail_controls()
+
+    def _selected_monthly_quality_period(self) -> str | None:
+        selected = self.formal_monthly_revenue_quality_table.selectedItems()
+        if not selected:
+            return None
+        row = selected[0].row()
+        period_item = self.formal_monthly_revenue_quality_table.item(row, 0)
+        missing_item = self.formal_monthly_revenue_quality_table.item(row, 2)
+        report_level_item = self.formal_monthly_revenue_quality_table.item(row, 3)
+        if period_item is None or missing_item is None or report_level_item is None:
+            return None
+        period = period_item.data(Qt.ItemDataRole.UserRole)
+        missing_count = missing_item.data(Qt.ItemDataRole.UserRole)
+        report_level_count = report_level_item.data(Qt.ItemDataRole.UserRole)
+        if (
+            not isinstance(period, str)
+            or not period
+            or isinstance(missing_count, bool)
+            or not isinstance(missing_count, int)
+            or missing_count < 0
+            or isinstance(report_level_count, bool)
+            or not isinstance(report_level_count, int)
+            or report_level_count < 0
+            or (missing_count == 0 and report_level_count == 0)
+        ):
+            return None
+        return period
+
+    def _update_monthly_quality_detail_controls(self) -> None:
+        if self._monthly_quality_detail_worker is not None:
+            return
+        self.formal_monthly_revenue_quality_detail_button.setEnabled(
+            self._selected_monthly_quality_period() is not None
+        )
+
+    def _load_selected_monthly_quality_detail(self) -> None:
+        period = self._selected_monthly_quality_period()
+        if period is None:
+            self.formal_monthly_revenue_quality_detail_state_label.setText(
+                "請選取公告日缺漏或報表日期待核實列數大於 0 的月份。"
+            )
+            return
+        self._monthly_quality_detail_period = period
+        self._load_monthly_quality_detail_page(0)
+
+    def _load_monthly_quality_detail_page(self, offset: int) -> None:
+        if self._shutdown_requested or self._monthly_quality_detail_worker is not None:
+            return
+        period = self._monthly_quality_detail_period
+        if period is None:
+            period = self._selected_monthly_quality_period()
+        if period is None or offset < 0:
+            return
+        self._monthly_quality_detail_generation += 1
+        generation = self._monthly_quality_detail_generation
+        worker = TaskWorker(
+            self.source_service.read_formal_monthly_revenue_quality_missing_rows,
+            period,
+            offset,
+            100,
+        )
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.finished.connect(
+            lambda result, current_generation=generation, current_period=period, current_offset=offset: self._on_monthly_quality_detail_finished(
+                current_generation, current_period, current_offset, result
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.error.connect(
+            lambda error, current_generation=generation: self._on_monthly_quality_detail_error(
+                current_generation, error
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.cancelled.connect(
+            lambda current_generation=generation: self._on_monthly_quality_detail_cancelled(
+                current_generation
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.native_thread_finished.connect(
+            lambda current_worker=worker: self._on_monthly_quality_detail_thread_finished(
+                current_worker
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._monthly_quality_detail_worker = worker
+        self.formal_monthly_revenue_quality_detail_button.setEnabled(False)
+        self.formal_monthly_revenue_quality_previous_button.setEnabled(False)
+        self.formal_monthly_revenue_quality_next_button.setEnabled(False)
+        self.formal_monthly_revenue_quality_detail_state_label.setText(
+            f"正在背景唯讀載入 {period} 公告日品質明細…"
+        )
+        worker.start()
+
+    def _on_monthly_quality_detail_finished(
+        self,
+        generation: int,
+        period: str,
+        offset: int,
+        result: object,
+    ) -> None:
+        if self._shutdown_requested or generation != self._monthly_quality_detail_generation:
+            return
+        table = self.formal_monthly_revenue_quality_detail_table
+        table.setRowCount(0)
+        if (
+            not isinstance(result, dict)
+            or result.get("schema_version") != FORMAL_MONTHLY_REVENUE_QUALITY_DETAIL_SCHEMA
+            or result.get("status") not in {"observed", "unavailable"}
+            or result.get("formal_db_write") is not False
+            or result.get("financial_values_returned") is not False
+            or result.get("period") != period
+            or result.get("offset") != offset
+            or result.get("limit") != 100
+        ):
+            self.formal_monthly_revenue_quality_detail_state_label.setText(
+                "公告日品質明細：不可用／未知；回傳格式或唯讀邊界不符。"
+            )
+            return
+        if result.get("status") == "unavailable":
+            blockers = result.get("blockers")
+            if (
+                result.get("rows") is not None
+                or result.get("mapping_status") != "unknown"
+                or result.get("total_count") is not None
+                or result.get("has_more") is not None
+                or result.get("scope") != "unknown"
+                or not isinstance(blockers, list)
+                or not blockers
+                or any(not isinstance(blocker, str) or not blocker for blocker in blockers)
+            ):
+                self.formal_monthly_revenue_quality_detail_state_label.setText(
+                    "公告日品質明細：不可用／未知；回傳格式或唯讀邊界不符。"
+                )
+                return
+            blocker_text = ", ".join(blockers[:3]).replace("_", " ")
+            self.formal_monthly_revenue_quality_detail_state_label.setText(
+                f"公告日品質明細目前不可用（{blocker_text}）；mapping 狀態未知，正式資料未修改。"
+            )
+            return
+        rows_value = result.get("rows")
+        total_count_value = result.get("total_count")
+        if (
+            result.get("status") != "observed"
+            or not isinstance(rows_value, list)
+            or len(rows_value) > 100
+            or isinstance(total_count_value, bool)
+            or not isinstance(total_count_value, int)
+            or total_count_value < 0
+            or offset > total_count_value
+            or offset + len(rows_value) > total_count_value
+            or not isinstance(result.get("has_more"), bool)
+            or result.get("has_more") is not (offset + len(rows_value) < total_count_value)
+            or result.get("mapping_status")
+            not in {"verified", "not_configured", "unavailable", "invalid"}
+            or result.get("blockers") != []
+            or result.get("scope")
+            != "formal_monthly_revenue_announcement_quality_identity_page"
+        ):
+            self.formal_monthly_revenue_quality_detail_state_label.setText(
+                "公告日品質明細：不可用／未知；回傳格式或唯讀邊界不符。"
+            )
+            return
+        rows = result["rows"]
+        allowed_match_states = {
+            "exact_version_mapping_present",
+            "exact_mapping_date_matches",
+            "exact_mapping_date_differs",
+            "no_exact_version_mapping",
+            "unknown",
+        }
+        if any(
+            not isinstance(row, dict)
+            or set(row)
+            != {
+                "stock_code",
+                "source",
+                "source_version",
+                "stored_announced_date",
+                "mapping_match_state",
+                "mapping_announced_date",
+            }
+            or row.get("mapping_match_state") not in allowed_match_states
+            or not isinstance(row.get("stock_code"), str)
+            or not row.get("stock_code", "").strip()
+            or not isinstance(row.get("source"), str)
+            or not row.get("source", "").strip()
+            or not isinstance(row.get("source_version"), str)
+            or not row.get("source_version", "").strip()
+            or not _monthly_mapping_date_is_valid(
+                row, str(result["mapping_status"])
+            )
+            for row in rows
+        ):
+            self.formal_monthly_revenue_quality_detail_state_label.setText(
+                "公告日品質明細：未知；列身份或候選狀態無法核對。"
+            )
+            return
+        table.setRowCount(len(rows))
+        exact_count = 0
+        date_match_count = 0
+        date_differs_count = 0
+        no_exact_count = 0
+        for row_index, row in enumerate(rows):
+            match_state = row["mapping_match_state"]
+            if match_state == "exact_version_mapping_present":
+                exact_count += 1
+                match_label = "缺公告日列有精確 mapping 候選"
+            elif match_state == "exact_mapping_date_matches":
+                date_match_count += 1
+                match_label = "正式日期與精確 MOPS 公告日期一致"
+            elif match_state == "exact_mapping_date_differs":
+                date_differs_count += 1
+                match_label = "日期不一致（仍待核實）"
+            elif match_state == "no_exact_version_mapping":
+                no_exact_count += 1
+                match_label = "目前 mapping 無精確版本（不代表未公告）"
+            else:
+                match_label = "未知（mapping 未配置或無法核驗）"
+            values = (
+                row["stock_code"],
+                row["source"],
+                row["source_version"],
+                row["stored_announced_date"] or "（空白）",
+                row["mapping_announced_date"] or "（無精確 mapping）",
+                match_label,
+            )
+            for column, cell_value in enumerate(values):
+                table.setItem(row_index, column, QTableWidgetItem(cell_value))
+        total_count = result["total_count"]
+        displayed_start = offset + 1 if rows else 0
+        displayed_end = offset + len(rows)
+        if total_count == 0:
+            detail_text = f"{period}：正式資料目前沒有公告日缺漏或報表日期待核實列。"
+        elif result["mapping_status"] == "verified":
+            detail_text = (
+                f"{period}：顯示 {displayed_start}–{displayed_end} / {total_count} 列；"
+                f"本頁正式日期與 MOPS 日期一致 {date_match_count} 列、日期不一致 {date_differs_count} 列、"
+                f"缺公告日但有精確 mapping {exact_count} 列、無精確 mapping {no_exact_count} 列。"
+                "日期不一致仍列待核實；無精確 mapping 不代表公司未公告。"
+            )
+        else:
+            mapping_reason = {
+                "not_configured": "未配置",
+                "unavailable": "不存在或無法讀取",
+                "invalid": "含有驗證診斷",
+            }.get(str(result["mapping_status"]), "無法核驗")
+            detail_text = (
+                f"{period}：顯示 {displayed_start}–{displayed_end} / {total_count} 列；"
+                f"正式 mapping {mapping_reason}，本頁匹配狀態未知。"
+            )
+        self.formal_monthly_revenue_quality_detail_state_label.setText(
+            detail_text + " 正式資料唯讀；日期仍未重算或回填，也不代表 Gate／PIT 通過。"
+        )
+        self._monthly_quality_detail_period = period
+        self._monthly_quality_detail_offset = offset
+        self._monthly_quality_detail_total = total_count
+        self.formal_monthly_revenue_quality_previous_button.setEnabled(offset > 0)
+        self.formal_monthly_revenue_quality_next_button.setEnabled(
+            result.get("has_more") is True
+        )
+
+    def _on_monthly_quality_detail_error(self, generation: int, error: str) -> None:
+        if self._shutdown_requested or generation != self._monthly_quality_detail_generation:
+            return
+        self.formal_monthly_revenue_quality_detail_table.setRowCount(0)
+        self.formal_monthly_revenue_quality_detail_state_label.setText(
+            f"公告日品質明細：不可用／未知（{error}）。正式資料未修改。"
+        )
+
+    def _on_monthly_quality_detail_cancelled(self, generation: int) -> None:
+        if self._shutdown_requested or generation != self._monthly_quality_detail_generation:
+            return
+        self.formal_monthly_revenue_quality_detail_state_label.setText(
+            "公告日品質明細讀取已取消；狀態未知，正式資料未修改。"
+        )
+
+    def _on_monthly_quality_detail_thread_finished(self, worker: TaskWorker) -> None:
+        if self._monthly_quality_detail_worker is not worker:
+            try:
+                worker.deleteLater()
+            except RuntimeError:
+                pass
+            return
+        self._monthly_quality_detail_worker = None
+        try:
+            worker.deleteLater()
+        except RuntimeError:
+            pass
+        if not self._shutdown_requested:
+            self.formal_monthly_revenue_quality_previous_button.setEnabled(
+                self._monthly_quality_detail_offset > 0
+            )
+            self.formal_monthly_revenue_quality_next_button.setEnabled(
+                self._monthly_quality_detail_total is not None
+                and self._monthly_quality_detail_offset + 100
+                < self._monthly_quality_detail_total
+            )
+            self._update_monthly_quality_detail_controls()
+
+    def _reset_monthly_quality_detail(self, status: str) -> None:
+        self._monthly_quality_detail_generation += 1
+        worker = self._monthly_quality_detail_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                self._monthly_quality_detail_worker = None
+        self._monthly_quality_detail_period = None
+        self._monthly_quality_detail_offset = 0
+        self._monthly_quality_detail_total = None
+        self.formal_monthly_revenue_quality_detail_table.setRowCount(0)
+        self.formal_monthly_revenue_quality_detail_state_label.setText(status)
+        self.formal_monthly_revenue_quality_previous_button.setEnabled(False)
+        self.formal_monthly_revenue_quality_next_button.setEnabled(False)
+        self.formal_monthly_revenue_quality_detail_button.setEnabled(False)
 
     def _render_quarterly_announcement_crosswalk_resource(self) -> None:
         table = self.quarterly_announcement_crosswalk_resource_table
@@ -1648,7 +2057,8 @@ class ResearchConsoleView(QWidget):
                 elif column == 3 and candidates:
                     cell.setToolTip(
                         "\n".join(
-                            f"event SHA-256: {candidate.get('event_sha256', '未提供')}"
+                            f"公告事件 SHA-256: {candidate.get('event_sha256', '未提供')}"
+                            f"\n官方公告明細：{candidate.get('detail_url', '未提供')}"
                             for candidate in candidates
                             if isinstance(candidate, dict)
                         )
@@ -2249,6 +2659,36 @@ def _announcement_crosswalk_state(value: str) -> str:
         "identity_incomplete": "季報身份欄缺漏",
         "unknown": "未知",
     }.get(value, value.replace("_", " "))
+
+
+def _monthly_mapping_date_is_valid(row: dict[str, Any], mapping_status: str) -> bool:
+    state = row.get("mapping_match_state")
+    announced_date = row.get("mapping_announced_date")
+    stored_date = row.get("stored_announced_date")
+    if stored_date is not None and not isinstance(stored_date, str):
+        return False
+    if state in {
+        "exact_version_mapping_present",
+        "exact_mapping_date_matches",
+        "exact_mapping_date_differs",
+    }:
+        if mapping_status != "verified" or not isinstance(announced_date, str):
+            return False
+        try:
+            canonical_mapping_date = date.fromisoformat(announced_date).isoformat()
+        except ValueError:
+            return False
+        if state == "exact_version_mapping_present":
+            return stored_date is None or stored_date == ""
+        if not isinstance(stored_date, str) or not stored_date.strip():
+            return False
+        dates_match = canonical_mapping_date == stored_date
+        return dates_match if state == "exact_mapping_date_matches" else not dates_match
+    if state == "no_exact_version_mapping":
+        return mapping_status == "verified" and announced_date is None
+    if state == "unknown":
+        return mapping_status != "verified" and announced_date is None
+    return False
 
 
 def _quarterly_audit_state(value: object) -> str:

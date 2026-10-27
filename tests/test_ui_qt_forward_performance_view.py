@@ -204,6 +204,36 @@ def test_forward_performance_view_identifies_blocked_time_contract_in_details() 
     assert "maturity_calendar_comparison_blocked:1" in details
 
 
+def test_forward_source_warnings_show_chinese_meaning_and_keep_original_codes() -> None:
+    app()
+    warning_counts = {
+        "corporate_action_source_not_ingested": 19,
+        "trading_restriction_source_not_ingested": 19,
+        "unknown_future_warning": 2,
+    }
+    row = _row(warning_counts=warning_counts)
+    model = ForwardPerformanceTableModel((row,))
+    warning_index = model.index(0, model.column_index("warning_counts"))
+
+    displayed = model.data(warning_index)
+    assert "企業行動資料來源尚未納入（corporate_action_source_not_ingested）:19" in displayed
+    assert "交易限制資料來源尚未納入（trading_restriction_source_not_ingested）:19" in displayed
+    assert "unknown_future_warning:2" in displayed
+    assert model.raw_value(0, "warning_counts") == warning_counts
+
+    view = ForwardPerformanceView(
+        FakeDashboardService(_result((row,))),
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    view.refresh_dashboard()
+    details = view.detail_panel.toPlainText()
+    assert "企業行動資料來源尚未納入" in details
+    assert "交易限制資料來源尚未納入" in details
+    assert "corporate_action_source_not_ingested" in details
+    assert "trading_restriction_source_not_ingested" in details
+
+
 def test_forward_performance_view_empty_and_degraded_states() -> None:
     app()
     empty_view = ForwardPerformanceView(FakeDashboardService(_result(())), auto_refresh=False, async_refresh=False)

@@ -164,6 +164,7 @@ def test_announcement_crosswalk_renders_owner_authorized_mops_timestamp():
                                         "announcement_at": "2026-08-12T20:14:11+08:00",
                                         "event_sha256": "a" * 64,
                                         "source_sha256": "b" * 64,
+                                        "detail_url": "https://mopsov.twse.com.tw/server-java/t57sb04?co_id=1101",
                                     }
                                 ],
                             }
@@ -182,6 +183,7 @@ def test_announcement_crosswalk_renders_owner_authorized_mops_timestamp():
         "2026-08-12T20:14:11+08:00"
     )
     assert "a" * 64 in view.quarterly_announcement_crosswalk_resource_table.item(0, 3).toolTip()
+    assert "https://mopsov.twse.com.tw/" in view.quarterly_announcement_crosswalk_resource_table.item(0, 3).toolTip()
     assert view.quarterly_announcement_period_summary_table.rowCount() == 1
     assert view.quarterly_announcement_period_summary_table.item(0, 0).text() == "2026-Q2"
     assert view.quarterly_announcement_period_summary_table.item(0, 1).text() == "1"
@@ -304,13 +306,14 @@ def test_formal_monthly_revenue_quality_renders_period_profiles_and_unknowns() -
     app()
     view = ResearchConsoleView(auto_refresh=False)
     view._formal_monthly_revenue_quality = {
-        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v2",
         "status": "observed",
         "periods": [
             {
                 "period": "2026-05",
                 "formal_row_count": 2,
                 "missing_announcement_date_row_count": 1,
+                "report_level_date_unverified_row_count": 1,
                 "distinct_stock_code_count": 2,
                 "distinct_source_version_count": 1,
             }
@@ -327,8 +330,9 @@ def test_formal_monthly_revenue_quality_renders_period_profiles_and_unknowns() -
     assert view.formal_monthly_revenue_quality_table.rowCount() == 1
     assert [
         view.formal_monthly_revenue_quality_table.item(0, column).text()
-        for column in range(5)
-    ] == ["2026-05", "2", "1", "2", "1"]
+        for column in range(6)
+    ] == ["2026-05", "2", "1", "1", "2", "1"]
+    assert "逐公司核實" in view.formal_monthly_revenue_quality_state_label.text()
 
     view._formal_monthly_revenue_quality = {
         "status": "unavailable",
@@ -339,6 +343,200 @@ def test_formal_monthly_revenue_quality_renders_period_profiles_and_unknowns() -
     view._render_formal_monthly_revenue_quality()
     assert "不可用／未知" in view.formal_monthly_revenue_quality_state_label.text()
     assert view.formal_monthly_revenue_quality_table.item(0, 1).text() == "未知"
+    view.close()
+
+
+def test_formal_monthly_quality_details_load_only_for_selected_missing_period() -> None:
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+    view._formal_monthly_revenue_quality = {
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v2",
+        "status": "observed",
+        "periods": [
+            {
+                "period": "2026-04",
+                "formal_row_count": 4,
+                "missing_announcement_date_row_count": 2,
+                "report_level_date_unverified_row_count": 0,
+                "distinct_stock_code_count": 4,
+                "distinct_source_version_count": 2,
+            },
+            {
+                "period": "2026-05",
+                "formal_row_count": 2,
+                "missing_announcement_date_row_count": 0,
+                "report_level_date_unverified_row_count": 1,
+                "distinct_stock_code_count": 2,
+                "distinct_source_version_count": 1,
+            },
+        ],
+        "blockers": [],
+        "scope": "formal_monthly_revenue_rows_grouped_by_period",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+
+    view._render_formal_monthly_revenue_quality()
+    assert not view.formal_monthly_revenue_quality_detail_button.isEnabled()
+    view.formal_monthly_revenue_quality_table.selectRow(0)
+    assert view.formal_monthly_revenue_quality_detail_button.isEnabled()
+    view.formal_monthly_revenue_quality_table.selectRow(1)
+    assert view.formal_monthly_revenue_quality_detail_button.isEnabled()
+
+    view.formal_monthly_revenue_quality_table.selectRow(0)
+    result = {
+        "schema_version": "baldr.formal_monthly_revenue_quality_rows.v2",
+        "status": "observed",
+        "period": "2026-04",
+        "mapping_status": "verified",
+        "rows": [
+            {
+                "stock_code": "2330",
+                "source": "fixture.monthly_revenue",
+                "source_version": "source-v1",
+                "stored_announced_date": None,
+                "mapping_match_state": "exact_version_mapping_present",
+                "mapping_announced_date": "2026-05-08",
+            },
+            {
+                "stock_code": "2317",
+                "source": "fixture.monthly_revenue",
+                "source_version": "source-v2",
+                "stored_announced_date": None,
+                "mapping_match_state": "no_exact_version_mapping",
+                "mapping_announced_date": None,
+            },
+            {
+                "stock_code": "2881",
+                "source": "mops.monthly_revenue_static_snapshot",
+                "source_version": "snapshot-v4",
+                "stored_announced_date": "2026-06-16",
+                "mapping_match_state": "exact_mapping_date_differs",
+                "mapping_announced_date": "2026-06-10",
+            },
+        ],
+        "total_count": 101,
+        "limit": 100,
+        "offset": 0,
+        "has_more": True,
+        "blockers": [],
+        "scope": "formal_monthly_revenue_announcement_quality_identity_page",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+    view._on_monthly_quality_detail_finished(
+        view._monthly_quality_detail_generation, "2026-04", 0, result
+    )
+
+    assert view.formal_monthly_revenue_quality_detail_table.rowCount() == 3
+    assert [
+        view.formal_monthly_revenue_quality_detail_table.item(0, column).text()
+        for column in range(6)
+    ] == [
+        "2330",
+        "fixture.monthly_revenue",
+        "source-v1",
+        "（空白）",
+        "2026-05-08",
+        "缺公告日列有精確 mapping 候選",
+    ]
+    assert [
+        view.formal_monthly_revenue_quality_detail_table.item(1, column).text()
+        for column in range(6)
+    ] == [
+        "2317",
+        "fixture.monthly_revenue",
+        "source-v2",
+        "（空白）",
+        "（無精確 mapping）",
+        "目前 mapping 無精確版本（不代表未公告）",
+    ]
+    assert [
+        view.formal_monthly_revenue_quality_detail_table.item(2, column).text()
+        for column in range(6)
+    ] == [
+        "2881",
+        "mops.monthly_revenue_static_snapshot",
+        "snapshot-v4",
+        "2026-06-16",
+        "2026-06-10",
+        "日期不一致（仍待核實）",
+    ]
+    assert "101 列" in view.formal_monthly_revenue_quality_detail_state_label.text()
+    assert "日期不一致 1 列" in view.formal_monthly_revenue_quality_detail_state_label.text()
+    assert "缺公告日但有精確 mapping 1 列、無精確 mapping 1 列" in view.formal_monthly_revenue_quality_detail_state_label.text()
+    assert "未重算或回填" in view.formal_monthly_revenue_quality_detail_state_label.text()
+    assert view.formal_monthly_revenue_quality_next_button.isEnabled()
+    assert "private-value" not in view.formal_monthly_revenue_quality_detail_state_label.text()
+    view.close()
+
+
+def test_formal_monthly_quality_details_keep_bad_mapping_unknown() -> None:
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+    result = {
+        "schema_version": "baldr.formal_monthly_revenue_quality_rows.v2",
+        "status": "observed",
+        "period": "2026-04",
+        "mapping_status": "invalid",
+        "rows": [
+            {
+                "stock_code": "2330",
+                "source": "fixture.monthly_revenue",
+                "source_version": "source-v1",
+                "stored_announced_date": None,
+                "mapping_match_state": "unknown",
+                "mapping_announced_date": None,
+            }
+        ],
+        "total_count": 1,
+        "limit": 100,
+        "offset": 0,
+        "has_more": False,
+        "blockers": [],
+        "scope": "formal_monthly_revenue_announcement_quality_identity_page",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+
+    view._on_monthly_quality_detail_finished(
+        view._monthly_quality_detail_generation, "2026-04", 0, result
+    )
+
+    assert view.formal_monthly_revenue_quality_detail_table.item(0, 5).text() == (
+        "未知（mapping 未配置或無法核驗）"
+    )
+    assert "正式 mapping 含有驗證診斷" in view.formal_monthly_revenue_quality_detail_state_label.text()
+    view.close()
+
+
+def test_formal_monthly_quality_details_render_valid_unavailable_response() -> None:
+    app()
+    view = ResearchConsoleView(auto_refresh=False)
+    result = {
+        "schema_version": "baldr.formal_monthly_revenue_quality_rows.v2",
+        "status": "unavailable",
+        "period": "2026-04",
+        "mapping_status": "unknown",
+        "rows": None,
+        "total_count": None,
+        "limit": 100,
+        "offset": 0,
+        "has_more": None,
+        "blockers": ["formal_monthly_revenue_database_path_not_configured"],
+        "scope": "unknown",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+
+    view._on_monthly_quality_detail_finished(
+        view._monthly_quality_detail_generation, "2026-04", 0, result
+    )
+
+    assert view.formal_monthly_revenue_quality_detail_table.rowCount() == 0
+    assert "目前不可用" in view.formal_monthly_revenue_quality_detail_state_label.text()
+    assert "mapping 狀態未知" in view.formal_monthly_revenue_quality_detail_state_label.text()
+    assert "回傳格式或唯讀邊界不符" not in view.formal_monthly_revenue_quality_detail_state_label.text()
     view.close()
 
 
@@ -666,6 +864,9 @@ def test_view_has_no_apply_promote_retrain_blend_accept_or_trade_controls() -> N
         "還原啟動設定",
         "選擇 mops 公告候選 json…",
         "還原啟動設定",
+        "查看選取月份公告日缺漏／報表日期核對",
+        "上一頁",
+        "下一頁",
     ]
     assert not any(token in text for text in button_texts for token in forbidden)
 

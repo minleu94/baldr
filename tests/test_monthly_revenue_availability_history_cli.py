@@ -8,7 +8,7 @@ from data_module.fundamental_availability_entrypoint import (
 from scripts.build_monthly_revenue_availability_history import main
 
 
-def test_history_cli_summary_only_does_not_write_output(tmp_path, capsys, monkeypatch) -> None:
+def test_history_cli_summary_only_quarantines_openapi_report_date(tmp_path, capsys, monkeypatch) -> None:
     raw_dir = tmp_path / "financial_data"
     raw_dir.mkdir()
     (raw_dir / "2330_monthly_revenue.csv").write_text(
@@ -47,11 +47,13 @@ def test_history_cli_summary_only_does_not_write_output(tmp_path, capsys, monkey
         ]
     )
 
-    assert exit_code == 0
+    assert exit_code == 1
     assert output.exists() is False
     summary = capsys.readouterr().out
     assert "requested_periods: 1" in summary
-    assert "matched_raw_monthly_revenue_rows: 1" in summary
+    assert "matched_raw_monthly_revenue_rows: 0" in summary
+    assert "missing_availability_rows: 1" in summary
+    assert "monthly_revenue_availability.report_level_date_not_announcement" in summary
 
 
 def test_history_cli_source_summary_uses_market_from_source_diagnostic(
@@ -85,7 +87,7 @@ def test_history_cli_source_summary_uses_market_from_source_diagnostic(
     assert "monthly_revenue_availability.fetch_failed" in summary
 
 
-def test_history_cli_writes_valid_candidate_when_output_is_specified(
+def test_history_cli_does_not_write_candidate_from_openapi_report_date(
     tmp_path, monkeypatch
 ) -> None:
     raw_dir = tmp_path / "financial_data"
@@ -126,14 +128,11 @@ def test_history_cli_writes_valid_candidate_when_output_is_specified(
         ]
     )
 
-    assert exit_code == 0
-    validation = validate_monthly_revenue_availability_file(output)
-    assert validation.valid is True
-    assert validation.accepted_count == 1
-    assert validation.source_versions == ("tpex-openapi-mopsfin-t187ap05-o-2026-06-16",)
+    assert exit_code == 1
+    assert output.exists() is False
 
 
-def test_history_cli_writes_mops_html_candidate(tmp_path, monkeypatch) -> None:
+def test_history_cli_does_not_write_candidate_from_mops_static_report_date(tmp_path, monkeypatch) -> None:
     raw_dir = tmp_path / "financial_data"
     raw_dir.mkdir()
     (raw_dir / "2330_monthly_revenue.csv").write_text(
@@ -177,11 +176,8 @@ def test_history_cli_writes_mops_html_candidate(tmp_path, monkeypatch) -> None:
         ]
     )
 
-    assert exit_code == 0
-    validation = validate_monthly_revenue_availability_file(output)
-    assert validation.valid is True
-    assert validation.accepted_count == 1
-    assert validation.source_versions == ("mops-t05st10-ifrs-2026-06-16",)
+    assert exit_code == 1
+    assert output.exists() is False
 
 
 def test_history_cli_uses_newest_snapshot_period_not_file_mtime_or_size(
@@ -232,13 +228,11 @@ def test_history_cli_uses_newest_snapshot_period_not_file_mtime_or_size(
         ]
     )
 
-    assert exit_code == 0
-    validation = validate_monthly_revenue_availability_file(output)
-    assert validation.valid is True
-    assert validation.accepted_count == 1
+    assert exit_code == 1
+    assert output.exists() is False
 
 
-def test_history_cli_supports_mops_static_source(tmp_path, monkeypatch) -> None:
+def test_history_cli_quarantines_mops_static_source(tmp_path, monkeypatch) -> None:
     raw_dir = tmp_path / "financial_data"
     raw_dir.mkdir()
     (raw_dir / "2330_monthly_revenue.csv").write_text(
@@ -286,10 +280,8 @@ def test_history_cli_supports_mops_static_source(tmp_path, monkeypatch) -> None:
         ]
     )
 
-    assert exit_code == 0
-    validation = validate_monthly_revenue_availability_file(output)
-    assert validation.valid is True
-    assert validation.accepted_count == 1
+    assert exit_code == 1
+    assert output.exists() is False
 
 
 def test_history_cli_writes_pit_csv_candidate(tmp_path, monkeypatch) -> None:

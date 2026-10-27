@@ -18,6 +18,61 @@ class ScoringEngine:
     def __init__(self):
         """初始化打分引擎"""
         pass
+
+    @staticmethod
+    def _configured_indicator_requirements(config: Dict) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """回傳目前啟用指標的必需欄位與可接受欄名。"""
+        tech_config = config.get('technical', {})
+
+        def enabled(group: str, name: str) -> bool:
+            group_config = tech_config.get(group, {})
+            if not isinstance(group_config, dict) or group_config.get("enabled") is False:
+                return False
+            indicator_config = group_config.get(name, {})
+            return (
+                isinstance(indicator_config, dict)
+                and indicator_config.get("enabled", False) is True
+            )
+
+        requirements: list[tuple[str, tuple[str, ...]]] = []
+        configured = (
+            ("momentum", "rsi", (("RSI", "rsi", "RSI_14"),)),
+            ("momentum", "macd", (("MACD", "macd"), ("MACD_Signal", "macd_signal", "Signal"))),
+            ("momentum", "kd", (("slowk", "K", "k"), ("slowd", "D", "d"))),
+            ("trend", "adx", (("ADX", "adx"),)),
+            ("volatility", "bollinger", (("upperband", "upper_band", "BB_upper"), ("lowerband", "lower_band", "BB_lower"), ("收盤價", "Close", "close"))),
+        )
+        for group, name, alias_groups in configured:
+            if enabled(group, name):
+                requirements.extend((aliases[0], aliases) for aliases in alias_groups)
+
+        trend_config = tech_config.get("trend", {})
+        ma_config = trend_config.get("ma", {}) if isinstance(trend_config, dict) else {}
+        if enabled("trend", "ma"):
+            for window in ma_config.get("windows", [5, 10, 20, 60]):
+                requirements.append((f"MA{window}", (f"MA{window}", f"SMA{window}", f"MA_{window}")))
+        return tuple(requirements)
+
+    def missing_indicator_inputs(self, df: pd.DataFrame, config: Dict) -> tuple[str, ...]:
+        """診斷最新列缺少的已啟用計分輸入；不補值、不改變分數。"""
+        if df.empty:
+            return ("latest_row",)
+        latest = df.iloc[-1]
+        missing: list[str] = []
+        for label, aliases in self._configured_indicator_requirements(config):
+            column = next((name for name in aliases if name in df.columns), None)
+            if column is None:
+                missing.append(label)
+                continue
+            observed = (
+                pd.to_numeric(pd.Series([latest[column]]), errors="coerce")
+                .replace([np.inf, -np.inf], np.nan)
+                .notna()
+                .iloc[0]
+            )
+            if not observed:
+                missing.append(label)
+        return tuple(missing)
     
     def calculate_total_score(self, df: pd.DataFrame, config: Dict, regime: str = None, regime_match: bool = None) -> pd.DataFrame:
         """計算總分（含 Regime Match Factor）
@@ -291,22 +346,8 @@ class ScoringEngine:
                 known &= pd.to_numeric(df[column], errors="coerce").replace([np.inf, -np.inf], np.nan).notna()
 
         # 已啟用但沒有可得值的因子是未知；不得落入個別計分器的中性預設。
-        required_columns = (
-            ("momentum", "rsi", (("RSI", "rsi", "RSI_14"),)),
-            ("momentum", "macd", (("MACD", "macd"), ("MACD_Signal", "macd_signal", "Signal"))),
-            ("momentum", "kd", (("slowk", "K", "k"), ("slowd", "D", "d"))),
-            ("trend", "adx", (("ADX", "adx"),)),
-            ("volatility", "bollinger", (("upperband", "upper_band", "BB_upper"), ("lowerband", "lower_band", "BB_lower"), ("收盤價", "Close", "close"))),
-        )
-        for group, name, columns in required_columns:
-            if indicator_enabled(group, name):
-                for aliases in columns:
-                    require_observed(*aliases)
-        trend_config = tech_config.get("trend", {})
-        ma_config = trend_config.get("ma", {}) if isinstance(trend_config, dict) else {}
-        if indicator_enabled("trend", "ma"):
-            for window in ma_config.get("windows", [5, 10, 20, 60]):
-                require_observed(f"MA{window}", f"SMA{window}", f"MA_{window}")
+        for _label, aliases in self._configured_indicator_requirements(config):
+            require_observed(*aliases)
         
         # RSI 分數
         if indicator_enabled("momentum", "rsi"):

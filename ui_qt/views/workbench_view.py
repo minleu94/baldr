@@ -4,16 +4,20 @@ import re
 from html import escape
 from pathlib import Path
 from collections.abc import Callable, Mapping
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import cast
+from zoneinfo import ZoneInfo
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QDateTime, QTimer, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
     QBoxLayout,
     QAbstractItemView,
     QComboBox,
+    QDateTimeEdit,
+    QDialog,
+    QDialogButtonBox,
     QGridLayout,
     QHBoxLayout,
     QInputDialog,
@@ -21,6 +25,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QPlainTextEdit,
     QScrollArea,
     QSizePolicy,
     QTabWidget,
@@ -32,6 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from app_module.workbench_dtos import (
+    ManualSavedResearchLaneDTO,
     WORKBENCH_LEGACY_DRILLDOWN_TARGETS,
     WorkbenchDashboardDTO,
     WorkbenchDailyEvidence,
@@ -83,6 +89,7 @@ from ui_qt.models.workbench_table_models import (
     advice_evidence_tier_label,
     display_workbench_value,
 )
+from ui_qt.views.advice_contract_backtest_context import AdviceContractBacktestNavigation
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_label
 from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
@@ -182,7 +189,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         navigate_to_update_callback: Callable[[], None] | None = None,
         navigate_to_recommendation_callback: Callable[[], None] | None = None,
         navigate_to_saved_recommendation_callback: Callable[[str], object] | None = None,
-        save_advice_research_decision_callback: Callable[[str, Mapping[str, str], str], object] | None = None,
+        navigate_to_backtest_callback: Callable[[AdviceContractBacktestNavigation], object] | None = None,
+        save_advice_research_decision_callback: Callable[..., object] | None = None,
         navigate_to_industry_themes_callback: Callable[[], None] | None = None,
         parent=None,
     ) -> None:
@@ -211,11 +219,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.navigate_to_portfolio_position_callback = navigate_to_portfolio_position_callback
         self._position_health_navigation_source: PositionHealthReadModel | None = None
         self._position_health_navigation_id: str | None = None
+        self._selected_advice_contract_backtest_context: AdviceContractBacktestNavigation | None = None
         self.navigate_to_watchlist_callback = navigate_to_watchlist_callback
         self.navigate_to_stock_research_callback = navigate_to_stock_research_callback
         self.navigate_to_update_callback = navigate_to_update_callback
         self.navigate_to_recommendation_callback = navigate_to_recommendation_callback
         self.navigate_to_saved_recommendation_callback = navigate_to_saved_recommendation_callback
+        self.navigate_to_backtest_callback = navigate_to_backtest_callback
         self.save_advice_research_decision_callback = save_advice_research_decision_callback
         self.navigate_to_industry_themes_callback = (
             navigate_to_industry_themes_callback
@@ -229,10 +239,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._workbench_narrow = False
         self.presentation_service = DecisionPresentationService()
         self._selected_advice_presentation = None
+        self._selected_advice_row = None
         self._selected_advice_original_reasons: tuple[str, ...] = ()
         self._selected_advice_source_result_id: str | None = None
         self._selected_advice_source_stock_code: str | None = None
         self._selected_advice_decision_identity: dict[str, str] | None = None
+        self._selected_advice_decision_data_date: str | None = None
+        self._advice_research_readback_identity: tuple[str, str, str, str] | None = None
         self._daily_candidate_selection_identity: tuple[object, ...] | None = None
         self._recent_research_widget: QWidget | None = None
 
@@ -608,7 +621,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_card = self._make_state_label()
         self.advice_selection_card.setObjectName("adviceSelectionCard")
         self.advice_selection_card.setTextFormat(Qt.PlainText)
-        self.advice_selection_card.setMaximumHeight(160)
+        self.advice_selection_card.setMaximumHeight(240)
         self.advice_selection_card.setText("所選建議判讀：選取 Advice 或研究候選列後顯示。")
         self.advice_selection_card.setVisible(False)
         advice_panel.layout.addWidget(self.advice_selection_card)
@@ -624,6 +637,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self.advice_source_result_button.hide()
         advice_panel.layout.addWidget(self.advice_source_result_button)
+        self.advice_contract_backtest_button = QPushButton("前往策略回測建立新版本")
+        self.advice_contract_backtest_button.setObjectName("adviceContractBacktestButton")
+        self.advice_contract_backtest_button.setProperty("variant", "secondary")
+        self.advice_contract_backtest_button.setToolTip(
+            "策略作者契約欄位只能在新的合格回測結果升版時建立；既有策略版本不能事後補綁。"
+            "此按鈕只開啟策略回測，不會自動執行回測或升版。"
+        )
+        self.advice_contract_backtest_button.hide()
+        self.advice_contract_backtest_button.clicked.connect(
+            self._open_backtest_for_advice_contract
+        )
+        advice_panel.layout.addWidget(self.advice_contract_backtest_button)
         self.advice_research_decision_status = self._make_state_label()
         self.advice_research_decision_status.setObjectName("adviceResearchDecisionStatus")
         self.advice_research_decision_status.setTextFormat(Qt.PlainText)
@@ -633,7 +658,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_accept_decision_button = QPushButton("記錄已納入研究")
         self.advice_skip_decision_button = QPushButton("記錄略過")
         self.advice_note_decision_button = QPushButton("新增研究註記")
-        self.advice_readback_decision_button = QPushButton("讀取／重新讀取同筆決定")
+        self.advice_readback_decision_button = QPushButton("重新讀取同筆決定")
+        self.advice_readback_decision_button.setToolTip(
+            "選取合格 Advice 列時會自動唯讀載入同筆研究狀態；需要更新時可重新讀取。"
+            "不會新增或修改研究決定。"
+        )
         decision_buttons = (
             self.advice_accept_decision_button,
             self.advice_skip_decision_button,
@@ -656,7 +685,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_readback_decision_button.clicked.connect(
             lambda: self._save_selected_advice_research_decision("readback")
         )
+        self.advice_schedule_review_button = QPushButton("設定下次檢視")
+        self.advice_schedule_review_button.setProperty("variant", "secondary")
+        self.advice_schedule_review_button.setAccessibleName("設定下次檢視")
+        self.advice_schedule_review_button.setToolTip(
+            "為目前核對完成的 Advice candidate 指定台北時間；保存後會讀回核對。"
+        )
+        self.advice_schedule_review_button.setEnabled(False)
+        self.advice_schedule_review_button.clicked.connect(
+            self._schedule_selected_advice_review
+        )
         advice_panel.layout.addLayout(decision_actions)
+        advice_panel.layout.addWidget(self.advice_schedule_review_button)
         self.advice_presentation_detail = self._make_state_label()
         self.advice_presentation_detail.setObjectName("advicePresentationDetail")
         self.advice_presentation_detail.setText(
@@ -704,6 +744,35 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_empty_widget.setVisible(False)
 
         content_layout.addWidget(advice_panel)
+
+        manual_research_panel, self.manual_research_section_title = self._panel_with_title(
+            "所選保存結果（研究專用）"
+        )
+        self.manual_research_panel = manual_research_panel
+        self.manual_research_status = QLabel(
+            "尚未明選保存結果。到「推薦分析」選取已核驗結果後，可送來此處作研究判讀。"
+        )
+        self.manual_research_status.setObjectName("manualSavedResearchStatus")
+        self.manual_research_status.setWordWrap(True)
+        self.manual_research_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        manual_research_panel.layout.addWidget(self.manual_research_status)
+        self.manual_research_clear_button = QPushButton("清除此研究結果")
+        self.manual_research_clear_button.setProperty("variant", "secondary")
+        self.manual_research_clear_button.clicked.connect(
+            lambda: self.set_manual_saved_research_lane(None)
+        )
+        manual_research_panel.layout.addWidget(self.manual_research_clear_button)
+        self.manual_research_text = QPlainTextEdit()
+        self.manual_research_text.setObjectName("manualSavedResearchDetails")
+        self.manual_research_text.setReadOnly(True)
+        self.manual_research_text.setMinimumHeight(190)
+        self.manual_research_text.setMaximumHeight(380)
+        self.manual_research_text.setPlaceholderText("明選結果後，這裡會顯示原保存日期及研究判讀。")
+        self.manual_research_text.hide()
+        manual_research_panel.layout.addWidget(self.manual_research_text)
+        self.manual_research_clear_button.hide()
+        manual_research_panel.hide()
+        content_layout.addWidget(manual_research_panel)
 
         position_health_panel, self.position_health_section_title = self._panel_with_title(
             "持倉健康／退出候選 / Paper Position Health"
@@ -2175,7 +2244,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "展開每日 snapshot、candidate、event identity、learning receipt 與診斷；唯讀。"
         )
         self.daily_detail_button.toggled.connect(self._toggle_daily_detail)
+        self.daily_candidate_advice_button = QPushButton("查看這檔策略判讀")
+        self.daily_candidate_advice_button.setProperty("variant", "secondary")
+        self.daily_candidate_advice_button.setAccessibleName("查看所選每日候選的同源策略判讀")
+        self.daily_candidate_advice_button.setToolTip(
+            "只在 Advice 列與所選候選的 result ID、股票、決策日及資料日完全相同時開啟；"
+            "不相符、缺值或重複時不跳轉，也不推定有建議。"
+        )
+        self.daily_candidate_advice_button.setEnabled(False)
+        self.daily_candidate_advice_button.clicked.connect(self._open_daily_candidate_advice)
         for button in (
+            self.daily_candidate_advice_button,
             self.daily_watchlist_button,
             self.daily_evidence_button,
             self.daily_detail_button,
@@ -2399,6 +2478,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             button_text = "開啟候選研究報告"
         self.daily_candidate_button.setText(button_text)
         self.daily_candidate_button.setEnabled(can_open)
+        self._sync_daily_candidate_advice_control()
         # 缺件原因留在候選圖卡，沒有可明選股票時不占用兩排停用控制。
         self.home_candidate_selector_row.setVisible(bool(options))
         self.daily_saved_result_button.setText(
@@ -2418,6 +2498,76 @@ class UnifiedDecisionWorkbenchView(QWidget):
             primary_button = getattr(self, "primary_action_button", None)
             if primary_button is not None:
                 primary_button.setEnabled(can_open)
+
+    def _daily_candidate_advice_target(self) -> tuple[QTableView, int] | None:
+        """只定位與所選每日候選完整身份相同的 Advice 列。"""
+
+        dashboard = self._dashboard
+        daily = getattr(self, "_daily_investment_evidence", None)
+        if dashboard is None or self._dashboard_stale or daily is None:
+            return None
+        if (
+            self._daily_candidate_source_identity(daily) != self._daily_candidate_selection_identity
+            or str(daily.candidate_status).strip().lower() != "candidate"
+        ):
+            return None
+        selected_code = self.daily_candidate_selector.currentData()
+        result_id = str(daily.candidate_result_id or "").strip()
+        decision_date = str(daily.decision_date or "").strip()
+        data_date = str(daily.candidate_data_date or "").strip()
+        advice = dashboard.advice_dashboard
+        if (
+            not isinstance(selected_code, str)
+            or selected_code not in daily.candidate_symbols
+            or not result_id
+            or not decision_date
+            or not data_date
+            or advice is None
+            or advice.decision_date != decision_date
+            or advice.data_as_of_date != data_date
+        ):
+            return None
+
+        matches: list[tuple[QTableView, int]] = []
+        for table, model in (
+            (self.advice_recommendation_table, self.advice_recommendation_model),
+            (self.advice_candidate_table, self.advice_candidate_model),
+        ):
+            for row_index in range(model.rowCount()):
+                item = model.row_at(row_index)
+                if item is None:
+                    continue
+                if (
+                    str(getattr(item, "stock_code", "") or "").strip() == selected_code
+                    and getattr(item, "source_result_id", None) == result_id
+                    and str(getattr(item, "decision_date", "") or "").strip() == decision_date
+                    and str(getattr(item, "data_as_of_date", "") or "").strip() == data_date
+                ):
+                    matches.append((table, row_index))
+        return matches[0] if len(matches) == 1 else None
+
+    def _sync_daily_candidate_advice_control(self) -> None:
+        target = self._daily_candidate_advice_target()
+        selected_code = self.daily_candidate_selector.currentData()
+        if isinstance(selected_code, str) and target is not None:
+            self.daily_candidate_advice_button.setText(f"查看 {selected_code} 的策略判讀")
+            self.daily_candidate_advice_button.setEnabled(True)
+        else:
+            self.daily_candidate_advice_button.setText("查看這檔策略判讀")
+            self.daily_candidate_advice_button.setEnabled(False)
+
+    def _open_daily_candidate_advice(self) -> bool:
+        target = self._daily_candidate_advice_target()
+        if target is None:
+            self._sync_daily_candidate_advice_control()
+            return False
+        table, row_index = target
+        model = table.model()
+        index = model.index(row_index, 0)
+        table.selectRow(row_index)
+        table.scrollTo(index, QAbstractItemView.PositionAtCenter)
+        self.overview_scroll_area.ensureWidgetVisible(self.advice_panel)
+        return True
 
     def _style_daily_state(self, status: str) -> None:
         tone = _workbench_tone(status)
@@ -3360,7 +3510,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._dashboard = dashboard
         self._selected_advice_source_result_id = None
         self._selected_advice_source_stock_code = None
+        self._selected_advice_contract_backtest_context = None
         self._selected_advice_decision_identity = None
+        self._advice_research_readback_identity = None
         self.advice_source_result_button.hide()
         self._set_advice_research_decision_enabled(False)
         self.advice_research_decision_status.hide()
@@ -3399,6 +3551,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.meta_label.setToolTip(self._format_workbench_source_meta(dashboard))
         self.status_model.set_rows(dashboard.status_strip)
         self._render_advice(dashboard)
+        self._sync_daily_candidate_advice_control()
         self._render_paper_account_context(dashboard)
         self.review_model.set_rows(dashboard.review_items)
         self.review_state_label.setText(self._review_queue_state_text(dashboard))
@@ -3421,6 +3574,65 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.warning_list.set_warnings(tuple(_humanize_warning(item) for item in dashboard.warnings))
         self._show_initial_detail(dashboard)
         self._resize_tables()
+
+    def set_manual_saved_research_lane(
+        self,
+        lane: ManualSavedResearchLaneDTO | None,
+        *,
+        error: str | None = None,
+    ) -> None:
+        """設定／清除獨立的保存結果研究區；不修改 dashboard DTO。"""
+
+        self.manual_research_text.clear()
+        self.manual_research_text.hide()
+        self.manual_research_clear_button.hide()
+        if lane is None:
+            self.manual_research_status.setText(
+                error or "尚未明選保存結果。到「推薦分析」選取已核驗結果後，可送來此處作研究判讀。"
+            )
+            self.manual_research_panel.setVisible(bool(error))
+            return
+
+        advice = lane.advice_dashboard
+        lines = [
+            "明確選取的保存結果｜Professional 研究候選",
+            f"result_id：{lane.result_id}",
+            f"保存內容 SHA-256：{lane.payload_sha256}",
+            f"原決策日：{lane.decision_date}｜原資料截止日：{lane.data_as_of_date}",
+            f"策略版本：{lane.strategy_version or '原件未提供'}",
+            "日期保持保存結果原值；不代表今日排程建議、正式採用、來源／PIT 資格或 Gate 通過。",
+            "Advice 只供研究；沒有載入帳戶或手動持倉，也不計算配置。",
+            "",
+        ]
+        if advice.warnings:
+            lines.extend(("研究限制與來源警告：", *(f"• {item}" for item in advice.warnings), ""))
+        if advice.diagnostics:
+            lines.extend(("診斷：", *(f"• {item}" for item in advice.diagnostics), ""))
+        rows = advice.recommendations
+        if not rows:
+            lines.append("此保存結果沒有可呈現的 Advice 列。")
+        for index, row in enumerate(rows, start=1):
+            action = getattr(row.advice_action, "value", str(row.advice_action))
+            lines.extend(
+                (
+                    f"{index}. {row.stock_code or '整體拒絕'} {row.stock_name}｜{action}｜分類={getattr(row.classification, 'value', row.classification)}",
+                    f"   支持理由：{'；'.join(row.why_reasons) or '未提供'}",
+                    f"   策略／資格限制：{'；'.join(row.why_not_reasons) or '未提供'}",
+                    f"   同股保存來源證據：{'；'.join(row.source_evidence) or '未提供；不能據此推定沒有反證或風險'}",
+                    f"   主要風險：{'；'.join(row.risk_reasons) or '未提供'}",
+                    f"   證據={row.evidence_tier or '未提供'}｜信心={row.confidence_tier or '未提供'}｜資料品質={row.data_quality or '未知'}",
+                    f"   成交可行性={row.execution_feasibility or '未知'}｜流動性={row.liquidity_state or '未知'}",
+                    f"   進場論點：{row.entry_thesis or '未提供'}",
+                    f"   失效條件：{'；'.join(row.invalidation_conditions) or '未提供'}",
+                    f"   來源追溯：{'；'.join(row.source_trace) or '未提供'}",
+                    "",
+                )
+            )
+        self.manual_research_status.setText("已唯讀重讀並核對 canonical 保存結果；未寫入資料或研究決定。")
+        self.manual_research_text.setPlainText("\n".join(lines))
+        self.manual_research_clear_button.show()
+        self.manual_research_text.show()
+        self.manual_research_panel.show()
 
     def _render_position_health(
         self,
@@ -3809,13 +4021,20 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _clear_advice_presentation_selection(self) -> None:
         self._selected_advice_presentation = None
+        self._selected_advice_row = None
         self._selected_advice_original_reasons = ()
         self._selected_advice_source_result_id = None
         self._selected_advice_source_stock_code = None
+        self._selected_advice_contract_backtest_context = None
         if hasattr(self, "advice_source_result_button"):
             self.advice_source_result_button.hide()
+        if hasattr(self, "advice_contract_backtest_button"):
+            self.advice_contract_backtest_button.hide()
         self._selected_advice_decision_identity = None
+        self._advice_research_readback_identity = None
         self._set_advice_research_decision_enabled(False)
+        if hasattr(self, "advice_research_decision_status"):
+            self.advice_research_decision_status.hide()
         if hasattr(self, "advice_selection_card"):
             self.advice_selection_card.setText("所選建議判讀：尚未選取；欄位未提供。")
             self.advice_selection_card.setVisible(False)
@@ -3860,6 +4079,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             return
         self._selected_advice_presentation = presentation
+        self._selected_advice_row = item
         is_candidate = getattr(getattr(item, "classification", None), "value", "") == "PROFESSIONAL_CANDIDATE"
         is_portfolio_row = model is self.advice_portfolio_model
         action_raw = getattr(getattr(item, "advice_action", None), "value", "") or ""
@@ -3899,7 +4119,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"層級：{'Professional 研究候選（不屬於正式 Advice）' if is_candidate else '配置列' if is_portfolio_row else '正式 Advice'}｜"
             f"動作：{action_label}（原碼：{action_raw or '未提供'}）\n"
             f"{contract_completeness}\n"
-            f"原理由／論點：{compact_reasons_text}\n"
+            f"Advice 原始理由（含資格限制）：{compact_reasons_text}\n"
             f"校準適用期間：{presentation.horizon or '未提供'}｜"
             f"策略持有期間：{presentation.holding_horizon or '未提供'}｜"
             f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}｜"
@@ -3924,7 +4144,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self.advice_selection_card.setText(card_text)
         self.advice_selection_card.setToolTip(
-            f"完整原始理由／論點：{full_reasons_text}\n"
+            f"Advice 原始理由（含資格限制）：{full_reasons_text}\n"
             f"完整風險：{full_risks_text}\n"
             f"完整失效條件：{full_invalidation_text}\n"
             f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}\n"
@@ -3934,7 +4154,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"保存來源逐股證據：{source_evidence_text}"
         )
         self.advice_selection_card.setAccessibleDescription(
-            f"{card_text}\n完整原始理由／論點：{full_reasons_text}\n"
+            f"{card_text}\nAdvice 原始理由（含資格限制）：{full_reasons_text}\n"
             f"完整風險：{full_risks_text}\n完整失效條件：{full_invalidation_text}\n"
             f"證據成熟度：{evidence_tier_label}（原始值：{evidence_tier_raw or '未提供'}）\n"
             f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）\n"
@@ -3942,9 +4162,85 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self.advice_selection_card.setVisible(True)
         self._update_advice_source_result_action(item, model)
+        self._update_advice_contract_backtest_action(item, model)
         self._update_advice_research_decision_action(item, model)
         self.advice_lineage_button.setEnabled(True)
         self._render_advice_presentation_detail()
+
+    def _update_advice_contract_backtest_action(self, item: object, model: object) -> None:
+        _, author_only_missing = _missing_advice_contract_fields(item)
+        self._selected_advice_contract_backtest_context = None
+        eligible_model = model in (self.advice_recommendation_model, self.advice_candidate_model)
+        context = self._build_advice_contract_backtest_context(item) if eligible_model else None
+        show_action = (
+            context is not None
+            and bool(author_only_missing)
+            and callable(self.navigate_to_backtest_callback)
+        )
+        if show_action:
+            self._selected_advice_contract_backtest_context = context
+        self.advice_contract_backtest_button.setVisible(show_action)
+
+    def _build_advice_contract_backtest_context(
+        self, item: object
+    ) -> AdviceContractBacktestNavigation | None:
+        dashboard = self._dashboard
+        daily = dashboard.daily_evidence if dashboard is not None else None
+        if dashboard is None or self._dashboard_stale or daily is None:
+            return None
+        result_id = getattr(item, "source_result_id", None)
+        stock_code = getattr(item, "stock_code", None)
+        decision_date = getattr(item, "decision_date", None)
+        data_as_of_date = getattr(item, "data_as_of_date", None)
+        source_snapshot_id = daily.candidate_source_snapshot_id
+        if (
+            daily.candidate_status not in {"candidate", "candidate_degraded"}
+            or getattr(item, "data_quality", None) != "OBSERVED"
+            or not isinstance(result_id, str)
+            or not result_id
+            or result_id != daily.candidate_result_id
+            or not isinstance(stock_code, str)
+            or stock_code not in daily.candidate_symbols
+            or decision_date != daily.decision_date
+            or not isinstance(data_as_of_date, str)
+            or not data_as_of_date
+            or data_as_of_date != daily.candidate_data_date
+            or not isinstance(source_snapshot_id, str)
+            or not source_snapshot_id
+        ):
+            return None
+        _, author_only_missing = _missing_advice_contract_fields(item)
+        if not author_only_missing:
+            return None
+        strategy_version = getattr(item, "strategy_version", None)
+        strategy_label = (
+            strategy_version.strip()
+            if isinstance(strategy_version, str) and strategy_version.strip()
+            else "未提供"
+        )
+        return AdviceContractBacktestNavigation(
+            candidate_result_id=result_id,
+            source_snapshot_id=source_snapshot_id,
+            stock_code=stock_code,
+            decision_date=decision_date,
+            data_as_of_date=data_as_of_date,
+            strategy_version=strategy_label,
+            missing_author_fields=author_only_missing,
+        )
+
+    def _open_backtest_for_advice_contract(self) -> bool:
+        callback = self.navigate_to_backtest_callback
+        item = self._selected_advice_row
+        if item is None or not callable(callback):
+            self.advice_contract_backtest_button.hide()
+            return False
+        context = self._build_advice_contract_backtest_context(item)
+        if context is None:
+            self._selected_advice_contract_backtest_context = None
+            self.advice_contract_backtest_button.hide()
+            return False
+        self._selected_advice_contract_backtest_context = context
+        return callback(context) is not False
 
     def _update_advice_source_result_action(self, item: object, model: object) -> None:
         self._selected_advice_source_result_id = None
@@ -3964,7 +4260,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         row_decision_date = getattr(item, "decision_date", "")
         if (
             daily is None
-            or daily.candidate_status != "candidate"
+            or daily.candidate_status not in {"candidate", "candidate_degraded"}
             or not isinstance(result_id, str)
             or not result_id
             or result_id != daily.candidate_result_id
@@ -3998,7 +4294,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             or dashboard is None
             or self._dashboard_stale
             or daily is None
-            or daily.candidate_status != "candidate"
+            or daily.candidate_status not in {"candidate", "candidate_degraded"}
             or daily.candidate_result_id != result_id
             or stock_code not in daily.candidate_symbols
             or not callable(callback)
@@ -4015,6 +4311,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "advice_skip_decision_button",
             "advice_note_decision_button",
             "advice_readback_decision_button",
+            "advice_schedule_review_button",
         ):
             button = getattr(self, name, None)
             if button is not None:
@@ -4024,11 +4321,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         """只為同一每日來源已核對的 Advice 列提供人工 continuity 動作。"""
 
         self._selected_advice_decision_identity = None
+        self._selected_advice_decision_data_date = None
         self._set_advice_research_decision_enabled(False)
-        self.advice_research_decision_status.setText(
-            "目前 Advice 尚未具備可核對的 exact result／股票／決策日／snapshot ID；不會保存。"
-        )
-        self.advice_research_decision_status.hide()
         callback = self.save_advice_research_decision_callback
         dashboard = self._dashboard
         daily = dashboard.daily_evidence if dashboard is not None else None
@@ -4037,9 +4331,14 @@ class UnifiedDecisionWorkbenchView(QWidget):
             or dashboard is None
             or self._dashboard_stale
             or daily is None
-            or daily.candidate_status != "candidate"
+            or daily.candidate_status not in {"candidate", "candidate_degraded"}
             or model not in (self.advice_recommendation_model, self.advice_candidate_model)
         ):
+            self._advice_research_readback_identity = None
+            self.advice_research_decision_status.setText(
+                "目前 Advice 尚未具備可核對的 exact result／股票／決策日／snapshot ID；不會保存。"
+            )
+            self.advice_research_decision_status.hide()
             return
         result_id = getattr(item, "source_result_id", None)
         stock_code = getattr(item, "stock_code", None)
@@ -4056,6 +4355,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
             or getattr(item, "data_as_of_date", "") != daily.candidate_data_date
             or not daily.candidate_source_snapshot_id
         ):
+            self._advice_research_readback_identity = None
+            self.advice_research_decision_status.setText(
+                "目前 Advice 尚未具備可核對的 exact result／股票／決策日／snapshot ID；不會保存。"
+            )
+            self.advice_research_decision_status.hide()
             return
         identity = {
             "result_id": result_id,
@@ -4066,14 +4370,107 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "identity_status": "linked",
         }
         self._selected_advice_decision_identity = identity
+        self._selected_advice_decision_data_date = daily.candidate_data_date
         self._set_advice_research_decision_enabled(True)
-        self.advice_research_decision_status.setText(
-            "來源 snapshot：已提供 ID；hash 未提供。人工決定會沿用此筆 result／股票／日期身分，"
-            "不會建立交易或 fill。"
+        # 選取候選時只讀同一筆 exact identity 的既有研究狀態；明確的
+        # accepted／skipped／note 按鈕仍是唯一會寫入研究日誌的入口。
+        readback_identity = (
+            result_id,
+            stock_code,
+            decision_date,
+            daily.candidate_source_snapshot_id,
         )
-        self.advice_research_decision_status.show()
+        if self._advice_research_readback_identity != readback_identity:
+            self._advice_research_readback_identity = readback_identity
+            self.advice_research_decision_status.setText(
+                "來源 snapshot：已提供 ID；hash 未提供。讀取同一筆人工研究狀態中；"
+                "不會建立研究決定、交易或 fill。"
+            )
+            self.advice_research_decision_status.show()
+            self._save_selected_advice_research_decision("readback")
 
-    def _save_selected_advice_research_decision(self, action: str) -> bool:
+    def _advice_decision_identity_is_current(
+        self, identity: Mapping[str, str]
+    ) -> bool:
+        dashboard = self._dashboard
+        daily = dashboard.daily_evidence if dashboard is not None else None
+        return bool(
+            self._selected_advice_decision_identity is identity
+            and not self._dashboard_stale
+            and daily is not None
+            and daily.candidate_status in {"candidate", "candidate_degraded"}
+            and daily.candidate_result_id == identity.get("result_id")
+            and identity.get("stock_code") in daily.candidate_symbols
+            and daily.decision_date == identity.get("decision_date")
+            and daily.candidate_source_snapshot_id
+            == identity.get("source_snapshot_id")
+            and daily.candidate_data_date
+            == self._selected_advice_decision_data_date
+        )
+
+    def _schedule_selected_advice_review(self) -> bool:
+        identity = self._selected_advice_decision_identity
+        if not isinstance(identity, dict) or not self._advice_decision_identity_is_current(identity):
+            self._set_advice_research_decision_enabled(False)
+            self.advice_research_decision_status.setText(
+                "每日候選已更新或身分不符；未設定下次檢視，請重新選取並核對 Advice。"
+            )
+            self.advice_research_decision_status.show()
+            return False
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("設定下次檢視")
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+        explanation = QLabel(
+            "請確認或調整下次人工檢視時間（台北時間）。\n"
+            "不會依策略檢視頻率自動推算，也不會建立交易或 fill。"
+        )
+        explanation.setWordWrap(True)
+        layout.addWidget(explanation)
+        initial = datetime.now(timezone.utc).astimezone(
+            ZoneInfo("Asia/Taipei")
+        ) + timedelta(days=1)
+        editor = QDateTimeEdit(
+            QDateTime.fromString(
+                initial.strftime("%Y-%m-%d 09:00:00"),
+                "yyyy-MM-dd HH:mm:ss",
+            ),
+            dialog,
+        )
+        editor.setObjectName("adviceNextReviewDateTime")
+        editor.setAccessibleName("下次檢視日期時間（台北時間）")
+        editor.setDisplayFormat("yyyy-MM-dd HH:mm")
+        editor.setCalendarPopup(True)
+        editor.setToolTip("時間以台北時區保存；請按你的研究計畫調整。")
+        layout.addWidget(editor)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
+            parent=dialog,
+        )
+        buttons.button(QDialogButtonBox.Ok).setText("保存並讀回核對")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return False
+        if not self._advice_decision_identity_is_current(identity):
+            self._set_advice_research_decision_enabled(False)
+            self.advice_research_decision_status.setText(
+                "候選在設定期間已更新；下次檢視未保存，請重新選取並核對 Advice。"
+            )
+            self.advice_research_decision_status.show()
+            return False
+        next_review_at = (
+            editor.dateTime().toString("yyyy-MM-dd'T'HH:mm:ss") + "+08:00"
+        )
+        return self._save_selected_advice_research_decision(
+            "review_scheduled", next_review_at=next_review_at
+        )
+
+    def _save_selected_advice_research_decision(
+        self, action: str, *, next_review_at: str = ""
+    ) -> bool:
         identity = self._selected_advice_decision_identity
         callback = self.save_advice_research_decision_callback
         if not isinstance(identity, dict) or not callable(callback):
@@ -4086,12 +4483,21 @@ class UnifiedDecisionWorkbenchView(QWidget):
             if not accepted or not note.strip():
                 return False
         try:
-            result = callback(action, dict(identity), note)
+            if action == "review_scheduled":
+                result = callback(
+                    action,
+                    dict(identity),
+                    note,
+                    next_review_at=next_review_at,
+                )
+            else:
+                result = callback(action, dict(identity), note)
         except Exception as exc:  # noqa: BLE001 - UI 顯示失敗，不偽裝成功
             self.advice_research_decision_status.setText(
                 f"人工研究決定未確認保存：{type(exc).__name__}: {exc}"
             )
             self.advice_research_decision_status.show()
+            self._sync_daily_candidate_advice_control()
             return False
         is_readback = action == "readback"
         if is_readback:
@@ -4160,10 +4566,50 @@ class UnifiedDecisionWorkbenchView(QWidget):
             message = str(getattr(result, "message", result or "研究決定已送出；讀回狀態未知。"))
             verified = bool(getattr(result, "readback_verified", False))
             success = bool(getattr(result, "success", result is not False))
+            if action == "review_scheduled":
+                state = getattr(result, "state", None)
+                read_identity = getattr(state, "identity", None)
+                identity_fields = (
+                    "result_id",
+                    "stock_code",
+                    "decision_date",
+                    "source_snapshot_id",
+                    "source_snapshot_hash",
+                )
+                mismatched_fields = tuple(
+                    field
+                    for field in identity_fields
+                    if str(getattr(read_identity, field, "") or "")
+                    != str(identity.get(field, "") or "")
+                )
+                expected_time = datetime.fromisoformat(next_review_at).astimezone(
+                    ZoneInfo("Asia/Taipei")
+                ).isoformat(timespec="seconds")
+                identity_matches = (
+                    str(getattr(read_identity, "identity_status", "") or "")
+                    == "linked"
+                    and not mismatched_fields
+                )
+                schedule_matches = (
+                    not str(getattr(state, "read_error", "") or "")
+                    and identity_matches
+                    and str(getattr(state, "next_review_at", "") or "")
+                    == expected_time
+                )
+                verified = verified and schedule_matches
+                if success and not schedule_matches:
+                    message = (
+                        f"{message}；同一候選的下次檢視時間未能讀回核對"
+                        + (
+                            "（欄位不符：" + ", ".join(mismatched_fields) + "）"
+                            if mismatched_fields
+                            else ""
+                        )
+                    )
         self.advice_research_decision_status.setText(
             f"{'同筆狀態已讀回' if is_readback and success else '已保存並讀回核對' if success and verified else '已送出但尚未核對讀回' if success else '未保存／未讀回'}：{message}\n"
             f"result_id={identity['result_id']}；股票={identity['stock_code']}；決策日={identity['decision_date']}\n"
-            "來源 snapshot：已提供 ID；hash 未提供。此操作只記錄研究決定，不建立交易或 fill。"
+            "來源 snapshot：已提供 ID；hash 未提供。此操作只記錄研究狀態，不建立交易或 fill。"
         )
         self.advice_research_decision_status.show()
         return success and verified
@@ -4195,6 +4641,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._render_daily_investment_journey(None)
         self._render_position_health(None)
         self._render_today_action_center(None)
+        self._sync_daily_candidate_advice_control()
         self.boundary_banner.setText(
             "安全邊界：正在等待既有工作台狀態；不會將缺資料解讀為可交易結果。"
         )
@@ -5269,14 +5716,42 @@ def _advice_warning_text(value: object) -> str:
 def _advice_contract_completeness(item: object) -> str:
     """把 Advice 契約的空欄位列成缺件，絕不以顯示提示代填資料。"""
 
-    required_fields = (
+    source_missing, author_only_missing = _missing_advice_contract_fields(item)
+    if not source_missing and not author_only_missing:
+        return "Advice 必要欄位：目前均有可判讀值與來源追溯；仍須依來源、品質與 Gate 判讀。"
+    lines = [
+        "Advice 必要欄位待補："
+        + "、".join((*source_missing, *author_only_missing))
+        + "。"
+    ]
+    if source_missing:
+        lines.append(
+            "同筆保存結果／來源欄位待核對："
+            + "、".join(source_missing)
+            + "；若本列顯示「回查這筆保存推薦結果」入口，請核對同一原件；"
+            "沒有精確回查入口或原件未提供時仍保留未知，不另選其他結果。"
+        )
+    if author_only_missing:
+        lines.append(
+            "策略作者契約欄位："
+            + "、".join(author_only_missing)
+            + "；需完成新的合格回測並建立新策略版本時由策略作者明確填寫。既有版本不可事後補綁。"
+        )
+    lines.append(
+        "不得由排名分數、其他股票或空白欄位推定；UNKNOWN／UNAVAILABLE 不算完成。"
+    )
+    return "\n".join(lines)
+
+
+def _missing_advice_contract_fields(
+    item: object,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """分開需回查的同筆證據欄位與只能由策略作者聲明的契約欄位。"""
+
+    source_fields = (
         ("why_reasons", "成立理由"),
         ("confidence_tier", "信心層級"),
         ("evidence_tier", "證據層級"),
-        ("holding_horizon", "策略持有期間"),
-        ("review_cadence", "策略檢視頻率"),
-        ("entry_thesis", "進場論點"),
-        ("invalidation_conditions", "失效條件"),
         ("market_regime", "市場狀態"),
         ("strategy_version", "策略版本"),
         ("liquidity_state", "流動性狀態"),
@@ -5286,21 +5761,25 @@ def _advice_contract_completeness(item: object) -> str:
         ("data_as_of_date", "資料日"),
         ("source_trace", "來源追溯"),
     )
-    missing = tuple(
-        label
-        for name, label in required_fields
-        if not (
-            _has_advice_source_trace(item)
-            if name == "source_trace"
-            else _has_advice_contract_value(getattr(item, name, None))
+    author_fields = (
+        ("entry_thesis", "進場論點"),
+        ("invalidation_conditions", "失效條件"),
+        ("holding_horizon", "策略持有期間"),
+        ("review_cadence", "策略檢視頻率"),
+    )
+
+    def missing_labels(fields: tuple[tuple[str, str], ...]) -> tuple[str, ...]:
+        return tuple(
+            label
+            for name, label in fields
+            if not (
+                _has_advice_source_trace(item)
+                if name == "source_trace"
+                else _has_advice_contract_value(getattr(item, name, None))
+            )
         )
-    )
-    if not missing:
-        return "Advice 必要欄位：目前均有可判讀值與來源追溯；仍須依來源、品質與 Gate 判讀。"
-    return (
-        "Advice 必要欄位待補：" + "、".join(missing)
-        + "。\n下一步：回查原推薦與策略設定，取得可追溯的已知值；UNKNOWN／UNAVAILABLE 不算完成，也不可由分數或空白推定。"
-    )
+
+    return missing_labels(source_fields), missing_labels(author_fields)
 
 
 def _has_advice_contract_value(value: object) -> bool:

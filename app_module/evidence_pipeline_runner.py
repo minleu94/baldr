@@ -106,14 +106,20 @@ class _Timer:
 
 
 class _DecisionDeskSnapshotSectionProvider:
-    def __init__(self, stored_snapshot: Any, section_name: str) -> None:
+    def __init__(
+        self,
+        stored_snapshot: Any,
+        section_name: str,
+        *,
+        snapshot_source: str = "durable_snapshot",
+    ) -> None:
         self.stored_snapshot = stored_snapshot
         self.section_name = section_name
         self.snapshot_id = stored_snapshot.snapshot_id
         self.metadata = {
             "decision_desk_snapshot_id": stored_snapshot.snapshot_id,
             "decision_desk_snapshot_hash": stored_snapshot.snapshot_hash,
-            "decision_desk_snapshot_source": "durable_snapshot",
+            "decision_desk_snapshot_source": snapshot_source,
         }
         paper_source = stored_snapshot.metadata_json.get("paper_evidence_source")
         if isinstance(paper_source, Mapping):
@@ -142,6 +148,7 @@ class EvidencePipelineRunner:
         run_id_factory: Any | None = None,
         paper_evidence_source: PaperDecisionDeskEvidenceSource | None = None,
         recommendation_queries: Any | None = None,
+        market_quote_custody_root: str | Path | None = None,
     ) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
@@ -149,6 +156,11 @@ class EvidencePipelineRunner:
         self.run_id_factory = run_id_factory or (lambda: f"epr_{uuid4().hex[:12]}")
         self.paper_evidence_source = paper_evidence_source
         self.recommendation_queries = recommendation_queries
+        self.market_quote_custody_root = (
+            Path(market_quote_custody_root)
+            if market_quote_custody_root is not None
+            else Path(config.output_root)
+        )
         self._transient_decision_desk_snapshot: StoredDecisionDeskSnapshot | None = None
         self._invocation_at: datetime | None = None
 
@@ -520,6 +532,7 @@ class EvidencePipelineRunner:
             snapshot = build_service_backed_decision_desk_snapshot_builder(
                 self.config,
                 clock=self.clock,
+                market_quote_custody_root=self.market_quote_custody_root,
             ).build_snapshot(date.fromisoformat(request.decision_date[:10]))
             paper_source_metadata: dict[str, Any] | None = None
             if self.paper_evidence_source is not None:
@@ -708,9 +721,13 @@ class EvidencePipelineRunner:
             db_path=self.db_path,
             read_only=dry_run,
         )
-        stored = snapshot_repository.latest_before_or_on(request.decision_date)
+        transient = self._transient_snapshot_for_request(request) if dry_run else None
+        stored = transient or snapshot_repository.latest_before_or_on(request.decision_date)
+        snapshot_source = "dry_run_transient_snapshot" if transient is not None else "durable_snapshot"
         if stored is None:
             stored = self._transient_snapshot_for_request(request)
+            if stored is not None:
+                snapshot_source = "dry_run_transient_snapshot"
         if stored is None:
             reason = "durable decision desk snapshot not found; run capture_decision_desk_snapshot.py first"
             importers.update(
@@ -724,13 +741,19 @@ class EvidencePipelineRunner:
             importers.update(
                 {
                     "watchlist-trigger": WatchlistTriggerEvidenceImporter(
-                        _DecisionDeskSnapshotSectionProvider(stored, "watchlist-trigger")
+                        _DecisionDeskSnapshotSectionProvider(
+                            stored, "watchlist-trigger", snapshot_source=snapshot_source
+                        )
                     ),
                     "portfolio-alert": PortfolioAlertEvidenceImporter(
-                        _DecisionDeskSnapshotSectionProvider(stored, "portfolio-alert")
+                        _DecisionDeskSnapshotSectionProvider(
+                            stored, "portfolio-alert", snapshot_source=snapshot_source
+                        )
                     ),
                     "risk-prompt": RiskPromptEvidenceImporter(
-                        _DecisionDeskSnapshotSectionProvider(stored, "risk-prompt")
+                        _DecisionDeskSnapshotSectionProvider(
+                            stored, "risk-prompt", snapshot_source=snapshot_source
+                        )
                     ),
                 }
             )
@@ -1010,6 +1033,7 @@ def _canonical_advisory_token(token: str) -> str | None:
         "portfolio_alerts_chip_estimated:",
         "relative_strength_liquidity_skipped_symbols:",
         "market_breadth_source_declared_corporate_action_exclusions:",
+        "market_breadth_source_declared_non_comparable_exclusions:",
     )):
         return normalized
     if normalized.startswith("risk_prompt_source_quality:") and normalized.endswith(":estimated"):
@@ -1027,6 +1051,21 @@ def _top_warning_counts(warning_counts: Mapping[str, int], *, limit: int = 10) -
 
 def _forward_outcome_warning_counts(summary: Any) -> dict[str, int]:
     counter: Counter[str] = Counter()
+    raw_warning_counts = getattr(summary, "warning_counts", None)
+    if isinstance(raw_warning_counts, Mapping):
+        for raw_token, raw_count in raw_warning_counts.items():
+            token = str(raw_token).strip()
+            try:
+                count = int(raw_count)
+            except (TypeError, ValueError):
+                continue
+            if token and count > 0:
+                counter[token] += count
+        if counter:
+            remaining = int(getattr(summary, "warnings_count", 0) or 0) - sum(counter.values())
+            if remaining > 0:
+                counter["forward_outcome_warning_unclassified"] += remaining
+            return dict(sorted(counter.items()))
     for attr, token in (
         ("pending_insufficient_future_data", "insufficient_future_data"),
         ("missing_event_price", "missing_event_price"),
@@ -1041,6 +1080,33 @@ def _forward_outcome_warning_counts(summary: Any) -> dict[str, int]:
     if remaining > 0:
         counter["forward_outcome_warning_unclassified"] += remaining
     return dict(sorted(counter.items()))
+
+
+def _forward_summary_markdown_json(
+    forward_summary: Iterable[Mapping[str, Any]],
+    *,
+    limit: int = 50,
+) -> str:
+    """Serialize bounded group detail without allowing source text to break Markdown."""
+    groups = list(forward_summary)
+    groups.sort(
+        key=lambda item: (
+            str(item.get("summary_status", "")).upper() == SUMMARY_STATUS_READY,
+            str(item.get("group_by", "")),
+            str(item.get("group_key", "")),
+            int(item.get("window_days", 0) or 0),
+        )
+    )
+    visible_groups = groups[: max(0, limit)]
+    payload = {
+        "total_group_count": len(groups),
+        "shown_group_count": len(visible_groups),
+        "truncated": len(visible_groups) < len(groups),
+        "groups": visible_groups,
+    }
+    # A code fence must not be closable by DB/source-derived text in group labels.
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    return serialized.replace("`", r"\u0060")
 
 
 def _forward_summary_warning_counts(payloads: Iterable[Mapping[str, Any]]) -> dict[str, int]:
@@ -1088,6 +1154,7 @@ def _markdown_report(summary: EvidencePipelineRunSummary) -> str:
         )
         for row in summary.quality_coverage_rows
     ) or "- none"
+    forward_summary_details = _forward_summary_markdown_json(summary.forward_summary)
     return (
         "# Evidence Pipeline Dry-run Report\n\n"
         "## Run Metadata\n"
@@ -1114,6 +1181,8 @@ def _markdown_report(summary: EvidencePipelineRunSummary) -> str:
         f"- groups_ready: {summary.groups_ready}\n"
         f"- groups_insufficient_sample: {summary.groups_insufficient_sample}\n"
         f"- groups_degraded: {summary.groups_degraded}\n\n"
+        "## Forward Performance Detail\n"
+        f"```json\n{forward_summary_details}\n```\n\n"
         "## Warnings / Degraded Sources\n"
         f"- warnings_count: {summary.warnings_count}\n"
         f"- diagnostics:\n{diagnostic_rows}\n\n"

@@ -1,6 +1,20 @@
-﻿# UI 功能文件（Qt）
+# UI 功能文件（Qt）
 
 每日決策旅程會依資料狀態把「下一步」導向可見的介面入口：市場快照缺失時查「數據更新」，來源讀取失敗／日期不一致／推薦快照缺件時查「每日來源詳情」，證據未成熟或缺少結果時查「證據成熟度」。這些入口只讀取或檢視既有狀態，不會將缺值解讀成零風險，也不會把歷史回放當成自然成熟。
+
+2026-10-27：每日推薦 cohort 將具名策略／流動性規則排除保留為 `skipped` 並標記 `observed`，避免把未入選誤報為資料品質降級；真正缺分與來源錯誤仍分別保留 `missing`／`degraded`。歷史保存結果不重寫，舊 cohort 在新排程產生前仍按原標記顯示。操作與限制見[推薦研究手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-策略排除與資料品質分離)。
+
+2026-10-27：Evidence Review「覆盤歷史」新增 candidate disposition 至 weekly history 的 UI 保存流程。只有明選既有非正式 working-copy DB 後才能啟用；需指定週期、candidate artifact 與原 sidecar，保存前重建報告並再次驗證 hash／collection／期別／manifest，完成後讀回 history ID/hash。此流程只追加週報 history；Owner approval、Action Items、正式資料、Gate 與 scheduler 權限仍分開處理。詳[操作手冊](../07_guides/APPLICATION_MANUAL.md)與[Gate 2 QA](../06_qa/BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md)。
+
+2026-10-26：Backtest 單股升版已將 Research Run Registry 前置檢查、StrategyVersion 建立與 Registry backlink 對齊到同一 reconciliation service；成功前核對來源 run、策略、參數、選填版本顯示名稱、Advice contract 與兩側讀回狀態。已保存版本清單及成功視窗回顯顯示名稱；讀回不符會明示失敗並留下 reconciliation-required 診斷；成功只代表 Registry／版本一致，不授正式 Gate 資格。詳[QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-backtest-registry-promotion-readback)。
+
+2026-10-27：Research Console「正式月營收公告日品質」摘要可讀 availability mapping，僅對公告原件 hash、公司、期別、公告日與 target source version 全部吻合的 MOPS F22 列降低靜態日期待核實數；missing／invalid mapping 與版本不符仍維持待核實。摘要只改善證據顯示，不回寫正式資料或授來源、PIT、Gate、ML 資格。操作見[Application Manual](../07_guides/APPLICATION_MANUAL.md)，實際計數見[QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-mops-f22-2330-q2-monthly-exact-version-backfill)。
+
+2026-10-26：Research Console 月營收品質明細涵蓋公告日空白列及靜態報表日期列，並排正式日期與精確版本 MOPS 公告日期。摘要只將日期相符的報表列視為已核實；日期不符、沒有精確 mapping 或 mapping 未知均保留待查。明細唯讀、不改正式資料；本機實際計數與測試範圍見[QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-monthly-revenue-quality-verification-details)。
+
+2026-10-27：Workbench Advice 缺欄卡把同筆來源欄位導向 exact 保存推薦回查；策略作者欄位（進場論點、失效條件、持有期間、檢視頻率）則明示舊版本不可事後補綁，並提供只導頁至策略回測建立新版本的入口。此入口不自動執行回測／升版，不填欄位，也不代表 Gate 1 通過；詳[Advice 缺欄 QA](../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-workbench-advice-缺欄改為按欄位來源導引)。
+
+2026-10-26：Update 的週收集明細可對仍待人工覆核且可覆核候選記錄具名 Owner／Reviewer 處置；覆核視窗展示 coverage 數字、品質發現、最多五個完整性例子與尚未核驗的收據 hash，必要時可回明細預覽收據。決定與理由以全新 JSON artifact 保存，寫入前重建候選並核對 sidecar SHA；artifact 為 candidate-only，不修改 sidecar、weekly history、approval projection 或正式資料庫，不授 Gate credit，也不開啟排程。「已檢視」是單筆人工處置，不等於 Gate 核准。操作與限制見[Application Manual](../07_guides/APPLICATION_MANUAL.md#4-數據更新)及[Gate 2 QA](../06_qa/BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-26-gate-2-具名週收集覆核決定artifact)。
 
 M167–M169：Decision Desk 可比產業圖的選中列新增 5／20 日兩列原值對照，產業指數、摘要所列 TAIEX 基準與來源超額各佔一欄，bp 正負、0 與 Unknown 分明；原超額條、群組和代表股下鑽保持，來源／資料日／品質與 current research only 留在摘要及卡片可存取描述。Runtime 已保存營運狀態分布追加同次 DTO 的本頁讀取時間，來源未確認、空態與原分布不變；Backtest 分析診斷可用狀態改獨立 teal，原月報酬紅正綠負不變。這三項只改呈現層，不重算金融值、推斷自然排程或改來源資格。限定測試與原生畫面見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m167m169-產業報酬背景營運讀取時間與回測狀態色)。
 
@@ -24,7 +38,7 @@ M163–M165 將 M162 狀態軸接到 Runtime 治理健康／重大違規、Workb
 
 M162 共用狀態色：QLabel 的 statusTone、StatusBadge 和 SemanticChip 用獨立狀態 token，已觀測／人工觀測以資訊藍表示，ready／done／passed 為 teal，估計／降級與需人工處理為 amber，缺件／阻擋／critical 為 orchid，unknown／off 中性。台股 market_up 紅、market_down 綠、market_flat 中性與原狀態文字保持；狀態顏色不是行情方向、正式來源資格或交易訊號。真 OS DPI216 兩尺寸原生樣本及受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m162-共用狀態色與市場方向色隔離)；Light、其他 DPI 與完整 Gate 未驗。
 
-M160 決策工作台 Advice：原 `AdviceDashboardDTO` 的模式、決策日／資料日、正式／Professional／配置列數與原警告先呈摘要；正式與配置表的已知動作、品質、可成交性顯中文，原碼在提示及無障礙文字，未知仍原樣。選列卡顯原理由／論點、適用期間、風險與失效條件，長內容完整保留在共用證據明細；0 列不占表格高度，有列保留表內捲動。Professional 模式只有明確 `promoted` 策略能列為正式 Advice；缺失或其他策略狀態留在研究候選。載入、失敗及空態清舊，沒有新增策略判斷、交易指令或來源資格。隔離合成 Native 與 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m160-workbench-advice-判讀層級)；正式來源與產品 Gate 未接受。
+M160 決策工作台 Advice：原 `AdviceDashboardDTO` 的模式、決策日／資料日、正式／Professional／配置列數與原警告先呈摘要；正式與配置表的已知動作、品質、可成交性顯中文，原碼在提示及無障礙文字，未知仍原樣。建議列表把支持理由與政策／資格限制分開；Quick Read 提示另列同股保存來源證據。選列卡顯原理由／論點、適用期間、風險與失效條件，長內容完整保留在共用證據明細；0 列不占表格高度，有列保留表內捲動。Professional 模式只有明確 `promoted` 策略能列為正式 Advice；缺失或其他策略狀態留在研究候選。載入、失敗及空態清舊，沒有新增策略判斷、交易指令或來源資格。隔離合成 Native 與 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m160-workbench-advice-判讀層級)；正式來源與產品 Gate 未接受。
 
 M158 回測原報告基準比較：Sharpe 策略／比較基準／差額三格只在 Qt 顯示層縮成兩位，有捨入標「約」，極小非零以科學記號保留符號；真零、未知與原缺件原因分開，完整原值在提示及無障礙描述。bp 列、DTO、計算與報告來源不變。M159 Portfolio 手動帳：同份持倉快照在完整持倉表及操作列後顯示未實現毛損益正／負／零／未知等權家數圖；原行情狀態／日期／現價或原損益不合格列未知，0 檔不畫假比例，載入／失敗清舊。圖條不是資金權重、報酬或風險。真 OS DPI216 兩尺寸合成原生畫面與受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m158-backtest-原報告基準-sharpe-判讀)；正式／私人資料、固定 EXE 及產品 Gate 未接受。
 
@@ -92,7 +106,7 @@ M109／M110 後繼原始碼：Paper Health 表把原 `review_required`「需要�
 
 市場方向色使用獨立 `market_up/down/flat`，預設紅漲綠跌；個股日 K 線和成交量柱同按開收盤原值著色，平盤中性，缺完整 OHLC 仍退回收盤線圖。一般數值與成功／失敗狀態保持不同語意。首頁上方市場卡列原上漲／下跌／平盤家數、來源 `breadth_ratio_bp` 的「上漲占漲跌股比」百分比，以及資料日與品質；分母不含平盤，來源缺值、無效值與真零分別呈現，不由 UI 用家數重算。候選最多五個逐股入口沿原身份回呼，個別理由必須明確對應代號。查不到名稱或理由就明示缺件。個股頁首壓縮、搜尋可展開、五問保留風險與不足短句，完整原文仍可讀；全域查找仍可按 Ctrl+K。
 
-市場總覽的市況廣度直接呈現快照原家數：缺欄為「未提供」，實際整數零為 `0`；廣度比率缺欄為「未知」。在首屏「市況廣度」卡內，三個非負整數家數、正總數、可辨識品質及不晚於判斷日的來源日同時存在時，另顯上漲紅／下跌綠／平盤中性家數比例條、精確家數圖例與來源日／品質；載入、缺件、錯誤或無效日期時清除。條長只反映當次已載家數，不是指數報酬、交易訊號或新廣度比率。此展示不計算替代值，也不改來源或判斷資格；固定 EXE 尚未包含 M98。
+市場總覽的市況廣度直接呈現快照原家數：缺欄為「未提供」，實際整數零為 `0`；廣度比率缺欄為「未知」。在首屏「市況廣度」卡內，三個非負整數家數、正總數、可辨識品質及不晚於判斷日的來源日同時存在時，另顯上漲紅／下跌綠／平盤中性家數比例條、精確家數圖例與來源日／品質；若快照含 coverage metadata，並列方向分類／收盤有效分母、官方空白符核驗平盤、不比價／除權息排除及未知方向略過數。載入、缺件、錯誤或無效日期時清除。條長只反映當次已載家數，不是指數報酬、交易訊號或新廣度比率。此展示不計算替代值，也不改來源或判斷資格；固定 EXE 尚未包含 M98。
 
 「資料可見性與擴充因子 → 三大法人市場流向」沿原 `InstitutionalFlowMarketSummary` 的外資、投信、自營商淨股數，在完整三個整數、可辨識品質及不晚於判斷日的有效來源日期時，加入共用零軸的正負相對條；正值紅、負值綠、真零中性。圖下方原精確股數、資料日、涵蓋檔數與警示保留，圖中另標精確帶號股數與同次三者最大絕對值尺度；缺值、無效日期、載入／錯誤不畫舊圖。視覺長度只比較本次三個淨股數，不是市場報酬、交易指令或新來源資格；固定 EXE 尚未包含 M99。
 
@@ -391,6 +405,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 決策工作台在 DTO 已提供 Advice 時，會顯示 mode、decision / data-as-of date、action、理由、資料品質、可成交性、source trace，以及 Portfolio 的 target/current/gap。畫面是唯讀：不會建立委託、寫入資料庫、套用 lifecycle 或重算 scoring / portfolio / backtest。
 
 - Guided Mode 只接受 promoted strategy；Professional Mode 的 candidate 僅供研究檢視，不能混作 formal Advice。
+- 選取與每日候選 exact result、股票、決策日、資料日及 snapshot ID 一致的 Advice 列時，Workbench 唯讀載入同一筆人工研究狀態；讀取中或失敗不會自動新增決定，明確寫入按鈕才會 append-only 保存。可用「設定下次檢視」選擇台北時間，並在同一候選讀回核對；identity 失配或資料過期時不寫入。
 - `NO_NEW_POSITION`、`RESEARCH`、`AVOID` 是資料、風險、可成交性或策略狀態不符合時的正常安全輸出，不表示系統故障。
 - 平衡限制為最低現金 `2000 bp`、最多 8 檔、單檔上限 `1500 bp`；UI 只呈現 contract 結果。
 - Advice 不保證報酬、不是 broker 指令，且不解除 weekly evidence、production scheduler 或其他產品 Gate。
@@ -791,6 +806,8 @@ Increment132比較候選沿同一基本面分頁，先顯示2317／2330／2454�
 完整操作、參數與排錯以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準；實作與整合證據見 [TASK-08](../06_qa/TASK_LOOP_08_HANDOFF.md)。本輪不改 `action_required`／V4 Evidence Accumulation，不授予 Formal credit、來源 acceptance、scheduler、broker 或正式 writer 權限。
 
 ## 2026-10-03 資料更新 freshness、Formal／Candidate 與合作式取消
+
+2026-10-26：例行 freshness probe 使用與 Quick Update 相同的共置官方臨時休市 sidecar，避免官方臨時休市日被當成應有行情日。10/26 正式資料唯讀 probe 的預期交易日與 SQLite 最新行情均為 2026-10-22，三個日行情來源狀態為 current；其他月營收／季報缺期仍讓整體 freshness 維持 degraded。此結果來自隔離輸出的唯讀檢查，須待下一次自然 freshness run 才會反映在正式排程狀態卡；未改任何正式資料或 Gate 資格。
 
 資料更新狀態卡將正式 SQLite 與隔離 Candidate DB 分成不同資料 lane。服務回傳的 `FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是機器狀態 token，代表來源可讀性與所屬資料根；畫面分別顯示正式資料與候選資料的日期／筆數，candidate 不會因此進入正式評分、推薦或交易。Freshness receipt 只有在目前 `DATA_ROOT`、SQLite／Candidate DB 路徑、台北市場日、04:30 cutoff 與 receipt 的實際期別相符時才投影為來源狀態；跨過 cutoff 或 live period 已變動時顯示未知／需重新驗證，重新執行唯讀 freshness probe 後再判讀。
 

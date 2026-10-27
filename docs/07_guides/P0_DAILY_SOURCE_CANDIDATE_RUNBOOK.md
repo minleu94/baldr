@@ -12,12 +12,14 @@
 
 ### MOPS 季報原始附件（research-only）
 
-當使用者已保存 MOPS「電子資料查詢作業」HTML 與其列出的中文 IFRSs 合併財報 PDF 時，可建立單筆、可雜湊的 PIT source artifact。HTML 必須保留原始查詢 URL、公司代號、季別、上傳時間與「財務報告更（補）正」欄位；PDF 檔名與大小必須和 HTML 主列完全相符。`captured_at` 是本機保存時間，不能冒充公告時間；PIT availability 使用 HTML 的官方上傳 timestamp。
+保存 MOPS「電子資料查詢作業」HTML、其列出的中文 IFRSs 合併財報 PDF，以及 MOPS 公告候選 artifact 後，才可建立單筆、可追溯的 research-only PIT source artifact。公告候選必須能以公司代號、季別及 F26–F29 季報項目匹配，且匹配項目的公告時間一致；`announcement_date` 使用該 MOPS 公告時間，`available_date` 保留 T57 文件上傳時間。`captured_at` 是本機保存時間，不能冒充公告時間。PDF 檔名與大小須符合 HTML 主列，但這不等同於已驗證下載 bytes 或核准 source version。
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\build_mops_quarterly_pit_artifact.py `
   --listing-html 'C:\Users\archi\Downloads\電子資料查詢作業.html' `
   --primary-pdf $env:TEMP\202601_2330_AI1.pdf `
+  --mops-announcement-artifact $env:TEMP\mops_announcement_events.json `
+  --source-url 'https://doc.twse.com.tw/server-java/t57sb01?step=1&colorchg=1&mtype=A&co_id=2330&year=115' `
   --captured-at '2026-07-19T18:22:14-07:00' `
   --output-json $env:TEMP\mops_2330_2026q1_pit_research.json
 
@@ -32,6 +34,24 @@
 ```
 
 此流程只建立 candidate metadata/provenance，並不解析或寫入完整財報數值、正式資料庫、ScoringEngine、Advice、Portfolio 或交易路徑。更（補）正不是 `無`、主 PDF 檔名不符、來源 URL 不符、缺少 timezone-aware capture time，或 safety fields 被升格時，builder/audit 必須 fail closed。
+
+### 季報公告事件接回已保存的 T164 數值候選（research-only）
+
+已有 T164 原始 response、`statement-sources.json`、`availability-source.json` 與 `run-manifest.json` 的候選 run，可把 MOPS F26／F27／F28 事件接回資產負債表／綜合損益表／現金流量表數值列。builder 逐檔重驗 run manifest 中的 artifact 與 raw SHA、公司／期間／期末日／endpoint／T57 row hash、MOPS event hash 與 172 列 numeric row identity；輸出獨立 bridge 及一份 announcement timestamp 已校正的候選副本，不覆寫原始 run。
+
+```powershell
+.\.venv\Scripts\python.exe scripts\build_mops_quarterly_event_numeric_bridge.py `
+  --quarterly-run-dir 'C:\path\to\v4-quarterly-statement-2026q2-twse-2330-r8' `
+  --announcement-artifact 'C:\path\to\mops_q2_announcement_events.json' `
+  --output-bridge $env:TEMP\mops_q2_event_numeric_bridge.json `
+  --output-candidate $env:TEMP\mops_q2_event_linked_candidate.json
+
+.\.venv\Scripts\python.exe scripts\validate_mops_quarterly_artifact.py `
+  --artifact-json $env:TEMP\mops_q2_event_linked_candidate.json `
+  --output-json $env:TEMP\mops_q2_event_linked_validated.json
+```
+
+這個 bridge 只證明保存候選之間的欄位與 hash lineage；PDF bytes、PDF 與 T164 數值的同版本關係、歷史公告當時 response body 均未由 bridge 證明。它不對應目前正式 observation 的多重 source_version、不授權來源使用／正式寫入，不給 Gate 或 ML credit。需用原 P0 candidate audit 單獨重新判讀，不能將 bridge 的 `candidate_lineage_verified` 解讀成來源接受。
 
 ### 富邦唯讀行情補強（research-only）
 

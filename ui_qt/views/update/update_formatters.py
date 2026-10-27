@@ -1025,16 +1025,8 @@ def format_weekly_collection_details(packet: Mapping[str, Any]) -> str:
     records = packet.get("records")
     if not isinstance(records, (list, tuple)):
         records = []
-    lines = [
-        "週 Evidence 收集明細（唯讀候選）",
-        f"待審 {_safe_nonnegative_int(packet.get('pending_human_review_count'))} 筆；"
-        f"需重收 {_safe_nonnegative_int(packet.get('recollection_required_count'))} 筆；"
-        f"可供人工審查 {_safe_nonnegative_int(packet.get('reviewable_pending_count'))} 筆。",
-        "本畫面不寫入審查決定、不產生核准 projection，也不授予 Gate credit。",
-        "來源雜湊只綁定收集時來源快照；不代表品質、全市場覆蓋、PIT 或 License 已通過。",
-        "",
-    ]
-    max_records = 30
+    runbook_evidence = packet.get("runbook_evidence")
+    runbook_evidence = runbook_evidence if isinstance(runbook_evidence, Mapping) else {}
 
     def optional_count(value: Any) -> str:
         if value is None or isinstance(value, bool):
@@ -1043,6 +1035,27 @@ def format_weekly_collection_details(packet: Mapping[str, Any]) -> str:
             return str(max(0, int(value)))
         except (TypeError, ValueError):
             return "格式無效"
+
+    lines = [
+        "週 Evidence 收集明細（唯讀候選）",
+        f"待審 {_safe_nonnegative_int(packet.get('pending_human_review_count'))} 筆；"
+        f"需重收 {_safe_nonnegative_int(packet.get('recollection_required_count'))} 筆；"
+        f"可供人工審查 {_safe_nonnegative_int(packet.get('reviewable_pending_count'))} 筆。",
+        "本明細唯讀；人工決定另經明確確認保存為 candidate artifact，不產生核准 projection，也不授予 Gate credit。",
+        "來源雜湊只綁定收集時來源快照；不代表品質、全市場覆蓋、PIT 或 License 已通過。",
+        "Runbook 證據完整度："
+        f"{runbook_evidence.get('status', 'not_assessed')}；"
+        f"已核驗 {optional_count(runbook_evidence.get('verified_count'))}/"
+        f"{optional_count(runbook_evidence.get('required_count'))}；"
+        f"缺件 {optional_count(runbook_evidence.get('missing_count'))}；"
+        f"部分／身分未核 {optional_count(runbook_evidence.get('partial_count'))}。",
+        "附件 manifest："
+        f"{runbook_evidence.get('manifest_status', 'not_supplied')}；"
+        f"SHA-256 {runbook_evidence.get('manifest_sha256') or '未提供'}。",
+        "可供人工審查只表示 sidecar 候選可開啟；Runbook 證據不完整時不代表週審流程就緒或 Gate 通過。",
+        "",
+    ]
+    max_records = 30
 
     for index, record in enumerate(records[:max_records]):
         if not isinstance(record, Mapping):
@@ -1069,6 +1082,33 @@ def format_weekly_collection_details(packet: Mapping[str, Any]) -> str:
                 f"不完整列 {optional_count(coverage.get('incomplete_row_count'))}",
             ]
         )
+        evidence = record.get("runbook_evidence")
+        evidence = evidence if isinstance(evidence, Mapping) else {}
+        if evidence.get("manifest_status"):
+            lines.append(
+                "   附件 manifest："
+                f"{evidence.get('manifest_status')}；"
+                f"SHA-256 {evidence.get('manifest_sha256') or '未提供'}"
+            )
+            diagnostics = evidence.get("manifest_diagnostics")
+            if isinstance(diagnostics, (list, tuple)) and diagnostics:
+                lines.append("   Manifest 診斷：" + "；".join(str(item)[:120] for item in diagnostics[:8]))
+        lines.append(
+            "   Runbook 證據："
+            f"{evidence.get('status', 'not_assessed')}；"
+            f"已核驗 {optional_count(evidence.get('verified_count'))}/"
+            f"{optional_count(evidence.get('required_count'))}；"
+            f"缺件 {optional_count(evidence.get('missing_count'))}；"
+            f"部分／身分未核 {optional_count(evidence.get('partial_count'))}"
+        )
+        evidence_items = evidence.get("items")
+        if isinstance(evidence_items, (list, tuple)):
+            for item in evidence_items:
+                if isinstance(item, Mapping):
+                    lines.append(
+                        f"   - {item.get('status', 'not_assessed')}："
+                        f"{str(item.get('label') or item.get('evidence_id') or '未知證據')[:160]}"
+                    )
         reasons = record.get("reviewability_reasons")
         if isinstance(reasons, (list, tuple)) and reasons:
             lines.append("   需重收原因：" + "、".join(str(item)[:100] for item in reasons[:8]))

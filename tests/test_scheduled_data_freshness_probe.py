@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
 
@@ -11,6 +11,12 @@ import pytest
 from app_module.update_status_history import build_update_status_history_record
 import scripts.scheduled.data_freshness_probe as probe
 from data_module.official_trading_calendar import OfficialTradingCalendarError
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    build_twse_temporary_closure_cache,
+    write_twse_calendar_cache,
+    write_twse_temporary_closure_cache,
+)
 from scripts.scheduled.data_freshness_probe import main
 
 
@@ -801,6 +807,115 @@ def test_freshness_probe_fails_closed_when_calendar_api_is_unavailable(tmp_path,
     assert payload["status"] == "failed"
     assert "official_calendar_unavailable" in payload["errors"]
     assert payload["checks"]["official_calendar"]["freshness_status"] == "failed"
+
+
+def test_freshness_probe_default_calendar_uses_co_located_temporary_closure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_root = tmp_path / "calendar"
+    cache_root.mkdir()
+    captured_at = datetime.now(timezone.utc)
+    schedule = [
+        {
+            "Name": "中華民國開國紀念日",
+            "Date": "1150101",
+            "Weekday": "四",
+            "Description": "放假1日。",
+        },
+        {
+            "Name": "國曆新年開始交易日",
+            "Date": "1150102",
+            "Weekday": "五",
+            "Description": "開始交易。",
+        },
+        {
+            "Name": "補假",
+            "Date": "1151026",
+            "Weekday": "一",
+            "Description": "補假1日。",
+        },
+    ]
+    annual_cache = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=json.dumps(schedule, ensure_ascii=False).encode("utf-8"),
+        requested_at=captured_at - timedelta(minutes=2),
+        captured_at=captured_at - timedelta(minutes=1),
+        response_status=200,
+        response_headers={"Content-Type": "application/json"},
+    )
+    write_twse_calendar_cache(
+        cache_root / "twse_holiday_schedule_2026.json",
+        annual_cache,
+        allowed_root=tmp_path,
+    )
+    source_url = (
+        "https://www.twse.com.tw/zh/announcement/announcement/detail.html?id=abc"
+    )
+    closure_cache = build_twse_temporary_closure_cache(
+        closure_date=date(2026, 10, 23),
+        raw_response=(
+            "<html>臺灣證券交易所集中交易市場115年10月23日全日休市一天。</html>"
+        ).encode("utf-8"),
+        source_url=source_url,
+        requested_at=captured_at - timedelta(minutes=2),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"Content-Type": "text/html"},
+        response_url=source_url,
+    )
+    write_twse_temporary_closure_cache(
+        cache_root / "twse_temporary_closure_20261023.json",
+        closure_cache,
+        allowed_root=tmp_path,
+    )
+    monkeypatch.setattr(probe, "_default_calendar_cache_path", lambda: cache_root)
+
+    calendar = probe._calendar_for_probe(
+        probe.argparse.Namespace(
+            calendar_cache_path=None,
+            temporary_closure_path=None,
+        ),
+        db_path=tmp_path / "market.sqlite",
+    )
+    expected = probe._expected_quick_update_date(
+        date(2026, 10, 26),
+        calendar=calendar,
+    )
+
+    assert calendar.temporary_closure_path == cache_root
+    assert expected == date(2026, 10, 22)
+
+
+def test_freshness_probe_explicit_calendar_override_keeps_explicit_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Calendar:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    explicit_calendar = tmp_path / "annual-calendar.json"
+    default_calendar = tmp_path / "default-calendar"
+    monkeypatch.setattr(probe, "OfficialTradingCalendar", _Calendar)
+    monkeypatch.setattr(
+        probe,
+        "_default_calendar_cache_path",
+        lambda: default_calendar,
+    )
+
+    probe._calendar_for_probe(
+        probe.argparse.Namespace(
+            calendar_cache_path=explicit_calendar,
+            temporary_closure_path=None,
+        ),
+        db_path=tmp_path / "market.sqlite",
+    )
+
+    assert captured["calendar_cache_path"] == explicit_calendar
+    assert captured["temporary_closure_path"] is None
 
 
 def test_freshness_probe_degrades_when_latest_quick_update_failed(tmp_path):

@@ -83,6 +83,17 @@ class PromotionService:
             PromotionCriteria: 升級條件檢查結果
         """
         logger.info(f"[PromotionService] 檢查升級條件: run_id={run_id}")
+
+        if self.promotion_reconciliation_service is not None:
+            registry_assessment = (
+                self.promotion_reconciliation_service.assess_registry_run(run_id)
+            )
+            if registry_assessment is not None:
+                return PromotionCriteria(
+                    passed=registry_assessment.passed,
+                    reasons=list(registry_assessment.reasons),
+                    details=dict(registry_assessment.details),
+                )
         
         # 1. 載入回測結果
         run = self.backtest_repository.get_run(run_id)
@@ -175,12 +186,17 @@ class PromotionService:
         """
         logger.info(f"[PromotionService] 開始升級回測結果: run_id={run_id}")
 
-        if self.promotion_reconciliation_service is not None:
+        if (
+            self.promotion_reconciliation_service is not None
+            and self.promotion_reconciliation_service.assess_registry_run(run_id)
+            is not None
+        ):
             return self.promotion_reconciliation_service.promote_registry_run(
                 run_id,
                 profile_id=profile_id,
                 notes=notes,
                 advice_contract=advice_contract,
+                display_name=version_name,
             )
         
         # 1. 檢查升級條件
@@ -232,6 +248,7 @@ class PromotionService:
             profile_id=profile_id,
             notes=notes,
             advice_contract=advice_contract,
+            display_name=version_name,
         )
         
         if version_id:

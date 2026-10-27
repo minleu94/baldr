@@ -28,6 +28,7 @@ from app_module.forward_performance_dashboard_dtos import (
     ForwardPerformanceDashboardRow,
 )
 from ui_qt.models.forward_performance_table_model import ForwardPerformanceTableModel
+from ui_qt.forward_performance_warning_labels import format_forward_warning_counts
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.date_filter_edit import OptionalDateFilterEdit, date_filter_value
 from ui_qt.widgets.table_style import apply_financial_table_style
@@ -293,7 +294,7 @@ class ForwardPerformanceView(QWidget):
     ) -> None:
         filters = result.request
         quality = _format_counts(row.quality_counts)
-        warnings = _format_counts(row.warning_counts)
+        warnings = format_forward_warning_counts(row.warning_counts)
         benchmark_note = "可計算" if row.mean_benchmark_excess_bp is not None else "Benchmark 缺失，無法判斷相對大盤超額。"
         industry_note = "可計算" if row.mean_industry_excess_bp is not None else "Industry benchmark 缺失，無法判斷相對同產業超額。"
         sample_note = ""

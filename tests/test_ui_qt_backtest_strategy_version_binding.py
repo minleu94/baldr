@@ -2,6 +2,7 @@
 
 import json
 import os
+from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -187,6 +188,25 @@ def test_skipping_advice_contract_explains_guided_consequence_and_new_version_pa
     assert "新的合格回測升版時填妥契約" in text
     assert "略過（此版本無 Guided 新增候選）" in captured["buttons"]
     view.close()
+
+
+def test_backtest_promotion_uses_the_same_research_registry_as_saved_runs(
+    qapp, test_config
+):
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    try:
+        assert view.research_run_service is not None
+        assert view.promotion_service is not None
+        reconciliation = view.promotion_service.promotion_reconciliation_service
+        assert reconciliation is not None
+        assert reconciliation.research_repository is view.research_run_service.repository
+        assert reconciliation.strategy_version_service is view.strategy_version_service
+    finally:
+        view.close()
 
 
 @pytest.mark.parametrize(

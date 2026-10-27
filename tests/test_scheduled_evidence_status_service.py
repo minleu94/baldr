@@ -1117,8 +1117,8 @@ def _classification_test_cohort(*, include_current_delisted: bool = False) -> Sn
     requested: tuple[str, ...] = ("0050", "0066", "1101", "2330", "2603", "2881", "6488")
     eligible = ("0050", "0066")
     missing = ("1101",)
-    degraded = ("0066", "2330", "2603", "6488")
-    excluded: tuple[str, ...] = ("2881",)
+    degraded = ("0066", "2603", "6488")
+    excluded: tuple[str, ...] = ("2330", "2881")
     coverage_rows: dict[str, dict[str, object]] = {
         "0066": {
             "status": "skipped",
@@ -1143,7 +1143,7 @@ def _classification_test_cohort(*, include_current_delisted: bool = False) -> Sn
         },
         "2330": {
             "status": "skipped",
-            "quality": "degraded",
+            "quality": "observed",
             "stage": "strategy_evaluation",
             "reason_codes": ["liquidity_volume_ratio_below_min"],
             "warnings": [],
@@ -1293,7 +1293,7 @@ def test_scheduled_status_derives_classifications_only_from_matching_verified_co
     assert status.recommendation_cohort_hash == cohort.cohort_hash
     assert status.recommendation_cohort_requested_count == 7
     assert status.recommendation_cohort_quality_missing_count == 1
-    assert status.recommendation_cohort_quality_degraded_count == 4
+    assert status.recommendation_cohort_quality_degraded_count == 3
     assert dict(status.recommendation_cohort_classifications) == {
         "可用候選": 1,
         "策略排除": 1,

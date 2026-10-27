@@ -21,6 +21,7 @@ from app_module.pre_v2_readiness_service import (
     PreV2ReadinessService,
 )
 from app_module.workbench_dtos import (
+    ManualSavedResearchLaneDTO,
     WorkbenchDashboardDTO,
     WorkbenchLatestCaptureStatus,
     WorkbenchPaperAccountContextDTO,
@@ -44,6 +45,13 @@ from app_module.recommendation_learning_evidence_projection_service import (
     RecommendationLearningEvidenceProjectionService,
 )
 from app_module.recommendation.queries import RecommendationExecutionReadSnapshot
+from app_module.recommendation.contracts import (
+    EXECUTION_SCHEMA_REVISION,
+    ExecutionStatus,
+    RecommendationExecution,
+    SnapshotCohort,
+    schema_version as RECOMMENDATION_EXECUTION_SCHEMA_VERSION,
+)
 from app_module.saved_recommendation_queries import (
     build_recommendation_execution_queries,
     execution_result_config,
@@ -321,6 +329,105 @@ class WorkbenchSourceService:
             ),
         )
 
+    def load_manual_saved_research(self, result_id: str) -> ManualSavedResearchLaneDTO:
+        """唯讀載入使用者明選的 canonical 結果，組成獨立 research-only lane。"""
+
+        if type(result_id) is not str or not result_id or result_id.strip() != result_id:
+            raise ValueError("manual_saved_research_result_id_invalid")
+        read_model = self.recommendation_queries.get(result_id)
+        if read_model is None:
+            raise ValueError("manual_saved_research_result_missing")
+        if (
+            getattr(read_model, "result_id", None) != result_id
+            or getattr(read_model, "integrity_basis", None)
+            != "canonical_payload_and_index_verified"
+            or getattr(read_model, "legacy_result", None) is not None
+            or getattr(read_model, "execution", None) is None
+        ):
+            raise ValueError("manual_saved_research_result_not_canonical")
+        execution = read_model.execution
+        if (
+            type(execution) is not RecommendationExecution
+            or execution.result_id != result_id
+            or execution.status is not ExecutionStatus.COMPLETED
+            or not execution.items
+            or read_model.schema_version != RECOMMENDATION_EXECUTION_SCHEMA_VERSION
+            or read_model.schema_revision != EXECUTION_SCHEMA_REVISION
+            or execution.schema_version != RECOMMENDATION_EXECUTION_SCHEMA_VERSION
+            or execution.schema_revision != EXECUTION_SCHEMA_REVISION
+            or type(read_model.payload_hash) is not str
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", read_model.payload_hash) is None
+        ):
+            raise ValueError("manual_saved_research_result_identity_or_schema_invalid")
+
+        config = execution_result_config(execution)
+        decision_date_text = config.get("decision_date")
+        data_as_of_date_text = (
+            config.get("data_as_of_date")
+            or config.get("data_date")
+        )
+        context_date = execution.context.as_of_date
+        request_date = execution.request.as_of_date
+        if (
+            context_date is None
+            or request_date is None
+            or context_date != request_date
+        ):
+            raise ValueError("manual_saved_research_result_dates_missing_or_mismatched")
+        if type(decision_date_text) is not str or not decision_date_text:
+            decision_date_text = context_date.isoformat()
+        if type(data_as_of_date_text) is not str or not data_as_of_date_text:
+            data_as_of_date_text = context_date.isoformat()
+        try:
+            decision_date = date.fromisoformat(decision_date_text)
+            data_as_of_date = date.fromisoformat(data_as_of_date_text)
+        except ValueError as exc:
+            raise ValueError("manual_saved_research_result_dates_invalid") from exc
+        if (
+            decision_date.isoformat() != decision_date_text
+            or data_as_of_date.isoformat() != data_as_of_date_text
+            or data_as_of_date > decision_date
+        ):
+            raise ValueError("manual_saved_research_result_dates_invalid")
+
+        quality_status = execution.quality.status.value
+        evidence_quality = {
+            "complete": "OBSERVED",
+            "degraded": "DEGRADED",
+        }.get(quality_status, "UNKNOWN")
+        warnings = (
+            "這是你明確選取的保存結果，日期沿用原結果；不是今日排程候選。",
+            "此區僅供 Professional 研究；不構成正式 Advice、來源接受、PIT 或 Gate 通過。",
+            f"保存 execution 品質狀態為 {quality_status}；未由本次載入重新核驗逐來源品質或授權。",
+            *tuple(execution.quality.warnings),
+            *tuple(execution.context.warnings),
+        )
+        policy_config = AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL)
+        advice = AdviceComposer(AdvicePolicy(policy_config)).compose(
+            recommendations=read_model,
+            portfolio_result=None,
+            evidence_quality=evidence_quality,
+            decision_date=decision_date,
+            data_as_of_date=data_as_of_date,
+            mode=AdviceMode.PROFESSIONAL,
+            evidence_warnings=warnings,
+            research_only=True,
+        )
+        return ManualSavedResearchLaneDTO(
+            result_id=result_id,
+            payload_sha256=read_model.payload_hash,
+            decision_date=decision_date_text,
+            data_as_of_date=data_as_of_date_text,
+            strategy_version=(
+                str(config.get("strategy_version") or "")
+                or (execution.context.strategy_identity.strategy_version_id
+                    if execution.context.strategy_identity is not None
+                    else "")
+                or ""
+            ),
+            advice_dashboard=advice,
+        )
+
     def _paper_account_context(
         self, decision_date: date, evaluation_at: datetime
     ) -> WorkbenchPaperAccountContextDTO | None:
@@ -393,7 +500,8 @@ class WorkbenchSourceService:
         """只把已由每日旅程對齊的 exact read-model identity 綁到 Advice 列。"""
         if (
             recommendation_read_model is None
-            or daily_evidence.candidate_status != "candidate"
+            or daily_evidence.candidate_status
+            not in {"candidate", "candidate_degraded"}
             or not daily_evidence.candidate_result_id
             or not daily_evidence.candidate_symbols
         ):
@@ -445,7 +553,10 @@ class WorkbenchSourceService:
         """Expose only the exact, verified current scheduled read as research candidates."""
 
         policy_config = AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL)
-        if recommendation_read_model is None or daily_evidence.candidate_status != "candidate":
+        if recommendation_read_model is None or daily_evidence.candidate_status not in {
+            "candidate",
+            "candidate_degraded",
+        }:
             status = str(daily_evidence.candidate_status or "unknown")
             if status == "candidate":
                 reason = "當日候選列缺少通過身分核對的保存結果；未注入 Advice。"
@@ -461,6 +572,43 @@ class WorkbenchSourceService:
                 diagnostics=(code,),
                 warnings=tuple(dict.fromkeys((reason, *tuple(daily_evidence.warnings)))),
             )
+        candidate_result_id = getattr(daily_evidence, "candidate_result_id", None)
+        try:
+            saved_result_id = recommendation_read_model.result_id
+        except (AttributeError, TypeError, ValueError):
+            saved_result_id = None
+        if (
+            not isinstance(candidate_result_id, str)
+            or not candidate_result_id
+            or saved_result_id != candidate_result_id
+        ):
+            return AdviceDashboardDTO(
+                decision_date=decision_date,
+                data_as_of_date=(daily_evidence.candidate_data_date or ""),
+                mode=AdviceMode.PROFESSIONAL,
+                policy=policy_config,
+                diagnostics=("scheduled_candidate_result_identity_mismatch",),
+                warnings=(
+                    "每日候選與保存推薦結果的身份無法精確核對；未注入 Advice。",
+                ),
+            )
+        candidate_symbols = getattr(daily_evidence, "candidate_symbols", ())
+        if not isinstance(candidate_symbols, (tuple, list)):
+            candidate_symbols = ()
+        eligible_symbols = {
+            symbol.strip()
+            for symbol in candidate_symbols
+            if isinstance(symbol, str) and symbol.strip()
+        }
+        if not eligible_symbols:
+            return AdviceDashboardDTO(
+                decision_date=decision_date,
+                data_as_of_date=(daily_evidence.candidate_data_date or ""),
+                mode=AdviceMode.PROFESSIONAL,
+                policy=policy_config,
+                diagnostics=("scheduled_candidate_cohort_missing",),
+                warnings=("每日候選股票清單缺失；未注入 Advice。",),
+            )
         if recommendation_read_model.execution is not None:
             config = execution_result_config(recommendation_read_model.execution)
         elif recommendation_read_model.legacy_result is not None:
@@ -474,19 +622,9 @@ class WorkbenchSourceService:
                 diagnostics=("recommendation_read_model_unsupported",),
                 warnings=("保存推薦格式無法由 Advice 安全讀取；未注入候選。",),
             )
-        # A promoted strategy needs its own acceptance/lock/disclosure evidence
-        # before it can be rendered as formal Advice. This read path has none.
-        if config.get("strategy_status") == "promoted":
-            return AdviceDashboardDTO(
-                decision_date=decision_date,
-                data_as_of_date=(daily_evidence.candidate_data_date or ""),
-                mode=AdviceMode.PROFESSIONAL,
-                policy=policy_config,
-                diagnostics=("promoted_strategy_acceptance_evidence_missing",),
-                warnings=(
-                    "來源策略標示為 promoted，但此讀取路徑沒有正式採用、參數鎖定與揭露證據；請完成 Gate 核驗後再載入正式 Advice。",
-                ),
-            )
+        # 沒有精確綁定的採用／鎖參／揭露證據時，保留研究候選供每日判讀，
+        # 並強制降為 RESEARCH；不得把保存結果中的 promoted 字樣當正式建議資格。
+        promoted_without_acceptance = config.get("strategy_status") == "promoted"
         data_as_of_date = daily_evidence.candidate_data_date
         if not data_as_of_date:
             return AdviceDashboardDTO(
@@ -509,11 +647,26 @@ class WorkbenchSourceService:
         evidence_quality = (
             "OBSERVED" if daily_evidence.candidate_quality == "observed" else "DEGRADED"
         )
-        warnings = (
+        warnings: tuple[str, ...] = (
             "排程候選已核對保存結果與日期／cohort；目前僅供研究，不代表策略已通過正式採用 Gate。",
             "此策略建議不需要連接真實帳戶；持倉與交易由使用者手動記錄。這裡不計算個人配置或加碼金額。",
         )
-        return AdviceComposer(AdvicePolicy(policy_config)).compose(
+        if daily_evidence.candidate_status == "candidate_degraded":
+            warnings = (
+                "整體候選 cohort 有缺漏或降級股票；WorkBench 仍逐檔依同一 canonical cohort 判品質，其他股票不會自動降級此候選。",
+                *warnings,
+            )
+        if promoted_without_acceptance:
+            warnings = (
+                "保存策略標示為 promoted，但沒有精確綁定的正式採用、參數鎖定與揭露核驗證據；此列已降為研究候選，不構成正式新增部位建議。",
+                *warnings,
+            )
+        per_stock_quality = WorkbenchSourceService._candidate_quality_by_stock(
+            recommendation_read_model,
+            candidate_symbols=eligible_symbols,
+            candidate_identity=getattr(daily_evidence, "candidate_identity", ()),
+        )
+        advice = AdviceComposer(AdvicePolicy(policy_config)).compose(
             recommendations=recommendation_read_model,
             portfolio_result=None,
             evidence_quality=evidence_quality,
@@ -521,7 +674,94 @@ class WorkbenchSourceService:
             data_as_of_date=data_as_of_date,
             mode=AdviceMode.PROFESSIONAL,
             evidence_warnings=warnings,
+            research_only=promoted_without_acceptance,
+            evidence_quality_by_stock=per_stock_quality,
         )
+        cohort_rows = tuple(
+            row
+            for row in advice.recommendations
+            if row.stock_code in eligible_symbols
+            or (
+                not row.stock_code
+                and row.source_trace == ("AdviceComposer.refusal",)
+            )
+        )
+        excluded_row_count = len(advice.recommendations) - len(cohort_rows)
+        if excluded_row_count:
+            advice = replace(
+                advice,
+                recommendations=cohort_rows,
+                diagnostics=tuple(
+                    dict.fromkeys(
+                        (*advice.diagnostics, "scheduled_candidate_cohort_filtered")
+                    )
+                ),
+                warnings=tuple(
+                    dict.fromkeys(
+                        (
+                            *advice.warnings,
+                            "Advice 僅列出每日旅程核對的候選股票；保存結果內其他股票已排除。",
+                        )
+                    )
+                ),
+            )
+        if promoted_without_acceptance:
+            advice = replace(
+                advice,
+                diagnostics=tuple(dict.fromkeys((
+                    *advice.diagnostics,
+                    "promoted_strategy_acceptance_evidence_missing_research_only",
+                ))),
+            )
+        return advice
+
+    @staticmethod
+    def _candidate_quality_by_stock(
+        read_model: Any,
+        *,
+        candidate_symbols: set[str],
+        candidate_identity: object,
+    ) -> dict[str, str]:
+        """只從 exact canonical cohort 取逐股品質，不讓其他股票降級候選。"""
+
+        if (
+            getattr(read_model, "integrity_basis", None)
+            != "canonical_payload_and_index_verified"
+            or getattr(read_model, "legacy_result", None) is not None
+        ):
+            return {}
+        execution = getattr(read_model, "execution", None)
+        if (
+            type(execution) is not RecommendationExecution
+            or execution.result_id != getattr(read_model, "result_id", None)
+        ):
+            return {}
+        cohort = execution.context.snapshot_cohort
+        if type(cohort) is not SnapshotCohort:
+            return {}
+        if not candidate_symbols.issubset(set(cohort.eligible_symbols)):
+            return {}
+        identity_parts = (
+            candidate_identity
+            if isinstance(candidate_identity, (tuple, list))
+            else ()
+        )
+        if f"cohort_hash={cohort.cohort_hash}" not in identity_parts:
+            return {}
+
+        quality_map: dict[str, str] = {}
+        for stock_code in candidate_symbols:
+            coverage = cohort.coverage_by_symbol.get(stock_code)
+            if coverage is None:
+                continue
+            quality = (coverage.quality or "").strip().lower()
+            if quality == "observed":
+                quality_map[stock_code] = "OBSERVED"
+            elif quality == "degraded":
+                quality_map[stock_code] = "DEGRADED"
+            elif quality == "missing":
+                quality_map[stock_code] = "MISSING"
+        return quality_map
 
     def _load_recommendation_learning_status(
         self,

@@ -7,7 +7,7 @@ import sqlite3
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 import pandas as pd
 
@@ -24,6 +24,7 @@ from app_module.price_change_direction import (
     CHANGE_SIGN_COLUMNS,
     resolve_signed_change,
 )
+from data_module.price_change_direction import classify_twse_raw_change_marker
 
 
 class MarketBreadthProvider(Protocol):
@@ -535,6 +536,18 @@ class SQLiteDailyPriceMarketBreadthProvider:
         skipped = 0
         exclusions: list[dict[str, object]] = []
         corporate_action_exclusions = 0
+        official_non_comparable_exclusions = 0
+        twse_zero_direction_evidence_count = 0
+        decision_date = datetime.strptime(target_key, "%Y%m%d").date()
+        twse_evidence_by_code = (
+            self.quote_diagnostics.twse_change_evidence(
+                actual_key,
+                decision_date,
+                [str(value) for value in current["證券代號"].tolist()],
+            )
+            if self.quote_diagnostics is not None
+            else {}
+        )
 
         for index, (_, row) in enumerate(current.iterrows()):
             if index % 128 == 0:
@@ -546,15 +559,52 @@ class SQLiteDailyPriceMarketBreadthProvider:
             )
             if change is None:
                 # 價差與方向都未知時，不得以收盤價差猜測當日方向。
-                skipped += 1
                 official = self.quote_diagnostics.corporate_action(str(row.get("證券代號")), actual_key,
-                    datetime.strptime(target_key, "%Y%m%d").date(), close_value, row.get("_volume")) if self.quote_diagnostics else None
+                    decision_date, close_value, row.get("_volume")) if self.quote_diagnostics else None
                 if official:
+                    skipped += 1
                     corporate_action_exclusions += 1
-                exclusions.append({"stock_code": str(row.get("證券代號")), "date": actual_key,
-                    "reason": "change_direction_unavailable", "raw_change": str(row.get("漲跌價差")),
-                    "raw_signs": {name: str(row.get(name)) for name in CHANGE_SIGN_COLUMNS}, "source": "sqlite_daily_prices", **(official or {})})
-                continue
+                    exclusions.append({"stock_code": str(row.get("證券代號")), "date": actual_key,
+                        "reason": "official_corporate_action_noncomparable_change", "raw_change": str(row.get("漲跌價差")),
+                        "raw_signs": {name: str(row.get(name)) for name in CHANGE_SIGN_COLUMNS}, "source": "sqlite_daily_prices", **official})
+                    continue
+                source_evidence = self._matching_twse_raw_change_evidence(
+                    twse_evidence_by_code.get(str(row.get("證券代號")), ()), row
+                )
+                if source_evidence is not None:
+                    raw_signs = source_evidence.get("raw_signs")
+                    marker_states = {
+                        classify_twse_raw_change_marker(value)
+                        for value in raw_signs.values()
+                    } if isinstance(raw_signs, Mapping) else set()
+                    source_change = self._to_decimal(source_evidence.get("raw_change"))
+                    if (
+                        marker_states == {"blank"}
+                        and source_change == Decimal("0")
+                        and self._to_decimal(row.get("漲跌價差")) == Decimal("0")
+                    ):
+                        change = Decimal("0")
+                        twse_zero_direction_evidence_count += 1
+                    elif (
+                        marker_states == {"non_comparable"}
+                        and source_change == Decimal("0")
+                        and self._to_decimal(row.get("漲跌價差")) == Decimal("0")
+                    ):
+                        skipped += 1
+                        official_non_comparable_exclusions += 1
+                        exclusions.append({"stock_code": str(row.get("證券代號")), "date": actual_key,
+                            "reason": "official_twse_non_comparable_change", "raw_change": str(row.get("漲跌價差")),
+                            "raw_signs": source_evidence.get("raw_signs"), "source": "sqlite_daily_prices",
+                            "evidence": source_evidence})
+                        continue
+                    else:
+                        source_evidence = None
+                if change is None:
+                    skipped += 1
+                    exclusions.append({"stock_code": str(row.get("證券代號")), "date": actual_key,
+                        "reason": "change_direction_unavailable", "raw_change": str(row.get("漲跌價差")),
+                        "raw_signs": {name: str(row.get(name)) for name in CHANGE_SIGN_COLUMNS}, "source": "sqlite_daily_prices"})
+                    continue
             previous_close = close_value - change
 
             if change > 0:
@@ -574,12 +624,16 @@ class SQLiteDailyPriceMarketBreadthProvider:
         warnings: list[str] = []
         quality = DecisionDeskQuality.OBSERVED
         actual_date = self._parse_date_key(actual_key)
-        unknown_skipped = skipped - corporate_action_exclusions
+        unknown_skipped = skipped - corporate_action_exclusions - official_non_comparable_exclusions
         if unknown_skipped:
             quality = DecisionDeskQuality.DEGRADED
             warnings.append(f"market_breadth_skipped_rows:{unknown_skipped}")
         if corporate_action_exclusions:
             warnings.append(f"market_breadth_source_declared_corporate_action_exclusions:{corporate_action_exclusions}")
+        if official_non_comparable_exclusions:
+            warnings.append(
+                f"market_breadth_source_declared_non_comparable_exclusions:{official_non_comparable_exclusions}"
+            )
 
         row = {
             "as_of_date": actual_date.isoformat() if actual_date is not None else actual_key,
@@ -592,6 +646,8 @@ class SQLiteDailyPriceMarketBreadthProvider:
             "stock_count": int(len(current)),
             "classified_stock_count": advancing + declining + unchanged,
             "corporate_action_exclusions_count": corporate_action_exclusions,
+            "official_non_comparable_exclusions_count": official_non_comparable_exclusions,
+            "twse_zero_direction_evidence_count": twse_zero_direction_evidence_count,
             "unknown_skipped_rows_count": unknown_skipped,
             "exclusions_json": json.dumps(exclusions, ensure_ascii=False),
             "limit_up_count": limit_up,
@@ -614,6 +670,47 @@ class SQLiteDailyPriceMarketBreadthProvider:
         }
         _raise_if_cancelled(cancel_callback)
         return pd.DataFrame([row])
+
+    def _matching_twse_raw_change_evidence(
+        self,
+        candidates: tuple[dict[str, object], ...],
+        row: pd.Series,
+    ) -> dict[str, object] | None:
+        database_values = {
+            "raw_change": self._to_decimal(row.get("漲跌價差")),
+            "raw_close": self._to_decimal(row.get("收盤價")),
+            "raw_volume": self._to_decimal(row.get("成交股數")),
+        }
+        matching = [
+            candidate
+            for candidate in candidates
+            if all(
+                self._to_decimal(candidate.get(name)) == value
+                for name, value in database_values.items()
+            )
+        ]
+        if not matching:
+            return None
+        raw_signs_by_candidate: list[Mapping[str, object]] = []
+        for candidate in matching:
+            raw_signs = candidate.get("raw_signs")
+            raw_signs_by_candidate.append(
+                raw_signs if isinstance(raw_signs, Mapping) else {}
+            )
+        marker_signatures = {
+            (
+                self._to_decimal(candidate.get("raw_change")),
+                tuple(
+                    (name, classify_twse_raw_change_marker(value))
+                    for name, value in sorted(raw_signs.items())
+                    if isinstance(name, str)
+                ),
+            )
+            for candidate, raw_signs in zip(matching, raw_signs_by_candidate)
+        }
+        if len(marker_signatures) != 1:
+            return None
+        return matching[0]
 
     @staticmethod
     def _normalize_date_key(value: object) -> str | None:

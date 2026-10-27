@@ -189,10 +189,36 @@ def test_mops_quarterly_artifact_is_a_research_only_candidate() -> None:
         "research_only": True, "formal_oos_allowed": False, "production_scheduler_allowed": False, "downstream_eligibility": "none",
         "rows": [{"stock_code": "2330", "statement_type": "financial_report", "statement_scope": "consolidated", "period": "2026-Q1", "period_end": "2026-03-31", "announcement_date": "2026-05-15T14:43:02+08:00", "available_date": "2026-05-15T14:43:02+08:00", "revision": 1, "content_hash": "a" * 64, "correction_status": "none"}],
     }
-    payload = build_p0_candidate_audit(date(2026, 7, 16), probe_report=_probe_report(), mops_quarterly_artifact=artifact)
+    report = _probe_report()
+    report["probe_date"] = "2026-10-26"
+    payload = build_p0_candidate_audit(date(2026, 10, 26), probe_report=report, mops_quarterly_artifact=artifact)
     pit = next(item for item in payload["items"] if item["source_id"] == "pit.quarterly_financials")
     assert pit["audit_status"] == "observed_candidate"
     assert pit["timestamp_evidence"] == "official_document_upload_timestamp"
+    assert pit["blockers"] == ["research_only_not_source_accepted"]
+
+
+def test_mops_event_bridge_reports_announcement_timestamp_evidence() -> None:
+    artifact = {
+        "source_id": "mops.statement.publication",
+        "source_version": "mops-v1",
+        "captured_at": "2026-10-26T14:00:00-07:00",
+        "research_only": True,
+        "formal_oos_allowed": False,
+        "production_scheduler_allowed": False,
+        "downstream_eligibility": "none",
+        "rows": [{
+            "stock_code": "2330", "statement_type": "financial_report", "statement_scope": "consolidated",
+            "period": "2026-Q2", "period_end": "2026-06-30", "announcement_date": "2026-08-14T13:46:30+08:00",
+            "available_date": "2026-08-14T13:59:44+08:00", "revision": 1, "content_hash": "a" * 64,
+            "correction_status": "none", "announcement_event_evidence": {
+                "source_id": "mops.ezsearch.statement_publication", "event_hash": "sha256:" + "b" * 64,
+            },
+        }],
+    }
+    payload = build_p0_candidate_audit(date(2026, 7, 16), probe_report=_probe_report(), mops_quarterly_artifact=artifact)
+    pit = next(item for item in payload["items"] if item["source_id"] == "pit.quarterly_financials")
+    assert pit["timestamp_evidence"] == "official_mops_announcement_timestamp"
     assert pit["blockers"] == ["research_only_not_source_accepted"]
 
 

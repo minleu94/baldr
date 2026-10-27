@@ -166,7 +166,10 @@ def build_decision_desk_composition(
         lambda: dependencies["MarketBreadthService"](
             dependencies["SQLiteDailyPriceMarketBreadthProvider"](
                 config.db_file, market_frame_loader=market_frame_loader,
-                quote_diagnostics=OfficialQuoteExclusionDiagnostics(Path(config.db_file).parent.parent / "output/scheduled/daily_price_source_custody", clock=cadence.clock),
+                quote_diagnostics=OfficialQuoteExclusionDiagnostics(
+                    Path(config.output_root) / "scheduled/daily_price_source_custody",
+                    clock=cadence.clock,
+                ),
             ),
             cadence=cadence,
         ),

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +15,9 @@ from app_module.forward_outcome_context import (
 from data_module.config import TWStockConfig
 from data_module.official_trading_calendar_cache import (
     build_twse_calendar_cache,
+    build_twse_temporary_closure_cache,
     write_twse_calendar_cache,
+    write_twse_temporary_closure_cache,
 )
 
 
@@ -89,7 +91,16 @@ def test_factory_uses_configured_cache_before_repository_default(tmp_path: Path)
     assert calendar.cache_path != DEFAULT_OFFICIAL_CALENDAR_CACHE_PATH.resolve()
 
 
-def test_factory_default_calendar_is_repository_cache_not_output_root(tmp_path: Path) -> None:
+def test_factory_default_calendar_is_repository_cache_not_output_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    default_cache = tmp_path / "repository-calendar-cache"
+    default_cache.mkdir()
+    monkeypatch.setattr(
+        "app_module.forward_outcome_context.DEFAULT_OFFICIAL_CALENDAR_CACHE_PATH",
+        default_cache,
+    )
     config = TWStockConfig(
         data_root=tmp_path / "data",
         output_root=tmp_path / "redirected-output",
@@ -98,9 +109,50 @@ def test_factory_default_calendar_is_repository_cache_not_output_root(tmp_path: 
 
     calendar = build_official_maturity_calendar(config=config, observed_at=now)
 
-    assert calendar.cache_path == DEFAULT_OFFICIAL_CALENDAR_CACHE_PATH.resolve()
+    assert calendar.cache_path == default_cache.resolve()
     assert calendar.cache_path != config.output_root.resolve()
     assert calendar.temporary_closure_path is None
+
+
+def test_factory_discovers_existing_temporary_closure_cache_beside_annual_cache(
+    tmp_path: Path,
+) -> None:
+    captured = datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
+    cache_root = tmp_path / "calendar-cache"
+    _write_cache(cache_root, captured_at=captured)
+    source_url = "https://www.twse.com.tw/zh/announcement/announcement/detail.html?id=test"
+    closure_path = cache_root / "twse_temporary_closure_20260910_test.json"
+    closure_cache = build_twse_temporary_closure_cache(
+        closure_date=date(2026, 9, 10),
+        raw_response=(
+            "臺灣證券交易所集中交易市場於115年9月10日全日休市一天，因颱風影響。"
+        ).encode("utf-8"),
+        source_url=source_url,
+        requested_at=captured - timedelta(seconds=1),
+        captured_at=captured,
+        response_status=200,
+        response_headers={"Content-Type": "text/html"},
+        response_url=source_url,
+    )
+    write_twse_temporary_closure_cache(
+        closure_path,
+        closure_cache,
+        allowed_root=cache_root,
+    )
+    config = SimpleNamespace(official_calendar_cache_path=cache_root)
+
+    calendar = build_official_maturity_calendar(config=config, observed_at=captured)
+    diagnostic = calendar.evaluate(
+        event_date="2026-09-07",
+        window_days=5,
+        as_of_date="2026-09-10",
+    )
+
+    assert calendar.temporary_closure_path == cache_root.resolve()
+    assert diagnostic.planned_date == "2026-09-15"
+    assert diagnostic.calendar["temporary_closure_evidence"][0]["closure_date"] == (
+        "2026-09-10"
+    )
 
 
 def test_factory_normalizes_aware_clock_and_rejects_naive_clock(tmp_path: Path) -> None:

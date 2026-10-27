@@ -8,7 +8,7 @@
 - 本文件是 2026-07-12 的操作程序，不是目前進度權威。當日較早的[工程 readiness 快照](../09_archive/V2_2_ENGINEERING_READINESS_2026_07_12.md)記錄 weekly `0/3`；較晚的 [Week 1 QA](../09_archive/V2_2_WEEK1_REVIEW_2026_07_12.md) 已保存 `1/3 waiting_for_time`。兩份歷史證據保留各自時點，本指南不沿用舊進度數字。最新 Windows weekly collection 回讀見 [10/09 排程修正 QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)：10/04 core 為 `pending_human_review`；這是待人工判讀的 collection，不等同三週人工 review history 或 formal closeout。
 - 未取得對應週期的 append-only review receipt 前，不推算 Week 2／Week 3 或目前累積數；`production_scheduler_allowed=false` 與 formal closeout 條件仍須依 Snapshot 及具名最新 QA 判讀。
 - 此流程不產生交易建議、不串 broker、不自動交易、不自動套用 lifecycle action。
-- `--save-history` 與 `--confirm-action-items` 只能在明確、可回溯且經人工核准的 working-copy DB 使用。CLI 會 canonicalize 實際 `--db-path`，並同時比對 configured、環境 `DATA_ROOT` 與預設正式 root；因此 `--data-root` 不能使正式 DB 變成可接受路徑。production-like DB 一律拒絕，沒有 `--allow-production-like-db` 繞過旗標；正式 DB、production-like DB 與 scheduler write-mode 均不在本 runbook 的授權範圍。
+- `--save-history` 與 `--confirm-action-items` 只能在明確選定、可回溯且核准作為工作副本的 working-copy DB 使用；這裡的副本核准是環境／路徑核可，不代表本週 weekly history 已經 Owner approval。CLI 會 canonicalize 實際 `--db-path`，並同時比對 configured、環境 `DATA_ROOT` 與預設正式 root；因此 `--data-root` 不能使正式 DB 變成可接受路徑。production-like DB 一律拒絕，沒有 `--allow-production-like-db` 繞過旗標；正式 DB、production-like DB 與 scheduler write-mode 均不在本 runbook 的授權範圍。
 - replay、fixture、單次 smoke、raw scheduled report 或手動補表不計入三週 Gate。每列只記錄該週實際取得的證據。
 
 ## 2. 週日 Sidecar Collection（不屬於人工 weekly review）
@@ -48,22 +48,42 @@
 ```
 
 4. 檢查輸出：`write_performed=false`、`production_scheduler_allowed=false`，以及每個 manual lifecycle candidate 的 `apply_action=false`。不符合任一條件時，停止並在本週紀錄填入 follow-up；不寫 history。
-5. 人工填寫本文件的週期紀錄格式，做出 reviewed / dismissed / follow-up 結論。結論只描述 evidence、quality、warning、來源與後續工作，不得寫成買賣、倉位或 lifecycle 指令。
-6. 取得本週 append-only 保存的明確人工核准後，才在同一 working-copy DB 同時確認 action items 並保存 history。這是受控的可追溯操作：confirmed action 的 owner、planned item 與 write result 會一併封存在 weekly history snapshot；不可先單獨 confirm 後再把 owner 留在外部文件。
+5. 若本週有可覆核的 collection candidate，先在 Update 的 weekly collection 複核流程中逐筆作出 `reviewed`／`dismissed`／`follow_up` 處置，產生新的 candidate-only decision artifact。記錄 artifact 路徑與 SHA-256；姓名與角色由處置者自我聲明，處置只表示候選已被判讀，不是 weekly history approval、Gate 接受或 scheduler 授權。若沒有合格 candidate artifact，記錄原因並依本週紀錄格式繼續，不得捏造決定。
+6. 將 weekly review 僅保存至明選的非正式 working-copy DB；此步只保存待核准 history，不執行 Owner approval 或確認 action items。若有 candidate artifact，可在產品 Evidence Review →「覆盤歷史」選取同一 working-copy DB，填入本週開始／結束日，按「保存候選決定至週報 history…」，並選擇 candidate artifact 與它綁定的 sidecar。確認視窗會列出所有路徑與週期；保存前會重建報告、再次驗證 artifact／sidecar／manifest binding，保存後回報並讀回 `review_id`／`review_hash`。再重新整理列表並核對同一 hash。若使用 CLI，candidate bridge 命令如下：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\build_evidence_operations_weekly_review.py --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> --db-path <working-copy-db> --confirm-action-items --save-history --action-owner <owner> --json-output
+.\.venv\Scripts\python.exe scripts\build_evidence_operations_weekly_review.py --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> --db-path <working-copy-db> --save-history --json-output
 ```
 
-7. 將輸出的 review ID / hash / status 與 `action_item_plan`（含 owner / created / skipped）記入週期紀錄，並以唯讀方式核對。`--list-history` 在 config 初始化前只以 `--db-path` 或 `--data-root` 做純路徑解析；對缺 DB 或缺 history table 只輸出 diagnostics，不建立 DB parent、log directory、schema 或 index：
+若不用 UI，可另明確指定產生它的 sidecar；當 artifact 綁定 runbook manifest 時，也要指定已核可的 receipt root：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\build_evidence_operations_weekly_review.py --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> --db-path <working-copy-db> --save-history --candidate-review-artifact <candidate-artifact.json> --candidate-review-sidecar-path <source-sidecar.sqlite> --json-output
+```
+
+若 artifact 綁定 runbook manifest，另加 `--candidate-review-authorized-receipt-root <trusted-receipt-root>`；沒有 manifest binding 時省略該參數。若 candidate artifact 的 sidecar SHA、collection ID／狀態、期間、source hash、runbook manifest binding 或報表期間已變動／不相符，工具必須在寫入前拒絕。沒有 candidate artifact 時不得虛構；記錄沒有合格候選的原因，並省略所有 `--candidate-review-*` 參數。History payload 需保留原 candidate-only 安全旗標；保存 history 不會將候選處置升格為 Gate credit、Owner approval 或 scheduler permission。Candidate bridge 不能與 `--confirm-action-items` 同次執行。
+
+7. 以唯讀方式讀回並記錄該筆 `review_id`／`review_hash`／status；確認 candidate SHA、collection、決定、自我聲明的 Owner／Reviewer 身分與理由均對應本週處置。若有 candidate 卻找不到唯一且相符的 saved history，停止，不核准。`--list-history` 在 config 初始化前只以 `--db-path` 或 `--data-root` 做純路徑解析；對缺 DB 或缺 history table 只輸出 diagnostics，不建立 DB parent、log directory、schema 或 index：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\build_evidence_operations_weekly_review.py --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> --db-path <working-copy-db> --list-history --json-output
 ```
 
+8. 在產品 Evidence Review 的「覆盤歷史」選取同一份 working-copy DB，核對相同 `review_id`／`review_hash` 與 candidate disposition，再由具名 Owner 對**這一筆已保存的 hash**作 append-only approval。核准紀錄須另外讀回並記錄；candidate artifact 自身的 `candidate_only=true`、`formal_credit_authorized=false` 與 `production_scheduler_allowed=false` 不得改寫。Owner approval 不代表 Gate 2／正式排程已通過。
+
+9. Owner approval 讀回成功後，才依本週判讀安排 Action Items。需要確認時，以相同 working-copy DB 執行下列命令；不要同時重新保存另一個週期 history hash：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\build_evidence_operations_weekly_review.py --start-date <YYYY-MM-DD> --end-date <YYYY-MM-DD> --db-path <working-copy-db> --confirm-action-items --action-owner <owner> --json-output
+```
+
+處置歷程另依下方「Action Item lifecycle」流程追加到獨立投影，並記錄 `reviewed`／`dismissed`／`follow_up` 與下一步。結論只描述 evidence、quality、warning、來源與後續工作，不得寫成買賣、倉位或 lifecycle 指令。
+
 若在產品 Evidence Review 內核對，於「覆盤歷史」按「選擇 working-copy DB…」並選同一個既有副本；UI 會唯讀載入 history，Owner 覆核時也對同檔重新核對 ID／hash。PERSONAL／LEGACY_READ_ONLY 路由不接受自訂 DB；Owner projection 仍須獨立設定，核准不寫回 working-copy。
 
-8. 記錄下一步與本週 backup / rollback / recovery 演練狀態。三週都完成後，仍須人工彙整 scheduler approval package；不可自動進入 formal closeout。
+在「覆盤歷史」頁可另處理 Action Item lifecycle：先按「選擇 working-copy DB…」明選同一份既有、非正式副本，再選「Action Item 投影檔」的新／既有 JSON 路徑；僅兩者都通過路徑與來源檢查後，「檢視／更新 Action Items…」才會啟用。來源 DB 必須已 checkpoint；若存在非空 WAL／rollback journal，先由原工作流程安全 checkpoint 後再選取，且操作期間不得有其他程序寫入該副本。畫面讀出該副本的 Action Items、來源 Item／review ID、review hash、期間及完整處置歷程，可追加 `open → reviewed / dismissed / follow_up`、`reviewed / dismissed → follow_up`，以及 `follow_up → reviewed / dismissed`。每次須填寫處置者姓名、角色與說明；姓名／角色為自我聲明。事件以 hash chain 追加在獨立投影中，來源 SQLite 保持唯讀，且不可與 Owner approval projection 共用。換回預設資料來源會停用此操作；要續用，需重新明選 working-copy 與同一個投影檔。投影只記錄人工追蹤，不核准週報、不改 Gate／排程或策略，`formal_credit_authorized=false`、`downstream_eligibility=none`。若來源 Action Item 已變更或事件鏈損毀，操作會拒絕並要求以正確 working-copy／投影檔核對，不可手工改 hash。
+
+10. 記錄下一步與本週 backup / rollback / recovery 演練狀態。三週都完成後，仍須人工彙整 scheduler approval package；不可自動進入 formal closeout。
 
 ### 隔離 recovery rehearsal（工程演練，不計 weekly Gate）
 
@@ -102,7 +122,7 @@
 
 | 情況 | 必須動作 |
 |---|---|
-| `--help` 沒有顯示 `--save-history`、`--list-history` 或 `--action-owner` | 停止，不執行保存；確認目前程式碼與虛擬環境。 |
+| `--help` 沒有顯示 `--save-history`、`--list-history`、`--action-owner`、`--candidate-review-artifact`、`--candidate-review-sidecar-path` 或 `--candidate-review-authorized-receipt-root` | 停止，不執行保存；確認目前程式碼與虛擬環境。 |
 | working-copy DB 路徑等於或指向正式 DB | 停止，不使用 `--save-history` / `--confirm-action-items`；建立經核准的隔離副本後重做唯讀檢查。 |
 | 測試 production-like guard | 僅在 QA 暫存根目錄執行 `--data-root <qa-root> --db-path <qa-root>/sqlite/twstock.db --save-history`，預期 exit code `2` 且不建立 DB；不得以實際正式 DB 或任何 allow 旗標測試。 |
 | dry-run 輸出出現 `write_performed=true`、scheduler allowed 或 lifecycle `apply_action=true` | 停止，保留輸出作診斷；不得把該週列為通過。 |
@@ -115,3 +135,4 @@
 - 2026-07-12：建立 V2.2 固定三週人工記錄格式與 working-copy weekly review 操作順序；明確保留 scheduler 未核准與不可 formal closeout 邊界。
 - 2026-07-12：補上 working-copy copy/guard、production-like 強制拒絕與 combined confirm/history snapshot trace；`--list-history` 缺 DB / table 時只回 diagnostics，不建立 SQLite 物件。re-review 補強 `--data-root` 不可繞過 canonical production DB guard。
 - 2026-07-12：新增週日 sidecar collection 的操作與 rollback 邊界；collection 僅保存 `pending_human_review`，不屬於人工 review、不寫 weekly history，且不改 `production_scheduler_allowed=false`。
+- 2026-10-27：修正 candidate disposition、working-copy history 與 Owner approval 的先後順序；先綁定並保存待核准 history，再核准讀回的精確 review hash，最後處理 Action Items。保留 candidate-only、Gate 與 production scheduler 安全旗標；三週真實 cadence 條件不變。

@@ -39,10 +39,12 @@ class EvidenceOperationsService:
         readiness_evaluator: ReadinessEvaluator = evaluate_evidence_scheduler_readiness,
         decision_quality_service: DecisionQualityService | None = None,
         signal_decay_service: SignalDecayService | None = None,
+        read_only: bool = False,
     ) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
         self.readiness_evaluator = readiness_evaluator
+        self.read_only = bool(read_only)
         selection = resolve_personal_store_selection(config)
         self._selected_review_reader = selection.mode is not PersonalStoreMode.LEGACY_COMPAT
         self._review_store_missing = False
@@ -66,8 +68,22 @@ class EvidenceOperationsService:
                 if not repository.read_only or repository.db_path != self.db_path:
                     raise ValueError("evidence_operations_market_readonly_source_required")
         else:
-            self.decision_quality_service = decision_quality_service or DecisionQualityService(config, db_path=self.db_path)
-            self.signal_decay_service = signal_decay_service or SignalDecayService(config, db_path=self.db_path)
+            self.decision_quality_service = decision_quality_service or DecisionQualityService(
+                config, db_path=self.db_path, read_only=self.read_only
+            )
+            self.signal_decay_service = signal_decay_service or SignalDecayService(
+                config,
+                db_path=self.db_path,
+                evidence_repository=EvidenceEventRepository(
+                    config, db_path=self.db_path, read_only=self.read_only
+                ),
+                gap_repository=LiveResearchGapRepository(
+                    config, db_path=self.db_path, read_only=self.read_only
+                ),
+                decay_repository=SignalDecayRepository(
+                    config, db_path=self.db_path, read_only=self.read_only
+                ),
+            )
 
     def build_weekly_review(
         self,
@@ -139,14 +155,28 @@ class EvidenceOperationsService:
                 action_items_created=0, action_items_skipped_existing=0,
                 planned_action_items=(), write_performed=False)
         review_ids = {review.review_id for review in reviews}
-        open_items = [
-            item for item in self.decision_quality_service.list_items(status="open") if item.review_id in review_ids
-        ]
-        existing_item_ids: set[str] = set()
-        for review_id in sorted(review_ids):
-            for action in self.decision_quality_service.list_action_items(review_id=review_id):
-                if action.item_id:
-                    existing_item_ids.add(action.item_id)
+        if not review_ids:
+            return EvidenceOperationsActionItemPlan(start_date=start_date, end_date=end_date,
+                dry_run=not confirm, open_items_seen=0, action_items_planned=0,
+                action_items_created=0, action_items_skipped_existing=0,
+                planned_action_items=(), write_performed=False)
+        try:
+            open_items = [
+                item for item in self.decision_quality_service.list_items(status="open") if item.review_id in review_ids
+            ]
+            existing_item_ids: set[str] = set()
+            for review_id in sorted(review_ids):
+                for action in self.decision_quality_service.list_action_items(review_id=review_id):
+                    if action.item_id:
+                        existing_item_ids.add(action.item_id)
+        except (FileNotFoundError, sqlite3.OperationalError) as exc:
+            if not self._can_treat_review_source_as_missing(exc) or confirm:
+                raise
+            self._review_store_missing = True
+            return EvidenceOperationsActionItemPlan(start_date=start_date, end_date=end_date,
+                dry_run=True, open_items_seen=0, action_items_planned=0,
+                action_items_created=0, action_items_skipped_existing=0,
+                planned_action_items=(), write_performed=False)
 
         planned: list[dict[str, Any]] = []
         created = 0
@@ -234,12 +264,19 @@ class EvidenceOperationsService:
             self._source_lineage["review_refs"] = [
                 {"review_id": review.review_id, "review_hash": review.review_hash} for review in reviews]
         review_ids = {review.review_id for review in reviews}
-        open_items = [
-            item for item in self.decision_quality_service.list_items(status="open") if item.review_id in review_ids
-        ]
-        actions = []
-        for review_id in sorted(review_ids):
-            actions.extend(self.decision_quality_service.list_action_items(review_id=review_id))
+        try:
+            open_items = [
+                item for item in self.decision_quality_service.list_items(status="open") if item.review_id in review_ids
+            ]
+            actions = []
+            for review_id in sorted(review_ids):
+                actions.extend(self.decision_quality_service.list_action_items(review_id=review_id))
+        except (FileNotFoundError, sqlite3.OperationalError) as exc:
+            if not self._can_treat_review_source_as_missing(exc):
+                raise
+            self._review_store_missing = True
+            return EvidenceOperationsDecisionQuality(reviews_count=0, open_item_count=0, action_item_count=0,
+                review_status_counts={}, item_type_counts={}, warnings_count=1)
         return EvidenceOperationsDecisionQuality(
             reviews_count=len(reviews),
             open_item_count=len(open_items),
@@ -254,11 +291,17 @@ class EvidenceOperationsService:
         try:
             return self.decision_quality_service.list_reviews(start_date=start_date, end_date=end_date)
         except (FileNotFoundError, sqlite3.OperationalError) as exc:
-            if (not self._selected_review_reader
-                    or (not isinstance(exc, FileNotFoundError) and "no such table" not in str(exc).casefold())):
+            if not self._can_treat_review_source_as_missing(exc):
                 raise
             self._review_store_missing = True
             return []
+
+    def _can_treat_review_source_as_missing(self, exc: Exception) -> bool:
+        if not (self.read_only or self._selected_review_reader):
+            return False
+        return isinstance(exc, FileNotFoundError) or (
+            isinstance(exc, sqlite3.OperationalError) and "no such table" in str(exc).casefold()
+        )
 
     def _signal_decay_summary(
         self,
@@ -270,8 +313,10 @@ class EvidenceOperationsService:
         try:
             source_rows = self.signal_decay_service.list_decay_observations()
         except (FileNotFoundError, sqlite3.OperationalError) as exc:
-            if (not self._selected_review_reader
-                    or (not isinstance(exc, FileNotFoundError) and "no such table" not in str(exc).casefold())):
+            if not (self.read_only or self._selected_review_reader) or not (
+                isinstance(exc, FileNotFoundError)
+                or (isinstance(exc, sqlite3.OperationalError) and "no such table" in str(exc).casefold())
+            ):
                 raise
             self._market_decay_missing = True
             return EvidenceOperationsSignalDecay(observations_count=0, demote_candidate_count=0,

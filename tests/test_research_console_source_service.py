@@ -689,13 +689,14 @@ def test_p0_source_service_projects_formal_monthly_quality_at_top_level(
 
     database = tmp_path / "formal-monthly.db"
     quality = {
-        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v2",
         "status": "observed",
         "periods": [
             {
                 "period": "2026-01",
                 "formal_row_count": 2,
                 "missing_announcement_date_row_count": 1,
+                "report_level_date_unverified_row_count": 0,
                 "distinct_stock_code_count": 2,
                 "distinct_source_version_count": 1,
             }
@@ -707,8 +708,11 @@ def test_p0_source_service_projects_formal_monthly_quality_at_top_level(
     }
     captured: dict[str, object] = {}
 
-    def read_quality(path: Path) -> dict[str, object]:
+    def read_quality(
+        path: Path, availability_mapping_path: Path | None = None
+    ) -> dict[str, object]:
         captured["path"] = path
+        captured["availability_mapping_path"] = availability_mapping_path
         return quality
 
     monkeypatch.setattr(
@@ -722,6 +726,7 @@ def test_p0_source_service_projects_formal_monthly_quality_at_top_level(
     payload = center.to_dict()
 
     assert captured["path"] == database
+    assert captured["availability_mapping_path"] is None
     assert payload["formal_monthly_revenue_quality"] == quality
     assert all(
         "formal_monthly_revenue_quality" not in row
@@ -746,7 +751,7 @@ def test_p0_source_service_without_formal_db_keeps_monthly_quality_unknown(
 
     quality = center.to_dict()["formal_monthly_revenue_quality"]
     assert quality == {
-        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v2",
         "status": "unavailable",
         "periods": None,
         "blockers": ["formal_monthly_revenue_database_path_not_configured"],
@@ -754,3 +759,77 @@ def test_p0_source_service_without_formal_db_keeps_monthly_quality_unknown(
         "formal_db_write": False,
         "financial_values_returned": False,
     }
+
+
+def test_p0_source_service_reads_monthly_quality_details_from_configured_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app_module.research_console_source_service as source_module
+
+    database = tmp_path / "formal-monthly.db"
+    availability = tmp_path / "availability.csv"
+    expected = {
+        "schema_version": "baldr.formal_monthly_revenue_quality_rows.v2",
+        "status": "observed",
+        "period": "2026-04",
+        "mapping_status": "verified",
+        "rows": [
+            {
+                "stock_code": "2330",
+                "source": "fixture.monthly_revenue",
+                "source_version": "source-v1",
+                "stored_announced_date": None,
+                "mapping_match_state": "exact_version_mapping_present",
+                "mapping_announced_date": "2026-05-08",
+            }
+        ],
+        "total_count": 1,
+        "limit": 100,
+        "offset": 0,
+        "has_more": False,
+        "blockers": [],
+        "scope": "formal_monthly_revenue_announcement_quality_identity_page",
+        "formal_db_write": False,
+        "financial_values_returned": False,
+    }
+    captured: dict[str, object] = {}
+
+    def read_details(
+        path: Path,
+        *,
+        period: str,
+        offset: int,
+        limit: int,
+        availability_mapping_path: Path | None,
+    ) -> dict[str, object]:
+        captured.update(
+            path=path,
+            period=period,
+            offset=offset,
+            limit=limit,
+            availability_mapping_path=availability_mapping_path,
+        )
+        return expected
+
+    monkeypatch.setattr(
+        source_module,
+        "read_formal_monthly_revenue_quality_missing_rows",
+        read_details,
+    )
+    service = ResearchConsoleSourceService(
+        p0_formal_db_path=database,
+        p0_monthly_revenue_availability_path=availability,
+    )
+
+    result = service.read_formal_monthly_revenue_quality_missing_rows(
+        "2026-04", offset=0, limit=100
+    )
+
+    assert captured == {
+        "path": database,
+        "period": "2026-04",
+        "offset": 0,
+        "limit": 100,
+        "availability_mapping_path": availability,
+    }
+    assert result == expected

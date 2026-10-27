@@ -6,6 +6,7 @@ from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,7 @@ from app_module.daily_investment_journey import (
     _next_action,
     _project_learning_receipt,
 )
+from app_module.workbench_source_service import WorkbenchSourceService
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskRiskPromptSummary,
@@ -147,6 +149,35 @@ def _scheduled_candidate_execution(
         result_config_snapshot=result_snapshot,
     )
     return replace(base, result_id=result_id, request=request, context=context)
+
+
+def test_exact_candidate_cohort_exposes_quality_per_eligible_stock(
+    _scheduled_base_execution: RecommendationExecution,
+) -> None:
+    execution = _scheduled_base_execution
+    cohort = execution.context.snapshot_cohort
+    assert cohort is not None
+    eligible_symbols = {item.stock_code for item in execution.decision.items}
+    assert eligible_symbols
+    read_model = SimpleNamespace(
+        integrity_basis="canonical_payload_and_index_verified",
+        legacy_result=None,
+        execution=execution,
+        result_id=execution.result_id,
+    )
+
+    quality_by_stock = WorkbenchSourceService._candidate_quality_by_stock(
+        read_model,
+        candidate_symbols=eligible_symbols,
+        candidate_identity=(f"cohort_hash={cohort.cohort_hash}",),
+    )
+
+    assert quality_by_stock == {symbol: "OBSERVED" for symbol in eligible_symbols}
+    assert WorkbenchSourceService._candidate_quality_by_stock(
+        read_model,
+        candidate_symbols=eligible_symbols,
+        candidate_identity=(),
+    ) == {}
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:

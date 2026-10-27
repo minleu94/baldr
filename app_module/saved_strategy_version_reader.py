@@ -35,6 +35,7 @@ class SavedStrategyVersionEntry:
     version_json: str
     source_entry: ResearchHistoryEntry | None
     diagnostics: tuple[str, ...] = ()
+    display_name: str | None = None
 
     @property
     def version_sha256(self) -> str:
@@ -70,6 +71,12 @@ def _version_json(version: StrategyVersion) -> str:
         raise ValueError("saved_strategy_version_config_invalid")
     if version.validation_metrics is not None and type(version.validation_metrics) is not dict:
         raise ValueError("saved_strategy_version_validation_invalid")
+    if version.display_name is not None and (
+        type(version.display_name) is not str
+        or not version.display_name.strip()
+        or version.display_name != version.display_name.strip()
+    ):
+        raise ValueError("saved_strategy_version_display_name_invalid")
     return _json(version.to_dict())
 
 
@@ -133,9 +140,20 @@ class SavedStrategyVersionReader:
                 except (ValueError, OSError, TypeError) as exc:
                     source = None
                     reasons = (str(exc),)
-                entries.append(SavedStrategyVersionEntry(
-                    version.version_id, version.strategy_id, version.strategy_version, version.source_run_id,
-                    version.promoted_at, version.validation_status, snapshot, source, reasons))
+                entries.append(
+                    SavedStrategyVersionEntry(
+                        version_id=version.version_id,
+                        strategy_id=version.strategy_id,
+                        strategy_version=version.strategy_version,
+                        source_run_id=version.source_run_id,
+                        promoted_at=version.promoted_at,
+                        validation_status=version.validation_status,
+                        version_json=snapshot,
+                        source_entry=source,
+                        diagnostics=reasons,
+                        display_name=version.display_name,
+                    )
+                )
             except (ValueError, TypeError) as exc:
                 diagnostics.append(str(exc))
         _cancel(check_cancel)
@@ -150,7 +168,8 @@ class SavedStrategyVersionReader:
         if current is None or _version_json(current) != selected.version_json:
             raise ValueError("saved_strategy_version_changed")
         if any(getattr(current, key) != getattr(selected, key) for key in (
-                "version_id", "strategy_id", "strategy_version", "source_run_id", "promoted_at", "validation_status")):
+                "version_id", "strategy_id", "strategy_version", "source_run_id", "promoted_at",
+                "validation_status", "display_name")):
             raise ValueError("saved_strategy_version_selection_mismatch")
         history = self.lookup.resolve(selected.source_entry, check_cancel=check_cancel)
         if (self.lookup.registry is None or history.entry.source_kind != "registry"

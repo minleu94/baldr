@@ -38,6 +38,7 @@ TWSE_HISTORY_SOURCE = "twse.monthly_revenue_announcement"
 TPEX_HISTORY_SOURCE = "tpex.monthly_revenue_announcement"
 MOPS_HISTORY_SOURCE = "mops.monthly_revenue_announcement"
 MOPS_STATIC_REPORT_SOURCE = "mops.monthly_revenue_static_report"
+MOPS_STATIC_SNAPSHOT_SOURCE = "mops.monthly_revenue_static_snapshot"
 TEJ_PIT_HISTORY_SOURCE = "tej.monthly_revenue_announcement_pit"
 TWSE_HISTORY_SOURCE_VERSION_PREFIX = "twse-openapi-t187ap05-l"
 TPEX_HISTORY_SOURCE_VERSION_PREFIX = "tpex-openapi-mopsfin-t187ap05-o"
@@ -63,6 +64,14 @@ _MARKET_SOURCES = {
     "twse": (TWSE_HISTORY_SOURCE, TWSE_HISTORY_SOURCE_VERSION_PREFIX),
     "tpex": (TPEX_HISTORY_SOURCE, TPEX_HISTORY_SOURCE_VERSION_PREFIX),
 }
+_REPORT_LEVEL_DATE_SOURCE_IDS = frozenset(
+    {
+        TWSE_HISTORY_SOURCE,
+        TPEX_HISTORY_SOURCE,
+        MOPS_STATIC_REPORT_SOURCE,
+        MOPS_STATIC_SNAPSHOT_SOURCE,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -271,7 +280,7 @@ def build_historical_monthly_revenue_availability(
     diagnostics: list[SourceDiagnostic] = []
     diagnostics_by_source: dict[str, int] = {}
     seen_keys: set[RawRevenuePeriod] = set()
-    static_report_date_diagnostics: set[tuple[str, str]] = set()
+    report_level_date_diagnostics: set[tuple[str, str]] = set()
     duplicate_mapping_rows = 0
     fetched_periods: set[str] = set()
 
@@ -319,21 +328,21 @@ def build_historical_monthly_revenue_availability(
             if (
                 official_row.get("__availability_evidence_kind")
                 == "retrospective_static_report_date"
-                or source == MOPS_STATIC_REPORT_SOURCE
+                or source in _REPORT_LEVEL_DATE_SOURCE_IDS
             ):
                 report_period = (market, period)
-                if report_period not in static_report_date_diagnostics:
+                if report_period not in report_level_date_diagnostics:
                     diagnostics.append(
                         _diagnostic(
-                            "monthly_revenue_availability.static_report_date_not_announcement",
+                            "monthly_revenue_availability.report_level_date_not_announcement",
                             market,
                             row_stock_code,
-                            "report-level MOPS 出表日期 is a retrospective report observation, "
-                            "not a company-period announcement timestamp",
+                            "report-level 出表日期 is not issuer-period announcement evidence; "
+                            f"source={source}; period={period}",
                         )
                     )
                     diagnostics_by_source[market] = diagnostics_by_source.get(market, 0) + 1
-                    static_report_date_diagnostics.add(report_period)
+                    report_level_date_diagnostics.add(report_period)
                 continue
 
             announced_text = str(official_row.get("出表日期", "")).strip()
@@ -358,6 +367,35 @@ def build_historical_monthly_revenue_availability(
                         market,
                         row_stock_code,
                         f"official monthly revenue row has invalid 出表日期; period={period}",
+                    )
+                )
+                diagnostics_by_source[market] = diagnostics_by_source.get(market, 0) + 1
+                continue
+
+            try:
+                announced_at = _parse_official_announcement_timestamp(official_row)
+            except ValueError:
+                diagnostics.append(
+                    _diagnostic(
+                        "monthly_revenue_availability.invalid_announcement_timestamp",
+                        market,
+                        row_stock_code,
+                        f"official announcement timestamp is invalid; period={period}",
+                    )
+                )
+                diagnostics_by_source[market] = diagnostics_by_source.get(market, 0) + 1
+                continue
+            if (
+                announced_at is not None
+                and announced_at.astimezone(_TAIPEI_TZ).date() != announced_date
+            ):
+                diagnostics.append(
+                    _diagnostic(
+                        "monthly_revenue_availability.announcement_timestamp_date_mismatch",
+                        market,
+                        row_stock_code,
+                        "announcement timestamp Taipei date does not match 出表日期; "
+                        f"period={period}",
                     )
                 )
                 diagnostics_by_source[market] = diagnostics_by_source.get(market, 0) + 1
@@ -399,6 +437,11 @@ def build_historical_monthly_revenue_availability(
                     "period": period,
                     "as_of_date": as_of_date.isoformat(),
                     "announced_date": announced_date.isoformat(),
+                    **(
+                        {"announced_at": announced_at.isoformat()}
+                        if announced_at is not None
+                        else {}
+                    ),
                     "available_date": available_date.isoformat(),
                     "source": source,
                     "source_version": source_version,
@@ -457,7 +500,13 @@ def load_official_rows_for_markets(
             elif source_json_dir is not None:
                 rows_by_market[market] = _load_json_rows(Path(source_json_dir) / f"{market}.json")
             else:
-                rows_by_market[market] = _fetch_openapi_rows(market)
+                rows_by_market[market] = [
+                    {
+                        **row,
+                        "__availability_evidence_kind": "retrospective_static_report_date",
+                    }
+                    for row in _fetch_openapi_rows(market)
+                ]
         except Exception as exc:
             rows_by_market[market] = []
             diagnostics.append(
@@ -518,6 +567,7 @@ def parse_mops_monthly_revenue_html(
                     "資料年月": period,
                     "公司代號": stock_code,
                     "出表日期": announced_date.isoformat(),
+                    "__availability_evidence_kind": "retrospective_static_report_date",
                 }
             )
 
@@ -920,6 +970,23 @@ def _find_column(fieldnames: tuple[str, ...], candidates: tuple[str, ...]) -> st
         if matched:
             return matched
     return None
+
+
+def _parse_official_announcement_timestamp(
+    row: Mapping[str, str],
+) -> datetime | None:
+    """保留已驗證公告事件時間，不從靜態報表日期推造時分。"""
+
+    raw = str(row.get("announcement_at") or row.get("announced_at") or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("invalid announcement timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("announcement timestamp must include timezone")
+    return parsed.astimezone(_TAIPEI_TZ)
 
 
 def _iter_periods(start_period: str, end_period: str) -> Iterable[str]:

@@ -516,7 +516,7 @@ def test_empty_input_and_partial_stock_degradation_keep_distinct_negative_eviden
         for code in codes
     } == {
         "PASS": ("pass", ["recommendation_selected"], "observed"),
-        "NO_SIGNAL": ("skipped", ["liquidity_volume_ratio_below_min"], "degraded"),
+        "NO_SIGNAL": ("skipped", ["liquidity_volume_ratio_below_min"], "observed"),
         "BROKEN": ("degraded", ["screening_exception"], "degraded"),
         "SHORT": ("missing", ["insufficient_history"], "missing"),
     }

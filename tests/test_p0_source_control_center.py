@@ -69,6 +69,7 @@ def _formal_monthly_revenue_quality(
                 "period": "2026-01",
                 "formal_row_count": 2,
                 "missing_announcement_date_row_count": 1,
+                "report_level_date_unverified_row_count": 0,
                 "distinct_stock_code_count": 2,
                 "distinct_source_version_count": 1,
             },
@@ -76,12 +77,13 @@ def _formal_monthly_revenue_quality(
                 "period": "2026-02",
                 "formal_row_count": 3,
                 "missing_announcement_date_row_count": 0,
+                "report_level_date_unverified_row_count": 0,
                 "distinct_stock_code_count": 3,
                 "distinct_source_version_count": 1,
             },
         ]
     return {
-        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v1",
+        "schema_version": "baldr.formal_monthly_revenue_quality_by_period.v2",
         "status": status,
         "periods": periods if status == "observed" else None,
         "blockers": [] if status == "observed" else ["database_unavailable"],

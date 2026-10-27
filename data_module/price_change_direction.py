@@ -59,3 +59,32 @@ def normalize_twse_change_sign(value: object) -> str:
     if parser.unsupported:
         return "unknown"
     return normalize_change_sign("".join(parser.parts).strip()) or "unknown"
+
+
+def classify_twse_raw_change_marker(value: object) -> str:
+    """分類經 hash-bound TWSE 原始欄位；保留空白、X 與未知標記的差別。"""
+
+    if value is None or (not isinstance(value, str) and str(value) in {"nan", "<NA>", "NaT"}):
+        return "blank"
+    raw = str(value).strip()
+    if not raw:
+        return "blank"
+    parser = _DirectionText()
+    try:
+        parser.feed(raw)
+        parser.close()
+    except (ValueError, AssertionError):
+        return "unknown"
+    if parser.unsupported:
+        return "unknown"
+    visible = "".join(parser.parts).strip()
+    if not visible:
+        return "blank"
+    if visible == "X":
+        return "non_comparable"
+    normalized = normalize_change_sign(visible)
+    if normalized == "+":
+        return "advancing"
+    if normalized == "-":
+        return "declining"
+    return "unknown"

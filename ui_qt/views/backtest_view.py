@@ -50,8 +50,12 @@ from app_module.research_run_service import ResearchRunService
 from app_module.research_run_dated_equity import research_run_dated_equity_copy
 from app_module.chart_data_service import ChartDataService
 from app_module.promotion_service import PromotionService
+from app_module.promotion_reconciliation_service import PromotionReconciliationService
 from app_module.strategy_version_service import StrategyVersionService
 from app_module.strategy_advice_contract import StrategyAdviceContract
+from ui_qt.views.advice_contract_backtest_context import (
+    AdviceContractBacktestNavigation,
+)
 from app_module.walkforward_service import WalkForwardService
 from app_module.optimizer_service import OptimizerService
 from app_module.recommendation_dataframe_provider import RecommendationDataFrameProvider
@@ -242,13 +246,22 @@ class BacktestView(QWidget):
             self.strategy_version_service = (
                 strategy_version_service or StrategyVersionService(config)
             )
+            promotion_reconciliation_service = (
+                PromotionReconciliationService(
+                    research_repository=self.research_run_service.repository,
+                    strategy_version_service=self.strategy_version_service,
+                )
+                if self.research_run_service is not None
+                else None
+            )
             self.promotion_service = PromotionService(
                 config=config,
                 backtest_repository=self.run_repository,
                 backtest_service=self.backtest_service,
                 walkforward_service=None,  # 稍後統一設置
                 strategy_version_service=self.strategy_version_service,
-                preset_service=self.preset_service
+                preset_service=self.preset_service,
+                promotion_reconciliation_service=promotion_reconciliation_service,
             )
             self.portfolio_promotion_service = RecommendationPortfolioPromotionService(
                 run_repository=self.portfolio_run_repository,
@@ -708,6 +721,20 @@ class BacktestView(QWidget):
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
 
+        self.advice_contract_navigation_context_label = QLabel(self)
+        self.advice_contract_navigation_context_label.setObjectName(
+            "adviceContractNavigationContext"
+        )
+        self.advice_contract_navigation_context_label.setTextFormat(
+            Qt.TextFormat.PlainText
+        )
+        self.advice_contract_navigation_context_label.setWordWrap(True)
+        self.advice_contract_navigation_context_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.advice_contract_navigation_context_label.hide()
+        main_layout.addWidget(self.advice_contract_navigation_context_label)
+
         # 使用 Splitter 分割配置和結果
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -759,6 +786,28 @@ class BacktestView(QWidget):
         initial_mode = self.research_lab_mode_combo.currentData() or "single_stock"
         self._update_ui_state_by_mode(initial_mode)
         self._on_research_lab_mode_changed(initial_mode)
+
+    def set_advice_contract_navigation_context(
+        self,
+        context: AdviceContractBacktestNavigation | None,
+    ) -> None:
+        """只呈現 Workbench 傳入的 Advice 缺欄脈絡，不改動回測狀態。"""
+
+        if (
+            context is not None
+            and type(context) is not AdviceContractBacktestNavigation
+        ):
+            raise TypeError(
+                "Advice 回測導覽脈絡必須是 AdviceContractBacktestNavigation 或 None"
+            )
+        label = self.advice_contract_navigation_context_label
+        if context is None:
+            label.clear()
+            label.hide()
+            return
+
+        label.setText(context.banner_text())
+        label.show()
 
     def _on_research_lab_mode_changed(self, mode_id: str) -> None:
         """同步左側研究模式與右側 semantic result workspace。"""
@@ -3183,10 +3232,20 @@ class BacktestView(QWidget):
                 )
 
                 if version_id:
+                    advice_contract_status = (
+                        f"已保存並讀回核對（{advice_contract.contract_sha256}）"
+                        if advice_contract is not None
+                        else "未提供；此版本不會輸出 Guided 新增候選"
+                    )
                     QMessageBox.information(
                         self,
-                        "成功",
-                        f"回測結果已升級為策略版本\n\n版本 ID: {version_id}\n回測 ID: {run_id}"
+                        "策略版本已建立並核對",
+                        f"版本 ID：{version_id}\n"
+                        f"顯示名稱：{version_name or '自動生成'}\n"
+                        f"Research Run：{run_id}\n"
+                        "Registry 關聯與版本來源已讀回核對。\n"
+                        f"Advice 作者契約：{advice_contract_status}\n\n"
+                        "此升版不代表正式 Gate 接受；正式 Advice 仍依版本資格與來源證據判定。"
                     )
                     self._on_strategy_version_promoted(version_id)
                 else:

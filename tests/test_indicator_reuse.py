@@ -79,6 +79,26 @@ def test_all_invalid_indicator_values_are_not_reused() -> None:
     assert "rsi" not in plan.reused_indicators
 
 
+def test_indicator_with_missing_latest_value_is_recomputed() -> None:
+    frame = pd.DataFrame({"RSI": [45.0, 52.0, math.nan]})
+    config = {"momentum": {"enabled": True, "rsi": {"enabled": True}}}
+
+    plan = prepare_indicator_reuse(frame, config, {"config_schema_version": 0})
+
+    assert "rsi" not in plan.reused_indicators
+    assert plan.technical_config["momentum"]["rsi"]["enabled"] is True
+
+
+def test_indicator_with_non_finite_latest_value_is_not_reused() -> None:
+    frame = pd.DataFrame({"RSI": [45.0, 52.0, math.inf]})
+    config = {"momentum": {"enabled": True, "rsi": {"enabled": True}}}
+
+    plan = prepare_indicator_reuse(frame, config, {"config_schema_version": 0})
+
+    assert "rsi" not in plan.reused_indicators
+    assert plan.technical_config["momentum"]["rsi"]["enabled"] is True
+
+
 def test_schema_v1_missing_parameter_still_fails_closed() -> None:
     frame = pd.DataFrame({"RSI": [50]})
     config = {"momentum": {"enabled": True, "rsi": {"enabled": True}}}
@@ -132,3 +152,35 @@ def test_missing_macd_signal_cannot_be_reused_or_filled_as_neutral() -> None:
     assert "MACD_Signal" not in plan.frame
     assert plan.technical_config["momentum"]["macd"]["enabled"] is True
     assert ScoringEngine().calculate_indicator_score(plan.frame, {"technical": config}).isna().all()
+
+
+def test_scoring_diagnostic_lists_enabled_missing_inputs_and_honors_aliases() -> None:
+    from decision_module.scoring_engine import ScoringEngine
+
+    config = {
+        "technical": {
+            "momentum": {
+                "enabled": True,
+                "macd": {"enabled": True},
+                "rsi": {"enabled": False},
+            },
+            "trend": {
+                "enabled": True,
+                "adx": {"enabled": True},
+                "ma": {"enabled": True, "windows": [20]},
+            },
+        }
+    }
+    frame = pd.DataFrame(
+        {
+            "macd": [1],
+            "Signal": [math.inf],
+            "adx": [20],
+            "SMA20": [math.nan],
+        }
+    )
+
+    assert ScoringEngine().missing_indicator_inputs(frame, config) == (
+        "MACD_Signal",
+        "MA20",
+    )

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections import Counter
 from contextlib import closing
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -50,6 +51,19 @@ MARKET_BENCHMARK_ALIASES = (
     "加權指數",
     "TAIEX Total Index",
 )
+
+
+def _source_qualified_warnings(
+    warnings: Iterable[str], source_family: str
+) -> tuple[str, ...]:
+    """Keep a missing-source warning attributable to the source that emitted it."""
+
+    return tuple(
+        f"{source_family}_source_not_ingested"
+        if warning == "source_not_ingested"
+        else warning
+        for warning in warnings
+    )
 
 
 def _has_complete_cohort_identity(event: EvidenceEvent) -> bool:
@@ -202,6 +216,7 @@ class ForwardOutcomeSummary:
     missing_industry_benchmark: int = 0
     blocked_time_contract_count: int = 0
     warnings_count: int = 0
+    warning_counts: Mapping[str, int] = field(default_factory=dict)
     dry_run: bool = True
     invocation_at: str | None = None
     invocation_date_taipei: str | None = None
@@ -275,6 +290,7 @@ class ForwardPerformanceService:
         decision_date: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
+        event_ids: Iterable[str] | None = None,
         event_type: EvidenceEventType | str | None = None,
         symbol: str | None = None,
         limit: int | None = None,
@@ -301,6 +317,7 @@ class ForwardPerformanceService:
             decision_date=decision_date,
             start_date=start_date,
             end_date=end_date,
+            event_ids=event_ids,
             limit=limit,
             incomplete_outcomes_first=True,
             outcome_windows=windows,
@@ -320,6 +337,7 @@ class ForwardPerformanceService:
                 decision_date=decision_date,
                 start_date=start_date,
                 end_date=end_date,
+                event_ids=event_ids,
                 limit=limit,
                 incomplete_outcomes_first=True,
                 outcome_windows=windows,
@@ -339,6 +357,7 @@ class ForwardPerformanceService:
             "blocked_time_contract_count": 0,
             "warnings_count": 0,
         }
+        warning_counts: Counter[str] = Counter()
         pending_writes: list[EvidenceOutcome] = []
 
         for event in events:
@@ -421,6 +440,7 @@ class ForwardPerformanceService:
                         query_ids=query_ids,
                     )
                 counters["warnings_count"] += len(outcome.warnings)
+                warning_counts.update(outcome.warnings)
                 if outcome.metadata.get("time_contract_state") == "blocked_time_contract":
                     counters["blocked_time_contract_count"] += 1
                 if outcome.outcome_status == EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA:
@@ -466,6 +486,7 @@ class ForwardPerformanceService:
             missing_industry_benchmark=counters["missing_industry_benchmark"],
             blocked_time_contract_count=counters["blocked_time_contract_count"],
             warnings_count=counters["warnings_count"],
+            warning_counts=dict(sorted(warning_counts.items())),
             dry_run=dry_run,
             invocation_at=read_window.invocation_at.isoformat(),
             invocation_date_taipei=read_window.invocation_date_taipei,
@@ -754,12 +775,16 @@ class ForwardPerformanceService:
         corporate_action_warnings = self._corporate_action_policy.check_corporate_action_gap(
             str(event.symbol), event_price_date, outcome_price_date
         )
-        warnings.extend(corporate_action_warnings)
+        warnings.extend(
+            _source_qualified_warnings(corporate_action_warnings, "corporate_action")
+        )
         
         trading_restriction_warnings = self._trading_restriction_policy.check_restriction_gap(
             str(event.symbol), event_price_date, outcome_price_date
         )
-        warnings.extend(trading_restriction_warnings)
+        warnings.extend(
+            _source_qualified_warnings(trading_restriction_warnings, "trading_restriction")
+        )
 
         quality = EvidenceDataQuality.OBSERVED if not warnings else EvidenceDataQuality.DEGRADED
         return EvidenceOutcome(

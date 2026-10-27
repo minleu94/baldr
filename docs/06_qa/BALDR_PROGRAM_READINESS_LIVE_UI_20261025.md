@@ -1,5 +1,11 @@
 # Program Readiness 即時 UI 接線 QA（2026-10-25）
 
+## 2026-10-26 Freshness probe 沿用每日更新的臨時休市證據
+
+唯讀比對 10/26 Quick Update 與 freshness 結果：Quick Update 已從同一官方日曆目錄讀到 TWSE 10/23 臨時休市 sidecar，更新區間最後交易日為 10/22；舊 freshness probe 只載入年度休市表，將 10/23 誤列為開市日，並把 10/22 行情標成 stale。現在例行 probe 在未指定覆寫路徑時，將年度日曆與同目錄臨時休市 sidecar 一起交給共用官方日曆；明確指定年度 cache 時仍保留原本明確範圍。
+
+新增 hash-bound 年度表＋10/23 官方臨時休市事件回歸案例，並確認明確年度 calendar override 不會暗中擴大 sidecar 範圍；10/26 預期最新交易日為 10/22。`tests/test_scheduled_data_freshness_probe.py` **57 passed／1 skipped**；兩個修改 Python 檔 `py_compile` 通過，受控 Windows Job exit 0、8 GiB／12 processes 限制讀回成功、剩餘程序 0、handles 關閉。之後以正式 DATA_ROOT／DB 唯讀執行 probe、輸出僅寫 visualization scratch：預期日與正式 SQLite 最新日均為 2026-10-22，TWSE／TPEx 原始日行情及 SQLite 日行情均判 `current`。全體 freshness 仍 `degraded`，原因是月營收與季報期別尚未提供；本次未重跑自然排程、未改正式 status、資料庫或來源資格，舊保存推薦仍保留執行當時的日曆警告，待下一次新 run 確認。
+
 ## 2026-10-25 Owner 授權決策落地與登錄後 readiness
 
 依 Owner 在本對話明確授權，由 Codex 僅對 11 個尚無足夠來源接受證據的 P0 候選作非生效 `deferred` 決策：無 allowed use cases，不接受來源、不做法律審查、不授 downstream。既有兩個月營收決議維持 `limited`，僅 `research_shadow`／`diagnostics`。11 筆已追加到工作區候選 registry，readback 11/11，receipt 的 `formal_database_written=false`、`source_acceptance_granted=false`、`downstream_eligibility=none`；正式資料根與資料庫未寫入。
@@ -424,3 +430,11 @@ Capture manifest 將 `maximum_requests` 摘要錯寫為 3，實際執行是 adap
 以正式來源 SQLite `mode=ro`、獨立 sidecar 與輸出目錄重跑 2026-10-19..25。Job receipt `weekly-period-candidate-source-readonly-20261025` 為 `passed=true`、`returncode=0`、`source_unchanged=true`、`handles_closed=true`、`lock_released=true`。結果最後交易日 10/22（10/23 官方休市），4 個交易日共 7,859 列、1,987 個觀察股票、0 重複列；來源覆蓋分母未知，未宣稱全市場完整。16 列缺 OHLC 均由同日 TWSE custody receipt 核對為官方原始值 `--`，無法用價格計算替代。
 
 因此候選結果為 `degraded`／`pending_human_review`，`gate_credit_status=pending_human_review`、`source_write_allowed=false`、`sidecar_append_allowed=true`（僅表示候選可被 append，這次未 append）、`full_coverage_claimed=false`。沒有寫正式 sidecar、正式行情 DB、Gate credit 或 scheduler 狀態。這修正了週期預設錯位，沒有消除本週資料源的 16 列 OHLC 缺值，也沒有讓 weekly approval packet 自動具備乾跑、smoke、warnings、blocking gaps 等附件。隔離 JSON：`C:\Users\archi\.codex\visualizations\2026\10\23\01a16afa-5b3f-7692-a5db-8881433773e9\weekly-current-period-candidate-20261025\scheduled\v2_2_weekly_collection\v2_2_weekly_collection_20261025.json`。本輪未執行測試套件或 GUI UAT。
+
+## 2026-10-26 同日推薦快照與 Evidence dry-run identity 重驗
+
+唯讀讀回正式 output root 的最新 `recommendation_snapshot/latest_status.json`：`status=passed`、decision date `2026-10-26`、checked at `2026-10-26T05:10:03-07:00`、`result_id=rec_1708b376d5524377ae1bceda654568b3`、4 筆 recommendations；唯一 snapshot warning 為 `snapshot_cohort_partial_source_coverage`。來源投影有 200 列 screening matrix、196 列 Why Not、172 列 liquidity gate。status SHA-256 `64c2655060d24c26b1f719a67647c3dea190c90220c9184f80e629adc3876875`。
+
+同日 05:15 PDT `evidence_pipeline_dry_run/latest_status.json` 的 binding 讀回同一 `result_id`、同一 decision date，且 `status_sha256` 與 recommendation status 完全相同；`pipeline_execution_started=true`、exit code 0、0 errors、18 warnings、`pipeline_overall_status=degraded`，最終仍為 `failed`／scheduler `not_ready`。剩餘 blocking gaps 是 `watchlist_trigger_not_ready` 和 `risk_prompt_not_ready`（瞬時 snapshot source-quality 對應為 `watchlist_trigger_snapshot_quality_not_ready`、`risk_prompt_snapshot_quality_not_ready`）。`writes_evidence_db=false`，正式 Evidence DB 未寫。Evidence latest-status SHA-256 `5d90932e9dc54b64a78318b1b31b603179f4e922410683b0ed0ff5d4601afc85`；report SHA-256 `ce70ea976ae80def01421bbeb21ea4cda522576e6ba9846cee3815afcebbfd66`；terminal receipt SHA-256 `af6a95b5aa2eb56c0e5fc67514a2503d4de35bf51b3aa4df27e0f7de414c8b49`。
+
+此讀回證明同日 recommendation identity 已可進入 Evidence dry-run，先前的 `scheduled_recommendation_status_identity_mismatch` 不再是這次最新輸出的阻塞；它不證明 Task Scheduler 自然觸發（本次沒有獨立讀回 Task Scheduler history），也不代表 watchlist／risk source readiness、weekly Evidence、Gate 或 ML 通過。沒有重跑 producer、覆寫 status 或修改正式資料；詳細 report 與 terminal receipt 保存在上述正式 output root 的 evidence pipeline 子目錄。

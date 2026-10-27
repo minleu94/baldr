@@ -41,6 +41,7 @@ class StrategyVersion:
     validation_metrics: Optional[Dict[str, Any]] = None  # Walk-Forward 結果、Baseline 對比結果
     notes: Optional[str] = None  # 備註
     advice_contract: Optional[StrategyAdviceContract] = None
+    display_name: Optional[str] = None  # 使用者提供的版本顯示名稱
 
     def __post_init__(self) -> None:
         if (
@@ -174,6 +175,7 @@ class StrategyVersionService:
         notes: Optional[str] = None,
         version_id: Optional[str] = None,
         advice_contract: Optional[StrategyAdviceContract] = None,
+        display_name: Optional[str] = None,
     ) -> str:
         """
         創建策略版本
@@ -220,6 +222,7 @@ class StrategyVersionService:
             validation_metrics=validation_metrics,
             notes=notes,
             advice_contract=advice_contract,
+            display_name=display_name.strip() if display_name and display_name.strip() else None,
         )
         
         version_data = {

@@ -272,6 +272,63 @@ def test_sqlite_provider_uses_explicit_direction_for_absolute_source_change(tmp_
     assert "market_breadth_skipped_rows:1" in snapshot.warnings
 
 
+def test_sqlite_provider_uses_hash_bound_twse_raw_marker_for_zero_and_x(tmp_path):
+    db_path = tmp_path / "twse-raw-marker.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE daily_prices (
+                日期 TEXT,
+                證券代號 TEXT,
+                收盤價 TEXT,
+                漲跌價差 TEXT,
+                成交股數 INTEGER,
+                "漲跌(+/-)" TEXT,
+                PRIMARY KEY (證券代號, 日期)
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                ("20261001", "1108", "10.95", "0", 94_912, ""),
+                ("20261001", "0056", "56.30", "0", 120_447_924, ""),
+                ("20261001", "2330", "2385", "0", 29_796_590, ""),
+                ("20261002", "1108", "10.95", "0", 94_912, "unknown"),
+                ("20261002", "0056", "56.30", "0", 120_447_924, "unknown"),
+                ("20261002", "2330", "2386", "1", 29_796_590, "+"),
+            ],
+        )
+
+    class _VerifiedRawEvidence:
+        def corporate_action(self, *args, **kwargs):
+            return None
+
+        def twse_change_evidence(self, _session_key, _decision_date, _stock_codes):
+            return {
+                "1108": ({
+                    "raw_change": "0.00", "raw_close": "10.95", "raw_volume": "94,912",
+                    "raw_signs": {"漲跌(+/-)": "<p> </p>"},
+                },),
+                "0056": ({
+                    "raw_change": "0.00", "raw_close": "56.30", "raw_volume": "120,447,924",
+                    "raw_signs": {"漲跌(+/-)": "<p>X</p>"},
+                },),
+            }
+
+    snapshot = MarketBreadthService(
+        SQLiteDailyPriceMarketBreadthProvider(db_path, quote_diagnostics=_VerifiedRawEvidence())
+    ).build_snapshot(date(2026, 10, 2))
+
+    assert snapshot.quality == DecisionDeskQuality.OBSERVED
+    assert snapshot.unchanged == 1
+    assert snapshot.meta["unknown_skipped_rows_count"] == 0
+    assert snapshot.meta["official_non_comparable_exclusions_count"] == 1
+    assert snapshot.meta["twse_zero_direction_evidence_count"] == 1
+    assert "market_breadth_source_declared_non_comparable_exclusions:1" in snapshot.warnings
+    assert "market_breadth_skipped_rows" not in "|".join(snapshot.warnings)
+
+
 def test_sqlite_provider_skips_unclassified_row_without_close_difference_fallback(tmp_path):
     db_path = tmp_path / "unclassified-direction.db"
     with sqlite3.connect(db_path) as conn:

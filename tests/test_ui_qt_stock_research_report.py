@@ -1021,6 +1021,61 @@ def test_mainwindow_injects_current_restated_ml_registry_read_provider(
         _drain_qt_deferred_deletes(app, (window,))
 
 
+@pytest.mark.parametrize(
+    "registry_error_type",
+    [
+        pytest.param(
+            "registry",
+            id="registry-error",
+        ),
+        pytest.param(
+            "output-boundary",
+            id="output-boundary-error",
+        ),
+    ],
+)
+def test_mainwindow_keeps_rule_research_available_when_ml_registry_boundary_fails(
+    tmp_path: Path,
+    monkeypatch,
+    registry_error_type: str,
+) -> None:
+    app = _app()
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("OUTPUT_ROOT", str(tmp_path / "output"))
+    from app_module.stock_research_report_provider_adapters import (
+        CurrentRestatedMLRegistryError,
+    )
+    from data_module.ml_research_output_boundary import MLResearchOutputBoundaryError
+    import ui_qt.main as qt_main
+
+    error_type = (
+        CurrentRestatedMLRegistryError
+        if registry_error_type == "registry"
+        else MLResearchOutputBoundaryError
+    )
+
+    def fail_registry(*args: object, **kwargs: object) -> None:
+        raise error_type("fixture path boundary failure")
+
+    monkeypatch.setattr(qt_main, "CurrentRestatedMLRunRegistry", fail_registry)
+    window = qt_main.MainWindow()
+    try:
+        assert window.stock_research_ml_registry is None
+        assert window.stock_research_report_service is not None
+        assert window.stock_research_report_service.ml_provider is None
+        assert window.statusBar().currentMessage() == (
+            "ML 模型登錄暫不可讀；個股規則研究仍可使用，ML 預測暫停。"
+        )
+        ml_snapshot = window.stock_research_report_service._read_ml(
+            "2330", datetime.now().date(), {}
+        )
+        assert "ML 預測暫不可讀取" in "；".join(ml_snapshot.limitations)
+    finally:
+        window.close()
+        app.processEvents()
+        qt_main._drain_qt_deferred_deletes(app, (window,))
+
+
 def test_search_return_uses_keyboard_and_keeps_accessible_status(tmp_path: Path) -> None:
     view = StockResearchReportView(_real_service(tmp_path))
     view.show()

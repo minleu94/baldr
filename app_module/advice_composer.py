@@ -70,9 +70,14 @@ class AdviceComposer:
         data_as_of_date: date | str,
         mode: AdviceMode,
         evidence_warnings: Sequence[str] = (),
+        research_only: bool = False,
+        evidence_quality_by_stock: Mapping[str, str] | None = None,
         current_weights_bp: Mapping[str, int] | None = None,
         calibration_by_stock_code: Mapping[str, object] | None = None,
     ) -> AdviceDashboardDTO:
+        if type(research_only) is not bool:
+            raise TypeError("research_only 必須是 bool")
+        quality_by_stock = self._quality_by_stock(evidence_quality_by_stock)
         decision_date_text = self._date_text(decision_date, "decision_date")
         data_as_of_date_text = self._date_text(data_as_of_date, "data_as_of_date")
         if data_as_of_date_text > decision_date_text:
@@ -154,7 +159,11 @@ class AdviceComposer:
             if current_weights_known
             else None
         )
-        strategy_status = self._string_or_none(config.get("strategy_status"))
+        strategy_status = (
+            "candidate"
+            if research_only
+            else self._string_or_none(config.get("strategy_status"))
+        )
         parameters_locked = self._bool_or_none(config.get("parameters_locked"))
         disclosure_complete = self._bool_or_none(config.get("disclosure_complete"))
         execution_feasible = config.get("execution_feasible")
@@ -186,7 +195,9 @@ class AdviceComposer:
                     parameters_locked=parameters_locked,
                     disclosure_complete=disclosure_complete,
                     mode=mode,
-                    evidence_quality=evidence_quality,
+                    evidence_quality=quality_by_stock.get(
+                        recommendation.stock_code, evidence_quality
+                    ),
                     execution_feasible=execution_feasible,
                     risk_budget_available=risk_budget_available,
                     current_position_count=current_position_count,
@@ -258,6 +269,26 @@ class AdviceComposer:
             diagnostics=diagnostics,
             warnings=warning_values,
         )
+
+    @staticmethod
+    def _quality_by_stock(value: Mapping[str, str] | None) -> dict[str, str]:
+        """驗證同次結果綁定的逐股品質覆寫；缺列仍沿用整體品質。"""
+
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping):
+            raise TypeError("evidence_quality_by_stock 必須是 mapping 或 None")
+        allowed = {"OBSERVED", "DEGRADED", "MISSING", "UNKNOWN"}
+        normalized: dict[str, str] = {}
+        for stock_code, quality in value.items():
+            if type(stock_code) is not str or not stock_code.strip():
+                raise ValueError("evidence_quality_by_stock 的股票代碼不可為空")
+            if type(quality) is not str or quality not in allowed:
+                raise ValueError(
+                    "evidence_quality_by_stock 僅接受 OBSERVED/DEGRADED/MISSING/UNKNOWN"
+                )
+            normalized[stock_code] = quality
+        return normalized
 
     def _recommendation_advice(
         self,

@@ -4352,7 +4352,9 @@ class RecommendationEvaluator:
             return self._failure(
                 state,
                 status="skipped",
-                quality="degraded",
+                # 無訊號或有效流動性規則排除描述的是策略判斷，不代表
+                # 已觀測輸入資料失敗或降級；排除資訊保留在 status／reason。
+                quality="observed",
                 reason=reason,
                 threshold_name=threshold_name,
                 observed_value=observed_value,

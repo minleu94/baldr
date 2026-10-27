@@ -72,6 +72,7 @@ def _snapshot(
     risk_prompts_quality=DecisionDeskQuality.OBSERVED,
     market_regime_warnings=(),
     market_breadth_warnings=(),
+    market_breadth_meta=None,
     sector_rotation_warnings=(),
     relative_strength_liquidity_warnings=(),
     watchlist_warnings=(),
@@ -103,6 +104,7 @@ def _snapshot(
             advancing=120,
             declining=80,
             unchanged=20,
+            meta=market_breadth_meta or {},
         ),
         sector_rotation=SectorRotationSummary(
             as_of_date=as_of,
@@ -1974,6 +1976,33 @@ def test_decision_desk_market_breadth_bar_uses_integer_stretches_and_accessible_
     assert "已載入家數分布；非指數報酬／交易訊號" in view.market_breadth_caption.text()
     assert "來源日：2026-06-15" in view.market_breadth_caption.text()
     assert "品質：觀察到" in view.market_breadth_caption.text()
+    view.close()
+
+
+def test_decision_desk_market_breadth_caption_shows_classification_and_exclusions():
+    app()
+    view = rendered_view(
+        FakeBuilder(
+            _snapshot(
+                market_breadth_quality=DecisionDeskQuality.OBSERVED,
+                market_breadth_meta={
+                    "classified_stock_count": 1954,
+                    "stock_count": 1957,
+                    "twse_zero_direction_evidence_count": 74,
+                    "official_non_comparable_exclusions_count": 1,
+                    "corporate_action_exclusions_count": 2,
+                    "unknown_skipped_rows_count": 0,
+                },
+            )
+        )
+    )
+
+    caption = view.market_breadth_caption.text()
+    assert "方向分類 1954/1957" in caption
+    assert "TWSE 空白符核驗平盤 74" in caption
+    assert "官方不比價排除 1" in caption
+    assert "除權息排除 2" in caption
+    assert "方向未知略過" not in caption
     view.close()
 
 

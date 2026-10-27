@@ -121,7 +121,11 @@ from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
 from app_module.daily_market_research_screener import DailyMarketResearchScreenerService
 from ui_qt.views.daily_market_cohort_view import DailyMarketCohortView
-from app_module.stock_research_report_provider_adapters import CurrentRestatedMLRunRegistry
+from app_module.stock_research_report_provider_adapters import (
+    CurrentRestatedMLRegistryError,
+    CurrentRestatedMLRunRegistry,
+)
+from data_module.ml_research_output_boundary import MLResearchOutputBoundaryError
 
 # 導入策略模組以觸發註冊
 import decision_module.strategies
@@ -140,6 +144,7 @@ from ui_qt.views.weak_industries_view import WeakIndustriesView
 from ui_qt.views.recommendation_view import RecommendationView
 from ui_qt.views.update_view import UpdateView
 from ui_qt.views.backtest_view import BacktestView
+from ui_qt.views.advice_contract_backtest_context import AdviceContractBacktestNavigation
 from ui_qt.views.watchlist_view import WatchlistView
 from ui_qt.views.watchlist_product_layout import WatchlistProductLayout
 from ui_qt.views.stock_research_workspace import HistoricalResearchViewToken, StockResearchWorkspace
@@ -1798,9 +1803,22 @@ class MainWindow(QMainWindow):
             # 個股研究報告只組合既有 read contract；MainWindow 注入已驗證的
             # current-restated ML registry，不重算推薦，也不把 owner 邏輯搬入 UI。
             _startup_step("正在連接研究資料")
-            self.stock_research_ml_registry = CurrentRestatedMLRunRegistry(
-                repository_root=self.application_settings.ml_registry_repository_root,
-            )
+            self.stock_research_ml_registry = None
+            self._stock_research_ml_registry_warning: str | None = None
+            try:
+                self.stock_research_ml_registry = CurrentRestatedMLRunRegistry(
+                    repository_root=self.application_settings.ml_registry_repository_root,
+                )
+            except (CurrentRestatedMLRegistryError, MLResearchOutputBoundaryError) as exc:
+                # ML 是個股規則研究的可選唯讀來源；已知登錄／路徑邊界錯誤
+                # 應明示 ML 暫不可用，但不阻止其他研究頁啟動。
+                self._stock_research_ml_registry_warning = (
+                    "ML 模型登錄暫不可讀；個股規則研究仍可使用，ML 預測暫停。"
+                )
+                logger.warning(
+                    "ML 研究登錄不可讀，將以規則研究模式啟動（%s）",
+                    type(exc).__name__,
+                )
             self.daily_market_snapshot_root = (
                 Path(daily_market_snapshot_root).expanduser().resolve()
                 if daily_market_snapshot_root is not None
@@ -1847,6 +1865,8 @@ class MainWindow(QMainWindow):
 
             # 設置 UI
             self._setup_ui()
+            if self._stock_research_ml_registry_warning is not None:
+                self.statusBar().showMessage(self._stock_research_ml_registry_warning)
             if self.daily_market_snapshot_cohort_id is not None:
                 # Keep the reader field aligned with the explicitly configured
                 # source while leaving snapshot loading as a user action.
@@ -2081,10 +2101,54 @@ class MainWindow(QMainWindow):
         self._select_main_workspace("recommendation")
         return True
 
+    def _open_backtest_for_workbench_advice_contract(
+        self, context: AdviceContractBacktestNavigation
+    ) -> bool:
+        """將精確 Advice 身分帶至回測頁供核對，不套用設定或執行。"""
+
+        backtest_view = getattr(self, "backtest_view", None)
+        set_context = getattr(backtest_view, "set_advice_contract_navigation_context", None)
+        if not isinstance(context, AdviceContractBacktestNavigation) or not callable(set_context):
+            return False
+        try:
+            set_context(context)
+        except (TypeError, ValueError):
+            return False
+        self._select_main_workspace("backtest")
+        self.statusBar().showMessage(
+            f"已帶入 {context.stock_code} 的 Advice 導覽身分供核對；未載入回測設定、執行或升版。",
+            8000,
+        )
+        return True
+
+    def _open_manual_saved_research_in_workbench(self, result_id: str) -> bool:
+        """重讀明選 canonical 保存結果，放入獨立、記憶體內研究區。"""
+
+        view = getattr(self, "workbench_view", None)
+        source = getattr(self, "workbench_source_service", None)
+        setter = getattr(view, "set_manual_saved_research_lane", None)
+        if not callable(setter) or source is None:
+            self.statusBar().showMessage("Workbench 研究區尚未建立；沒有套用保存結果。", 8000)
+            return False
+        try:
+            lane = source.load_manual_saved_research(result_id)
+        except Exception as exc:  # noqa: BLE001 - 明選來源讀回失敗須清除舊 lane
+            setter(None, error=f"保存結果無法核驗；研究區已清除。原因：{type(exc).__name__}: {exc}")
+            self._select_main_workspace("workbench")
+            return False
+        setter(lane)
+        self._select_main_workspace("workbench")
+        return True
+
     def _save_workbench_advice_research_decision(
-        self, action: str, identity_payload: Mapping[str, str], note: str = ""
+        self,
+        action: str,
+        identity_payload: Mapping[str, str],
+        note: str = "",
+        *,
+        next_review_at: str = "",
     ) -> object:
-        """把明選 Advice 的既有動作接到 continuity writer；不建立交易。"""
+        """保存明選 Advice 的人工研究狀態；不建立交易。"""
 
         from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 
@@ -2105,6 +2169,14 @@ class MainWindow(QMainWindow):
             if not note.strip():
                 raise ValueError("研究註記不可為空")
             return controller.note(identity, note=note.strip(), **kwargs)
+        if action == "review_scheduled":
+            if not next_review_at.strip():
+                raise ValueError("下次檢視時間不可為空")
+            return controller.schedule_review(
+                identity,
+                next_review_at=next_review_at.strip(),
+                **kwargs,
+            )
         raise ValueError(f"不支援的研究決定動作：{action}")
 
     def _open_decision_desk_saved_recommendation(self, result_id: str) -> bool:
@@ -2403,6 +2475,9 @@ class MainWindow(QMainWindow):
                     p0_license_evidence_path=self._p0_license_evidence_path(),
                     p0_decision_path=self._p0_source_decision_path(),
                     p0_formal_db_path=getattr(self.config, "db_file", None),
+                    p0_monthly_revenue_availability_path=getattr(
+                        self.config, "monthly_revenue_availability_file", None
+                    ),
                 )
                 workbench_view = UnifiedDecisionWorkbenchView(
                     source_service=self.workbench_source_service,
@@ -2427,6 +2502,7 @@ class MainWindow(QMainWindow):
                     navigate_to_recommendation_callback=lambda: self._select_main_workspace(
                         "recommendation"
                     ),
+                    navigate_to_backtest_callback=self._open_backtest_for_workbench_advice_contract,
                     navigate_to_saved_recommendation_callback=self._open_workbench_saved_recommendation,
                     save_advice_research_decision_callback=self._save_workbench_advice_research_decision,
                     auto_refresh=True,
@@ -2489,6 +2565,10 @@ class MainWindow(QMainWindow):
             if hasattr(recommendation, "returnToDailyDecisionRequested"):
                 recommendation.returnToDailyDecisionRequested.connect(
                     self._return_to_daily_decision_source
+                )
+            if hasattr(recommendation, "savedResearchToWorkbenchRequested"):
+                recommendation.savedResearchToWorkbenchRequested.connect(
+                    self._open_manual_saved_research_in_workbench
                 )
             self.recommendation_view = recommendation
             daily_price = recommendation.daily_market_research_view

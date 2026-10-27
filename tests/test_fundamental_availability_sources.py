@@ -18,8 +18,10 @@ def _formal_row(**overrides: str) -> dict[str, str]:
         "as_of_date": "2026-05-31",
         "announced_date": "2026-06-10",
         "available_date": "2026-06-11",
+        "announced_at": "",
         "source": "manual.twse_monthly_revenue_announcement_log",
         "source_version": "announcement-log-2026-06-16",
+        "target_source_version": "",
         "availability_contract_version": FORMAL_AVAILABILITY_CONTRACT_VERSION,
         "evidence_class": "official_announcement",
         "source_hash": f"sha256:{_HASH}",
@@ -47,6 +49,37 @@ def test_load_monthly_revenue_availability_overrides_preserves_formal_announceme
     assert override.revision == 1
     assert override.provenance_mode == "formal_v2"
     assert result.diagnostics == ()
+
+
+def test_load_monthly_revenue_availability_overrides_preserves_announcement_timestamp():
+    result = load_monthly_revenue_availability_overrides(
+        [_formal_row(announced_at="2026-06-10T18:42:31+08:00")]
+    )
+
+    override = result.overrides[("2330", "2026-05")]
+    assert override.announced_at is not None
+    assert override.announced_at.isoformat() == "2026-06-10T18:42:31+08:00"
+    assert result.diagnostics == ()
+
+
+def test_load_monthly_revenue_availability_overrides_rejects_timestamp_without_timezone():
+    result = load_monthly_revenue_availability_overrides(
+        [_formal_row(announced_at="2026-06-10T18:42:31")]
+    )
+
+    assert result.overrides == {}
+    assert result.diagnostics[0].code == "fundamental_availability.invalid_announced_at"
+
+
+def test_load_monthly_revenue_availability_overrides_rejects_timestamp_date_mismatch():
+    result = load_monthly_revenue_availability_overrides(
+        [_formal_row(announced_at="2026-06-11T00:42:31+08:00")]
+    )
+
+    assert result.overrides == {}
+    assert result.diagnostics[0].code == (
+        "fundamental_availability.announcement_timestamp_date_mismatch"
+    )
 
 
 def test_load_monthly_revenue_availability_overrides_rejects_local_first_seen_evidence():
@@ -144,6 +177,23 @@ def test_load_monthly_revenue_availability_overrides_csv_reads_governed_file(tmp
     assert result.diagnostics == ()
 
 
+def test_load_monthly_revenue_availability_overrides_csv_accepts_old_date_only_header(tmp_path):
+    mapping_file = tmp_path / "date_only_monthly_revenue_availability.csv"
+    mapping_file.write_text(
+        "stock_code,period,as_of_date,announced_date,available_date,source,source_version,"
+        "availability_contract_version,evidence_class,source_hash,revision,parent_revision\n"
+        "2330,2026-05,2026-05-31,2026-06-10,2026-06-11,"
+        "manual.twse_monthly_revenue_announcement_log,announcement-log-2026-06-16,"
+        "formal-availability.v2,official_announcement,sha256:" + _HASH + ",1,\n",
+        encoding="utf-8-sig",
+    )
+
+    result = load_monthly_revenue_availability_overrides_csv(mapping_file)
+
+    assert result.overrides[("2330", "2026-05")].announced_at is None
+    assert result.diagnostics == ()
+
+
 def test_load_monthly_revenue_availability_overrides_accepts_only_bounded_legacy_official_mapping():
     result = load_monthly_revenue_availability_overrides(
         [
@@ -180,6 +230,38 @@ def test_load_monthly_revenue_availability_overrides_rejects_unversioned_new_off
 
     assert result.overrides == {}
     assert result.diagnostics[0].code == "fundamental_availability.formal_provenance_missing"
+
+
+def test_load_monthly_revenue_availability_overrides_requires_mops_target_version():
+    result = load_monthly_revenue_availability_overrides(
+        [
+            _formal_row(
+                source="mops.monthly_revenue_announcement",
+                source_version="mops-t05st10-ifrs-2026-05-08",
+            )
+        ]
+    )
+
+    assert result.overrides == {}
+    assert result.diagnostics[0].code == (
+        "fundamental_availability.target_source_version_missing"
+    )
+
+
+def test_load_monthly_revenue_availability_overrides_preserves_mops_target_version():
+    target_version = "mops-static-snapshot-monthly-revenue-2026-06-16"
+    result = load_monthly_revenue_availability_overrides(
+        [
+            _formal_row(
+                source="mops.monthly_revenue_announcement",
+                source_version="mops-t05st10-ifrs-2026-05-08",
+                target_source_version=target_version,
+            )
+        ]
+    )
+
+    assert result.overrides[("2330", "2026-05")].target_source_version == target_version
+    assert result.diagnostics == ()
 
 
 def test_load_monthly_revenue_availability_overrides_requires_contiguous_revision_lineage():

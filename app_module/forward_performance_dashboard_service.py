@@ -103,6 +103,7 @@ class ReadOnlyEvidenceEventRepository(EvidenceEventRepository):
         decision_date: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
+        event_ids: Iterable[str] | None = None,
         limit: int | None = None,
         incomplete_outcomes_first: bool = False,
         outcome_windows: Iterable[int] | None = None,
@@ -126,6 +127,18 @@ class ReadOnlyEvidenceEventRepository(EvidenceEventRepository):
         if end_date is not None:
             where.append("decision_date <= ?")
             params.append(end_date)
+        if event_ids is not None:
+            normalized_event_ids = tuple(dict.fromkeys(str(item).strip() for item in event_ids))
+            if any(not item for item in normalized_event_ids):
+                raise ValueError("event_ids must not contain empty identifiers")
+            if len(normalized_event_ids) > 800:
+                raise ValueError("event_ids must contain at most 800 identifiers")
+            if not normalized_event_ids:
+                return []
+            if limit is not None and limit < len(normalized_event_ids):
+                raise ValueError("limit must not truncate an explicit event_ids allowlist")
+            where.append("event_id IN (" + ", ".join("?" for _ in normalized_event_ids) + ")")
+            params.extend(normalized_event_ids)
         sql = "SELECT * FROM evidence_events"
         if where:
             sql += " WHERE " + " AND ".join(where)

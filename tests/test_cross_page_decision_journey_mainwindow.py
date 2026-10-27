@@ -1331,6 +1331,31 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             "accept_enabled": True,
         }
 
+        # 明選的 canonical 保存結果須進入獨立 Professional research lane，
+        # 沿用原日期且不能改動排程 Advice 投影。
+        scheduled_advice = window.workbench_view._dashboard.advice_dashboard
+        scheduled_advice_snapshot = (
+            scheduled_advice.to_dict() if scheduled_advice is not None else None
+        )
+        window._select_main_workspace("recommendation")
+        assert recommendation_view.saved_research_to_workbench_button.isEnabled()
+        recommendation_view.saved_research_to_workbench_button.click()
+        assert window.workspace_stack.currentWidget() is window.workbench_view
+        manual_lane_text = window.workbench_view.manual_research_text.toPlainText()
+        assert saved_id in manual_lane_text, window.workbench_view.manual_research_status.text()
+        assert f"原決策日：{DECISION_DATE}｜原資料截止日：{DATA_DATE}" in manual_lane_text
+        assert "RESEARCH" in manual_lane_text
+        current_scheduled_advice = window.workbench_view._dashboard.advice_dashboard
+        assert (
+            current_scheduled_advice.to_dict() if current_scheduled_advice is not None else None
+        ) == scheduled_advice_snapshot
+
+        # 身份讀回失敗時清掉舊 lane，不讓上一筆結果殘留在新身分下。
+        assert not window._open_manual_saved_research_in_workbench("missing-result")
+        assert not window.workbench_view.manual_research_panel.isHidden()
+        assert saved_id not in window.workbench_view.manual_research_text.toPlainText()
+        assert "保存結果無法核驗" in window.workbench_view.manual_research_status.text()
+
         # 關閉原 MainWindow 後重新建立一個全新 MainWindow，從既有 Journal
         # 只讀讀回三種決定與覆寫理由；後續 outcome 仍按真實資料標示待成熟。
         cold_context = window._coerce_stock_research_context(

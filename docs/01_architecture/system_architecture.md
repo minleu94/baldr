@@ -8,6 +8,8 @@ research07增量沿既有工作區與Journal：明確一般查詢建立獨立con
 
 月營收全用途Owner授權已成立；來源資格仍由raw capture、版本歸檔、用途policy及外部固定SHA的qualification reader分開履行。新研究service沿原FactorGate／CrossSectionalFactorPipeline供明示shadow分析，正式Scoring與歷史PIT不能由研究入口升格。長期歷史分批、原件與修訂時間見[全用途契約](../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)；本輪實際接線／QA仍按[驗收](../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)判讀。
 
+Research Console 的正式月營收品質摘要由 Main 將正式 DB 與 availability mapping 路徑注入唯讀 source service，再交給 quality reader。摘要只在 MOPS 正式 provenance、事件 hash、公司／期別／公告日及 SQLite target source version 精確吻合時降低靜態報表日期的待核實數；這不改 fundamental row 或 Gate／ML 資格。具體資料與讀回計數見[資料品質盤點](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-mops-f22-2330-q2-monthly-exact-version-backfill)。
+
 V2保存研究的人工確認模擬經Main原件核驗、獨立對話框及application composition接入既有Paper帳本。外部SHA證據reader分別核現金／行情／日曆用途、原策略帳戶與唯一seed，再以同一唯讀交易取得帳本列和CAS；producer在人工確認後依原政策／費用建立fill、transition和operation marker，同交易保存。月營收另有具名TWSE／TPEx OpenData profile，沿原daily snapshot publisher／reader及exact cohort binding，不改標MOPS。責任、限制及接受邊界見[增量決策](BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)。
 
 研究時間軸新增原件與獨立現況的唯讀對照；原件核驗、來源 reader 與非持久化展示契約分開，Main 管理背景讀取及離頁取消。詳見[工作區](current/application_and_workspaces.md)及[決策研究分冊](current/decision_research_portfolio.md)。這不變更研究保存或金融資格契約。
@@ -64,6 +66,10 @@ R104的`theme_member_navigation` Python候選只處理已載入題材snapshot內
 
 Evidence Review 的週報 Owner 覆核沿 UI → `WeeklyReviewApprovalService` →唯讀 Evidence history repository／獨立 approval projection；projection 僅保存具名人工週審參照，不會回寫週報或正式市場 SQLite。覆盤歷史可由 UI 明選既有 working-copy，UI 同時重建 history 與 approval reader；路徑守衛只接受 `LEGACY_COMPAT` 下非 production-like 檔案，正式 DB 與 PERSONAL／LEGACY_READ_ONLY 自訂路徑均拒絕。完整路徑、hash pins 與讀寫邊界見[資料儲存與 Runtime](current/data_storage_runtime.md#讀寫與保存契約)。
 
+Gate 2 Action Item lifecycle 另由 UI → `EvidenceActionItemLifecycleService` → 唯讀 `DecisionQualityActionItem` working-copy reader／獨立 append-only JSON projection。操作者必須明選已 checkpoint 且無活動寫入者的非正式 working-copy DB 與投影檔；讀取前後比對 DB、WAL 與 journal 狀態，事件綁定 source path identity、review hash、期間及 Action Item payload hash，並以跨程序鎖、原子替換與 hash chain 追加 `reviewed`／`dismissed`／`follow_up` 狀態。它不寫回 SQLite、不與 Owner 核准投影共用，也不授予 Gate、排程或下游資格；處置者姓名與角色為自我聲明。
+
+Update 的 V2.2 weekly collection 處置是另一條 candidate-only 路徑：`UpdateView` 呼叫 `evidence_weekly_review_decision`，重建 packet 並核對 sidecar hash 後，只建立使用者選取的新 JSON 決定 artifact。它不呼叫 Evidence Operations 的 history／approval projection writer，也不改 sidecar、正式資料或 scheduler；人工「已檢視」不會被 readiness 解讀成 Gate 2 approval。兩條人工流程的輸入與寫入責任不可互換。
+
 法人固定批次唯讀路徑沿 UpdateView → UpdateService → `institutional_daily_snapshot` → 原capture／parser，原件、時鐘及資格由application reader核驗，widget只呈現。TPEx可另明選`institutional_source_use`的外部SHA契約，重用DailySourceUseAcceptance，固定官方文件／市場／schema／股數／diagnostics；一次接受與逐批品質小時分離，generic P0 v1決議及其他來源資格不變。具體保存／讀回界線見[資料架構](current/data_storage_runtime.md#讀寫與保存契約)。
 
 ## 九個工作區與閱讀路徑
@@ -106,6 +112,8 @@ Windows Scheduler 與受控 CLI wrappers 分別執行資料更新、Evidence dry
 每日新來源保存的小時可用性、批次／版本釘定與來源用途接受依[每日快照契約](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)；接入沿既有 data reader／更新服務邊界，隔離抓取成功不等同正常 UI、正式排程或完整產品接受。
 
 Research Lab Registry的雙run期間診斷由application exact reader負責metadata／附件／日曆版本核對，Qt controller只固定選取與背景讀回世代，不擁有PnL計算或來源資格；詳[研究與Portfolio邊界](current/decision_research_portfolio.md)。
+
+Backtest 的單股 Registry 升版由 `PromotionService` 將前置條件檢查導向 `PromotionReconciliationService`，與新版本建立共用 Research Run Registry。reconciliation 在回報成功前讀回 StrategyVersion JSON 及 Registry backlink，核對 source run、strategy、parameters 與 create-only Advice contract；失配時以 `reconciliation_required` 保留待核狀態。這只確保兩個保存端的身份一致，不授予正式來源、PIT、Gate 或 ML 資格。
 
 日曆用途接受可由正常Main明示的外部SHA固定binding注入；配置只固定既有typed錨點，仍由原表單選exact batch，失敗只隔離daily用途。Main設定副本與worker生命週期見[主程式邊界](current/application_and_workspaces.md#研究畫面與保存身份)。
 

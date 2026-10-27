@@ -969,6 +969,26 @@ def _default_calendar_cache_path() -> Path | None:
     return path if path.is_dir() else None
 
 
+def _calendar_for_probe(
+    args: argparse.Namespace,
+    *,
+    db_path: Path,
+) -> OfficialTradingCalendar:
+    """Use the scheduled calendar root for annual and temporary-closure evidence."""
+
+    calendar_cache_path = args.calendar_cache_path or _default_calendar_cache_path()
+    temporary_closure_path = args.temporary_closure_path
+    if temporary_closure_path is None and args.calendar_cache_path is None:
+        # The normal scheduled probe must use the same co-located sidecars as
+        # the updater. Explicit calendar overrides retain their explicit scope.
+        temporary_closure_path = calendar_cache_path
+    return OfficialTradingCalendar(
+        db_path=db_path,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Read-only baldr data freshness probe.")
     parser.add_argument("--data-root", required=True)
@@ -2052,14 +2072,7 @@ def main(argv: list[str] | None = None) -> int:
                 for table in ("daily_prices", "technical_indicators"):
                     checks[f"{table}_latest_date"] = _latest_date(conn, table)
 
-                calendar = OfficialTradingCalendar(
-                    db_path=db_path,
-                    calendar_cache_path=(
-                        args.calendar_cache_path
-                        or _default_calendar_cache_path()
-                    ),
-                    temporary_closure_path=args.temporary_closure_path,
-                )
+                calendar = _calendar_for_probe(args, db_path=db_path)
                 try:
                     expected_records = calendar.get_recent_official_trading_days(
                         run_date,

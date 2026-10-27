@@ -447,7 +447,7 @@ def _select_latest_formal_revision(
             (
                 "target_source_version_ambiguous",
                 "MOPS revisions for the same natural key bind to multiple numeric source versions; "
-                f"found={sorted(target_versions)}",
+                f"found={sorted(target_versions, key=lambda version: version or '')}",
             ),
         )
 

@@ -521,6 +521,10 @@ def test_main_workbench_advice_research_decision_dispatches_exact_identity() -> 
             calls.append(("readback", identity, {}))
             return "readback-state"
 
+        def schedule_review(self, identity, **kwargs):
+            calls.append(("review_scheduled", identity, kwargs))
+            return "scheduled-result"
+
     host = SimpleNamespace(decision_continuity_controller=Controller())
     identity = {
         "result_id": "exact-result-01",
@@ -543,8 +547,16 @@ def test_main_workbench_advice_research_decision_dispatches_exact_identity() -> 
     assert MainWindow._save_workbench_advice_research_decision(
         host, "readback", identity
     ) == "readback-state"
+    assert MainWindow._save_workbench_advice_research_decision(
+        host,
+        "review_scheduled",
+        identity,
+        next_review_at="2026-10-30T09:00:00+08:00",
+    ) == "scheduled-result"
 
-    assert [call[0] for call in calls] == ["accepted", "skipped", "note", "readback"]
+    assert [call[0] for call in calls] == [
+        "accepted", "skipped", "note", "readback", "review_scheduled"
+    ]
     for action, passed_identity, kwargs in calls[:2]:
         assert passed_identity.result_id == identity["result_id"]
         assert passed_identity.stock_code == identity["stock_code"]
@@ -562,6 +574,11 @@ def test_main_workbench_advice_research_decision_dispatches_exact_identity() -> 
     assert note_kwargs == {"source_id": "workbench_advice", "note": "人工研究註記"}
     assert calls[3][1].source_snapshot_id == identity["source_snapshot_id"]
     assert calls[3][1].source_snapshot_hash == ""
+    assert calls[4][1].source_snapshot_id == identity["source_snapshot_id"]
+    assert calls[4][2] == {
+        "next_review_at": "2026-10-30T09:00:00+08:00",
+        "source_id": "workbench_advice",
+    }
 
     with pytest.raises(ValueError, match="來源 snapshot ID"):
         MainWindow._save_workbench_advice_research_decision(
@@ -574,4 +591,4 @@ def test_main_workbench_advice_research_decision_dispatches_exact_identity() -> 
         MainWindow._save_workbench_advice_research_decision(
             host, "skipped", {**identity, "result_id": ""}
         )
-    assert len(calls) == 4
+    assert len(calls) == 5

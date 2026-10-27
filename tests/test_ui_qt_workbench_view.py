@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QAbstractItemView, QBoxLayout, QWidg
 import shiboken6
 
 from app_module.workbench_dtos import (
+    ManualSavedResearchLaneDTO,
     WorkbenchAccessBoundary,
     WorkbenchActionItem,
     WorkbenchChecklistItem,
@@ -26,6 +27,7 @@ from app_module.workbench_dtos import (
     WorkbenchOperatingLoopStep,
     WorkbenchReviewItem,
     WorkbenchStatusItem,
+    WorkbenchDailyEvidence,
 )
 from app_module.engineering_closure_dashboard_service import (
     EngineeringClosureDashboardService,
@@ -39,6 +41,7 @@ from app_module.evidence_rehearsal_dtos import (
 )
 from app_module.advice_dtos import (
     AdviceAction,
+    AdviceClassification,
     AdviceDashboardDTO,
     AdviceMode,
     AdvicePolicyConfig,
@@ -83,6 +86,55 @@ def test_workbench_localizes_verified_advice_payload_hash_label() -> None:
     localized = _localize_workbench_text("canonical_payload_sha256:" + "a" * 64)
 
     assert localized == "已核驗保存結果 payload SHA-256：" + "a" * 64
+
+
+def test_manual_saved_research_lane_is_separate_and_survives_dashboard_refresh() -> None:
+    app()
+    advice = AdviceDashboardDTO(
+        decision_date="2026-09-08",
+        data_as_of_date="2026-09-07",
+        mode=AdviceMode.PROFESSIONAL,
+        policy=AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL),
+        recommendations=(
+            RecommendationAdviceDTO(
+                stock_code="2330",
+                advice_action=AdviceAction.RESEARCH,
+                decision_date="2026-09-08",
+                data_as_of_date="2026-09-07",
+                why_reasons=("saved reason",),
+                why_not_reasons=("not promoted",),
+                risk_reasons=("source limits",),
+                source_trace=("manual-result-1",),
+            ),
+        ),
+        warnings=("saved historical result",),
+    )
+    lane = ManualSavedResearchLaneDTO(
+        result_id="manual-result-1",
+        payload_sha256="sha256:" + "a" * 64,
+        decision_date="2026-09-08",
+        data_as_of_date="2026-09-07",
+        strategy_version="strategy-v1",
+        advice_dashboard=advice,
+    )
+    view = UnifiedDecisionWorkbenchView(auto_refresh=False)
+
+    view.set_manual_saved_research_lane(lane)
+    assert not view.manual_research_panel.isHidden()
+    assert "原決策日：2026-09-08" in view.manual_research_text.toPlainText()
+    assert "不代表今日排程建議" in view.manual_research_text.toPlainText()
+    assert "saved reason" in view.manual_research_text.toPlainText()
+    assert "所選保存結果（研究專用）" in view.manual_research_section_title.text()
+
+    dashboard = _dashboard_with_replay()
+    scheduled_advice = dashboard.advice_dashboard
+    view.render_dashboard(dashboard)
+    assert dashboard.advice_dashboard is scheduled_advice
+    assert not view.manual_research_panel.isHidden()
+    assert "manual-result-1" in view.manual_research_text.toPlainText()
+
+    view.set_manual_saved_research_lane(None)
+    assert view.manual_research_panel.isHidden()
 
 
 def test_advice_detail_lists_missing_required_contract_fields_without_filling_them() -> None:
@@ -1305,9 +1357,12 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
         0, view.advice_recommendation_model.column_index("quick_reasons")
     )
     assert view.advice_recommendation_model.data(reason_index) == (
-        "支持：未提供｜反證：缺少合格證據"
+        "支持：未提供｜政策／資格限制：缺少合格證據"
     )
-    assert "反證／不支持理由：缺少合格證據" in view.advice_recommendation_model.data(
+    assert "政策／資格限制：缺少合格證據" in view.advice_recommendation_model.data(
+        reason_index, Qt.ToolTipRole
+    )
+    assert "同股保存來源證據：未提供；不能據此推定沒有反證或風險" in view.advice_recommendation_model.data(
         reason_index, Qt.ToolTipRole
     )
     risk_index = view.advice_recommendation_model.index(
@@ -1339,7 +1394,76 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert view.advice_recommendation_model.rowCount() == 1
 
 
-def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> None:
+def test_advice_contract_backtest_navigation_carries_exact_current_candidate_identity() -> None:
+    app()
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-06",
+        data_as_of_date="2026-07-03",
+        mode=AdviceMode.PROFESSIONAL,
+        policy=AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL),
+        recommendations=(
+            RecommendationAdviceDTO(
+                stock_code="2330",
+                advice_action=AdviceAction.RESEARCH,
+                classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+                strategy_version="strategy-v7",
+                decision_date="2026-07-06",
+                data_as_of_date="2026-07-03",
+                source_result_id="daily-result-001",
+                source_trace=("daily-result-001",),
+            ),
+        ),
+    )
+    daily = WorkbenchDailyEvidence(
+        status="ready",
+        decision_date="2026-07-06",
+        data_as_of_date="2026-07-03",
+        headline="daily candidate",
+        next_action="research",
+        market_summary="",
+        industry_summary="",
+        stock_summary="",
+        watchlist_summary="",
+        portfolio_summary="",
+        candidate_symbols=("2330",),
+        candidate_status="candidate",
+        candidate_result_id="daily-result-001",
+        candidate_source_snapshot_id="snapshot-001",
+        candidate_data_date="2026-07-03",
+    )
+    navigated: list[object] = []
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(
+            _dashboard_with_replay(),
+            advice_dashboard=advice,
+            daily_evidence=daily,
+        ),
+        navigate_to_backtest_callback=lambda context: navigated.append(context) or True,
+        auto_refresh=False,
+    )
+
+    view._show_advice_row_presentation(view.advice_candidate_model, 0)
+
+    assert not view.advice_contract_backtest_button.isHidden()
+    assert view._open_backtest_for_advice_contract() is True
+    assert len(navigated) == 1
+    context = navigated[0]
+    assert context.candidate_result_id == "daily-result-001"
+    assert context.source_snapshot_id == "snapshot-001"
+    assert context.stock_code == "2330"
+    assert context.strategy_version == "strategy-v7"
+    assert context.missing_author_fields == (
+        "進場論點",
+        "失效條件",
+        "策略持有期間",
+        "策略檢視頻率",
+    )
+    view._dashboard_stale = True
+    assert view._open_backtest_for_advice_contract() is False
+    assert len(navigated) == 1
+
+
+def test_workbench_advice_quick_read_separates_policy_restrictions_from_source_evidence() -> None:
     app()
     advice = AdviceDashboardDTO(
         decision_date="2026-07-06",
@@ -1353,6 +1477,7 @@ def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> N
                 confidence_tier="medium",
                 why_reasons=("research_gate_passed", "volume_confirmation"),
                 why_not_reasons=("price_current_session_missing", "source_not_fresh"),
+                source_evidence=("Why Not：結果=未通過；來源理由碼=price_current_session_missing",),
                 risk_reasons=("position_limit_review", "low_liquidity_review"),
                 data_quality="PARTIAL",
                 liquidity_state="UNKNOWN",
@@ -1372,8 +1497,18 @@ def test_workbench_advice_quick_read_shows_support_counter_risk_and_dates() -> N
     status_index = model.index(0, model.column_index("evidence_status"))
     confidence_index = model.index(0, model.column_index("confidence_tier"))
 
-    assert model.data(quick_index).startswith("支持：符合研究條件（另 1 項）｜反證：")
+    assert model.headerData(
+        model.column_index("quick_reasons"), Qt.Orientation.Horizontal
+    ) == "支持／政策資格"
+    assert model.data(quick_index).startswith("支持：符合研究條件（另 1 項）｜政策／資格限制：")
     assert "缺少當日價格" in model.data(quick_index, Qt.ToolTipRole)
+    assert "同股保存來源證據：Why Not：結果=未通過" in model.data(
+        quick_index, Qt.ToolTipRole
+    )
+    assert "不能據此推定沒有反證或風險" not in model.data(quick_index, Qt.ToolTipRole)
+    view.advice_recommendation_table.setCurrentIndex(model.index(0, 0))
+    assert "Advice 原始理由（含資格限制）" in view.advice_selection_card.text()
+    assert "保存來源逐股證據：Why Not：結果=未通過" in view.advice_selection_card.text()
     assert model.data(risk_index) == "持倉限制待覆核（另 1 項）"
     assert model.data(status_index) == (
         "部分資料｜證據成熟度：未知／未對齊｜流動性 Gate：未知｜成交：未知｜資料日：2026-07-03"

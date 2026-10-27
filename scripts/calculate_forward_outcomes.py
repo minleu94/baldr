@@ -32,6 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decision-date", default=None)
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--end-date", default=None)
+    parser.add_argument("--event-id", action="append", default=None,
+                        help="Restrict calculation to these exact Evidence event IDs; may be repeated.")
     parser.add_argument("--event-type", default=None)
     parser.add_argument("--symbol", default=None)
     parser.add_argument("--windows", default="5,10,20,60")
@@ -98,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             decision_date=args.decision_date,
             start_date=args.start_date,
             end_date=args.end_date,
+            event_ids=args.event_id,
             event_type=args.event_type,
             symbol=args.symbol,
             limit=args.limit,

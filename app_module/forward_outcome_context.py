@@ -46,11 +46,24 @@ def build_official_maturity_calendar(
         getattr(config, "temporary_closure_path", None),
         field_name="temporary_closure_path",
     )
+    if selected_closure is None:
+        selected_closure = _co_located_temporary_closure_root(selected_cache)
     return OfficialMaturityCalendar(
         selected_cache,
         observed_at=frozen_at,
         temporary_closure_path=selected_closure,
     )
+
+
+def _co_located_temporary_closure_root(calendar_cache_path: Path) -> Path | None:
+    """Reuse verified temporary-closure sidecars stored beside annual calendars."""
+    root = calendar_cache_path if calendar_cache_path.is_dir() else calendar_cache_path.parent
+    try:
+        if root.is_dir() and next(root.glob("twse_temporary_closure_*.json"), None) is not None:
+            return root
+    except OSError:
+        return None
+    return None
 
 
 def resolve_canonical_evidence_release_root(

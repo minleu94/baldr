@@ -12,9 +12,10 @@ from types import SimpleNamespace
 from typing import Any
 
 from app_module.advice_composer import AdviceComposer
-from app_module.advice_dtos import AdviceMode
+from app_module.advice_dtos import AdviceAction, AdviceMode
 from app_module.advice_policy import AdvicePolicy
 from app_module.decision_desk_service import SavedRecommendationDeskProvider
+from app_module.workbench_source_service import WorkbenchSourceService
 from app_module.dtos import RecommendationResultDTO
 from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from app_module.evidence_event_importers import RecommendationEvidenceImporter
@@ -129,6 +130,11 @@ def _execution(*, result_id: str = RESULT_ID, as_of_date: date | None = AS_OF_DA
         "execution_feasible": True,
         "risk_budget_available": True,
     }
+    if as_of_date is not None:
+        saved_config.update(
+            decision_date=as_of_date.isoformat(),
+            data_as_of_date=as_of_date.isoformat(),
+        )
     raw_config = json.dumps(saved_config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     config_snapshot = RecommendationResultConfigSnapshot(
         raw_result_config_json=raw_config,
@@ -203,6 +209,32 @@ def _execution(*, result_id: str = RESULT_ID, as_of_date: date | None = AS_OF_DA
         decision=DecisionBatch(items=(item,), assessments=(excluded,), regime="Trend"),
         quality=QualityReport(QualityStatus.DEGRADED, warnings=("saved_quality_warning",)),
     )
+
+
+def test_manual_saved_research_handoff_uses_exact_canonical_result_and_forces_research_only(
+    tmp_path: Path,
+) -> None:
+    config, queries, artifact_path = _stack(tmp_path)
+    before_artifact = artifact_path.read_bytes()
+    before_index = (Path(config.output_root) / "recommendation" / "runs" / "recommendation_runs.db").read_bytes()
+    service = object.__new__(WorkbenchSourceService)
+    service.recommendation_queries = queries
+
+    lane = service.load_manual_saved_research(RESULT_ID)
+
+    assert lane.result_id == RESULT_ID
+    assert lane.decision_date == AS_OF_DATE.isoformat()
+    assert lane.data_as_of_date == AS_OF_DATE.isoformat()
+    assert lane.payload_sha256.startswith("sha256:")
+    assert lane.advice_dashboard.mode is AdviceMode.PROFESSIONAL
+    assert lane.advice_dashboard.recommendations[0].advice_action is AdviceAction.RESEARCH
+    assert lane.advice_dashboard.recommendations[0].classification.value == "PROFESSIONAL_CANDIDATE"
+    assert lane.advice_dashboard.recommendations[0].source_result_id == RESULT_ID
+    assert lane.advice_dashboard.recommendations[0].source_payload_sha256 == lane.payload_sha256
+    assert any("不是今日排程候選" in warning for warning in lane.advice_dashboard.warnings)
+    assert lane.advice_dashboard.portfolio_rows == ()
+    assert artifact_path.read_bytes() == before_artifact
+    assert (Path(config.output_root) / "recommendation" / "runs" / "recommendation_runs.db").read_bytes() == before_index
 
 
 def test_canonical_saved_result_projects_through_r016_consumers_without_mutation(tmp_path: Path) -> None:

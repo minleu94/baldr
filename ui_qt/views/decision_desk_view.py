@@ -674,8 +674,31 @@ class DecisionDeskView(QWidget):
             f"上漲：{counts[0]} 家｜下跌：{counts[1]} 家｜平盤：{counts[2]} 家"
         )
         self.market_breadth_legend.show()
+        coverage_details: list[str] = []
+        meta = getattr(breadth, "meta", None)
+        if isinstance(meta, dict):
+            classified = meta.get("classified_stock_count")
+            stock_count = meta.get("stock_count")
+            if (
+                type(classified) is int
+                and classified >= 0
+                and type(stock_count) is int
+                and stock_count >= 0
+            ):
+                coverage_details.append(f"方向分類 {classified}/{stock_count}")
+            detail_labels = (
+                ("twse_zero_direction_evidence_count", "TWSE 空白符核驗平盤"),
+                ("official_non_comparable_exclusions_count", "官方不比價排除"),
+                ("corporate_action_exclusions_count", "除權息排除"),
+                ("unknown_skipped_rows_count", "方向未知略過"),
+            )
+            for key, label in detail_labels:
+                value = meta.get(key)
+                if type(value) is int and value > 0:
+                    coverage_details.append(f"{label} {value}")
+        coverage_suffix = "｜" + "｜".join(coverage_details) if coverage_details else ""
         self.market_breadth_caption.setText(
-            f"已載入家數分布；非指數報酬／交易訊號｜來源日：{source_date.isoformat()}｜品質：{self._display_quality_value(quality)}"
+            f"已載入家數分布；非指數報酬／交易訊號｜來源日：{source_date.isoformat()}｜品質：{self._display_quality_value(quality)}{coverage_suffix}"
         )
         self.market_breadth_caption.show()
         self.market_breadth_bar.show()

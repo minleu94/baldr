@@ -15,8 +15,8 @@ from data_module.monthly_revenue_availability_merge import (
 
 
 _HEADER = (
-    "stock_code,period,as_of_date,announced_date,available_date,source,source_version,"
-    "availability_contract_version,evidence_class,source_hash,revision,parent_revision\n"
+    "stock_code,period,as_of_date,announced_date,available_date,source,source_version,announced_at,"
+    "target_source_version,availability_contract_version,evidence_class,source_hash,revision,parent_revision\n"
 )
 
 
@@ -25,15 +25,17 @@ def _formal_row(
     stock_code: str = "2330",
     period: str = "2026-07",
     announced_date: str = "2026-08-17",
+    announced_at: str = "",
     available_date: str = "2026-08-18",
     source_version: str = "twse-openapi-t187ap05-l-2026-08-28",
     source_hash: str = "sha256:" + "a" * 64,
     revision: str = "1",
     parent_revision: str = "",
+    target_source_version: str = "",
 ) -> str:
     return (
         f"{stock_code},{period},{period}-31,{announced_date},{available_date},"
-        f"twse.monthly_revenue_announcement,{source_version},formal-availability.v2,"
+        f"twse.monthly_revenue_announcement,{source_version},{announced_at},{target_source_version},formal-availability.v2,"
         f"official_announcement,{source_hash},{revision},{parent_revision}\n"
     )
 
@@ -42,7 +44,7 @@ def _legacy_row() -> str:
     return (
         "1101,2026-06,2026-06-30,2026-07-14,2026-07-15,"
         "twse.monthly_revenue_announcement,"
-        "twse-openapi-t187ap05-l-2026-07-14,,,,,\n"
+        "twse-openapi-t187ap05-l-2026-07-14,,,,,,,\n"
     )
 
 
@@ -64,6 +66,74 @@ def test_preview_merges_new_candidate_without_writing_target(tmp_path, capsys):
     assert "ready_for_apply: `true`" in output
     assert "added_count: `1`" in output
     assert target.read_bytes() == before
+
+
+def test_merge_plan_preserves_announcement_timestamp(tmp_path):
+    target = tmp_path / "monthly_revenue_availability.csv"
+    candidate = tmp_path / "candidate.csv"
+    _write(candidate, _formal_row(announced_at="2026-08-17T18:05:00+08:00"))
+
+    plan = plan_monthly_revenue_availability_merge(
+        candidate_file=candidate,
+        target_file=target,
+    )
+
+    assert plan.ready_for_apply
+    assert plan.merged_rows[0]["announced_at"] == "2026-08-17T18:05:00+08:00"
+
+
+def test_merge_plan_preserves_target_source_version(tmp_path):
+    target = tmp_path / "monthly_revenue_availability.csv"
+    candidate = tmp_path / "candidate.csv"
+    target_version = "mops-static-snapshot-monthly-revenue-2026-06-16"
+    _write(
+        candidate,
+        _formal_row(
+            source_version="mops-t05st10-ifrs-2026-05-08",
+            target_source_version=target_version,
+        ),
+    )
+
+    plan = plan_monthly_revenue_availability_merge(
+        candidate_file=candidate,
+        target_file=target,
+    )
+
+    assert plan.ready_for_apply
+    assert plan.merged_rows[0]["target_source_version"] == target_version
+
+
+def test_merge_plan_treats_timestamp_change_as_same_revision_conflict(tmp_path):
+    target = tmp_path / "monthly_revenue_availability.csv"
+    candidate = tmp_path / "candidate.csv"
+    _write(target, _formal_row(announced_at="2026-08-17T18:05:00+08:00"))
+    _write(candidate, _formal_row(announced_at="2026-08-17T18:06:00+08:00"))
+
+    plan = plan_monthly_revenue_availability_merge(
+        candidate_file=candidate,
+        target_file=target,
+    )
+
+    assert plan.conflict_count == 1
+    assert not plan.ready_for_apply
+
+
+def test_loader_keeps_compatibility_with_date_only_legacy_csv(tmp_path):
+    target = tmp_path / "legacy_monthly_revenue_availability.csv"
+    target.write_text(
+        "stock_code,period,as_of_date,announced_date,available_date,source,source_version\n"
+        "1101,2026-06,2026-06-30,2026-07-14,2026-07-15,"
+        "twse.monthly_revenue_announcement,twse-openapi-t187ap05-l-2026-07-14\n",
+        encoding="utf-8-sig",
+    )
+
+    plan_result = plan_monthly_revenue_availability_merge(
+        candidate_file=target,
+        target_file=tmp_path / "new_target.csv",
+    )
+
+    assert plan_result.candidate_count == 1
+    assert plan_result.merged_rows[0]["announced_at"] == ""
 
 
 def test_preview_reports_conflicting_natural_key_and_fails_closed(tmp_path, capsys):

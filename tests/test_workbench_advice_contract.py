@@ -9,8 +9,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QDateTimeEdit, QDialog
+from PySide6.QtCore import QDateTime, Qt
 
 from app_module.advice_dtos import (
     AdviceAction,
@@ -524,6 +524,14 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
             next_review_at=next_review_at,
         )
 
+    readback_result.append(state(expected_identity := {
+        "result_id": result_id,
+        "stock_code": "2330",
+        "decision_date": "2026-07-12",
+        "source_snapshot_id": "source-snapshot-1",
+        "source_snapshot_hash": "",
+        "identity_status": "linked",
+    }))
     view = UnifiedDecisionWorkbenchView(
         dashboard=dashboard,
         save_advice_research_decision_callback=save,
@@ -534,27 +542,15 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
     assert "讀取" in view.advice_readback_decision_button.text()
     assert "hash 未提供" in view.advice_research_decision_status.text()
     view.advice_skip_decision_button.click()
-    assert saved == [(
-        "skipped",
-        {
-            "result_id": result_id,
-            "stock_code": "2330",
-            "decision_date": "2026-07-12",
-            "source_snapshot_id": "source-snapshot-1",
-            "source_snapshot_hash": "",
-            "identity_status": "linked",
-        },
-        "",
-    )]
+    assert [item[0] for item in saved] == ["readback", "skipped"]
+    assert saved[1][1] == expected_identity
+    assert saved[1][2] == ""
     assert "已保存並讀回核對" in view.advice_research_decision_status.text()
     assert "不建立交易或 fill" in view.advice_research_decision_status.text()
-    expected_identity = saved[0][1]
-    readback_result.append(
-        state(
-            expected_identity,
-            active_note_count=2,
-            next_review_at="2026-07-20T09:30:00+08:00",
-        )
+    readback_result[0] = state(
+        expected_identity,
+        active_note_count=2,
+        next_review_at="2026-07-20T09:30:00+08:00",
     )
     view.advice_readback_decision_button.click()
     assert saved[-1][0] == "readback"
@@ -591,7 +587,107 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
     )
     blocked_view._show_advice_row_presentation(blocked_view.advice_recommendation_model, 0)
     assert not blocked_view.advice_skip_decision_button.isEnabled()
-    assert saved[0][0] == "skipped"
+    assert saved[-1][0] == "readback"
+
+
+def test_advice_schedule_review_uses_taipei_time_and_exact_readback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    _app()
+    base = _dashboard_with_advice()
+    recommendation = replace(
+        base.advice_dashboard.recommendations[0],
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        source_result_id="saved-result-review",
+    )
+    daily = WorkbenchDailyEvidence(
+        status="candidate",
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        headline="候選已保存",
+        next_action="設定研究檢視時間",
+        market_summary="",
+        industry_summary="",
+        stock_summary="",
+        watchlist_summary="",
+        portfolio_summary="",
+        candidate_symbols=(recommendation.stock_code,),
+        candidate_status="candidate",
+        candidate_result_id="saved-result-review",
+        candidate_source_snapshot_id="source-snapshot-review",
+        candidate_data_date="2026-07-11",
+    )
+    dashboard = replace(
+        base,
+        advice_dashboard=replace(
+            base.advice_dashboard,
+            recommendations=(recommendation,),
+        ),
+        daily_evidence=daily,
+    )
+    calls: list[tuple[str, dict[str, str], str]] = []
+
+    def save(
+        action: str,
+        identity: dict[str, str],
+        note: str,
+        *,
+        next_review_at: str = "",
+    ) -> object:
+        calls.append((action, dict(identity), next_review_at))
+        linked_identity = SimpleNamespace(**{**identity, "identity_status": "linked"})
+        if action == "readback":
+            return SimpleNamespace(
+                identity=linked_identity,
+                read_error="",
+                identity_conflict_reason="",
+                decision_status="unrecorded",
+                active_note_count=0,
+                next_review_at="",
+            )
+        return SimpleNamespace(
+            success=True,
+            readback_verified=True,
+            message="下次檢視已保存。",
+            state=SimpleNamespace(
+                identity=linked_identity,
+                read_error="",
+                next_review_at=next_review_at,
+            ),
+        )
+
+    monkeypatch.setattr(QDialog, "exec", lambda _dialog: QDialog.Accepted)
+    monkeypatch.setattr(
+        QDateTimeEdit,
+        "dateTime",
+        lambda _editor: QDateTime.fromString(
+            "2026-10-30 09:00:00", "yyyy-MM-dd HH:mm:ss"
+        ),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=dashboard,
+        save_advice_research_decision_callback=save,
+        auto_refresh=False,
+    )
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+
+    assert view.advice_schedule_review_button.isEnabled()
+    view.advice_schedule_review_button.click()
+
+    assert calls[-1][0] == "review_scheduled"
+    assert calls[-1][2] == "2026-10-30T09:00:00+08:00"
+    assert "已保存並讀回核對" in view.advice_research_decision_status.text()
+    assert "不建立交易或 fill" in view.advice_research_decision_status.text()
+
+    view._dashboard_stale = True
+    call_count = len(calls)
+    assert not view._schedule_selected_advice_review()
+    assert len(calls) == call_count
+    assert "未設定下次檢視" in view.advice_research_decision_status.text()
+    view.close()
 
 
 def test_advice_source_identity_round_trips_and_rejects_invalid_hash() -> None:

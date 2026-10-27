@@ -81,7 +81,7 @@ def test_all_listed_horizons_share_limits_once_and_keep_full_row_tooltip() -> No
     assert label.isVisible()
     assert "所列期限（5／10／20／60 個交易日）" in label.text()
     assert label.text().count("結果資料品質：降級") == 1
-    assert label.text().count("結果引用來源尚未完成納入") == 1
+    assert label.text().count("結果引用來源尚未完成納入（來源類型未細分）") == 1
     assert label.text().count("交易日曆僅有年度計畫，臨時休市未核") == 1
     assert label.text().count("所列期限結果均未獲正式採認") == 1
     assert "此期限結果未獲正式採認" not in label.text()
@@ -89,7 +89,7 @@ def test_all_listed_horizons_share_limits_once_and_keep_full_row_tooltip() -> No
     model = widget.maturity_table.model()
     displayed_reason = model.index(0, 3).data(Qt.DisplayRole)
     assert "結果資料品質：降級" not in displayed_reason
-    assert "結果引用來源尚未完成納入" not in displayed_reason
+    assert "結果引用來源尚未完成納入（來源類型未細分）" not in displayed_reason
     assert "來源標示計畫目標日缺收盤價，需補來源" in displayed_reason
     assert "不以後一筆價格替代缺價日" in displayed_reason
     assert "來源資料截止：2026-10-18" in displayed_reason
@@ -101,7 +101,7 @@ def test_all_listed_horizons_share_limits_once_and_keep_full_row_tooltip() -> No
         "已連結",
         "來源已標示 ready",
         "已取得該期限的來源結果；是否成熟請看結果狀態。 "
-        "結果資料品質：降級；結果引用來源尚未完成納入；"
+        "結果資料品質：降級；結果引用來源尚未完成納入（來源類型未細分）；"
         "交易日曆僅有年度計畫，臨時休市未核；此期限結果未獲正式採認；"
         "來源標示計畫目標日缺收盤價，需補來源；"
         "不以後一筆價格替代缺價日；來源資料截止：2026-10-18。",
@@ -136,8 +136,8 @@ def test_only_intersection_of_heterogeneous_limits_is_shared() -> None:
     label = widget.maturity_shared_limits_label
     assert label.isVisible()
     assert label.text().count("結果資料品質：降級") == 1
-    assert "結果引用來源尚未完成納入" not in label.text()
-    assert "結果引用來源尚未完成納入" in widget.maturity_table.model().index(0, 3).data(
+    assert "結果引用來源尚未完成納入（來源類型未細分）" not in label.text()
+    assert "結果引用來源尚未完成納入（來源類型未細分）" in widget.maturity_table.model().index(0, 3).data(
         Qt.DisplayRole
     )
     assert "結果資料品質：降級" not in widget.maturity_table.model().index(0, 3).data(
@@ -161,8 +161,35 @@ def test_single_horizon_keeps_all_limits_in_its_own_row() -> None:
     assert label.text() == ""
     reason = widget.maturity_table.model().index(0, 3).data(Qt.DisplayRole)
     assert "結果資料品質：降級" in reason
-    assert "結果引用來源尚未完成納入" in reason
+    assert "結果引用來源尚未完成納入（來源類型未細分）" in reason
     assert "此期限結果未獲正式採認" in reason
+    widget.close()
+
+
+def test_source_warning_families_are_presented_separately() -> None:
+    journey = replace(
+        _journey(outcome_status="ready"),
+        outcome_maturity=tuple(
+            replace(
+                item,
+                source_data_quality="degraded",
+                source_warning_codes=(
+                    "corporate_action_source_not_ingested",
+                    "trading_restriction_source_not_ingested",
+                ),
+            )
+            for item in _journey(outcome_status="ready").outcome_maturity
+        ),
+    )
+    widget = _show_widget(journey)
+
+    shared = widget.maturity_shared_limits_label.text()
+    row_reason = widget.maturity_table.model().index(0, 3).data(Qt.ToolTipRole)
+    assert shared.count("企業行動資料來源尚未納入") == 1
+    assert shared.count("交易限制資料來源尚未納入") == 1
+    assert "來源類型未細分" not in shared
+    assert "企業行動資料來源尚未納入" in row_reason
+    assert "交易限制資料來源尚未納入" in row_reason
     widget.close()
 
 

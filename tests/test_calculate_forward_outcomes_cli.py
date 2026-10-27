@@ -105,6 +105,7 @@ def test_manual_cli_dry_run_opens_repository_read_only_without_writer_lock(
 ) -> None:
     canonical, artifact = _config_pair(tmp_path)
     repository_calls: list[bool] = []
+    service_calls: list[dict[str, object]] = []
 
     class Repository:
         def __init__(self, _config: object, *, read_only: bool = False) -> None:
@@ -116,6 +117,7 @@ def test_manual_cli_dry_run_opens_repository_read_only_without_writer_lock(
 
         def calculate(self, **kwargs: object) -> _Summary:
             assert kwargs["dry_run"] is True
+            service_calls.append(kwargs)
             return _Summary()
 
     monkeypatch.setattr(
@@ -137,9 +139,11 @@ def test_manual_cli_dry_run_opens_repository_read_only_without_writer_lock(
     )
 
     exit_code = calculate_forward_outcomes.main(
-        ["--output-root", str(artifact.output_root), "--dry-run"]
+        ["--output-root", str(artifact.output_root), "--dry-run",
+         "--event-id", "evt-one", "--event-id", "evt-two"]
     )
 
     assert exit_code == 0
     assert '"dry_run": true' in capsys.readouterr().out
     assert repository_calls == [True]
+    assert service_calls[0]["event_ids"] == ["evt-one", "evt-two"]

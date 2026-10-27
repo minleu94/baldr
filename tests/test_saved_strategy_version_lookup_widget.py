@@ -46,6 +46,7 @@ def _entry(
     run_id: str = "run-1",
     saved_version: str = "2.1.0",
     execution_version: str = "1.4.2",
+    display_name: str | None = None,
     source_present: bool = True,
     diagnostics: tuple[str, ...] = (),
 ) -> SavedStrategyVersionEntry:
@@ -76,6 +77,7 @@ def _entry(
         version_json=json.dumps({"version_id": version_id, "strategy_version": saved_version}),
         source_entry=source_entry,
         diagnostics=diagnostics,
+        display_name=display_name,
     )
 
 
@@ -129,7 +131,11 @@ def _load(app: QApplication, widget: SavedStrategyVersionLookupWidget) -> None:
 
 def test_refresh_is_explicit_and_result_open_returns_the_original_history_result() -> None:
     app = _app()
-    entry = _entry(saved_version="2.1.0", execution_version="1.4.2")
+    entry = _entry(
+        saved_version="2.1.0",
+        execution_version="1.4.2",
+        display_name="作者顯示名稱",
+    )
     reader = _Reader((entry,))
     opened: list[object] = []
     widget = SavedStrategyVersionLookupWidget(reader, opened.append)
@@ -146,6 +152,7 @@ def test_refresh_is_explicit_and_result_open_returns_the_original_history_result
     assert widget.entries.count() == 1
     assert widget.entries.currentItem() is None
     assert widget.entries.item(0).data(Qt.ItemDataRole.UserRole) == entry
+    assert widget.entries.item(0).text().startswith("作者顯示名稱")
     assert "保存版本 2.1.0" in widget.entries.item(0).text()
     assert "來源執行版本 1.4.2" in widget.entries.item(0).text()
     assert "pending（不代表資格）" in widget.entries.item(0).text()

@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from app_module.forward_performance_dashboard_dtos import ForwardPerformanceDashboardRow
+from ui_qt.forward_performance_warning_labels import format_forward_warning_counts
 from app_module.forward_performance_dashboard_service import format_bp_as_percent
 
 
@@ -104,5 +105,7 @@ class ForwardPerformanceTableModel(QAbstractTableModel):
         if field_name in BP_COLUMNS:
             return format_bp_as_percent(value)
         if isinstance(value, dict):
+            if field_name == "warning_counts":
+                return format_forward_warning_counts(value)
             return ", ".join(f"{key}:{value[key]}" for key in sorted(value)) or "無"
         return str(value)

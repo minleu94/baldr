@@ -243,7 +243,12 @@ def test_build_history_rows_requires_announcement_date() -> None:
     result = build_historical_monthly_revenue_availability(
         official_rows_by_market={
             "twse": [
-                {"資料年月": "11505", "公司代號": "2330", "出表日期": ""},
+                {
+                    "資料年月": "11505",
+                    "公司代號": "2330",
+                    "出表日期": "",
+                    "__availability_source": history.MOPS_HISTORY_SOURCE,
+                },
             ]
         },
         raw_periods={("2330", "2026-05")},
@@ -259,7 +264,7 @@ def test_build_history_rows_requires_announcement_date() -> None:
     assert result.diagnostics[0].code == "monthly_revenue_availability.missing_announced_date"
 
 
-def test_build_history_rows_keeps_twse_and_tpex_sources_distinct() -> None:
+def test_build_history_does_not_promote_openapi_report_dates_to_announcements() -> None:
     result = build_historical_monthly_revenue_availability(
         official_rows_by_market={
             "twse": [
@@ -276,55 +281,76 @@ def test_build_history_rows_keeps_twse_and_tpex_sources_distinct() -> None:
         fetch_date=date(2026, 6, 16),
     )
 
-    assert [
-        {
-            key: row[key]
-            for key in (
-                "stock_code",
-                "period",
-                "as_of_date",
-                "announced_date",
-                "available_date",
-                "source",
-                "source_version",
-            )
-        }
-        for row in result.rows
-    ] == [
-        {
-            "stock_code": "2330",
-            "period": "2026-05",
-            "as_of_date": "2026-05-31",
-            "announced_date": "2026-06-15",
-            "available_date": "2026-06-16",
-            "source": "twse.monthly_revenue_announcement",
-            "source_version": "twse-openapi-t187ap05-l-2026-06-16",
-        },
-        {
-            "stock_code": "3207",
-            "period": "2026-05",
-            "as_of_date": "2026-05-31",
-            "announced_date": "2026-06-16",
-            "available_date": "2026-06-17",
-            "source": "tpex.monthly_revenue_announcement",
-            "source_version": "tpex-openapi-mopsfin-t187ap05-o-2026-06-16",
-        },
-    ]
-    for row in result.rows:
-        assert row["availability_contract_version"] == "formal-availability.v2"
-        assert row["evidence_class"] == "official_announcement"
-        assert row["source_hash"].startswith("sha256:")
-        assert len(row["source_hash"]) == len("sha256:") + 64
-        assert row["revision"] == "1"
-        assert row["parent_revision"] == ""
+    assert result.rows == []
     assert result.requested_periods == ("2026-05",)
     assert result.fetched_periods == ("2026-05",)
-    assert result.matched_raw_monthly_revenue_rows == 2
-    assert result.missing_availability_count == 0
+    assert result.matched_raw_monthly_revenue_rows == 0
+    assert result.missing_availability_count == 2
     assert result.duplicate_mapping_rows == 0
+    assert [item.code for item in result.diagnostics] == [
+        "monthly_revenue_availability.report_level_date_not_announcement",
+        "monthly_revenue_availability.report_level_date_not_announcement",
+    ]
 
 
-def test_build_history_uses_conservative_snapshot_session_available_date() -> None:
+def test_build_history_accepts_matched_mops_issuer_period_event() -> None:
+    result = build_historical_monthly_revenue_availability(
+        official_rows_by_market={
+            "twse": [
+                {
+                    "資料年月": "11505",
+                    "公司代號": "2330",
+                    "出表日期": "1150615",
+                    "announcement_at": "2026-06-15T18:42:31+08:00",
+                    "__availability_source": history.MOPS_HISTORY_SOURCE,
+                    "__source_version": "mops-f22-event-2026-06-15",
+                },
+            ],
+        },
+        raw_periods={("2330", "2026-05")},
+        start_period="2026-05",
+        end_period="2026-05",
+        markets=("twse",),
+        fetch_date=date(2026, 6, 16),
+    )
+
+    assert result.diagnostics == ()
+    assert len(result.rows) == 1
+    assert result.rows[0]["announced_date"] == "2026-06-15"
+    assert result.rows[0]["announced_at"] == "2026-06-15T18:42:31+08:00"
+    assert result.rows[0]["source"] == history.MOPS_HISTORY_SOURCE
+    assert result.rows[0]["source_version"] == "mops-f22-event-2026-06-15"
+    assert result.rows[0]["evidence_class"] == "official_announcement"
+
+
+def test_build_history_rejects_announcement_timestamp_with_mismatched_taipei_date() -> None:
+    result = build_historical_monthly_revenue_availability(
+        official_rows_by_market={
+            "twse": [
+                {
+                    "資料年月": "11505",
+                    "公司代號": "2330",
+                    "出表日期": "1150615",
+                    "announcement_at": "2026-06-16T00:01:00+08:00",
+                    "__availability_source": history.MOPS_HISTORY_SOURCE,
+                    "__source_version": "mops-f22-event-2026-06-15",
+                },
+            ],
+        },
+        raw_periods={("2330", "2026-05")},
+        start_period="2026-05",
+        end_period="2026-05",
+        markets=("twse",),
+        fetch_date=date(2026, 6, 16),
+    )
+
+    assert result.rows == []
+    assert result.diagnostics[0].code == (
+        "monthly_revenue_availability.announcement_timestamp_date_mismatch"
+    )
+
+
+def test_build_history_rejects_openapi_date_even_with_capture_time() -> None:
     result = build_historical_monthly_revenue_availability(
         official_rows_by_market={
             "twse": [
@@ -339,16 +365,23 @@ def test_build_history_uses_conservative_snapshot_session_available_date() -> No
         snapshot_captured_at="2026-09-07T07:17:53Z",
     )
 
-    assert result.diagnostics == ()
-    assert result.rows[0]["announced_date"] == "2026-08-10"
-    assert result.rows[0]["available_date"] == "2026-09-08"
+    assert result.rows == []
+    assert result.missing_availability_count == 1
+    assert result.diagnostics[0].code == (
+        "monthly_revenue_availability.report_level_date_not_announcement"
+    )
 
 
 def test_build_history_rows_rejects_unreasonably_late_availability() -> None:
     result = build_historical_monthly_revenue_availability(
         official_rows_by_market={
             "twse": [
-                {"資料年月": "2024-04", "公司代號": "2330", "出表日期": "2026-06-17"},
+                {
+                    "資料年月": "2024-04",
+                    "公司代號": "2330",
+                    "出表日期": "2026-06-17",
+                    "__availability_source": history.MOPS_HISTORY_SOURCE,
+                },
             ],
         },
         raw_periods={("2330", "2024-04")},
@@ -397,7 +430,34 @@ def test_build_history_does_not_treat_static_report_date_as_announcement() -> No
     assert result.fetched_periods == ("2024-04",)
     assert result.diagnostics_by_source == {"twse": 1}
     assert result.diagnostics[0].code == (
-        "monthly_revenue_availability.static_report_date_not_announcement"
+        "monthly_revenue_availability.report_level_date_not_announcement"
+    )
+
+
+def test_build_history_quarantines_existing_mops_static_snapshot_source() -> None:
+    result = build_historical_monthly_revenue_availability(
+        official_rows_by_market={
+            "twse": [
+                {
+                    "資料年月": "2026-05",
+                    "公司代號": "2330",
+                    "出表日期": "2026-06-16",
+                    "__availability_source": history.MOPS_STATIC_SNAPSHOT_SOURCE,
+                    "__source_version": "mops-static-snapshot-monthly-revenue-2026-07-14",
+                },
+            ],
+        },
+        raw_periods={("2330", "2026-05")},
+        start_period="2026-05",
+        end_period="2026-05",
+        markets=("twse",),
+        fetch_date=date(2026, 7, 15),
+    )
+
+    assert result.rows == []
+    assert result.missing_availability_count == 1
+    assert result.diagnostics[0].code == (
+        "monthly_revenue_availability.report_level_date_not_announcement"
     )
 
 
@@ -421,8 +481,18 @@ def test_parse_mops_html_uses_page_level_announcement_date() -> None:
 
     assert diagnostics == ()
     assert rows == [
-        {"資料年月": "2024-04", "公司代號": "2330", "出表日期": "2024-05-10"},
-        {"資料年月": "2024-04", "公司代號": "9935", "出表日期": "2024-05-10"},
+        {
+            "資料年月": "2024-04",
+            "公司代號": "2330",
+            "出表日期": "2024-05-10",
+            "__availability_evidence_kind": "retrospective_static_report_date",
+        },
+        {
+            "資料年月": "2024-04",
+            "公司代號": "9935",
+            "出表日期": "2024-05-10",
+            "__availability_evidence_kind": "retrospective_static_report_date",
+        },
     ]
 
 
@@ -473,7 +543,12 @@ def test_parse_mops_html_handles_multi_row_headers() -> None:
 
     assert diagnostics == ()
     assert rows == [
-        {"資料年月": "2024-04", "公司代號": "2330", "出表日期": "2026-06-17"}
+        {
+            "資料年月": "2024-04",
+            "公司代號": "2330",
+            "出表日期": "2026-06-17",
+            "__availability_evidence_kind": "retrospective_static_report_date",
+        }
     ]
 
 
@@ -500,7 +575,12 @@ def test_parse_mops_html_deduplicates_nested_company_rows() -> None:
 
     assert diagnostics == ()
     assert rows == [
-        {"資料年月": "2024-04", "公司代號": "2330", "出表日期": "2024-05-10"}
+        {
+            "資料年月": "2024-04",
+            "公司代號": "2330",
+            "出表日期": "2024-05-10",
+            "__availability_evidence_kind": "retrospective_static_report_date",
+        }
     ]
 
 
@@ -544,6 +624,22 @@ def test_load_official_rows_for_markets_reads_mops_static_reports(monkeypatch) -
             "__availability_evidence_kind": "retrospective_static_report_date",
         }
     ]
+
+
+def test_load_official_rows_marks_openapi_report_date_as_non_event(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "data_module.monthly_revenue_availability_history._fetch_openapi_rows",
+        lambda market: [
+            {"公司代號": "2330", "資料年月": "11505", "出表日期": "1150615"}
+        ],
+    )
+
+    rows_by_market, diagnostics = load_official_rows_for_markets(markets=("twse",))
+
+    assert diagnostics == ()
+    assert rows_by_market["twse"][0]["__availability_evidence_kind"] == (
+        "retrospective_static_report_date"
+    )
 
 
 def test_load_pit_announcement_rows_accepts_chinese_column_names(tmp_path) -> None:

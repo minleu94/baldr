@@ -824,8 +824,10 @@ def _canonical_recommendation_cohort_summary(
         ):
             counts["缺資料"] += 1
         elif (
-            symbol in degraded_symbols
-            and row.quality == "degraded"
+            (
+                (symbol in degraded_symbols and row.quality == "degraded")
+                or (symbol in excluded_symbols and row.quality == "observed")
+            )
             and row.status == "skipped"
             and row.stage == "strategy_evaluation"
             and bool(row.reason_codes)

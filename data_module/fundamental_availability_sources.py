@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Mapping
 
@@ -37,8 +37,13 @@ MONTHLY_REVENUE_FORMAL_PROVENANCE_COLUMNS = (
     "revision",
     "parent_revision",
 )
+_OPTIONAL_MONTHLY_REVENUE_AVAILABILITY_COLUMNS = (
+    "announced_at",
+    "target_source_version",
+)
 MONTHLY_REVENUE_AVAILABILITY_COLUMNS = (
     *_BASE_MONTHLY_REVENUE_AVAILABILITY_COLUMNS,
+    *_OPTIONAL_MONTHLY_REVENUE_AVAILABILITY_COLUMNS,
     *MONTHLY_REVENUE_FORMAL_PROVENANCE_COLUMNS,
 )
 
@@ -94,6 +99,8 @@ class FundamentalAvailabilityOverride:
     revision: int = 0
     parent_revision: int | None = None
     provenance_mode: str = ""
+    announced_at: datetime | None = None
+    target_source_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +143,7 @@ def load_monthly_revenue_availability_overrides(
         period = row.get("period", "").strip()
         source = row.get("source", "").strip()
         source_version = row.get("source_version", "").strip()
+        target_source_version = row.get("target_source_version", "").strip() or None
         if source == "financial_data.monthly_revenue_csv":
             diagnostics.append(
                 _diagnostic_with_row_context(
@@ -147,6 +155,20 @@ def load_monthly_revenue_availability_overrides(
                             f"available_date source; period={period}"
                         ),
                         period=period,
+                    ),
+                    row,
+                )
+            )
+            continue
+
+        if source == "mops.monthly_revenue_announcement" and target_source_version is None:
+            diagnostics.append(
+                _diagnostic_with_row_context(
+                    _provenance_diagnostic(
+                        "target_source_version_missing",
+                        stock_code,
+                        period,
+                        "MOPS monthly announcement mapping must bind to the numeric monthly revenue source_version",
                     ),
                     row,
                 )
@@ -182,10 +204,35 @@ def load_monthly_revenue_availability_overrides(
         try:
             announced_date = _parse_optional_date(row.get("announced_date", ""))
             available_date = _parse_optional_date(row.get("available_date", ""))
+            announced_at = _parse_optional_timestamp(row.get("announced_at", ""))
         except ValueError as exc:
+            field_name = str(exc)
+            invalid_diagnostic = (
+                _invalid_timestamp_diagnostic(stock_code, period, "announced_at")
+                if field_name == "invalid_announced_at"
+                else _invalid_date_diagnostic(stock_code, period, field_name)
+            )
             diagnostics.append(
                 _diagnostic_with_row_context(
-                    _invalid_date_diagnostic(stock_code, period, str(exc)),
+                    invalid_diagnostic,
+                    row,
+                    provenance_mode=provenance_mode,
+                )
+            )
+            continue
+
+        if announced_at is not None and (
+            announced_date is None
+            or announced_at.astimezone(timezone(timedelta(hours=8))).date() != announced_date
+        ):
+            diagnostics.append(
+                _diagnostic_with_row_context(
+                    _provenance_diagnostic(
+                        "announcement_timestamp_date_mismatch",
+                        stock_code,
+                        period,
+                        "announced_at must be timezone-aware and its Taipei date must match announced_date",
+                    ),
                     row,
                     provenance_mode=provenance_mode,
                 )
@@ -254,6 +301,8 @@ def load_monthly_revenue_availability_overrides(
             revision=revision,
             parent_revision=parent_revision,
             provenance_mode=provenance_mode,
+            announced_at=announced_at,
+            target_source_version=target_source_version,
         )
         key = (stock_code, period)
         if provenance_mode == "retroactive_baseline":
@@ -506,11 +555,39 @@ def _parse_optional_date(value: str | None) -> date | None:
         raise ValueError("invalid_date") from exc
 
 
+def _parse_optional_timestamp(value: str | None) -> datetime | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("invalid_announced_at") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("invalid_announced_at")
+    return parsed.astimezone(timezone(timedelta(hours=8)))
+
+
 def _invalid_date_diagnostic(stock_code: str, period: str, field_name: str) -> SourceDiagnostic:
     return SourceDiagnostic(
         code=f"fundamental_availability.invalid_{field_name}",
         stock_code=stock_code,
         message=f"availability mapping has invalid date field; period={period}; field={field_name}",
+        period=period,
+    )
+
+
+def _invalid_timestamp_diagnostic(
+    stock_code: str,
+    period: str,
+    field_name: str,
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
+        code=f"fundamental_availability.invalid_{field_name}",
+        stock_code=stock_code,
+        message=(
+            "availability mapping has invalid timezone-aware timestamp field; "
+            f"period={period}; field={field_name}"
+        ),
         period=period,
     )
 

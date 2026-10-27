@@ -408,7 +408,20 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
                 recommendation_reasons="rule candidate",
                 industry="semiconductor",
                 regime_match=True,
-            )
+            ),
+            RecommendationDTO(
+                stock_code="2317",
+                stock_name="Hon Hai",
+                close_price=200,
+                price_change=0,
+                total_score=70,
+                indicator_score=25,
+                pattern_score=25,
+                volume_score=20,
+                recommendation_reasons="saved result non-cohort row",
+                industry="electronics",
+                regime_match=True,
+            ),
         ],
     )
     read_model = RecommendationExecutionReadModel(
@@ -423,6 +436,8 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
     daily_evidence = SimpleNamespace(
         candidate_status="candidate",
         candidate_quality="observed",
+        candidate_symbols=("2330",),
+        candidate_result_id="scheduled-result",
         candidate_data_date="2026-07-07",
     )
 
@@ -433,7 +448,9 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
     )
 
     assert advice is not None
-    assert advice.recommendations[0].stock_code == "2330"
+    assert [row.stock_code for row in advice.recommendations] == ["2330"]
+    assert "scheduled_candidate_cohort_filtered" in advice.diagnostics
+    assert any("其他股票已排除" in warning for warning in advice.warnings)
     assert advice.recommendations[0].advice_action is AdviceAction.RESEARCH
     assert advice.recommendations[0].classification is AdviceClassification.PROFESSIONAL_CANDIDATE
     assert "scheduled-result" in advice.recommendations[0].source_trace
@@ -443,14 +460,17 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
         daily_evidence=SimpleNamespace(
             candidate_status="candidate_degraded",
             candidate_quality="degraded",
+            candidate_symbols=("2330",),
+            candidate_result_id="scheduled-result",
             candidate_data_date="2026-07-07",
             warnings=("候選來源 coverage degraded",),
         ),
         decision_date="2026-07-07",
     )
-    assert degraded_advice.recommendations == ()
-    assert "candidate_degraded" in degraded_advice.diagnostics[0]
-    assert "coverage degraded" in degraded_advice.warnings[1]
+    assert [row.stock_code for row in degraded_advice.recommendations] == ["2330"]
+    assert degraded_advice.recommendations[0].advice_action is AdviceAction.RESEARCH
+    assert degraded_advice.recommendations[0].data_quality == "DEGRADED"
+    assert any("整體候選 cohort" in warning for warning in degraded_advice.warnings)
     assert WorkbenchSourceService._compose_scheduled_candidate_advice(
         None,
         daily_evidence=SimpleNamespace(
@@ -466,17 +486,49 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
         daily_evidence=SimpleNamespace(
             candidate_status="candidate",
             candidate_quality="observed",
+            candidate_symbols=("2330",),
+            candidate_result_id="scheduled-result",
             candidate_data_date=None,
         ),
         decision_date="2026-07-07",
     )
     assert missing_date_advice.recommendations == ()
     assert missing_date_advice.data_as_of_date == ""
+    mismatched_result_advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
+        read_model,
+        daily_evidence=SimpleNamespace(
+            candidate_status="candidate",
+            candidate_quality="observed",
+            candidate_symbols=("2330",),
+            candidate_result_id="different-result",
+            candidate_data_date="2026-07-07",
+        ),
+        decision_date="2026-07-07",
+    )
+    assert mismatched_result_advice.recommendations == ()
+    assert mismatched_result_advice.diagnostics == (
+        "scheduled_candidate_result_identity_mismatch",
+    )
+    missing_cohort_advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
+        read_model,
+        daily_evidence=SimpleNamespace(
+            candidate_status="candidate",
+            candidate_quality="observed",
+            candidate_symbols=(),
+            candidate_result_id="scheduled-result",
+            candidate_data_date="2026-07-07",
+        ),
+        decision_date="2026-07-07",
+    )
+    assert missing_cohort_advice.recommendations == ()
+    assert missing_cohort_advice.diagnostics == ("scheduled_candidate_cohort_missing",)
     assert WorkbenchSourceService._compose_scheduled_candidate_advice(
         read_model,
         daily_evidence=SimpleNamespace(
             candidate_status="candidate",
             candidate_quality="observed",
+            candidate_symbols=("2330",),
+            candidate_result_id="scheduled-result",
             candidate_data_date="2026-07-08",
         ),
         decision_date="2026-07-07",
@@ -485,7 +537,11 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
     promoted_result = RecommendationResultDTO(
         result_id="promoted-result",
         result_name="Promoted result",
-        config={"strategy_status": "promoted"},
+        config={
+            "strategy_status": "promoted",
+            "parameters_locked": True,
+            "disclosure_complete": True,
+        },
         recommendations=result.recommendations,
     )
     promoted_read = RecommendationExecutionReadModel(
@@ -499,11 +555,22 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
     )
     promoted_advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
         promoted_read,
-        daily_evidence=daily_evidence,
+        daily_evidence=SimpleNamespace(
+            candidate_status="candidate",
+            candidate_quality="observed",
+            candidate_symbols=("2330",),
+            candidate_result_id="promoted-result",
+            candidate_data_date="2026-07-07",
+        ),
         decision_date="2026-07-07",
     )
-    assert promoted_advice.recommendations == ()
-    assert "promoted_strategy_acceptance_evidence_missing" in promoted_advice.diagnostics
+    assert len(promoted_advice.recommendations) == 1
+    promoted_candidate = promoted_advice.recommendations[0]
+    assert promoted_candidate.advice_action is AdviceAction.RESEARCH
+    assert promoted_candidate.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+    assert "promoted-result" in promoted_candidate.source_trace
+    assert "promoted_strategy_acceptance_evidence_missing_research_only" in promoted_advice.diagnostics
+    assert any("已降為研究候選" in warning for warning in promoted_advice.warnings)
 
 
 def test_workbench_source_service_reads_real_read_only_sources(tmp_path: Path) -> None:

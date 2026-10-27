@@ -679,6 +679,13 @@ def test_update_view_opens_weekly_collection_details_read_only(monkeypatch, tmp_
             "pending_human_review_count": 1,
             "recollection_required_count": 0,
             "reviewable_pending_count": 1,
+            "runbook_evidence": {
+                "status": "incomplete_required_evidence",
+                "verified_count": 0,
+                "required_count": 11,
+                "missing_count": 9,
+                "partial_count": 2,
+            },
             "records": [
                 {
                     "period_start": "2026-10-12",
@@ -689,6 +696,25 @@ def test_update_view_opens_weekly_collection_details_read_only(monkeypatch, tmp_
                     "reviewability_status": "reviewable_candidate",
                     "last_trading_date": "2026-10-16",
                     "reviewability_reasons": [],
+                    "runbook_evidence": {
+                        "status": "incomplete_required_evidence",
+                        "verified_count": 0,
+                        "required_count": 11,
+                        "missing_count": 9,
+                        "partial_count": 2,
+                        "items": [
+                            {
+                                "evidence_id": "working_copy_smoke",
+                                "label": "Working-copy smoke：重複執行與冪等收據",
+                                "status": "missing",
+                            },
+                            {
+                                "evidence_id": "source_coverage_snapshot",
+                                "label": "來源 coverage 快照",
+                                "status": "unverified",
+                            },
+                        ],
+                    },
                     "collection_payload": {
                         "source_coverage": {
                             "status": "observed_no_basic_integrity_gaps",
@@ -719,10 +745,340 @@ def test_update_view_opens_weekly_collection_details_read_only(monkeypatch, tmp_
     assert view.weekly_collection_sidecar_path == sidecar_path.resolve()
     view.weekly_collection_details_button.click()
 
-    assert shown["title"] == "週 Evidence 收集明細（唯讀）"
+    assert shown["title"] == "週 Evidence 收集明細與覆核"
     assert "ewc_ui_test" in shown["text"]
     assert "sha256:source" in shown["text"]
     assert "不授予 Gate credit" in shown["text"]
+    assert "incomplete_required_evidence" in shown["text"]
+    assert "Working-copy smoke" in shown["text"]
+    assert "來源 coverage 快照" in shown["text"]
+    view.close()
+
+
+def test_update_view_loads_runbook_manifest_and_rebuilds_checklist(monkeypatch, tmp_path):
+    from ui_qt.views import update_view as update_view_module
+
+    sidecar_path = tmp_path / "weekly-sidecar.sqlite"
+    manifest_path = tmp_path / "runbook-manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    calls = []
+
+    def build(path, **kwargs):
+        calls.append((path, kwargs))
+        return {
+            "pending_human_review_count": 1,
+            "recollection_required_count": 0,
+            "reviewable_pending_count": 1,
+            "runbook_evidence": {
+                "status": "incomplete_required_evidence",
+                "verified_count": 1 if kwargs.get("artifact_manifest_path") else 0,
+                "required_count": 11,
+                "missing_count": 8 if kwargs.get("artifact_manifest_path") else 9,
+                "partial_count": 2,
+            },
+            "records": [{
+                "period_start": "2026-10-12",
+                "period_end": "2026-10-18",
+                "collection_id": "ewc_ui_manifest",
+                "source_hash": "sha256:source",
+                "collection_status": "pending_human_review",
+                "reviewability_status": "reviewable_candidate",
+                "runbook_evidence": {
+                    "manifest_status": "matched" if kwargs.get("artifact_manifest_path") else "not_supplied",
+                    "manifest_sha256": "sha256:manifest" if kwargs.get("artifact_manifest_path") else None,
+                    "items": [],
+                },
+                "collection_payload": {"source_coverage": {"status": "degraded"}},
+            }],
+        }
+
+    monkeypatch.setattr(update_view_module, "build_weekly_approval_input", build)
+    monkeypatch.setattr(
+        update_view_module.QFileDialog,
+        "getOpenFileName",
+        lambda *_args, **_kwargs: (str(manifest_path), "JSON manifest (*.json)"),
+    )
+    app = QApplication.instance() or QApplication([])
+    view = _TestableUpdateView(
+        FakeUpdateService(),
+        weekly_collection_sidecar_path=sidecar_path,
+    )
+    view.weekly_receipt_root = tmp_path
+
+    def load_manifest_from_dialog(dialog):
+        load_button = next(
+            button for button in dialog.findChildren(QPushButton)
+            if button.text() == "載入 Runbook 附件 manifest…"
+        )
+        load_button.click()
+        assert "manifest" in dialog.findChild(QTextEdit).toPlainText().casefold()
+        return 0
+
+    monkeypatch.setattr(QDialog, "exec", load_manifest_from_dialog)
+    view.weekly_collection_details_button.click()
+
+    assert len(calls) == 2
+    assert calls[0][1] == {"include_failed": False}
+    assert calls[1][0] == sidecar_path.resolve()
+    assert calls[1][1] == {
+        "include_failed": False,
+        "artifact_manifest_path": manifest_path.resolve(),
+        "authorized_receipt_root": tmp_path,
+    }
+    view.close()
+
+
+def test_update_view_records_candidate_only_human_review_decision(monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QCheckBox, QComboBox, QDialogButtonBox, QLineEdit
+    from ui_qt.views import update_view as update_view_module
+
+    sidecar_path = tmp_path / "weekly-sidecar.sqlite"
+    output_path = tmp_path / "evidence-weekly-review-ewc_ui_test.json"
+    packet = {
+        "schema_version": "evidence-weekly-approval-input.v1",
+        "packet_status": "needs_named_owner_reviewer",
+        "sidecar_path": str(sidecar_path.resolve()),
+        "formal_credit_authorized": False,
+        "production_scheduler_allowed": False,
+        "candidate_only": True,
+        "write_performed": False,
+        "approved_projection_emitted": False,
+        "records": [
+            {
+                "period_start": "2026-10-19",
+                "period_end": "2026-10-25",
+                "collection_id": "ewc_ui_test",
+                "source_hash": "sha256:" + "a" * 64,
+                "collection_status": "pending_human_review",
+                "reviewability_status": "reviewable_candidate",
+                "collection_payload": {
+                    "source_coverage": {
+                        "status": "degraded",
+                        "trading_day_count": 4,
+                        "observed_row_count": 7859,
+                        "observed_symbol_count": 1987,
+                        "duplicate_symbol_rows": 0,
+                        "incomplete_row_count": 16,
+                        "quality_findings": ["required_price_values_missing"],
+                        "integrity_examples": [
+                            {
+                                "date": "2026-10-22",
+                                "symbol": "2330",
+                                "missing_fields": ["收盤價"],
+                                "classification": "official_source_reports_missing_values",
+                                "official_receipt_sha256": "sha256:" + "b" * 64,
+                            }
+                        ],
+                        "integrity_examples_truncated": False,
+                    }
+                },
+            }
+        ],
+    }
+    decision_calls = []
+
+    monkeypatch.setattr(
+        update_view_module,
+        "build_weekly_approval_input",
+        lambda *_args, **_kwargs: packet,
+    )
+    monkeypatch.setattr(
+        update_view_module.QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (str(output_path), "JSON decision (*.json)"),
+    )
+    monkeypatch.setattr(
+        update_view_module.QMessageBox,
+        "information",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        update_view_module.QMessageBox,
+        "warning",
+        lambda *_args, **_kwargs: pytest.fail("unexpected review warning"),
+    )
+
+    def write_decision(fresh_packet, fresh_sidecar_path, **kwargs):
+        decision_calls.append((fresh_packet, fresh_sidecar_path, kwargs))
+        output_path.write_text("candidate-only decision\n", encoding="utf-8")
+        return output_path
+
+    monkeypatch.setattr(
+        update_view_module,
+        "write_weekly_review_decision_artifact",
+        write_decision,
+    )
+
+    def drive_dialog(dialog):
+        if dialog.windowTitle() == "週 Evidence 收集明細與覆核":
+            review_button = next(
+                button
+                for button in dialog.findChildren(QPushButton)
+                if button.text() == "記錄具名覆核決定…"
+            )
+            assert review_button.isEnabled()
+            review_button.click()
+            return 0
+        assert dialog.windowTitle() == "記錄週 Evidence 人工覆核"
+        edits = dialog.findChildren(QLineEdit)
+        assert len(edits) == 4
+        for edit, value in zip(
+            edits,
+            ("Owner Example", "Portfolio Owner", "Reviewer Example", "Reviewer"),
+        ):
+            edit.setText(value)
+        combo_boxes = dialog.findChildren(QComboBox)
+        decision_picker = combo_boxes[-1]
+        assert decision_picker.currentData() == "follow_up"
+        decision_picker.setCurrentIndex(1)
+        text_edits = dialog.findChildren(QTextEdit)
+        assert len(text_edits) == 2
+        note, candidate_detail = text_edits
+        assert "品質摘要：degraded" in candidate_detail.toPlainText()
+        assert "required_price_values_missing" in candidate_detail.toPlainText()
+        assert "收據 hash（尚未核驗）" in candidate_detail.toPlainText()
+        note.setPlainText("已檢查品質缺口；待補來源 evidence 後再追蹤。")
+        confirmation = dialog.findChild(QCheckBox)
+        assert confirmation is not None
+        confirmation.setChecked(True)
+        buttons = dialog.findChild(QDialogButtonBox)
+        assert buttons is not None and buttons.button(QDialogButtonBox.Ok).isEnabled()
+        buttons.button(QDialogButtonBox.Ok).click()
+        return 1
+
+    monkeypatch.setattr(QDialog, "exec", drive_dialog)
+    app = QApplication.instance() or QApplication([])
+    view = _TestableUpdateView(
+        FakeUpdateService(),
+        weekly_collection_sidecar_path=sidecar_path,
+    )
+    view.weekly_collection_details_button.click()
+
+    assert output_path.read_text(encoding="utf-8") == "candidate-only decision\n"
+    assert len(decision_calls) == 1
+    fresh_packet, fresh_sidecar_path, fields = decision_calls[0]
+    assert fresh_packet is packet
+    assert fresh_sidecar_path == sidecar_path.resolve()
+    assert fields["collection_id"] == "ewc_ui_test"
+    assert fields["owner_name"] == "Owner Example"
+    assert fields["reviewer_name"] == "Reviewer Example"
+    assert fields["decision"] == "reviewed"
+    assert "待補來源 evidence" in fields["note"]
+    assert fields["output_path"] == str(output_path)
+    view.close()
+
+
+def test_update_view_exports_fresh_weekly_candidate_packet_without_overwrite(monkeypatch, tmp_path):
+    from ui_qt.views import update_view as update_view_module
+
+    sidecar_path = tmp_path / "weekly-sidecar.sqlite"
+    output_path = tmp_path / "weekly-review-candidate.json"
+    packet = {
+        "schema_version": "evidence-weekly-approval-input.v1",
+        "packet_status": "needs_named_owner_reviewer",
+        "formal_credit_authorized": False,
+        "production_scheduler_allowed": False,
+        "candidate_only": True,
+        "write_performed": False,
+        "approved_projection_emitted": False,
+        "records": [{"collection_id": "ewc_export_test", "source_hash": "sha256:" + "a" * 64}],
+    }
+    build_calls = []
+
+    def build(path, **kwargs):
+        build_calls.append((path, kwargs))
+        return packet
+
+    monkeypatch.setattr(update_view_module, "build_weekly_approval_input", build)
+    monkeypatch.setattr(
+        update_view_module.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(output_path), "JSON packet (*.json)"),
+    )
+    monkeypatch.setattr(update_view_module.QMessageBox, "information", lambda *args, **kwargs: None)
+    monkeypatch.setattr(update_view_module.QMessageBox, "warning", lambda *args, **kwargs: None)
+
+    def export_from_dialog(dialog):
+        export_button = next(
+            button
+            for button in dialog.findChildren(QPushButton)
+            if button.text() == "匯出覆核候選 JSON…"
+        )
+        assert export_button.isEnabled()
+        export_button.click()
+        return 0
+
+    monkeypatch.setattr(QDialog, "exec", export_from_dialog)
+    app = QApplication.instance() or QApplication([])
+    view = _TestableUpdateView(
+        FakeUpdateService(),
+        weekly_collection_sidecar_path=sidecar_path,
+    )
+
+    view.weekly_collection_details_button.click()
+
+    saved = json.loads(output_path.read_text(encoding="utf-8"))
+    assert saved == packet
+    assert saved["formal_credit_authorized"] is False
+    assert saved["production_scheduler_allowed"] is False
+    assert saved["write_performed"] is False
+    assert len(build_calls) == 2  # initial preview and fresh export readback
+    assert all(call[1] == {"include_failed": False} for call in build_calls)
+    view.close()
+
+
+def test_update_view_does_not_export_candidate_removed_from_sidecar(monkeypatch, tmp_path):
+    from ui_qt.views import update_view as update_view_module
+
+    sidecar_path = tmp_path / "weekly-sidecar.sqlite"
+    output_path = tmp_path / "stale-review-candidate.json"
+    packet_with_candidate = {
+        "records": [{"collection_id": "ewc_stale_test"}],
+        "formal_credit_authorized": False,
+        "write_performed": False,
+    }
+    packets = [packet_with_candidate, {"records": [], "packet_status": "no_pending_reviews"}]
+    warnings = []
+
+    monkeypatch.setattr(
+        update_view_module,
+        "build_weekly_approval_input",
+        lambda *_args, **_kwargs: packets.pop(0),
+    )
+    monkeypatch.setattr(
+        update_view_module.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(output_path), "JSON packet (*.json)"),
+    )
+    monkeypatch.setattr(
+        update_view_module.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: warnings.append(args[2]),
+    )
+    monkeypatch.setattr(update_view_module.QMessageBox, "information", lambda *args, **kwargs: None)
+
+    def export_from_dialog(dialog):
+        button = next(
+            item
+            for item in dialog.findChildren(QPushButton)
+            if item.text() == "匯出覆核候選 JSON…"
+        )
+        assert button.isEnabled()
+        button.click()
+        return 0
+
+    monkeypatch.setattr(QDialog, "exec", export_from_dialog)
+    app = QApplication.instance() or QApplication([])
+    view = _TestableUpdateView(
+        FakeUpdateService(),
+        weekly_collection_sidecar_path=sidecar_path,
+    )
+
+    view.weekly_collection_details_button.click()
+
+    assert not output_path.exists()
+    assert len(warnings) == 1
+    assert "沒有待審候選" in warnings[0]
     view.close()
 
 

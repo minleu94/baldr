@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
     QTextEdit, QRadioButton, QButtonGroup,
     QDateEdit, QMessageBox, QFormLayout, QSpinBox, QLineEdit,
     QListWidget, QStackedWidget, QFrame, QCalendarWidget, QGridLayout, QComboBox,
-    QScrollArea, QSizePolicy, QBoxLayout, QAbstractItemView, QHeaderView,
-    QTableWidget, QTableWidgetItem, QDialog
+    QScrollArea, QSizePolicy, QBoxLayout, QAbstractItemView, QHeaderView, QFileDialog,
+    QTableWidget, QTableWidgetItem, QDialog, QDialogButtonBox, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
@@ -45,6 +45,10 @@ from app_module.program_readiness_projection import (
 from app_module.evidence_weekly_approval_input import (
     build_weekly_approval_input,
     read_verified_official_receipt,
+    write_weekly_approval_input_packet,
+)
+from app_module.evidence_weekly_review_decision import (
+    write_weekly_review_decision_artifact,
 )
 from data_module.source_acceptance_decision_registry import parse_source_acceptance_decisions
 from data_module.monthly_revenue_snapshot_selection import (
@@ -1407,10 +1411,10 @@ class UpdateView(QWidget):
             "license 與 owner decision 檔，不會由 UI 發出網路請求；lane 狀態與 blocker 不會在 UI 自動解除。"
         )
         readiness_layout.addWidget(self.program_readiness_table)
-        self.weekly_collection_details_button = QPushButton("檢視週收集明細（唯讀）")
+        self.weekly_collection_details_button = QPushButton("檢視週收集明細與覆核")
         self.weekly_collection_details_button.setProperty("variant", "secondary")
         self.weekly_collection_details_button.setToolTip(
-            "讀取 weekly collection sidecar 的待審候選與 bounded 品質摘要；不會寫入審查決定或授予 Gate credit。"
+            "讀取 weekly collection sidecar 的候選與品質摘要；可另存具名人工覆核決定，不修改 sidecar、history 或核准投影，也不授 Gate credit。"
         )
         self.weekly_collection_details_button.clicked.connect(
             self._show_weekly_collection_details
@@ -3536,14 +3540,30 @@ class UpdateView(QWidget):
         table.resizeRowsToContents()
 
     def _show_weekly_collection_details(self) -> None:
-        """Open a read-only, bounded summary of pending weekly sidecar records."""
+        """Open bounded weekly sidecar details and optional candidate review actions."""
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("週 Evidence 收集明細（唯讀）")
+        dialog.setWindowTitle("週 Evidence 收集明細與覆核")
         dialog.setMinimumSize(760, 520)
         layout = QVBoxLayout(dialog)
         detail = QTextEdit(dialog)
         detail.setReadOnly(True)
+        packet_for_export: dict[str, Any] | None = None
+        artifact_manifest_path: Path | None = None
+
+        def _build_fresh_weekly_packet() -> dict[str, Any]:
+            if self.weekly_collection_sidecar_path is None:
+                raise ValueError("weekly collection sidecar is not configured")
+            arguments: dict[str, Any] = {"include_failed": False}
+            if artifact_manifest_path is not None:
+                arguments.update(
+                    artifact_manifest_path=artifact_manifest_path,
+                    authorized_receipt_root=self.weekly_receipt_root,
+                )
+            return build_weekly_approval_input(
+                self.weekly_collection_sidecar_path,
+                **arguments,
+            )
         receipt_picker = QComboBox(dialog)
         receipt_picker.setEnabled(False)
         receipt_picker.addItem("沒有可核驗的官方收據")
@@ -3561,6 +3581,7 @@ class UpdateView(QWidget):
                     self.weekly_collection_sidecar_path,
                     include_failed=False,
                 )
+                packet_for_export = packet
                 detail.setPlainText(format_weekly_collection_details(packet))
                 receipt_choices: list[tuple[str, str, str]] = []
                 for record in packet.get("records", []):
@@ -3621,6 +3642,378 @@ class UpdateView(QWidget):
         receipt_button.clicked.connect(_preview_verified_receipt)
         layout.addWidget(receipt_button)
         layout.addWidget(receipt_status)
+
+        manifest_status = QLabel(
+            "Runbook 附件 manifest 尚未載入；目前 checklist 只呈現 sidecar 內的候選狀態。",
+            dialog,
+        )
+        manifest_status.setWordWrap(True)
+        load_manifest_button = QPushButton("載入 Runbook 附件 manifest…", dialog)
+        load_manifest_button.setProperty("variant", "secondary")
+        load_manifest_button.setEnabled(self.weekly_collection_sidecar_path is not None)
+
+        def _load_runbook_manifest() -> None:
+            nonlocal artifact_manifest_path, packet_for_export
+            if self.weekly_receipt_root is None:
+                manifest_status.setText("未設定授權的 output_root，拒絕載入 manifest。")
+                return
+            selected_path, _ = QFileDialog.getOpenFileName(
+                dialog,
+                "選擇 Runbook 附件 manifest",
+                str(self.weekly_receipt_root),
+                "JSON manifest (*.json)",
+            )
+            if not selected_path:
+                return
+            artifact_manifest_path = Path(selected_path).expanduser().resolve(strict=False)
+            try:
+                packet = build_weekly_approval_input(
+                    self.weekly_collection_sidecar_path,
+                    include_failed=False,
+                    artifact_manifest_path=artifact_manifest_path,
+                    authorized_receipt_root=self.weekly_receipt_root,
+                )
+            except Exception as exc:
+                packet_for_export = None
+                detail.setPlainText(
+                    "Runbook manifest 無法核驗，沒有套用附件狀態。\n"
+                    f"原因：{type(exc).__name__}: {exc}"
+                )
+                manifest_status.setText("Manifest 載入失敗；請修正或選擇有效附件封包。")
+                review_button.setEnabled(False)
+                export_button.setEnabled(False)
+                return
+            packet_for_export = packet
+            detail.setPlainText(format_weekly_collection_details(packet))
+            manifest_status.setText(
+                "已載入 manifest；逐附件 hash、角色、期間與 collection identity 已重新核對。"
+            )
+            review_button.setEnabled(
+                any(
+                    isinstance(record, dict)
+                    and record.get("collection_status") == "pending_human_review"
+                    and record.get("reviewability_status") == "reviewable_candidate"
+                    for record in packet.get("records", [])
+                )
+            )
+            export_button.setEnabled(bool(packet.get("records")))
+
+        load_manifest_button.clicked.connect(_load_runbook_manifest)
+        layout.addWidget(load_manifest_button)
+        layout.addWidget(manifest_status)
+
+        review_button = QPushButton("記錄具名覆核決定…", dialog)
+        review_button.setProperty("variant", "secondary")
+        review_button.setEnabled(
+            self.weekly_collection_sidecar_path is not None
+            and bool(
+                packet_for_export
+                and any(
+                    record.get("collection_status") == "pending_human_review"
+                    and record.get("reviewability_status") == "reviewable_candidate"
+                    for record in packet_for_export.get("records", [])
+                    if isinstance(record, dict)
+                )
+            )
+        )
+
+        def _record_review_decision() -> None:
+            if self.weekly_collection_sidecar_path is None:
+                return
+            try:
+                fresh_packet = _build_fresh_weekly_packet()
+            except Exception as exc:
+                QMessageBox.warning(
+                    dialog,
+                    "覆核候選未載入",
+                    f"{type(exc).__name__}: {exc}",
+                )
+                return
+            eligible_records = [
+                record
+                for record in fresh_packet.get("records", [])
+                if isinstance(record, dict)
+                and record.get("collection_status") == "pending_human_review"
+                and record.get("reviewability_status") == "reviewable_candidate"
+            ]
+            if not eligible_records:
+                QMessageBox.warning(
+                    dialog,
+                    "目前沒有可覆核候選",
+                    "重新讀取 sidecar 後，沒有仍待審且可覆核的候選；請重開明細。",
+                )
+                return
+
+            review_dialog = QDialog(dialog)
+            review_dialog.setWindowTitle("記錄週 Evidence 人工覆核")
+            review_dialog.setMinimumWidth(620)
+            review_layout = QVBoxLayout(review_dialog)
+            form = QFormLayout()
+            candidate_picker = QComboBox(review_dialog)
+            for record in eligible_records:
+                label = (
+                    f"{record.get('period_start', '期間未知')} 至 "
+                    f"{record.get('period_end', '期間未知')}／"
+                    f"{record.get('collection_id', 'ID 未知')}"
+                )
+                candidate_picker.addItem(label, str(record.get("collection_id", "")))
+            form.addRow("覆核候選", candidate_picker)
+            owner_name = QLineEdit(review_dialog)
+            owner_name.setPlaceholderText("填寫實際 Owner 姓名或可追溯識別")
+            owner_role = QLineEdit(review_dialog)
+            owner_role.setPlaceholderText("例如：Portfolio Owner")
+            reviewer_name = QLineEdit(review_dialog)
+            reviewer_name.setPlaceholderText("填寫實際 Reviewer 姓名或可追溯識別")
+            reviewer_role = QLineEdit(review_dialog)
+            reviewer_role.setPlaceholderText("例如：獨立覆核者")
+            decision_picker = QComboBox(review_dialog)
+            decision_picker.addItem("需後續跟進", "follow_up")
+            decision_picker.addItem("已檢視（不代表 Gate 核准）", "reviewed")
+            decision_picker.addItem("不採納此候選", "dismissed")
+            note = QTextEdit(review_dialog)
+            note.setPlaceholderText("記錄檢查過的來源、品質／覆蓋缺口、判斷理由與後續處置")
+            note.setMinimumHeight(100)
+            form.addRow("Owner 姓名", owner_name)
+            form.addRow("Owner 角色", owner_role)
+            form.addRow("Reviewer 姓名", reviewer_name)
+            form.addRow("Reviewer 角色", reviewer_role)
+            form.addRow("覆核結果", decision_picker)
+            form.addRow("覆核理由", note)
+            review_layout.addLayout(form)
+
+            candidate_detail = QTextEdit(review_dialog)
+            candidate_detail.setReadOnly(True)
+            candidate_detail.setMaximumHeight(150)
+
+            def _show_selected_candidate(index: int) -> None:
+                collection_id = str(candidate_picker.itemData(index) or "")
+                selected_record = next(
+                    (
+                        record
+                        for record in eligible_records
+                        if record.get("collection_id") == collection_id
+                    ),
+                    None,
+                )
+                if selected_record is None:
+                    candidate_detail.setPlainText("候選已不存在；請取消並重新載入。")
+                    return
+                payload = selected_record.get("collection_payload", {})
+                coverage = (
+                    payload.get("source_coverage", {})
+                    if isinstance(payload, dict)
+                    else {}
+                )
+                if not isinstance(coverage, dict):
+                    coverage = {}
+                findings = coverage.get("quality_findings", [])
+                findings_text = (
+                    "、".join(str(item) for item in findings)
+                    if isinstance(findings, list) and findings
+                    else "未提供"
+                )
+                examples = coverage.get("integrity_examples", [])
+                example_lines: list[str] = []
+                if isinstance(examples, list):
+                    for example in examples[:5]:
+                        if not isinstance(example, dict):
+                            continue
+                        missing_fields = example.get("missing_fields", [])
+                        missing_text = (
+                            "、".join(str(item) for item in missing_fields)
+                            if isinstance(missing_fields, list) and missing_fields
+                            else "未提供"
+                        )
+                        receipt_hash = str(
+                            example.get("official_receipt_sha256") or "未提供"
+                        )
+                        example_lines.append(
+                            "- {date}／{symbol}：缺欄 {missing}；{classification}；收據 hash {receipt}".format(
+                                date=example.get("date", "日期未知"),
+                                symbol=example.get("symbol", "代號未知"),
+                                missing=missing_text,
+                                classification=example.get("classification", "分類未知"),
+                                receipt=receipt_hash,
+                            )
+                        )
+                if coverage.get("integrity_examples_truncated"):
+                    example_lines.append("完整性例子已截斷；請回明細檢視完整摘要。")
+                runbook = selected_record.get("runbook_evidence", {})
+                if not isinstance(runbook, dict):
+                    runbook = {}
+                runbook_items = runbook.get("items", [])
+                role_hashes = runbook.get("artifact_sha256_by_role", {})
+                role_lines: list[str] = []
+                if isinstance(runbook_items, list):
+                    for evidence_item in runbook_items:
+                        if not isinstance(evidence_item, dict):
+                            continue
+                        role = str(evidence_item.get("evidence_id") or "")
+                        status = str(evidence_item.get("status") or "unknown")
+                        digest = (
+                            role_hashes.get(role)
+                            if isinstance(role_hashes, dict)
+                            else None
+                        )
+                        suffix = f"；{digest}" if isinstance(digest, str) else ""
+                        role_lines.append(f"- {role or '未知角色'}：{status}{suffix}")
+                manifest_digest = runbook.get("manifest_sha256")
+                candidate_detail.setPlainText(
+                    "\n".join(
+                        [
+                            f"期間：{selected_record.get('period_start')} 至 {selected_record.get('period_end')}",
+                            f"候選 ID：{collection_id}",
+                            f"來源 hash：{selected_record.get('source_hash', '未提供')}",
+                            f"來源狀態：{selected_record.get('collection_status')}",
+                            "品質摘要：{status}；交易日 {trading_days}；觀察列 {rows}；代號 {symbols}；重複 {duplicates}；不完整 {incomplete}".format(
+                                status=coverage.get("status", "未知"),
+                                trading_days=coverage.get("trading_day_count", "未知"),
+                                rows=coverage.get("observed_row_count", "未知"),
+                                symbols=coverage.get("observed_symbol_count", "未知"),
+                                duplicates=coverage.get("duplicate_symbol_rows", "未知"),
+                                incomplete=coverage.get("incomplete_row_count", "未知"),
+                            ),
+                            f"品質發現：{findings_text}",
+                            "完整性例子／收據 hash（尚未核驗）：",
+                            *(example_lines or ["- 未提供例子"]),
+                            f"Runbook manifest SHA-256：{manifest_digest or '未載入'}",
+                            "Runbook 附件角色狀態／hash：",
+                            *(role_lines or ["- 無已載入附件角色"]),
+                            "本項決定只記錄人工覆核，不寫 weekly history／核准投影，也不授 Gate credit。",
+                            "如需核驗收據，請取消此對話框，回明細預覽收據後再重新開啟覆核。",
+                        ]
+                    )
+                )
+
+            candidate_picker.currentIndexChanged.connect(_show_selected_candidate)
+            _show_selected_candidate(candidate_picker.currentIndex())
+            review_layout.addWidget(QLabel("候選摘要與安全界線", review_dialog))
+            review_layout.addWidget(candidate_detail)
+            confirmation = QCheckBox(
+                "我已檢視所選期間、來源 hash、品質摘要、Runbook manifest digest／附件狀態及可用收據，確認這是我的實際覆核決定。",
+                review_dialog,
+            )
+            review_layout.addWidget(confirmation)
+            review_buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
+                parent=review_dialog,
+            )
+            review_buttons.button(QDialogButtonBox.Ok).setText("選擇新檔並記錄決定")
+            review_buttons.button(QDialogButtonBox.Ok).setEnabled(False)
+            confirmation.toggled.connect(review_buttons.button(QDialogButtonBox.Ok).setEnabled)
+            review_buttons.accepted.connect(review_dialog.accept)
+            review_buttons.rejected.connect(review_dialog.reject)
+            review_layout.addWidget(review_buttons)
+            if review_dialog.exec() != QDialog.Accepted:
+                return
+
+            selected_collection_id = str(candidate_picker.currentData() or "")
+            selected_record = next(
+                record
+                for record in eligible_records
+                if record.get("collection_id") == selected_collection_id
+            )
+            safe_id = "".join(
+                char if char.isalnum() or char in "-_" else "_"
+                for char in selected_collection_id
+            )
+            selected_path, _ = QFileDialog.getSaveFileName(
+                review_dialog,
+                "選擇新的週 Evidence 覆核決定檔",
+                f"evidence-weekly-review-{safe_id}.json",
+                "JSON decision (*.json)",
+                options=QFileDialog.Option.DontConfirmOverwrite,
+            )
+            if not selected_path:
+                return
+            try:
+                output_path = write_weekly_review_decision_artifact(
+                    fresh_packet,
+                    self.weekly_collection_sidecar_path,
+                    collection_id=selected_collection_id,
+                    owner_name=owner_name.text(),
+                    owner_role=owner_role.text(),
+                    reviewer_name=reviewer_name.text(),
+                    reviewer_role=reviewer_role.text(),
+                    decision=str(decision_picker.currentData() or ""),
+                    note=note.toPlainText(),
+                    output_path=selected_path,
+                    artifact_manifest_path=artifact_manifest_path,
+                    authorized_receipt_root=(
+                        self.weekly_receipt_root
+                        if artifact_manifest_path is not None
+                        else None
+                    ),
+                )
+            except Exception as exc:
+                QMessageBox.warning(
+                    review_dialog,
+                    "覆核決定未保存",
+                    f"{type(exc).__name__}: {exc}",
+                )
+                return
+            QMessageBox.information(
+                review_dialog,
+                "人工覆核決定已另存",
+                "已建立新的 candidate-only 覆核決定檔：\n"
+                f"{output_path}\n\n"
+                f"候選期間：{selected_record.get('period_start')} 至 {selected_record.get('period_end')}\n"
+                "此紀錄不寫 weekly history／核准投影，不授 Gate credit，也不啟用正式排程。",
+            )
+
+        review_button.clicked.connect(_record_review_decision)
+        layout.addWidget(review_button)
+
+        export_button = QPushButton("匯出覆核候選 JSON…", dialog)
+        export_button.setProperty("variant", "secondary")
+        export_button.setEnabled(
+            self.weekly_collection_sidecar_path is not None
+            and bool(packet_for_export and packet_for_export.get("records"))
+        )
+
+        def _export_review_packet() -> None:
+            if self.weekly_collection_sidecar_path is None:
+                return
+            selected_path, _ = QFileDialog.getSaveFileName(
+                dialog,
+                "選擇新的週 Evidence 覆核候選檔案",
+                "evidence-weekly-approval-input.json",
+                "JSON packet (*.json)",
+                options=QFileDialog.Option.DontConfirmOverwrite,
+            )
+            if not selected_path:
+                return
+            try:
+                fresh_packet = _build_fresh_weekly_packet()
+                if not fresh_packet.get("records"):
+                    QMessageBox.warning(
+                        dialog,
+                        "候選已更新",
+                        "重新讀取 sidecar 後已沒有待審候選；請重新開啟明細。",
+                    )
+                    return
+                output_path = write_weekly_approval_input_packet(
+                    fresh_packet,
+                    selected_path,
+                    sidecar_path=self.weekly_collection_sidecar_path,
+                )
+            except Exception as exc:
+                QMessageBox.warning(
+                    dialog,
+                    "覆核候選未匯出",
+                    f"{type(exc).__name__}: {exc}",
+                )
+                return
+            QMessageBox.information(
+                dialog,
+                "覆核候選已匯出",
+                "已匯出唯讀候選封包：\n"
+                f"{output_path}\n\n"
+                "封包仍待具名人工覆核，不會寫入 weekly history、核准投影或授予 Gate credit。",
+            )
+
+        export_button.clicked.connect(_export_review_packet)
+        layout.addWidget(export_button)
         close_button = QPushButton("關閉", dialog)
         close_button.clicked.connect(dialog.accept)
         layout.addWidget(close_button)

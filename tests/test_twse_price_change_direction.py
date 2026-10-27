@@ -5,7 +5,10 @@ from decimal import Decimal
 import pytest
 
 from app_module.price_change_direction import resolve_signed_change
-from data_module.price_change_direction import normalize_twse_change_sign
+from data_module.price_change_direction import (
+    classify_twse_raw_change_marker,
+    normalize_twse_change_sign,
+)
 
 
 @pytest.mark.parametrize(("raw", "expected"), [
@@ -29,4 +32,15 @@ def test_nonempty_unknown_never_becomes_flat_zero(raw: str) -> None:
     normalized = normalize_twse_change_sign(raw)
     assert resolve_signed_change("0", (normalized,)) == (None, "unknown_change_direction")
     assert resolve_signed_change("5", (normalized,)) == (None, "unknown_change_direction")
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("", "blank"), ("<p> </p>", "blank"), ("<p>X</p>", "non_comparable"),
+    ("<p>+</p>", "advancing"), ("<p>-</p>", "declining"),
+    ("<script>X</script>", "unknown"), ("<p>NA</p>", "unknown"),
+])
+def test_verified_raw_twse_marker_keeps_blank_noncomparable_and_unknown_distinct(
+    raw: str, expected: str
+) -> None:
+    assert classify_twse_raw_change_marker(raw) == expected
     assert resolve_signed_change("0", ("",)) == (Decimal("0"), "")

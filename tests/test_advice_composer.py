@@ -99,6 +99,47 @@ def test_composer_preserves_dates_and_returns_no_new_position_for_missing_eviden
     assert result.recommendations[0].refusal_reasons == ("evidence_quality_missing",)
 
 
+def test_composer_uses_verified_per_stock_quality_over_degraded_cohort_quality() -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    result = AdviceComposer(
+        AdvicePolicy(AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL))
+    ).compose(
+        recommendations=_recommendation_result(),
+        portfolio_result=None,
+        evidence_quality="DEGRADED",
+        evidence_quality_by_stock={"2330": "OBSERVED"},
+        evidence_warnings=("cohort_has_other_missing_symbols",),
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        mode=AdviceMode.PROFESSIONAL,
+    )
+
+    assert result.recommendations[0].advice_action is AdviceAction.ADD_CANDIDATE
+    assert result.recommendations[0].data_quality == "OBSERVED"
+    assert result.warnings == ("cohort_has_other_missing_symbols",)
+
+
+def test_composer_keeps_explicitly_degraded_candidate_research_only() -> None:
+    from app_module.advice_composer import AdviceComposer
+
+    result = AdviceComposer(
+        AdvicePolicy(AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL))
+    ).compose(
+        recommendations=_recommendation_result(),
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        evidence_quality_by_stock={"2330": "DEGRADED"},
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        mode=AdviceMode.PROFESSIONAL,
+    )
+
+    assert result.recommendations[0].advice_action is AdviceAction.RESEARCH
+    assert result.recommendations[0].data_quality == "DEGRADED"
+    assert "data_quality_degraded" in result.recommendations[0].why_not_reasons
+
+
 def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     from app_module.advice_composer import AdviceComposer
 

@@ -66,8 +66,9 @@ class MarketSessionCadence:
         default = repository_root / "output/paper_execution_eod_replay/calendar_cache"
         cache = (getattr(config, "official_calendar_cache_path", None)
             or os.environ.get("OFFICIAL_CALENDAR_CACHE_PATH", "").strip() or default)
+        temporary_closures = getattr(config, "temporary_closure_path", None) or cache
         return cls(OfficialCalendarSourceProvider(calendar_cache_path=cache,
-            temporary_closure_path=getattr(config, "temporary_closure_path", None)), clock=clock)
+            temporary_closure_path=temporary_closures), clock=clock)
 
     def assess(self, decision_date: date, actual_date: date) -> MarketSessionAssessment:
         meta: dict[str, Any] = {"decision_date": decision_date.isoformat(), "actual_date": actual_date.isoformat(),
@@ -76,13 +77,29 @@ class MarketSessionCadence:
             observation = self._observation_clock().capture()
         except CalendarObservationClockError as exc:
             return MarketSessionAssessment("unverified", None, {**meta, "blockers": [str(exc)]})
-        now = observation.effective_at
-        meta["calendar_observation_clock"] = observation.to_dict()
-        boundary = resolve_project_market_session_boundary(now)
+        runtime_observed_at = observation.effective_at
+        boundary = resolve_project_market_session_boundary(runtime_observed_at)
         today = boundary.taipei_date
-        if decision_date > boundary.taipei_date or actual_date > decision_date:
+        if decision_date > today or actual_date > decision_date:
             return MarketSessionAssessment("future_rejected", None, meta)
-        decision_at = now if decision_date == today else datetime.combine(decision_date, time.max, TAIPEI)
+        decision_at = (
+            runtime_observed_at
+            if decision_date == today
+            else datetime.combine(decision_date, time.max, TAIPEI)
+        )
+        calendar_observation = (
+            CalendarObservationClock.historical_as_of(decision_at).capture()
+            if decision_date < today
+            else observation
+        )
+        calendar_observed_at = calendar_observation.effective_at
+        meta.update(
+            {
+                "observed_at": runtime_observed_at.isoformat(),
+                "calendar_observed_at": calendar_observed_at.isoformat(),
+                "calendar_observation_clock": calendar_observation.to_dict(),
+            }
+        )
         cutoff = project_market_publication_cutoff(decision_date)
         end = (
             boundary.calendar_end_date
@@ -90,9 +107,9 @@ class MarketSessionCadence:
             else decision_date
         )
         result = self.calendar.read_range(start_date=(end - timedelta(days=21)).isoformat(), end_date=end.isoformat(),
-            decision_at=decision_at, observed_at=now,
-            observation_clock=observation)
-        meta.update({"decision_at": decision_at.isoformat(), "observed_at": now.isoformat(),
+            decision_at=decision_at, observed_at=calendar_observed_at,
+            observation_clock=calendar_observation)
+        meta.update({"decision_at": decision_at.isoformat(),
             "publication_cutoff": cutoff.isoformat(), "calendar": result.provenance, "blockers": list(result.blockers)})
         dates = result.values.get("trading_dates", ())
         if result.blockers or not dates:

@@ -86,9 +86,9 @@ def _run_smoke(config: TWStockConfig, working_copy: Path, report_path: Path, *ex
             str(report_path),
             "--json-output",
             "--data-root",
-            str(config.data_root),
+            str(config.data_root.parent if config.data_root.name == "_test" else config.data_root),
             "--output-root",
-            str(config.output_root),
+            str(config.output_root.parent if config.output_root.name == "_test" else config.output_root),
             *extra,
         ],
         capture_output=True,
@@ -123,6 +123,85 @@ def test_working_copy_smoke_writes_only_working_copy_and_repeat_is_idempotent(tm
     assert _event_count(working_copy) == 1
     assert _outcome_count(working_copy) == 1
     assert report_path.exists()
+
+
+def test_working_copy_smoke_writes_versioned_exclusive_runbook_receipt(tmp_path: Path) -> None:
+    source_config = _config(tmp_path)
+    _seed_market_db(source_config)
+    _seed_recommendation(source_config)
+    working_copy = tmp_path / "working-copy.db"
+    report_path = tmp_path / "smoke-report.md"
+    receipt_path = tmp_path / "smoke-receipt.json"
+
+    completed = _run_smoke(
+        source_config,
+        working_copy,
+        report_path,
+        "--receipt-output",
+        str(receipt_path),
+        "--start-date",
+        "2026-06-01",
+        "--end-date",
+        "2026-06-30",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema_version"] == "baldr-weekly-runbook-artifact.v1"
+    assert receipt["artifact_role"] == "working_copy_smoke"
+    assert receipt["period_start"] == "2026-06-01"
+    assert receipt["period_end"] == "2026-06-30"
+    assert receipt["decision_date"] == "2026-07-01"
+    assert receipt["repeat_count"] == 2
+    assert receipt["idempotency_check"]["passed"] is True
+    assert receipt["source_db_path"] == str(source_config.db_file.resolve())
+    assert receipt["working_copy_db_path"] == str(working_copy.resolve())
+    assert receipt["fingerprint_method"] == "sha256_sqlite_file_set.v1"
+    assert receipt["source_fingerprint_before"] == receipt["source_fingerprint_after"]
+    assert receipt["source_identity_stable"] is True
+    assert (
+        receipt["working_copy_fingerprint_before"]
+        != receipt["working_copy_fingerprint_after"]
+    )
+    assert receipt["source_write_performed"] is False
+    assert receipt["working_copy_write_performed"] is True
+
+    before = receipt_path.read_bytes()
+    duplicate = _run_smoke(
+        source_config,
+        working_copy,
+        report_path,
+        "--receipt-output",
+        str(receipt_path),
+        "--start-date",
+        "2026-06-01",
+        "--end-date",
+        "2026-06-30",
+    )
+    assert duplicate.returncode != 0
+    assert "receipt output already exists" in duplicate.stderr
+    assert receipt_path.read_bytes() == before
+
+
+def test_working_copy_smoke_receipt_requires_explicit_canonical_period(tmp_path: Path) -> None:
+    source_config = _config(tmp_path)
+    _seed_market_db(source_config)
+    _seed_recommendation(source_config)
+    working_copy = tmp_path / "working-copy.db"
+    report_path = tmp_path / "smoke-report.md"
+    receipt_path = tmp_path / "smoke-receipt.json"
+
+    completed = _run_smoke(
+        source_config,
+        working_copy,
+        report_path,
+        "--receipt-output",
+        str(receipt_path),
+    )
+
+    assert completed.returncode != 0
+    assert "requires explicit --start-date and --end-date" in completed.stderr
+    assert not receipt_path.exists()
 
 
 def test_working_copy_smoke_missing_durable_source_becomes_blocking_gap(tmp_path: Path) -> None:

@@ -1123,8 +1123,21 @@ def _maturity_source_limits(item: OutcomeMaturityRecord) -> tuple[str, ...]:
     limits: list[str] = []
     if item.source_data_quality == "degraded":
         limits.append("結果資料品質：降級")
+    source_warning_labels = (
+        (
+            "corporate_action_source_not_ingested",
+            "企業行動資料來源尚未納入",
+        ),
+        (
+            "trading_restriction_source_not_ingested",
+            "交易限制資料來源尚未納入",
+        ),
+    )
+    for code, label in source_warning_labels:
+        if code in item.source_warning_codes:
+            limits.append(label)
     if "source_not_ingested" in item.source_warning_codes:
-        limits.append("結果引用來源尚未完成納入")
+        limits.append("結果引用來源尚未完成納入（來源類型未細分）")
     if item.planned_official_calendar_status == "annual_plan_only":
         limits.append("交易日曆僅有年度計畫，臨時休市未核")
     if item.formal_credit_granted is False:

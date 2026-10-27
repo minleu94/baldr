@@ -50,6 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-root")
     parser.add_argument("--output-root")
     parser.add_argument(
+        "--market-quote-custody-root",
+        help=(
+            "read-only root containing scheduled/daily_price_source_custody; "
+            "defaults to --recommendation-source-root when provided, otherwise --output-root"
+        ),
+    )
+    parser.add_argument(
         "--recommendation-source-root",
         help="read-only canonical output root for saved recommendation artifacts; defaults to --output-root",
     )
@@ -185,6 +192,11 @@ def main(argv: list[str] | None = None) -> int:
             db_path=args.db_path,
             paper_evidence_source=paper_source,
             recommendation_queries=recommendation_queries,
+            market_quote_custody_root=(
+                args.market_quote_custody_root
+                or args.recommendation_source_root
+                or None
+            ),
         ).run(request)
     except ValueError as exc:
         parser.error(str(exc))

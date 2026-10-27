@@ -43,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-events", type=int, default=DEFAULT_MAX_EVENTS)
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--end-date", default=None)
+    parser.add_argument("--event-id", action="append", default=None,
+                        help="Restrict this run to exact Evidence event IDs; may be repeated.")
     parser.add_argument("--data-as-of-date", default=None)
     parser.add_argument("--event-type", default=None)
     parser.add_argument("--symbol", default=None)
@@ -122,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         max_events=args.max_events,
         start_date=args.start_date,
         end_date=args.end_date,
+        event_ids=args.event_id,
         data_as_of_date=args.data_as_of_date,
         event_type=args.event_type,
         symbol=args.symbol,

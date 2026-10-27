@@ -102,7 +102,9 @@ def _execution(
     )
 
 
-def _screening_only_execution(result_id: str) -> RecommendationExecution:
+def _screening_only_execution(
+    result_id: str, *, warnings: tuple[str, ...] = ()
+) -> RecommendationExecution:
     from app_module.recommendation.negative_evidence_projection import (
         project_canonical_negative_evidence,
     )
@@ -123,7 +125,7 @@ def _screening_only_execution(result_id: str) -> RecommendationExecution:
             "score_percentile_bp": None,
             "eligible_universe_size": None,
             "threshold_mode": "fixed",
-            "warnings": (),
+            "warnings": warnings,
             "industry": "紡織",
             "as_of_date": "2026-09-23",
             "data_fingerprint": "sha256:" + "a" * 64,
@@ -292,6 +294,20 @@ def test_official_delisting_rows_localize_stage_and_reason_at_display_boundary()
     display_row = view_module._screening_only_result_rows(execution)[0]
     assert display_row["階段"] == "官方市場狀態（current_market_status_gate）"
     assert display_row["原因代碼"] == "已核驗下市／終止（official_delisted）"
+
+
+def test_score_missing_warning_is_explained_without_changing_screening_reason():
+    execution = _screening_only_execution(
+        "rec-screening-score-inputs",
+        warnings=("score_input_missing:MA20,MACD_Signal,unknown_field", "other_warning"),
+    )
+
+    typed_row = view_module._screening_only_result_rows(execution)[0]
+    assert typed_row["原篩選狀態"] == "fail"
+    assert typed_row["原因代碼"] == "liquidity_below_minimum"
+    assert typed_row["備註"] == (
+        "啟用計分指標缺值：MA20、MACD 訊號線、unknown_field、other_warning"
+    )
 
 
 def _readback(execution: RecommendationExecution, label: str, notes: str):

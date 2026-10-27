@@ -1,4 +1,47 @@
+<a id="2026-10-27-workbench-advice-missing-fields-field-specific-route"></a>
+
+## 2026-10-27 Workbench Advice 缺欄改為按欄位來源導引
+
+缺欄判讀卡原先把所有必要欄位都指示成「回查原推薦與策略設定」，但策略版本服務只在建立新版本時接受 Advice contract；已保存版本不可事後補綁。現在欄位依責任分為可回查同筆來源欄位與策略作者聲明欄位。來源欄只有已核對同筆 ID 時可用原有 exact-result 回查；否則明確保留未知。作者欄（進場論點、失效條件、持有期間、檢視頻率）明示需要新的合格回測與新策略版本，Workbench 新增條件式按鈕導至 Backtest。該按鈕只導航，不執行回測、不升版、不寫入或推填欄位；選取／狀態重置時隱藏。
+
+Root 手動檢查了分類、按鈕顯示條件、選取重置和 Main Backtest 導航；`workbench_view.py`、`main.py` py_compile 通過。此輪沒有新增或執行測試套件，也沒有 Owner 原生 GUI UAT。限定 `document_control check` 涵蓋 12 features／3 link sources，但因 `output/` junction 權限回報兩條既有 `APPLICATION_MANUAL.md` 歷史 trial-guide 連結 WinError 5 而未通過；未把它記成產品回歸失敗或 link check 成功。本變更只移除操作死路，不補 Advice 或資料欄位，不改策略或任何 Gate／PIT／ML 資格。
+
+## 2026-10-26 Quick Read 分開政策／資格限制與同股來源證據
+
+Workbench Advice 的 `why_not_reasons` 是 policy／資格判斷原因，不代表個股反證。Quick Read 表頭與內容已改標「政策／資格限制」；欄位提示另列同一 Advice 列的同股保存來源證據，若無來源列則明示「未提供；不能據此推定沒有反證或風險」。明確選取的保存研究 lane 也分列策略／資格限制及來源證據。Composer 的 exact result／stock source matching、策略決策、資料庫與 Gate 狀態未改。
+
+驗證：`tests/test_ui_qt_update_view_workbench.py` 與 `tests/test_ui_qt_workbench_view.py` **151 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,155 source files clean**；兩個 production Python 檔與一個測試檔 `py_compile` 通過。Windows owned Job 上限讀回 8 GiB／12 processes／kill-on-close；最高 Job memory 2.15 GiB，驗證後 active processes 0、handles 關閉。原始輸出與 receipts 留在隔離 scratch `owned-validation/ui-advice-copy/`。驗證涵蓋 offscreen Workbench 與隔離 validator，未做 Owner 原生 GUI UAT。`document_control check` 對指定四份文件回報 29 個既有 `output/tasks`／`output/trial` 越界連結（Snapshot 及 Manual）；QA note 與 UI feature file 沒有連結錯誤，本次新增的 Snapshot→QA anchor 也未列入錯誤。
+
+這只修正理由分類與呈現，沒有新增反證來源、資料、Formal／PIT／ML 或 Gate credit；Gate 1 仍需策略契約與來源資料完整性等證據。
 # Workbench Advice 排程候選接線 — 2026-10-24
+
+<a id="2026-10-26-backtest-registry-promotion-readback"></a>
+
+## 2026-10-26 Backtest Registry 升版前置與契約讀回核對
+
+新保存的單股回測在 Research Run Registry；BacktestView 先前卻以 legacy `BacktestRunRepository` 檢查升版條件，之後又可能以不同保存入口建立策略版本，造成作者可能到不了既有 Advice 契約表單，或 Registry run／StrategyVersion 雙邊關聯無法由成功提示證明。現在 Backtest 的 Registry run 先以 `PromotionReconciliationService` 核對 storage／integrity、版本化參數契約與 Month 6 lifecycle 前置條件，再以同一 Registry run 建立 StrategyVersion；只有不在 Registry 的 legacy run 才沿用舊檢查與保存路徑。
+
+升版回填後，服務立即讀回 StrategyVersion JSON 及 Registry metadata，核對 `source_run_id`、`strategy_id`、參數、選填顯示名稱、Advice contract（含 canonical hash）、`promoted_version_id` 及 `synced` 狀態。讀回失配不回報成功；若 Registry 已回鏈，版本與 run 會留在 `reconciliation_required` 供查核，不以無法確定的狀態刪掉可能已被引用的版本。成功視窗顯示回鏈已核對、作者契約 hash 或略過狀態，並明示版本建立不等於正式 Gate 接受。
+
+升版對話框的選填版本名稱現在保存為 StrategyVersion 的 `display_name`，legacy 與 Registry run 都會沿用並讀回核對；已保存版本清單會優先顯示該名稱，成功視窗也會回顯；自動產生的語意版本號不受此顯示名稱影響。
+
+回歸案例涵蓋 Registry 前置檢查、StrategyVersion／Advice contract／顯示名稱／Registry backlink 正向讀回、讀回失配轉待 reconciliation、未通過理由可呈現、legacy run fallback、saved-version reader／lookup 顯示，以及 BacktestView 使用同一 Registry repository。受控 Windows Job：升版／Advice／saved-version reader／lookup 聚焦 **60 passed**；必要 Update Workbench UI **97 passed**；`scripts/qa_validate_update_tab.py` **25 passed／0 failed／4 skipped**；全域 mypy **1,157 source files clean**；9 個修改 Python 檔 `py_compile` 通過。最終 runner receipt SHA-256 `738b462da631ce5c5f60ed7f15c6796d34ee938acdcd2e78e03324629b820686`，exit 0、8 GiB／12 processes 限制讀回成功、remaining PID 0、無強制清理。原生 GUI／Owner UAT 未執行。
+
+此修正只打通 Research Registry run 的升版前置與一致性讀回，不創造策略論點、不改正式財務資料，也不把 lifecycle promotion 當成 Gate 1／PIT／來源接受或 ML 資格通過。作者契約仍由作者明確填寫；正式版本、參數鎖定、disclosure 與來源／績效等 Gate 證據仍須各自成立。
+
+## 2026-10-26 手動保存研究結果交接至 Workbench
+
+RecommendationView 新增「送至 Workbench 作研究」入口。只有當前精確 canonical 保存結果已完成 index／payload integrity 讀回、執行成功且有推薦列時按鈕才啟用；按鈕只傳 result ID，Main 重新唯讀載入並核對 result／execution ID、payload hash 格式、schema revision 及保存的決策日／資料日。日期優先沿用結果 config；缺日期欄時只使用同一 canonical execution 的 typed cutoff。Workbench 強制以 Professional／`RESEARCH` 顯示，並保留 Why／Why Not／Risk、來源警告及原始日期。此 lane 獨立於 `WorkbenchDashboardDTO`，不混入今日排程 Advice／DailyInvestmentJourney，不寫資料庫、Journal、研究決定或 artifact；讀回失敗會清除上一筆 lane 並顯示錯誤。
+
+受控驗收：必要 Workbench UI、保存結果 query consumers、Workbench view 與 MainWindow 真實按鈕 signal／slot round-trip 合計 **164 passed**；端到端案例另核對保存結果 ID、原決策／資料日期、`RESEARCH` 動作、排程 Advice 投影保持獨立，以及錯誤讀回清除舊 lane。Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,155 source files，無錯誤**；8 個修改 Python 檔 `py_compile` 通過。驗證使用 kill-on-close Windows Job，8 GiB／12 processes 限制讀回成功，啟動前可用 RAM 27.35 GB，Jobs 自然歸零、程序／Job handles 關閉、無強制清理。最終測試＋編譯 receipt SHA-256 `60968ff9990fcdcad017dec9be0997378534c25ffaff8abfcb0d53f89e128d1b`。原始收據與日誌留在隔離目錄 `C:\Users\archi\.codex\visualizations\2026\10\23\01a16afa-5b3f-7692-a5db-8881433773e9\owned-validation\saved-research-*`。
+
+這條路徑完成已保存研究結果到 Workbench 的可用操作閉環，不代表來源資料補齊、正式策略採用、PIT 或 Gate 1 通過。真實原生 GUI／Owner UAT 尚未執行；資料、策略、正式資料庫及 Gate／ML 資格均未改變。
+
+## 2026-10-26 Workbench Advice 設定下次檢視
+
+合格 Advice 列新增「設定下次檢視」。按鈕只在每日候選與 Advice 的 result ID、股票、決策日、資料日及 source snapshot ID 完全核對且 dashboard 非 stale 時啟用；對話框以台北時間由研究者明確選值，不由策略檢視頻率自動推算。保存前再次核對目前候選身份；若候選在對話框期間改變，拒絕寫入。控制器保存後立即讀回，Workbench 檢查同筆 identity、讀取錯誤及下次檢視時間完全相符才顯示「已保存並讀回核對」。此操作只追加人工研究狀態，不產生交易或 fill，也不改 Advice、資料來源或 Gate 資格。
+
+受控驗證：Advice continuity／Workbench presentation **40 passed**、必要 Workbench UI **96 passed**、Update validator **25 passed／0 failed／4 skipped**、全域 mypy **1,154 source files clean**、4 個修改 Python 檔 `py_compile` 通過、`git diff --check` 通過。Windows owned Job receipt SHA-256 `44b5d145d9a4a103a1b3780b4bff3f3c2d80b5cf3e7e22f9c70496855520956d`；exit 0、剩餘程序 0，kill-on-close／8 GiB／12 程序限制讀回成功，無強制清理。原始輸出保留在隔離 task output。原生 GUI／Owner UAT 未執行；沒有解除資料品質、來源、PIT、Gate 或 ML blocker。
 
 ## 2026-10-26 Guided Advice 缺策略契約時 fail closed
 
@@ -163,8 +206,72 @@ Workbench view 聚焦 **53 passed**，必要 `tests/test_ui_qt_update_view_workb
 
 ### 人工研究決定讀回摘要補強
 
-按「讀取／重新讀取同筆決定」成功後，Workbench 將既有狀態碼翻成「尚無人工決定／已納入研究／已略過」，並同列有效研究註記數及下次檢視時間。未知狀態保留原值提示，無效註記數顯示未知；身份衝突與 read error 沿用既有明確失敗摘要。此項只改善明確讀回按鈕的結果文字，沒有在 Advice 選列時同步讀 Journal，也不增加新的 I/O／背景工作或自動保存。
+按「重新讀取同筆決定」成功後，Workbench 將既有狀態碼翻成「尚無人工決定／已納入研究／已略過」，並同列有效研究註記數及下次檢視時間。未知狀態保留原值提示，無效註記數顯示未知；身份衝突與 read error 沿用既有明確失敗摘要。後續選列自動唯讀讀回見下節。
+
+### 2026-10-26 Advice 選列自動唯讀讀回研究狀態
+
+在 Workbench 選取 Advice／Professional 候選列時，沿用既有每日結果 ID、股票、決策日、資料日及 snapshot ID 精確比對；吻合後立即唯讀讀取同一候選的 continuity 狀態，呈現「尚無人工決定／已納入研究／已略過」、有效註記數及下次檢視時間。身份缺件、失配、衝突或讀回錯誤會維持明確未知／失敗，不推定為尚未記錄。相同列由 current-row 與 click 事件重複觸發時，同一選取只自動讀回一次；再次更新可使用「重新讀取同筆決定」。選列讀回只呼叫 readback，不會建立研究動作；只有三個明確寫入按鈕會呼叫 append-only writer。
+
+驗證（2026-10-26）：Workbench candidate selection／view／source service **93 passed**；必要 Update Workbench UI **96 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,154 source files clean**；Workbench view 與候選選列測試 `py_compile` 通過；Feature Map JSON 與 `git diff --check` 通過。Feature Map、UI features 與本 QA 文件的 scoped `document_control check` 通過（12 features／2 link sources／0 errors）。Manual／Snapshot 加入廣域 link check 時，既有 `output/` Junction 因 WinError 5 無法讀取，列出歷史試用／任務連結無法驗證；未更改這些連結，不能據此判定目標檔案不存在。單一 owned Windows Job receipt SHA-256 `086076400ceb1f95782edb19761ca75b4f0719f64844de9a0c2e2bc087268145`，exit 0、Job remaining 0、kill-on-close／8 GiB／12 process 限制讀回通過，無強制清理。Validator 報告與原始輸出位於 scratch `monthly-quality-detail-20261026/workbench_auto_readback_qa_final/`；scoped document check receipt SHA-256 `5e0af1ed56dc8852384c819d23f1ee2d179d33e8e711b958d0c945cd92e481ad`。此工程沒有寫 Journal、正式資料或策略，只驗證選列自動讀回與重複事件防重；未執行原生 GUI／Owner UAT，也未改 Gate 1、資料來源、PIT 或 ML 資格。
 
 已更新 `tests/test_workbench_advice_contract.py`，驗證略過狀態、兩筆註記與台北時區下次檢視時間同屏可見。受控 Windows Job 結果：`tests/test_workbench_advice_contract.py` + `tests/test_ui_qt_workbench_view.py` **60 passed**；必要 `tests/test_ui_qt_update_view_workbench.py` **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,150 個來源檔無錯**；兩個修改 Python 檔 `py_compile` 通過。Job exit 0、剩餘程序 0、無強制清理。validator 報告留在授權 scratch `industry-theme-qa/mrd00866/logs/VALIDATION_REPORT.md`，受控收據 hash 為 `27b98c2c785d12c5c6ff420b1a064e667cd25469215e919c7b44f2c40448af10`。
 
 原生 GUI／Owner UAT 與資料／Gate／ML 資格仍未驗收或改動；兩項既有 MainWindow 全旅程也仍受 sandbox no-follow 研究根 WinError 5 阻擋，詳見前一段收據。此切片不宣稱人工可讀性已由 Owner 接受。
+
+### 2026-10-26 MainWindow 跨頁旅程驗收重跑
+
+Root 以受控 Windows Job 重跑 `tests/test_cross_page_decision_journey_mainwindow.py`，此檔涵蓋 MainWindow round-trip、missing／future／conflict fail-closed 與 Portfolio exact-route。結果 **3 passed、2 failed**；兩項失敗在真正跨頁斷言前都卡於 `MainWindow()` 初始化的 `CurrentRestatedMLRunRegistry`：本機 sandbox 的 Windows no-follow 根目錄檢查對 `RESEARCH_STATE_ROOT` 回 WinError 5。分別把該值設在 visualization scratch、`C:\Temp` 和 repo 專屬 `.tmp_` root，仍因路徑不允許檢查或 no-follow handle 被拒而不能完成；沒有以 monkeypatch 繞過 registry／路徑護欄。故這是環境阻擋，不是跨頁行為已通過，也不足以判定產品路徑本身失敗。
+
+最後一次受控 Job receipt SHA-256 `3f628a3d96f69796438edb7a2761d5d124a241735639453cad927c416dc500d6`，kill-on-close、8 GiB／12 程序限制讀回成功、剩餘 PID 0、無強制清理。MainWindow 完整 round-trip 與 fail-closed UI 結果目前維持 **未驗收**；需要能對本機受控研究根完成 no-follow 檢查的正常桌面／CI 執行環境，或經審核的 fixture bootstrap，才能重跑同一驗收。正式資料、Gate、PIT 與 ML 資格沒有變動。
+
+## 2026-10-26 promoted 策略缺接受證據時保留研究候選
+
+Workbench 每日 Advice 遇到保存結果將 `strategy_status` 標為 `promoted`、但沒有精確綁定的正式採用／參數鎖定／揭露核驗證據時，不再清空整份結果。相同保存推薦仍可作 Professional 研究候選顯示，動作固定降為 `RESEARCH`、分類為 `PROFESSIONAL_CANDIDATE`，並附明確警告及診斷 `promoted_strategy_acceptance_evidence_missing_research_only`。`AdviceComposer` 的 `research_only` 只會將策略判定限制到 candidate policy；來源策略 JSON 未被改寫，候選資料日期／品質、result ID、Why／Risk 與既有來源追溯沿用原保存資料。降級狀態不構成正式 Advice、Promotion Gate 接受或新增部位資格。
+
+唯讀查核當前正式資料根的策略版本目錄及 Research Run Registry：唯一策略版本 JSON 為 `version_20260622_150810.json`，`validation_status=pending`，無 Advice contract、參數鎖定或揭露欄位；Registry 106 筆 run 中 0 筆有 promoted version backlink。沒有可供本輪放行正式 Advice 的接受紀錄，因此本次只改善候選顯示，沒有宣稱 Gate 1 通過。
+
+驗證在受控 Windows Job（kill-on-close、8 GiB、12 processes）序列執行：`tests/test_workbench_source_service.py` + `tests/test_advice_composer.py` **42 passed**；`tests/test_ui_qt_workbench_view.py` + `tests/test_workbench_advice_contract.py` **60 passed**；修改後 3 個 Python 檔 `py_compile` 通過；`mypy app_module/advice_composer.py app_module/workbench_source_service.py` 通過。原始 focused log 位於授權 scratch `advice-product-tests-20261026/baldr_command_954dc56b7f/pytest.log`；Workbench view／contract log 為 `baldr_command_d4797a3828/pytest.log`；本輪另有一筆已修正摘要 runner 後重跑，原始 runner 錯誤及其第一次 42 passed 輸出均保留。原生 GUI／Owner UAT 未執行；正式來源、資料、Gate、PIT、Gate 2／3 與 ML 資格不變。
+
+## 2026-10-26 Advice 每日候選 cohort 限定
+
+Workbench 每日旅程已有候選結果 ID 與 `candidate_symbols`。Advice Composer 現在二次核對保存結果 `result_id` 必須完全相同，且候選股票清單非空；任一缺失／不符即回傳空 Advice 及明確診斷。正常組合後只保留每日候選清單中的股票，保存結果內非當日 cohort 股票會被排除並留下診斷與提示；無股票代號且來源明確為 `AdviceComposer.refusal` 的拒絕列保留供 UI 呈現，不當作股票候選。共用保存結果本身沒有改寫，canonical hash 驗證仍對原始 read model 執行。
+
+測試新增同一保存結果含 2330 與非候選 2317、每日 cohort 只有 2330 的情境，並覆蓋 candidate result ID mismatch 與缺少候選名單時不注入。Advice／每日旅程／Composer／Workbench view 受控聚焦 **119 passed**；月營收 reader／Research Console **94 passed**；必要 Workbench UI 回歸 **93 passed**；Update validator **25 passed／0 failed／4 skipped**；全域 mypy **1,153 source files clean**；8 個修改 Python 檔 `py_compile` 通過。最終 Windows Job receipt SHA-256 `75a4d224695e19bbf1cffe634951521b884205bec1ae5ebeb1ec7a8f815c4bd2`；kill-on-close、8 GiB／12 程序上限讀回通過、exit 0、剩餘 PID 0、無強制清理。首次 Advice suite 因長 scratch basetemp 使 Windows artifact fixture 超過路徑限制而有 4 failures／4 errors；改用 repo `.q/wbc` 短 basetemp 後同組全數通過，沒有產品程式修補。此防線不改策略分數、Advice 動作或正式資料，也不授來源、PIT、Gate 1／2／3 或 ML 資格。原生 GUI／Owner UAT 未執行。
+
+### 2026-10-26 MainWindow 跨頁旅程受控驗收成功
+
+前段 sandbox 內的 **3 passed／2 failed** 是 no-follow 存取環境錯誤，並非這兩個跨頁案例的產品斷言結果。改由受控 Windows Job 在路徑檢查可正常執行的環境，重跑同一 `tests/test_cross_page_decision_journey_mainwindow.py`，五項全數 **5 passed**（15.75 秒）：MainWindow 跨頁 round-trip、missing／future／conflict fail-closed 與 Portfolio exact-route 均通過。Job receipt SHA-256 `e6eda5000fd2e63b265abce1cb0493ef786a841bcdab937e6203436576b6a772`；kill-on-close、8 GiB 記憶體／12 程序限制讀回成功，Job exit 0、remaining PID 0、無強制清理。沒有寫正式資料。
+
+此收據只驗證該測試檔涵蓋的 fixture-based MainWindow 路徑；它不替代整份跨頁計畫的重啟讀回、一次 close、Paper／user-declared 三 lane 共存或 Owner 原生 GUI UAT，也不授 Gate、PIT、正式 Advice 或 ML 資格。這次仍未宣稱整體 cross-page acceptance 完成。
+
+### 2026-10-26 可選 ML 登錄失效時保留規則研究啟動
+
+MainWindow 建立可選 current-restated ML registry 時，若遇到 `CurrentRestatedMLRegistryError` 或 `MLResearchOutputBoundaryError`，現在會明示 ML 暫不可讀並以 `ml_provider=None` 繼續建立個股研究報告服務；service 原有 ML 區塊會顯示不可讀限制，規則研究仍可用。其他未預期例外不攔截，仍依原流程中止並診斷。回歸測試分別注入這兩種錯誤，確認已知錯誤不阻止啟動、provider 保持 None、狀態列有警告；原有正常 provider 注入測試也通過。
+
+受控 Windows Job 最終驗證：`tests/test_ui_qt_stock_research_report.py` **81 passed**、必要 `tests/test_ui_qt_update_view_workbench.py` **96 passed**、Update validator **25 passed／0 failed／4 skipped**、全域 mypy **1,154 source files clean**、`ui_qt/main.py` 與該 UI 測試檔 `py_compile` 通過。Job receipt SHA-256 `dd2b9643b201b71ab04c416f83de5d45499c6840be743b89331ea8fba295d104`；exit 0、remaining PID 0、kill-on-close、8 GiB／12 程序限制讀回成功、無強制清理。第一次 sandbox 執行曾因 `.t` junction no-follow 權限造成 fixture setup errors；在短路徑 basetemp 與核准的可讀取環境下重跑通過，沒有放寬產品護欄或測試斷言。
+
+此路徑只改善可用性，不建立預測、不略過 ML 路徑驗證、不授 ML／Gate 資格。Native GUI／Owner UAT 未執行。
+
+## 2026-10-27 整體 degraded cohort 保留逐檔可判讀建議
+
+每日候選整體狀態仍會如實標示 `candidate_degraded`，並保留 cohort 警告；只要同一 canonical 保存結果、execution ID、cohort hash 與 eligible symbols 全部精確吻合，WorkBench 現可把該 cohort 的逐股票 `observed`／`degraded`／`missing` 品質映射到同股票 Advice。這避免一檔缺漏把同一批其他已觀測股票的建議一併隱藏或降級。逐股 `degraded`／`missing` 仍保留品質狀態並依 policy 留在研究；非 canonical、舊格式、身份／hash 不符或逐股品質缺列均沿用整體品質，不升格。這不改策略 Gate、正式採用資格或資料來源接受狀態。
+
+受控驗證：Composer／逐股品質／Workbench source 聚焦組 **35 passed**；必要 `tests/test_ui_qt_update_view_workbench.py` **97 passed**；Update validator **25 passed／0 failed／4 skipped**；全指定範圍 mypy **1,161 source files clean**；工作區所有修改／新增 Python 檔 `py_compile` exit 0。Windows Job 讀回 8 GiB／12 process／kill-on-close，上述完成後剩餘程序 0、無強制清理。QA scratch `owned-validation/daily-advice-row-quality-20261027-*`。另外一輪擴大 daily journey/source service suite 因沙盒測試 artifact/temp 路徑遭 WinError 3 而未通過；改用 repo `.pytest-owned-temp` 的聚焦契約測試及必要 UI suite 均通過，故不得把該擴大 suite 記為通過。三份相關文件的 document-control 檢查未通過，共 33 項：4 個 10/26 Snapshot 既有錨點與 29 個 `output/` junction 外部連結因 WinError 5 無法核對；新加 QA 錨點沒有出現在錯誤清單。原生 GUI／Owner UAT 未執行。
+
+本項只修正 cohort 層級品質對逐股呈現的連帶影響；不補任何行情或基本面，不解除真實缺值／單位／PIT／策略作者契約，也不宣稱 Gate 1、Gate 2、Gate 3 或 ML 通過。
+
+<a id="2026-10-27-策略排除與資料品質分離"></a>
+
+### 2026-10-27 策略排除與資料品質分離
+
+唯讀重讀 2026-10-26 排程 canonical result `rec_1708b376d5524377ae1bceda654568b3` 的 200 檔 cohort：172 檔因 `liquidity_volume_ratio_below_min`、22 檔因 `strategy_filter_no_signal` 而 `status=skipped`，但舊 producer 將 194 檔一律寫成 `quality=degraded`；另 4 檔為 observed／selected，2 檔因 `total_score_missing_or_nonfinite` 為 missing。所有 200 列 warnings 均空。四張真實 Workbench Advice 卡逐檔有 why、why-not 與 risk，均為 observed／RESEARCH；它們的資料日是 2026-10-22、排程決策日是 2026-10-26。ML receipt binding 缺件仍是 read-model diagnostic，不是上述 194 列或四張卡缺少理由的原因。
+
+已修正新產生結果的分類：策略／流動性正常排除保留 `skipped` 及原原因，quality 改為 `observed`，落入 cohort exclusions；missing、計算降級及來源錯誤仍維持原 quality。排程 cohort 分類器可讀新舊兩種 canonical 結果，因此歷史結果仍按保存原件計數、不重寫。此變更不改分數、排序、策略篩選、四張既有建議或資料來源資格；現有 10/26 保存結果仍保留 194 degraded，需等新的排程結果才會以新分類讀回。
+
+受控 Windows Job：策略評估／服務 characterization／排程分類／typed cohort parity 四個定向案例 **4 passed**；修改 Python 檔 `py_compile` 通過。較廣的四檔套件首輪為 **77 passed／12 failed**：3 個缺分 warning 斷言與工作樹現有 ScoringEngine 警告變更不一致，9 個案例在 sandbox 臨時目錄／symlink／artifact rename 遇 WinError 3/5；這些失敗收據保留於 scratch `owned-validation/cohort-exclusion-quality-20261027/`。定向重跑使用短 repository basetemp；Job 8 GiB／12 process／kill-on-close 限制讀回、自然歸零。未執行正式排程、未寫正式 DB／推薦 artifact、未重算或改寫既有 snapshot，原生 GUI／Owner UAT 未做。
+
+### 2026-10-27 exact Advice 缺欄導覽帶入候選身分
+
+「前往策略回測建立新版本」現在只在目前 Advice 列可和有效每日候選 read model 精確核對 `result_id`、snapshot ID、股票、決策日及資料日時顯示；按下時重新核對，遇 stale／失配即拒絕。Backtest 以純文字唯讀提示顯示候選、策略版本與待作者填寫欄位，沒有載入回測參數、呼叫回測服務、填寫契約或升版。點擊使用原始 Advice DTO 保留來源身分，而不使用格式化後的判讀 presentation。
+
+受控 Windows Job 驗證：Workbench 導覽＋Backtest 唯讀上下文 **3 passed**；必要 `tests/test_ui_qt_update_view_workbench.py` **97 passed**；Update validator **25 passed／0 failed／4 skipped**；全指定範圍 mypy **1,156 source files clean**；六個修改 Python 檔 `py_compile` 通過。Job kill-on-close、8 GiB 記憶體與 12 程序限制讀回成功；validator 日誌及報告寫入隔離 TEMP，未碰 repo `output/`。初次 focused 測試發現點擊使用格式化 presentation 導致 exact ID 遺失，修正為保留原始 DTO 後同組測試通過。原生 GUI／Owner UAT 未執行；本項不改 Advice 內容、策略或 Gate 1／Gate 2／PIT／ML 資格。

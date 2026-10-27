@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlparse
 
 
 AUDIT_SCHEMA = "baldr.quarterly_announcement_crosswalk.v1"
@@ -99,6 +100,7 @@ def build_quarterly_announcement_crosswalk(
                     "event_sha256": event["event_sha256"],
                     "source_sha256": event["source_sha256"],
                     "revision": event["revision"],
+                    "detail_url": event["detail_url"],
                 }
             )
 
@@ -478,6 +480,7 @@ def _validate_raw_events(
         statement = item.get("statement_type")
         stock_code = _normalized_code(item.get("stock_code"))
         period = item.get("period")
+        detail_url = item.get("detail_url")
         source_hash_match = _SHA256_REFERENCE_RE.fullmatch(
             str(item.get("source_hash") or "")
         )
@@ -495,6 +498,9 @@ def _validate_raw_events(
             or event_hash.lower() in seen_event_hashes
             or source_hash_match is None
             or not isinstance(timestamp_text, str)
+            or not isinstance(detail_url, str)
+            or not detail_url
+            or detail_url != detail_url.strip()
         ):
             raise QuarterlyAnnouncementCrosswalkError("announcement_raw_identity_invalid")
         try:
@@ -504,6 +510,36 @@ def _validate_raw_events(
         if timestamp.tzinfo is None or timestamp.utcoffset() is None:
             raise QuarterlyAnnouncementCrosswalkError("announcement_raw_timestamp_timezone_missing")
         taipei_timestamp = timestamp.astimezone(_TAIPEI)
+        try:
+            parsed_url = urlparse(detail_url)
+        except ValueError as exc:
+            raise QuarterlyAnnouncementCrosswalkError(
+                "announcement_raw_detail_url_invalid"
+            ) from exc
+        if (
+            parsed_url.scheme != "https"
+            or parsed_url.hostname != "mopsov.twse.com.tw"
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+        ):
+            raise QuarterlyAnnouncementCrosswalkError("announcement_raw_detail_url_invalid")
+        event_material = {
+            "announcement_at": taipei_timestamp.isoformat(),
+            "announcement_item": str(announcement_item),
+            "detail_url": detail_url,
+            "period": period,
+            "stock_code": stock_code,
+        }
+        calculated_event_hash = hashlib.sha256(
+            json.dumps(
+                event_material,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if event_hash.lower() != calculated_event_hash:
+            raise QuarterlyAnnouncementCrosswalkError("announcement_raw_event_hash_mismatch")
         response_sha = source_hash_match.group(1)
         matching_queries = [
             query
@@ -528,6 +564,7 @@ def _validate_raw_events(
                 "source_sha256": response_sha,
                 "revision": "1",
                 "available_date": (taipei_timestamp.date() + timedelta(days=1)).isoformat(),
+                "detail_url": detail_url,
             }
         )
     return events

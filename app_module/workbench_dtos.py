@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
-from app_module.advice_dtos import AdviceDashboardDTO
+from app_module.advice_dtos import AdviceDashboardDTO, AdviceMode
 from app_module.decision_presentation import PositionHealthReadModel
 from app_module.machine_status_classification import classify_machine_status
 
@@ -973,3 +973,35 @@ class WorkbenchDashboardDTO:
                 else None
             ),
         }
+
+
+@dataclass(frozen=True)
+class ManualSavedResearchLaneDTO:
+    """單次使用者明選的保存結果；只供 Workbench 記憶體研究顯示。"""
+
+    result_id: str
+    payload_sha256: str
+    decision_date: str
+    data_as_of_date: str
+    strategy_version: str
+    advice_dashboard: AdviceDashboardDTO
+
+    def __post_init__(self) -> None:
+        for name in ("result_id", "payload_sha256", "decision_date", "data_as_of_date"):
+            value = getattr(self, name)
+            if type(value) is not str or not value.strip():
+                raise ValueError(f"{name} 必須是非空字串")
+        if type(self.advice_dashboard) is not AdviceDashboardDTO:
+            raise TypeError("advice_dashboard 必須是 AdviceDashboardDTO")
+        if self.advice_dashboard.mode is not AdviceMode.PROFESSIONAL:
+            raise ValueError("手動保存結果 lane 必須使用 professional mode")
+        if any(
+            getattr(row.advice_action, "value", row.advice_action) != "RESEARCH"
+            for row in self.advice_dashboard.recommendations
+        ):
+            raise ValueError("手動保存結果 lane 只接受 RESEARCH action")
+        if (
+            self.advice_dashboard.decision_date != self.decision_date
+            or self.advice_dashboard.data_as_of_date != self.data_as_of_date
+        ):
+            raise ValueError("手動保存結果 lane 日期必須與 Advice 完全一致")

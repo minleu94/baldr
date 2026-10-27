@@ -42,6 +42,7 @@ class EvidenceOperationsHistoryDashboardRow:
     review_id: str
     review_hash: str = ""
     created_at: str = ""
+    candidate_review_decision_summary: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -72,6 +72,7 @@ def run_scheduled_forward_outcomes(
     max_events: int = DEFAULT_MAX_EVENTS,
     start_date: str | None = None,
     end_date: str | None = None,
+    event_ids: Iterable[str] | None = None,
     data_as_of_date: str | None = None,
     event_type: str | None = None,
     symbol: str | None = None,
@@ -111,6 +112,9 @@ def run_scheduled_forward_outcomes(
     status_path = status_dir / "latest_status.json"
     run_id = checked_at.astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%S%fZ")
     run_path = status_dir / "runs" / f"{run_id}.json"
+    normalized_event_ids = tuple(
+        dict.fromkeys(str(item).strip() for item in event_ids or ())
+    )
 
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -134,6 +138,7 @@ def run_scheduled_forward_outcomes(
         "historical_backfill": False,
         "event_type": event_type,
         "symbol": symbol,
+        "event_ids": list(normalized_event_ids),
         "require_cohort_identity": bool(require_cohort_identity),
     }
 
@@ -328,6 +333,10 @@ def run_scheduled_forward_outcomes(
             raise ScheduledForwardOutcomeError("start_date must not be after end_date")
         if resolved_end > visible_date:
             raise ScheduledForwardOutcomeError("end_date cannot be later than data_as_of_date")
+        if any(not item for item in normalized_event_ids):
+            raise ScheduledForwardOutcomeError("event_ids must not contain empty identifiers")
+        if len(normalized_event_ids) > 800:
+            raise ScheduledForwardOutcomeError("event_ids must contain at most 800 identifiers")
 
         payload.update(
             {
@@ -501,6 +510,7 @@ def run_scheduled_forward_outcomes(
             dry_run=not confirm,
             start_date=resolved_start.isoformat(),
             end_date=resolved_end.isoformat(),
+            event_ids=normalized_event_ids or None,
             event_type=event_type,
             symbol=symbol,
             limit=bounded_max_events,
@@ -522,6 +532,7 @@ def run_scheduled_forward_outcomes(
             end_date=resolved_end,
             event_type=event_type,
             symbol=symbol,
+            event_ids=normalized_event_ids,
             limit=bounded_max_events,
             windows=normalized_windows,
             checked_at=checked_at,
@@ -810,6 +821,7 @@ def _build_daily_health(
     end_date: date,
     event_type: str | None,
     symbol: str | None,
+    event_ids: tuple[str, ...] = (),
     limit: int,
     windows: tuple[int, ...],
     checked_at: datetime,
@@ -828,6 +840,7 @@ def _build_daily_health(
         symbol=symbol,
         start_date=start_date.isoformat(),
         end_date=end_date.isoformat(),
+        event_ids=event_ids or None,
         limit=limit,
         incomplete_outcomes_first=True,
         outcome_windows=windows,
@@ -841,6 +854,7 @@ def _build_daily_health(
             symbol=symbol,
             start_date=start_date.isoformat(),
             end_date=end_date.isoformat(),
+            event_ids=event_ids or None,
             limit=limit,
             incomplete_outcomes_first=True,
             outcome_windows=windows,

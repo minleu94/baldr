@@ -769,6 +769,33 @@ def test_forward_outcome_degrades_when_trading_restriction_gap_detected(tmp_path
     assert outcome.data_quality == EvidenceDataQuality.DEGRADED
 
 
+def test_missing_forward_sources_are_classified_independently_in_outcome_and_summary(tmp_path):
+    config = _config(tmp_path)
+    _seed_prices(config.db_file)
+    event = _record_event(config)
+    forward = ForwardPerformanceService(
+        config,
+        EvidenceEventRepository(config),
+        maturity_calendar=_verified_calendar(config.output_root),
+    )
+
+    summary = forward.calculate(windows=(5,), dry_run=False)
+    outcome = forward.repository.list_outcomes(event_id=event.event_id)[0]
+
+    assert outcome.outcome_status == EvidenceOutcomeStatus.READY
+    assert outcome.data_quality == EvidenceDataQuality.DEGRADED
+    assert outcome.warnings == (
+        "corporate_action_source_not_ingested",
+        "trading_restriction_source_not_ingested",
+    )
+    assert summary.warnings_count == 2
+    assert summary.warning_counts == {
+        "corporate_action_source_not_ingested": 1,
+        "trading_restriction_source_not_ingested": 1,
+    }
+    assert summary.to_dict()["warning_counts"] == dict(summary.warning_counts)
+
+
 def _seed_clock_boundary_prices(db_path: Path, *, include_today: bool) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.executescript(

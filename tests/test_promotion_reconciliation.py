@@ -1,4 +1,5 @@
 from typing import Any
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -116,6 +117,117 @@ def test_promote_registry_run_creates_json_and_marks_registry(tmp_path):
     promoted = research_service.repository.get_metadata(saved.run_id)
     assert promoted.promoted_version_id == version_id
     assert promoted.promotion_reconciliation_status == "synced"
+
+
+def test_promotion_service_routes_registry_run_through_preflight_and_reconciliation(tmp_path):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    legacy_repository = MagicMock()
+    promotion = PromotionService(
+        config=_config(tmp_path),
+        backtest_repository=legacy_repository,
+        backtest_service=MagicMock(),
+        strategy_version_service=version_service,
+        preset_service=MagicMock(),
+        promotion_reconciliation_service=reconciliation,
+    )
+    advice_contract = StrategyAdviceContract(
+        thesis="作者確認趨勢條件與進場依據",
+        invalidation_conditions=("收盤跌破策略設定的趨勢界線",),
+        holding_horizon="5–10 個交易日",
+        review_cadence="每個交易日收盤後",
+    )
+
+    criteria = promotion.check_promotion_criteria(saved.run_id)
+    version_id = promotion.promote_to_strategy_version(
+        saved.run_id,
+        version_name="研究版本 A",
+        advice_contract=advice_contract,
+    )
+
+    assert criteria.passed is True
+    assert criteria.details["promotion_source"] == "research_run_registry"
+    assert criteria.details["formal_gate_credit"] is False
+    assert legacy_repository.get_run.call_count == 0
+    assert version_id is not None
+    version = version_service.get_version(version_id)
+    promoted = research_service.repository.get_metadata(saved.run_id)
+    assert version is not None
+    assert version.advice_contract == advice_contract
+    assert version.display_name == "研究版本 A"
+    assert promoted is not None and promoted.promoted_version_id == version_id
+
+
+def test_registry_promotion_readback_mismatch_is_left_for_reconciliation(
+    tmp_path, monkeypatch
+):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    monkeypatch.setattr(version_service, "get_version", lambda _version_id: None)
+
+    with pytest.raises(RuntimeError, match="StrategyVersion JSON 讀回失敗"):
+        reconciliation.promote_registry_run(saved.run_id)
+
+    current = research_service.repository.get_metadata(saved.run_id)
+    assert current is not None and current.promoted_version_id
+    assert current.promotion_reconciliation_status == "reconciliation_required"
+    assert [issue.issue_type for issue in reconciliation.scan_reconciliation_issues()] == [
+        "registry_reconciliation_required"
+    ]
+
+
+def test_registry_promotion_assessment_returns_actionable_preflight_reason(tmp_path):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(
+        _metadata(parameter_contract_version=""), _equity(), _trades()
+    )
+
+    assessment = reconciliation.assess_registry_run(saved.run_id)
+
+    assert assessment is not None
+    assert assessment.passed is False
+    assert assessment.reasons == ("缺少 parameter contract version",)
+    assert assessment.details["promotion_source"] == "research_run_registry"
+    assert assessment.details["formal_gate_credit"] is False
+
+
+def test_legacy_backtest_promotion_falls_back_when_run_is_not_in_registry(tmp_path):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    research_service.save_run(_metadata("different-registry-run"), _equity(), _trades())
+    legacy_run = SimpleNamespace(
+        run_id="legacy-run-001",
+        strategy_id="legacy-strategy",
+        strategy_params={"lookback": 20},
+        total_return=0.1,
+        annual_return=0.12,
+        sharpe_ratio=1.2,
+        max_drawdown=0.05,
+        win_rate=0.6,
+        total_trades=20,
+        expectancy=0.01,
+    )
+    legacy_repository = MagicMock()
+    legacy_repository.get_run.return_value = legacy_run
+    promotion = PromotionService(
+        config=_config(tmp_path),
+        backtest_repository=legacy_repository,
+        backtest_service=MagicMock(),
+        strategy_version_service=version_service,
+        preset_service=MagicMock(),
+        promotion_reconciliation_service=reconciliation,
+    )
+
+    version_id = promotion.promote_to_strategy_version(
+        legacy_run.run_id, version_name="Legacy 顯示名稱"
+    )
+
+    assert version_id is not None
+    version = version_service.get_version(version_id)
+    assert version is not None and version.source_run_id == legacy_run.run_id
+    assert version.display_name == "Legacy 顯示名稱"
+    legacy_repository.mark_as_promoted.assert_called_once_with(
+        legacy_run.run_id, version_id
+    )
 
 
 @pytest.mark.parametrize(
@@ -387,6 +499,7 @@ def test_single_backtest_promotion_service_delegates_to_registry_reconciliation(
         profile_id="balanced",
         notes="registry path",
         advice_contract=advice_contract,
+        display_name=None,
     )
     legacy_repository.get_run.assert_not_called()
 

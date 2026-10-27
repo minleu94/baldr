@@ -28,6 +28,11 @@ _TAIPEI_TIMEZONE = timezone(timedelta(hours=8))
 _STATEMENT_TYPES = frozenset(
     {"balance_sheet", "income_statement", "cash_flows_statement"}
 )
+_STATEMENT_ANNOUNCEMENT_ITEMS = {
+    "balance_sheet": "F26",
+    "income_statement": "F27",
+    "cash_flows_statement": "F28",
+}
 _REPORT_BASES = frozenset({"consolidated", "individual"})
 _UNIT_SCALES = {"TWD": 1000, "TWD_per_share": 100}
 _OFFICIAL_ITEM_CODE_RE = re.compile(r"[A-Z0-9]{2,8}\Z")
@@ -69,6 +74,7 @@ class MOPSStatementConsumerRow:
     numeric_available_at: datetime
     numeric_available_date: date
     available_date: date
+    availability_date_basis: str
     source_version: str
     content_hash: str
     numeric_source_row_sha256: str
@@ -83,8 +89,9 @@ def load_mops_statement_candidate(
 ) -> tuple[MOPSStatementConsumerRow, ...]:
     """讀取單一隔離 candidate，必要時以 date-only 可得日篩選 rows。
 
-    ``decision_date`` 只使用 candidate 的保守 ``available_date``；同日精確
-    使用者應另行比較 row 上保留的 ``numeric_available_at``。
+    ``decision_date`` 只使用 candidate 的保守 ``available_date``。若 row
+    帶有雜湊完整的 MOPS EZSearch 公告事件，date-only 可得日依公告日次日推導；
+    數值擷取時間與日期仍保留作 first-observed lineage。
     """
 
     try:
@@ -240,8 +247,31 @@ def _adapt_row(
         raise ValueError(
             "numeric_available_date must be the next Taipei calendar date after capture"
         )
-    if available_date != numeric_available_date:
-        raise ValueError("available_date must preserve numeric_available_date")
+    announcement_evidence = row.get("announcement_event_evidence")
+    if announcement_evidence is None:
+        availability_date_basis = "numeric_capture_next_taipei_calendar_date"
+        expected_available_date = numeric_available_date
+    else:
+        if not isinstance(announcement_evidence, Mapping):
+            raise ValueError("announcement_event_evidence must be an object")
+        if (
+            announcement_evidence.get("source_id") != "mops.ezsearch.statement_publication"
+            or announcement_evidence.get("source_version") != "mops-ezsearch-statement-publication.v1"
+        ):
+            raise ValueError("announcement_event_evidence must identify the verified MOPS EZSearch source")
+        for field in ("source_artifact_sha256", "event_hash"):
+            if _SHA256_REFERENCE_RE.fullmatch(str(announcement_evidence.get(field, ""))) is None:
+                raise ValueError(f"announcement_event_evidence.{field} must be a sha256 reference")
+        expected_announcement_item = _STATEMENT_ANNOUNCEMENT_ITEMS[statement_type]
+        if announcement_evidence.get("announcement_item") != expected_announcement_item:
+            raise ValueError("announcement_event_evidence item does not match statement_type")
+        availability_date_basis = _required_text(row, "availability_date_basis")
+        if availability_date_basis != "mops_announcement_next_taipei_calendar_date":
+            raise ValueError("MOPS announcement availability basis is unsupported")
+        event_local_date = announcement_event_timestamp.astimezone(_TAIPEI_TIMEZONE).date()
+        expected_available_date = event_local_date + timedelta(days=1)
+    if available_date != expected_available_date:
+        raise ValueError("available_date must follow its explicit availability_date_basis")
 
     item_code = _required_text(row, "item_code")
     if _OFFICIAL_ITEM_CODE_RE.fullmatch(item_code) is None:
@@ -294,6 +324,7 @@ def _adapt_row(
         numeric_available_at=numeric_available_at,
         numeric_available_date=numeric_available_date,
         available_date=available_date,
+        availability_date_basis=availability_date_basis,
         source_version=source_version,
         content_hash=_required_text(row, "content_hash"),
         numeric_source_row_sha256=_required_text(row, "numeric_source_row_sha256"),
@@ -594,6 +625,7 @@ def materialize_mops_statement_candidates(
                 numeric_available_at TEXT NOT NULL,
                 numeric_available_date TEXT NOT NULL,
                 available_date TEXT NOT NULL,
+                availability_date_basis TEXT NOT NULL,
                 content_hash TEXT NOT NULL,
                 item_code_lineage_sha256 TEXT NOT NULL,
                 numeric_source_row_sha256 TEXT NOT NULL,
@@ -618,6 +650,11 @@ def materialize_mops_statement_candidates(
             # 舊隔離 DB 只補欄位，保留既有 immutable rows 與 source version。
             connection.execute(
                 f"ALTER TABLE {sidecar_table} ADD COLUMN report_basis TEXT NOT NULL DEFAULT 'consolidated'"
+            )
+        if "availability_date_basis" not in sidecar_columns:
+            connection.execute(
+                f"ALTER TABLE {sidecar_table} ADD COLUMN availability_date_basis TEXT NOT NULL "
+                "DEFAULT 'numeric_capture_next_taipei_calendar_date'"
             )
         for row, candidate_path in unique_rows:
             materialized_source_version = (
@@ -720,10 +757,11 @@ def materialize_mops_statement_candidates(
                     announcement_event_timestamp, numeric_available_at,
                     numeric_available_date, available_date, content_hash,
                     item_code_lineage_sha256, numeric_source_row_sha256,
-                    availability_event_sha256, candidate_path, candidate_sha256
+                    availability_event_sha256, availability_date_basis,
+                    candidate_path, candidate_sha256
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.stock_code,
@@ -754,6 +792,7 @@ def materialize_mops_statement_candidates(
                     row.item_code_lineage_sha256,
                     row.numeric_source_row_sha256,
                     row.availability_event_sha256,
+                    row.availability_date_basis,
                     str(candidate_path),
                     candidate_hashes[str(candidate_path)],
                 ),

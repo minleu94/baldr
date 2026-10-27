@@ -390,9 +390,11 @@ def _override_fingerprint(
         override.period,
         override.as_of_date.isoformat(),
         override.announced_date.isoformat() if override.announced_date else "",
+        override.announced_at.isoformat() if override.announced_at else "",
         override.available_date.isoformat(),
         override.source,
         override.source_version,
+        override.target_source_version or "",
         override.evidence_class,
         override.source_hash,
         str(override.revision) if override.provenance_mode == "formal_v2" else "",
@@ -437,9 +439,11 @@ def _override_to_row(override: FundamentalAvailabilityOverride) -> dict[str, str
         "announced_date": (
             override.announced_date.isoformat() if override.announced_date else ""
         ),
+        "announced_at": override.announced_at.isoformat() if override.announced_at else "",
         "available_date": override.available_date.isoformat(),
         "source": override.source,
         "source_version": override.source_version,
+        "target_source_version": override.target_source_version or "",
         "availability_contract_version": "formal-availability.v2" if is_formal else "",
         "evidence_class": override.evidence_class if is_formal else "",
         "source_hash": override.source_hash if is_formal else "",

@@ -70,6 +70,69 @@ def _binding_fixture(tmp_path, monkeypatch):
     return now, path, payload, model
 
 
+def test_watchlist_source_is_copied_to_isolated_root_with_hash_readback(tmp_path):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    source_root = tmp_path / "canonical"
+    output_root = tmp_path / "scratch"
+    source_path = source_root / "watchlist" / "default.json"
+    source_path.parent.mkdir(parents=True)
+    source_bytes = json.dumps(
+        {"schema_version": "watchlist.v1", "items": [{"stock_code": "2330"}]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    source_path.write_bytes(source_bytes)
+
+    receipt = runner._prepare_watchlist_source(source_root, output_root)
+
+    copied_path = output_root / "watchlist" / "default.json"
+    assert copied_path.read_bytes() == source_bytes
+    assert source_path.read_bytes() == source_bytes
+    assert receipt == {
+        "status": "copied_and_verified",
+        "source_path": str(source_path),
+        "source_sha256": "sha256:" + hashlib.sha256(source_bytes).hexdigest(),
+        "output_path": str(copied_path),
+        "output_sha256": "sha256:" + hashlib.sha256(source_bytes).hexdigest(),
+        "item_count": 1,
+        "source_bytes_unchanged": True,
+    }
+
+
+def test_watchlist_source_fails_closed_for_overlap_invalid_json_and_existing_output(tmp_path):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    source_root = tmp_path / "canonical"
+    source_path = source_root / "watchlist" / "default.json"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text('{"items": []}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="roots must be disjoint"):
+        runner._prepare_watchlist_source(source_root, source_root / "scratch")
+
+    source_path.write_text("not json", encoding="utf-8")
+    with pytest.raises(ValueError, match="watchlist_source_json_invalid"):
+        runner._prepare_watchlist_source(source_root, tmp_path / "invalid-output")
+
+    source_path.write_text('{"items": []}', encoding="utf-8")
+    output_root = tmp_path / "existing-output"
+    destination = output_root / "watchlist" / "default.json"
+    destination.parent.mkdir(parents=True)
+    destination.write_text('{"items": ["preserve"]}', encoding="utf-8")
+    with pytest.raises(ValueError, match="watchlist_output_already_exists"):
+        runner._prepare_watchlist_source(source_root, output_root)
+    assert destination.read_text(encoding="utf-8") == '{"items": ["preserve"]}'
+
+
+def test_watchlist_source_refuses_an_active_sqlite_repository(tmp_path):
+    runner = run_scheduled_evidence_pipeline_dry_run
+    source_root = tmp_path / "canonical"
+    (source_root / "watchlist").mkdir(parents=True)
+    (source_root / "watchlist" / "default.json").write_text('{"items": []}', encoding="utf-8")
+    (source_root / "watchlist" / "watchlists.db").write_bytes(b"sqlite")
+
+    with pytest.raises(ValueError, match="watchlist_source_requires_active_repository_snapshot"):
+        runner._prepare_watchlist_source(source_root, tmp_path / "scratch")
+
+
 def test_binding_uses_exact_canonical_id_not_mixed_latest(tmp_path, monkeypatch):
     now, path, _payload, _model = _binding_fixture(tmp_path, monkeypatch)
     binding = run_scheduled_evidence_pipeline_dry_run._scheduled_recommendation_binding(
@@ -264,6 +327,11 @@ def test_scheduled_wrapper_persists_pipeline_source_coverage_summary(
     output_root = tmp_path / "output"
     db_path = tmp_path / "data" / "sqlite" / "twstock.db"
     paper_operation_root = tmp_path / "paper-operation"
+    watchlist_source_root = tmp_path / "manual-inputs"
+    watchlist_source_path = watchlist_source_root / "watchlist" / "default.json"
+    watchlist_source_path.parent.mkdir(parents=True)
+    watchlist_source_bytes = b'{"schema_version":"watchlist.v1","items":[{"stock_code":"2330"}]}'
+    watchlist_source_path.write_bytes(watchlist_source_bytes)
     paper_health_baseline = tmp_path / "health" / "baseline.json"
     paper_status_path = tmp_path / "paper-status.json"
     freshness_status_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
@@ -307,6 +375,8 @@ def test_scheduled_wrapper_persists_pipeline_source_coverage_summary(
             str(db_path),
             "--sources",
             "all",
+            "--watchlist-source-root",
+            str(watchlist_source_root),
             "--paper-evidence-operation-root",
             str(paper_operation_root),
             "--paper-evidence-health-baseline",
@@ -336,10 +406,17 @@ def test_scheduled_wrapper_persists_pipeline_source_coverage_summary(
     assert payload["recommendation_screening_matrix_available"] is False
     assert payload["recommendation_exclusion_payload_available"] is True
     assert payload["source_coverage_basis"] == "dry_run_transient_decision_desk_snapshot"
+    watchlist_receipt = payload["watchlist_source"]
+    assert watchlist_receipt["status"] == "copied_and_verified"
+    assert watchlist_receipt["source_sha256"] == watchlist_receipt["output_sha256"]
+    assert watchlist_receipt["item_count"] == 1
+    assert watchlist_source_path.read_bytes() == watchlist_source_bytes
+    assert (output_root / "watchlist" / "default.json").read_bytes() == watchlist_source_bytes
     command = captured["command"]
     assert isinstance(command, list)
     assert command[command.index("--data-root") + 1] == str(tmp_path / "data")
     assert command[command.index("--output-root") + 1] == str(output_root)
+    assert "--watchlist-source-root" not in command
     assert command[command.index("--paper-evidence-operation-root") + 1] == str(paper_operation_root)
     assert command[command.index("--paper-evidence-health-baseline") + 1] == str(paper_health_baseline)
     assert command[command.index("--paper-evidence-status-path") + 1] == str(paper_status_path)

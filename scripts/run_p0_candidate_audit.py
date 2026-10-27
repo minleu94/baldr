@@ -87,7 +87,11 @@ def build_p0_candidate_audit(
                 "quality_status": "verified",
                 "row_count": len(mops_rows),
                 "accepted_row_count": len(mops_rows),
-                "timestamp_evidence": "official_document_upload_timestamp",
+                "timestamp_evidence": (
+                    "official_mops_announcement_timestamp"
+                    if all(_has_mops_announcement_timestamp_evidence(row) for row in mops_rows)
+                    else "official_document_upload_timestamp"
+                ),
                 "payload_sha256": mops_rows[0]["source_hash"],
                 "remaining_blocker_category": "legal_and_license_acceptance_required",
                 "owner_action_required": True,
@@ -442,6 +446,27 @@ def _validate_mops_quarterly_artifact(
         if row.get("statement_scope") != "consolidated" or row.get("correction_status") != "none":
             raise ValueError("MOPS quarterly artifact must be an uncorrected consolidated report")
     return rows
+
+
+def _has_mops_announcement_timestamp_evidence(row: Mapping[str, Any]) -> bool:
+    event_evidence = row.get("announcement_event_evidence")
+    if isinstance(event_evidence, Mapping):
+        return (
+            event_evidence.get("source_id") == MOPS_STATEMENT_AVAILABILITY_SOURCE
+            and _MOPS_NORMALIZED_SHA256_REF_RE.fullmatch(str(event_evidence.get("event_hash") or "")) is not None
+        )
+    mops_evidence = row.get("mops_announcement_evidence")
+    return (
+        isinstance(mops_evidence, Mapping)
+        and mops_evidence.get("source_id") == MOPS_STATEMENT_AVAILABILITY_SOURCE
+        and _MOPS_NORMALIZED_SHA256_REF_RE.fullmatch(str(mops_evidence.get("source_artifact_sha256") or "")) is not None
+        and isinstance(mops_evidence.get("matched_event_hashes"), list)
+        and bool(mops_evidence["matched_event_hashes"])
+        and all(
+            _MOPS_NORMALIZED_SHA256_REF_RE.fullmatch(f"sha256:{value}") is not None
+            for value in mops_evidence["matched_event_hashes"]
+        )
+    )
 
 
 def _validate_mops_ezsearch_availability_artifact(

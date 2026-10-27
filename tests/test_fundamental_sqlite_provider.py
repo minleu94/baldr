@@ -503,7 +503,7 @@ def test_sqlite_provider_preserves_historical_decision_after_mapping_revision_ap
     assert after_revision_available[0].available_date == date(2026, 8, 2)
 
 
-def test_sqlite_provider_blocks_unmapped_snapshot_and_keeps_legacy_official_mapping(
+def test_sqlite_provider_blocks_static_snapshot_with_legacy_openapi_mapping(
     tmp_path,
 ):
     db_file = tmp_path / "twstock.db"
@@ -567,7 +567,57 @@ def test_sqlite_provider_blocks_unmapped_snapshot_and_keeps_legacy_official_mapp
         decision_date=date(2026, 7, 16),
     )
 
-    assert [record.period for record in records] == ["2026-06"]
+    assert records == ()
+
+
+def test_sqlite_provider_binds_mops_monthly_mapping_to_exact_target_version(tmp_path):
+    db_file = tmp_path / "twstock.db"
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    with sqlite3.connect(db_file) as conn:
+        apply_fundamental_schema(conn)
+        conn.executemany(
+            """
+            INSERT INTO fundamental_monthly_revenues(
+                stock_code, period, as_of_date, announced_date, available_date,
+                revenue, source, source_version, quality
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2330", "2026-04", "2026-04-30", "2026-05-08", "2026-06-17",
+                    "410725118", "mops.monthly_revenue_static_snapshot",
+                    "snapshot-v1", "observed",
+                ),
+                (
+                    "2330", "2026-04", "2026-04-30", "2026-05-08", "2026-06-17",
+                    "999", "mops.monthly_revenue_static_snapshot",
+                    "snapshot-v2", "observed",
+                ),
+            ],
+        )
+    mapping_file.write_text(
+        "stock_code,period,as_of_date,announced_date,available_date,source,source_version,"
+        "availability_contract_version,evidence_class,source_hash,revision,parent_revision,"
+        "target_source_version\n"
+        "2330,2026-04,2026-04-30,2026-05-08,2026-06-17,"
+        "mops.monthly_revenue_announcement,mops-t05st10-ifrs-2026-05-08,"
+        "formal-availability.v2,official_announcement,sha256:"
+        + "a" * 64
+        + ",1,,snapshot-v1\n",
+        encoding="utf-8",
+    )
+
+    records = FundamentalSQLiteProvider(
+        db_file,
+        monthly_revenue_availability_file=mapping_file,
+    ).load_monthly_revenues(
+        stock_code="2330",
+        decision_date=date(2026, 6, 17),
+    )
+
+    assert len(records) == 1
+    assert records[0].source_version == "snapshot-v1"
+    assert records[0].revenue == Decimal("410725118")
 
 
 def test_sqlite_provider_rejects_retroactive_baseline_mapping_for_live_read(tmp_path):

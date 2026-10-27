@@ -447,7 +447,7 @@ def test_ready_outcome_shows_exact_source_limits_without_promoting_it() -> None:
     assert model.index(0, 2).data() == "來源已標示 ready"
     reason = model.index(0, 3).data()
     assert "結果資料品質：降級" in reason
-    assert "結果引用來源尚未完成納入" in reason
+    assert "結果引用來源尚未完成納入（來源類型未細分）" in reason
     assert "交易日曆僅有年度計畫，臨時休市未核" in reason
     assert "此期限結果未獲正式採認" in reason
     assert widget.status_badge.text() == "注意"

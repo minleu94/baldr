@@ -1,5 +1,9 @@
 # QA 證據導覽
 
+- [2026-10-27 Evidence Review 內保存候選處置與 SQLite WAL 防競態](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-27-evidence-review-內保存候選處置與-sqlite-wal-防競態)：候選處置可由 UI 綁到明選 working-copy weekly history，完整重驗 SQLite file set 並讀回 ID/hash；Owner UAT 與 Gate 2 真實週期仍未完成。
+
+- [MarketSessionCadence 與 Evidence dry-run 修正（2026-10-26/27）](BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md)：讀取臨時休市 sidecar、歷史 replay 以決策日驗證日曆，並以 hash-verified TWSE 原始方向符分類 Breadth；完整隔離流程無 pipeline blocker，已知官方不可比排除保留數量並列 advisory，Forward summary 仍 degraded。
+- [Forward 來源觀察 chunk 上限修正（2026-10-26）](BALDR_FORWARD_SOURCE_OBSERVATION_CHUNK_CAP_20261026.md)：修復 128 chunk 上限早於 query／manifest／run-byte 契約失敗，129 個小型 query 回歸通過；正式自然 Forward run 尚待驗。
 - [Opus／Antigravity UX 工程收尾](BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)：Opus 起始、Antigravity 接手審查的來源核對，Sol／Luna M1–M125 切片、同源警示與持倉報價日期的隔離 QA，以及尚未接受的正式 Gate。M 編號是切片序號，不是功能數。
 
 - [Track B 六包交付獨立複核](BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)：七筆 Legacy、Weekly 遷移信任範圍、Forward 每事件政策、9,423 筆版本矩陣與精確 output 導航登記；不授正式來源接受。
@@ -16,9 +20,14 @@
 
 - [2026-10-25 產業方向圖卡與公告時間對照](BALDR_INDUSTRY_LEADER_CARDS_20261025.md)：領先／落後卡成員方向圖及 Q2 公告時間候選匹配、實際 formal 解除數；不宣稱全市場寬度、正式資料寫入或來源／Gate 接受。
 
-- [2026-10-26 產業卡與人工研究決定 UI 增量](BALDR_INDUSTRY_LEADER_CARDS_20261025.md#首屏法人淨額分布增量2026-10-25-root-驗證)、[Workbench Advice 收據](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-workbench-advice-人工研究決定入口)：題材法人家數分布、精確 Advice 人工研究記錄及其 sandbox／Owner UAT 限制；不建立交易或連線帳戶。
+- [2026-10-26 產業卡與人工研究決定 UI 增量](BALDR_INDUSTRY_LEADER_CARDS_20261025.md#首屏法人淨額分布增量2026-10-25-root-驗證)、[Workbench Advice 收據](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-workbench-advice-人工研究決定入口)、[保存研究結果交接](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-手動保存研究結果交接至-workbench)：題材法人家數分布、精確 Advice 人工研究記錄及 canonical 保存結果的手動讀取流程；不建立交易或連線帳戶、不授 Gate credit。
 
-- [2026-10-25 本機資料品質唯讀盤點](BALDR_DATA_QUALITY_INVENTORY_20261025.md)：fundamental 資料現況、Open Data 季報候選及 MOPS 公告時間 crosswalk；含[2026-10-26 Research Console 公告候選正式資料影響讀回](BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-research-console-公告候選正式資料影響讀回)。原始 DB 以唯讀核查，不能由 candidate matches 推成正式資料資格。
+- [2026-10-26 promoted 策略研究候選降級](BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-promoted-策略缺接受證據時保留研究候選)：正式採用／鎖參／揭露證據缺漏時保留 RESEARCH 候選、絕不升格正式 Advice；Gate 1 狀態未變。
+
+- [2026-10-26 Gate 2 weekly collection 匯出與 working-copy 證據](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-26-gate-2-weekly-candidate-review-packet)：更新頁可匯出唯讀候選 JSON，人工 review、history 與 Gate credit 仍未接通。
+- [2026-10-27 Gate 2 候選處置綁定週報 history](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-27-candidate-disposition-綁定週報-history)：candidate artifact 先綁入 working-copy history，再核對精確 hash 由 Owner append-only approval；真實週期與 Gate 2 條件仍待完成。
+
+- [2026-10-25 本機資料品質唯讀盤點](BALDR_DATA_QUALITY_INVENTORY_20261025.md)：fundamental 資料現況、Open Data 季報候選及 MOPS 公告時間 crosswalk；另記 2026-10-26 2330／2026-Q2 MOPS 公告與 T57 上傳時間分欄的候選 builder，以及 2026-10-28 T164 PDF disposition bundle 完整性重驗。原始 DB 以唯讀核查，不能由 candidate matches 推成正式資料資格。
 
 > 本目錄保存日期化驗收、調查與交接證據。它們描述各自的範圍與時間點；目前專案狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，產品操作請看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。主題相同不代表證據可互換，舊報告中的待辦也不自動成為目前待辦。
 

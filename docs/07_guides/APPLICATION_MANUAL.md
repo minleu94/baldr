@@ -1,4 +1,4 @@
-﻿# baldr 完整操作手冊
+# baldr 完整操作手冊
 
 在「探索與研究 → 產業與題材」載入研究版本後，首屏會並排顯示平均日漲幅最高與最低的完整覆蓋題材；紅／綠／中性分段條與同列家數文字呈現各題材內上漲／下跌／平盤成員數，並保留有效成員覆蓋分母。這是題材內分布，不是全市場廣度；缺資料顯未知，不以零補值。較高成交金額、法人淨流向與五日量能仍各用自己的完整覆蓋條件。詳細判讀及限定 QA 見[資料與市場研究](manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)及[產業方向圖卡 QA](../06_qa/BALDR_INDUSTRY_LEADER_CARDS_20261025.md)；固定試用 EXE 尚未包含本輪後繼 UI。
 
@@ -12,19 +12,23 @@ P0 來源治理表若顯示「取得較早日期資料（非查詢日）」，�
 
 共用狀態徽章、chip 與使用 statusTone 的提示現在使用與台股漲跌不同的色軸：藍色「已觀測」只表示已有觀察，不代表來源正式接受；teal 表示畫面所寫的就緒／完成，琥珀色表示估計、降級或需處理，蘭紫色表示缺件／阻擋，未知維持中性。請先讀狀態文字、日期、來源與理由；紅漲綠跌只用來解讀明確的市場方向或損益。這是顯示層調整，不修改資料品質判定或可交易資格。
 
-Workbench 總覽首屏的「今日策略建議」直接呈現既有 Advice 與 Professional 研究候選；展開完整工作台可查看剩餘來源、診斷和技術詳情。每日旅程只在驗證當日排程結果的保存身分、決策日期與 cohort 後，才把同一唯讀結果注入 Advice。只有通過該驗證且非降級的當日候選會列為 Professional 研究候選；過期、未來、失配、缺列或讀取失敗會回傳空 Advice DTO，並把候選狀態與缺件原因放在原警告。無列且有警告時，空狀態會摘要最多三則原因並提示完整原警告；無列且無警告時，會明示 DTO 未提供空結果原因，不推定資料完整或風險解除。候選是策略研究建議，依賴市場資料、策略與來源證據，不要求連接真實帳戶；持倉與交易由使用者手動記錄。此流程不輸出個人配置或加碼金額。明確標示 `promoted` 的策略因這條讀取路徑沒有正式採用 Gate 證據，也不會自動升成正式 Advice。Advice 列表快速顯示標的、動作、決策信心、支持／反證、主要風險、資料品質、證據成熟度、可成交性及資料日；證據成熟度只接受 Roadmap 明列的 Advice 層級，未對齊的 replay／forward／paper／live 原始標籤顯示「未知／未對齊」且不推定成熟；決策信心直接取 Advice 的 `confidence_tier`，常見 high／medium／low 會顯示為高／中／低，未提供時顯示「未提供」，提示仍可核對原始值。它是決策信心分級，與選列詳情中的證據信心分開。只有目前每日 read model 核對成功的保存結果，標的欄才會同列顯示該保存推薦內的股票名稱，否則僅顯代碼。理由與風險以首要項目摘要，多項完整內容可由欄位提示或選列後的共用證據詳情檢視。決策日與完整理由可在提示及詳情核對；資料日缺失時顯「未知」，不以決策日代填。選取 Advice 列時，摘要卡會列出 Advice 契約中仍空白的必要欄位及回查原推薦／策略設定的下一步；空值不會由排名分數補寫。判讀卡分開顯示「校準適用期間」與「策略持有期間」：前者是校準機率／證據的觀察期間，後者只有策略來源明確提供時才有值。同一已核對保存結果內、股票代碼完全相同的篩選、Why Not 與流動性列會列在「保存來源逐股證據」；其他股票的排除列不會串到目前建議。未找到同股來源列時會明示未提供，不能把它當成沒有反證或風險。這些證據只供判讀，不改策略動作。若來源追蹤出現「已核驗保存結果 payload SHA-256」，代表 Advice 沿用 canonical read model 已核驗的內容雜湊，可用來比對保存原件；它不代表來源已正式接受或資料具 PIT 資格。「未知／未提供」不是零或安全保證。較長理由及風險請看共用證據明細。現行推薦 DTO 的價格變動欄位缺少逐股報價日期／品質，缺值也可能沿舊相容欄位顯成 0，Workbench 因此不把價格或漲跌拼入 Advice 列。此接線只使已驗證候選出現在頁面，不代表正式來源、PIT、自然 evidence 或 Gate 1 已通過。Paper snapshot 背景只在使用者明確送入時顯示，不是策略建議前置條件；配置表另標示為可選研究。
+Workbench 總覽首屏的「今日策略建議」直接呈現既有 Advice 與 Professional 研究候選；展開完整工作台可查看剩餘來源、診斷和技術詳情。每日旅程只在驗證當日排程結果的保存身分、決策日期與 cohort 後，才把同一唯讀結果注入 Advice。Advice 會再次核對保存結果 ID，並只列入每日候選股票清單中的股票；結果 ID 不符或候選清單缺失時回傳空 Advice 並列出診斷，其他日期或 cohort 的股票不會混列。只有通過該驗證且非降級的當日候選會列為 Professional 研究候選；過期、未來、失配、缺列或讀取失敗會回傳空 Advice DTO，並把候選狀態與缺件原因放在原警告。無列且有警告時，空狀態會摘要最多三則原因並提示完整原警告；無列且無警告時，會明示 DTO 未提供空結果原因，不推定資料完整或風險解除。候選是策略研究建議，依賴市場資料、策略與來源證據，不要求連接真實帳戶；持倉與交易由使用者手動記錄。此流程不輸出個人配置或加碼金額。明確標示 `promoted` 但缺少正式採用、參數鎖定與揭露核驗證據的策略，仍保留為 Professional 研究候選並強制顯示「研究」；不輸出正式新增部位建議。Advice 列表快速顯示標的、動作、決策信心、支持理由、政策／資格限制、主要風險、資料品質、證據成熟度、可成交性及資料日；證據成熟度只接受 Roadmap 明列的 Advice 層級，未對齊的 replay／forward／paper／live 原始標籤顯示「未知／未對齊」且不推定成熟；決策信心直接取 Advice 的 `confidence_tier`，常見 high／medium／low 會顯示為高／中／低，未提供時顯示「未提供」，提示仍可核對原始值。它是決策信心分級，與選列詳情中的證據信心分開。只有目前每日 read model 核對成功的保存結果，標的欄才會同列顯示該保存推薦內的股票名稱，否則僅顯代碼。理由與風險以首要項目摘要，多項完整內容可由欄位提示或選列後的共用證據詳情檢視。決策日與完整理由可在提示及詳情核對；資料日缺失時顯「未知」，不以決策日代填。選取 Advice 列時，摘要卡會列出 Advice 契約中仍空白的必要欄位及回查原推薦／策略設定的下一步；空值不會由排名分數補寫。判讀卡分開顯示「校準適用期間」與「策略持有期間」：前者是校準機率／證據的觀察期間，後者只有策略來源明確提供時才有值。Quick Read 會把 Advice 的 `why_not_reasons` 標為「政策／資格限制」，避免與個股反證混淆；欄位提示另列同股保存來源證據。同一已核對保存結果內、股票代碼完全相同的篩選、Why Not 與流動性列會列在「保存來源逐股證據」；其他股票的排除列不會串到目前建議。未找到同股來源列時會明示未提供，不能把它當成沒有反證或風險。這些證據只供判讀，不改策略動作。若來源追蹤出現「已核驗保存結果 payload SHA-256」，代表 Advice 沿用 canonical read model 已核驗的內容雜湊，可用來比對保存原件；它不代表來源已正式接受或資料具 PIT 資格。「未知／未提供」不是零或安全保證。較長理由及風險請看共用證據明細。現行推薦 DTO 的價格變動欄位缺少逐股報價日期／品質，缺值也可能沿舊相容欄位顯成 0，Workbench 因此不把價格或漲跌拼入 Advice 列。此接線只使已驗證候選出現在頁面，不代表正式來源、PIT、自然 evidence 或 Gate 1 已通過。Paper snapshot 背景只在使用者明確送入時顯示，不是策略建議前置條件；配置表另標示為可選研究。
 
 AdviceComposer 會把精確保存結果 ID 接入每筆 Advice；只有 canonical execution read model 的 index／payload integrity 已核驗且執行結果 ID 相同時，才附上 `source_payload_sha256`。Workbench 仍會比對當日候選的 result ID、股票、決策日、資料日與來源 snapshot ID，通過後才提供保存結果回查或人工研究決定入口；來源 hash 不替代 snapshot hash，也不代表資料／策略 Gate 通過。legacy、暫存或未核驗結果可保留來源 ID，但不帶 canonical payload hash。
 
+在「推薦分析」明確載入或保存一筆推薦結果後，可按「送至 Workbench 作研究」。按鈕只對有推薦列、精確核驗過的 canonical 保存結果啟用；只送 result ID，Workbench 會再從唯讀 query 讀取並核對保存索引、內容 hash、execution ID、版本與決策／資料日期。舊格式、只有篩選列、日期不完整或身份不符的結果不接受。成功後在「所選保存結果（研究專用）」獨立區顯示 Professional／RESEARCH 判讀及原決策日、資料截止日、Why／Why Not／Risk 與來源警告；不加入「今日策略建議」或每日排程候選，也不寫 DB、Journal、研究決定或 artifact。日期沿用原保存結果，不把舊結果標成今日；清除區塊或重新開啟程式即移除選取狀態。此手動 lane 不代表正式策略採用或 Gate 1 通過。
+
 若 Advice DTO 明確回傳空股票代號的拒絕列，Workbench 會改顯「本次結論：暫不新增部位」及拒絕原因，不顯示空白股票列；這代表目前證據不支持新增候選，不代表賣出或清倉既有持倉。拒絕列的來源追溯標成 `AdviceComposer.refusal`，不冒稱存在推薦結果原件。
 
-選取 Advice／Professional 研究候選列時，若 Workbench 已將該列的保存 `result_id` 與目前有效的每日 read model 核對一致，判讀卡會提供「回查這筆保存推薦結果」。按下後開啟 Recommendation 頁的 exact 保存結果；頁面載入失敗時會留在原頁，不自動改選其他結果。canonical 已核驗 payload 另在按鈕提示顯示 SHA-256；legacy exact 結果可能沒有 canonical hash。缺少可信 ID、股票／決策日／資料日不符、來源 stale 或拒絕列時不顯示此按鈕。回查只協助核對原始欄位，不補 Advice 缺值、不解除資格 Gate。
+選取 Advice／Professional 研究候選列時，若 Workbench 已將該列的保存 `result_id` 與目前有效的每日 read model 核對一致，判讀卡會提供「回查這筆保存推薦結果」。按下後開啟 Recommendation 頁的 exact 保存結果；頁面載入失敗時會留在原頁，不自動改選其他結果。canonical 已核驗 payload 另在按鈕提示顯示 SHA-256；legacy exact 結果可能沒有 canonical hash。缺少可信 ID、股票／決策日／資料日不符、來源 stale 或拒絕列時不顯示此按鈕。回查只協助核對原始欄位，不補 Advice 缺值、不解除資格 Gate。若缺少進場論點、失效條件、策略持有期間或檢視頻率，且每日候選的 `result_id`、snapshot、股票、決策日與資料日都能和目前 read model 精確核對，判讀卡會提供「前往策略回測建立新版本」按鈕。按下後策略回測頁會以唯讀提示列出這筆候選身分、策略版本及待作者填寫欄位；這些內容只供回查，不會載入回測設定、填寫作者欄位、執行回測或升版。候選過期或身分不符時不提供此入口。這些契約欄位須由策略作者在新的合格回測結果升版時明確填寫，既有策略版本不可事後補綁。同筆結果／來源欄位仍先回查原件，原件缺值時繼續保持未知，不以排名分數或空白推定。
 
-同一 Advice 列也可明確記錄「已納入研究」、「略過」或新增研究註記。只有 result ID、股票、決策日與當日來源 snapshot ID 都和目前有效 read model 對齊時才啟用；snapshot hash 未由 Workbench DTO 提供時會留空並明示，不以 Advice payload hash 代替。按「讀取／重新讀取同筆決定」可核對目前是否已納入研究／略過、有效註記數與下次檢視時間；讀回失敗或身份衝突會顯示原因。寫入沿用 append-only 研究 continuity；畫面分開顯示保存與讀回核對狀態。此操作只記錄人工研究決定，不建立交易或 fill；實際持倉／成交仍由使用者在「我的投資」手動維護。
+同一 Advice 列也可明確記錄「已納入研究」、「略過」、研究註記或下次檢視時間。只有 result ID、股票、決策日、資料日與當日來源 snapshot ID 都和目前有效 read model 對齊時才啟用；snapshot hash 未由 Workbench DTO 提供時會留空並明示，不以 Advice payload SHA 代替。選取合格列時會自動唯讀核對同一候選目前是否已納入研究／略過、有效註記數與下次檢視時間；按「重新讀取同筆決定」可手動刷新。要排定複核時按「設定下次檢視」，在對話框選擇台北日期時間後按「保存並讀回核對」；時間由研究者手動指定，不按策略檢視頻率自動推算。保存後 Workbench 會檢查同一 result／股票／決策日／snapshot 身分及實際讀回時間；候選在對話框期間變成 stale、讀回失敗或身份衝突時會明示未確認，不顯示為成功。此類人工狀態只寫 append-only 研究紀錄，不建立交易或 fill；實際持倉／成交仍由使用者在「我的投資」手動維護。
+
+季度公告 crosswalk 的公告時間欄提示會列出已核驗的事件 SHA-256 與擷取時保存的官方 MOPS 明細 URL，供人員回查原始公告。URL 必須是 `https://mopsov.twse.com.tw`；crosswalk 會用公告時間、F-code、URL、公司及期別重算事件雜湊，欄位遭修改或連結非官方時整份候選對照 fail closed。這只證明隔離公告事件候選自身未被改寫，不證明公告連到哪一份數值財報版本，也不解除正式資料、PIT 或 Gate 缺漏。
 
 Workbench 不會要求連接真實帳戶，也不會因缺少帳戶或風險預算而阻擋策略研究建議。持倉及交易使用「我的投資」中的手動記錄流程維護。Portfolio「配置研究封存」的 Paper snapshot 背景顯示是可選的唯讀研究參考，不是 Advice 輸入、個人配置依據或策略建議的前置步驟；來源日／決策日或可得時鐘不符時，背景金額與持倉會清除。
 
-策略作者可在回測「升級為策略版本」流程中填寫版本化 Advice 契約：進場論點、每行一項失效條件、策略作者持有期間及檢視頻率。四欄皆完成後才能保存契約；也可明確略過並繼續升版，或按取消中止升版。略過會建立無契約版本；契約只能在建立策略版本時保存，不能事後補綁或改寫，因此該版本不能輸出 Guided「新增候選」。若之後要使用 Guided，須以新的合格回測結果升版並填妥契約，再選用該新版本執行。只有選取該精確策略版本 Profile 執行且保存結果通過 canonical 完整性核驗時，Workbench 與個股研究報告才顯示其論點、失效條件、持有期間與檢視頻率；舊結果、其他 Profile、缺契約或未核驗結果不會代填。不得以回測績效、推薦理由或校準期間推定作者內容。
+策略作者可在回測「升級為策略版本」流程中填寫選填版本顯示名稱與版本化 Advice 契約：進場論點、每行一項失效條件、策略作者持有期間及檢視頻率。顯示名稱會保存為版本標籤並出現在保存版本清單與成功視窗，不取代自動產生的語意版本號。四項契約內容皆完成後才能保存契約；也可明確略過並繼續升版，或按取消中止升版。略過會建立無契約版本；契約只能在建立策略版本時保存，不能事後補綁或改寫，因此該版本不能輸出 Guided「新增候選」。新保存的單股回測升版會以 Research Run Registry 作為檢查及回鏈依據；成功訊息會核對來源 run、版本、顯示名稱、參數及 Advice 契約讀回。讀回失配會顯示失敗並留待 reconciliation，不應重複建立版本。即使讀回成功，也只代表 Registry 關聯與版本檔已核對，不表示正式 Gate 接受或策略可用於正式新增候選。若之後要使用 Guided，須以新的合格回測結果升版並填妥契約，再選用該新版本執行。只有選取該精確策略版本 Profile 執行且保存結果通過 canonical 完整性核驗時，Workbench 與個股研究報告才顯示其論點、失效條件、持有期間與檢視頻率；舊結果、其他 Profile、缺契約或未核驗結果不會代填。不得以回測績效、推薦理由或校準期間推定作者內容。
 
 M158／M159 後繼原始碼：在回測結果的「原報告基準比較」看 Sharpe 時，短值前的「約」表示顯示精度有捨入；極小非零用科學記號，滑鼠提示或輔助技術可讀原值，未知及原缺件原因不可當 0。手動帳的「未實現損益家數」在完整持倉表和操作列下方，按正紅／負綠／零／未知中性查看同一快照的等權檔數；行情狀態、資料日、現價或損益不合格歸未知。1280×760 首屏先保留記錄交易與個股研究操作，往下捲看圖卡；條長只代表家數比例，不代表資金權重、投資報酬、風險或交易訊號。固定舊 EXE、正式資料與 Owner UAT 未驗；詳[回測手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[持倉手冊](manuals/WATCHLIST_AND_PORTFOLIO.md#持倉管理)。
 
@@ -73,7 +77,7 @@ Track B研究資料判讀補充：Legacy託管徽章不等於歷史PIT資格；�
 
 同一候選目錄完成季報 CSV 與 MOPS 公告候選對照後，頁面另顯示「正式資料影響」唯讀摘要：候選唯一鍵、正式同公司／報表／期間 identity overlap、identity overlap 內的正式版本與項目列數、缺公告日項目列，以及精確版本連結與本次公告對照解除列數。所選 CSV 資源另按財報期別顯示 profile 列數及單一公告候選、多筆歧義、查詢窗口內未觀測、查詢窗口不完整與身份缺漏數；計數是該資源內的 profile 列數，不是唯一公司數。若 profile 掃描不完整，期別摘要只涵蓋目前已解析列。窗口內未觀測僅表示所選公告查詢窗口沒有對應候選，不代表未申報。每個正式影響數字只呈現 reader 對正式資料庫的聚合讀回；資料庫不可用或範圍不足時顯示「未知」，不把未知當 0。正式表沒有市場欄或候選公告到財報內容版本的精確橋接時，即使 identity overlap 大，也不能判為已匹配同一版本或解除品質；摘要不回填正式 DB、不提供財務值，也不代表來源接受或 Gate 通過。季報 backfill 的 MOPS availability mapping 另需 `target_source_version` 精確等於數值財報來源版本；缺欄、版本不符或同鍵多版本時不會套用公告日期，舊 CSV 與非 MOPS mapping 可維持原格式。
 
-同一 Research Console 的「正式月營收公告日品質」按資料月份顯示正式月營收列數、缺 `announced_date` 列數、代碼數及來源版本數；資料庫或 schema 無法讀回時顯示未知。這是正式表目前的欄位狀態彙總，不顯示營收值、不做 availability mapping、不回填日期，也不代表來源、單位／口徑、PIT 或 Gate 已通過。即使某月公告日完整，其他品質條件仍須另看來源與資料契約。
+同一 Research Console 的「正式月營收公告日品質」按資料月份顯示正式月營收列數、缺 `announced_date` 列數、尚未核實的報表層級日期數、代碼數及來源版本數；資料庫或 schema 無法讀回時顯示未知。報表層級日期只有在正式 availability mapping 為 `formal-availability.v2`、官方公告證據 hash 有效，公司／期間／目標 SQLite source version 精確相符，且 mapping 公告日期等於正式列現存日期時才從待核實數扣除；只有版本 mapping 但兩日期不一致時仍列待核實。選取缺公告日或報表日期待核實列數大於 0 的月份後，按「查看選取月份公告日缺漏／報表日期核對」可檢視公司、來源、來源版本、正式列日期與 MOPS 公告日期，每頁 100 列並可翻頁。無精確公司／月份／版本 mapping 顯示「目前 mapping 無精確版本」，不代表公司未公告；精確 mapping 日期與正式列日期不同時標為「日期不一致（仍待核實）」。mapping 未配置、無法讀取或含驗證診斷時顯示未知。明細以唯讀 SQLite 查詢，不讀營收值、不回填日期、不重算正式資料，也不代表來源、單位／口徑、PIT 或 Gate 已通過；正式日期仍由明確、可審核的回補流程更新。即使某月公告日完整，其他品質條件仍須另看來源與資料契約。
 
 若另有公司名錄候選，可按「選擇公司名錄候選目錄…」選取已封存的 TWSE／TPEx 目錄；畫面驗證其 manifest、CSV SHA 與代號唯一性，並與目前選取的季度 CSV 候選逐代號比對。預設「只看差異」，可切至「顯示全部代號」，並依代號、公司名稱或產業碼篩選。表格狀態只表示兩份不同日期候選檔是否觀測到代號；目錄有而目前候選未見，不代表未申報、漏抓或應申報，因為名錄不是該季歷史 issuer 分母，且季報對照只含目前選取的候選目錄。候選資源含空回應、缺檔、無效或 profile 不完整時，畫面會標示差異僅依完整解析的列。這項對照只讀、不連網、不匯入或保存；所有候選仍 `candidate-only`、沒有 Gate credit、下游資格為 none。未設定目錄時可用 `P0_QUARTERLY_CANDIDATE_ROOT` 與 `P0_ISSUER_DIRECTORY_CANDIDATE_ROOT` 分別設定啟動預設，或在畫面明選；「還原啟動設定」回到本次啟動預設，不會持久保存 UI 選擇。雜湊或格式無效時依畫面原因檢查原始 manifest／CSV，修復只能建立新的候選 capture，不能改寫既存原件。詳[季報與名錄候選 QA](../06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-季報候選與公司名錄差異可見性)。
 
@@ -126,6 +130,8 @@ V2 日常開發、Milestone 與候選準備採開發團隊自動化驗收；Owne
 後繼原始碼的題材詳情把原九項指標同值呈現在摘要卡，原明細表仍供逐欄核對；覆蓋數與缺件不因卡片呈現而改變。個股研究標頭先列股票身份、原收盤價、漲跌與行情日，來源與品質可在原明細核對；這些值不是即時報價。個股日 K 線及成交量柱依開收盤原值顯示台股紅漲、綠跌、平盤中性；缺完整開高低收時仍顯收盤線圖。持倉已實現／未實現損益（含明細毛額與未實現損益率）及籌碼淨買賣沿相同方向色，零值中性、缺件不著方向色，停損、風險或錯誤狀態顏色仍按其狀態判讀。持倉籌碼監控沒有可用事件時顯「資料不足」，不以預設零表示中性；空分點表收合，真零與原警示原因保留。Registry 已保存逐股回測若有版本化指標契約，歷史文字摘要把不可用績效顯為「未知」，有效真零與零配對保留；沒有契約的舊 run 沿原格式。這些 UI 整理只在後繼原始碼，固定 EXE 以具名交付版本為準；詳見[題材研究](manuals/DATA_AND_MARKET_RESEARCH.md)、[個股研究與回測](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[持倉操作](manuals/WATCHLIST_AND_PORTFOLIO.md)。
 
 後繼 M108 原始碼的個股研究「摘要／五問」若提示 ML 估計尚有項目，請到「Rule、ML 與歷史證據 → 資料稽核」查看完整原值、成本、資格與來源。H5 摘要提示的是完整表總數；一般摘要的「另有」才是前三筆以外的數量。缺值不補零，H5 與 H20 不互換，模型鍵不當可比期間；完整操作與排錯見[個股研究報告](manuals/WATCHLIST_AND_PORTFOLIO.md#個股研究報告)。固定舊 EXE 尚未包含此提示。
+
+若啟動時 ML 研究登錄或其安全路徑無法讀取，狀態列會提示「ML 模型登錄暫不可讀」；個股研究與規則結果仍可使用，ML 預測暫停。個股報告的 ML 區塊會保留不可讀原因。此提示不代表模型結果、Gate 或資料品質已通過；修復登錄路徑後重啟，再查看 ML 資料稽核。
 
 後繼原始碼可在產業與題材頁展開成交金額面積圖。先核對資料日、完整覆蓋數和實際繪製數；畫面最多顯示成交金額最高的 20 個正值題材，其他題材沿原篩選查閱。零成交額另列且不占面積，缺值和部分覆蓋不畫；點圖格或零值列才定位原題材與成員。題材成員可能重疊，圖中面積不能相加作市場占比。精確金額、映射日期與快照身份在提示核對；此圖不授歷史 PIT 或正式交易資格。固定 EXE 未因這項原始碼改動自動更新。
 
@@ -334,9 +340,11 @@ Research Lab「證據覆盤 → 覆盤歷史」表格在週期欄後直接列各
 
 覆盤歷史卡片初次開啟顯「尚未載入」；成功查詢且沒有保存紀錄才顯 0，歷史 DB／表不可用或讀取失敗顯「未知」並保留診斷。表格的覆盤與排程條件對已知狀態顯中文，滑鼠提示保留原始碼；詳情同時顯中文與原始碼，未知新碼保留原文。「允許正式排程」是保存紀錄中的允許旗標計數，不表示 Windows 排程已啟動、實際完成或具交易資格。
 
-若需在產品內留下人工週審，先在啟動 Baldr 前設定 `WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH`，指向已存在父資料夾下的 JSON 檔案；不得指向正式 SQLite 資料庫目錄或 `twstock.db`。於「覆盤歷史」選取一筆帶完整 SHA-256 的週報，按「Owner 覆核此週報」，填寫覆核者姓名／識別、Owner 角色與理由，核對週期及 hash，再勾選確認並追加。程式會再查核歷史 ID、hash 與期間，將一筆核准以 append-only 方式寫到 projection；同一週期不允許覆寫或重複核准。姓名是操作者自我聲明，應由實際覆核者本人輸入，程式不驗證登入身份。缺少 projection 設定、舊紀錄無 hash、歷史已變更或本期已核准時，保存會停下並顯示原因。這只表示 owner 對該份週報快照留下人工覆核，不會接受資料來源、授予 Gate／ML credit、啟用 scheduler 或寫入正式資料庫。
+若需在產品內留下人工週審，先在啟動 Baldr 前設定 `WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH`，指向已存在父資料夾下的 JSON 檔案；不得指向正式 SQLite 資料庫目錄或 `twstock.db`。於「覆盤歷史」選取一筆帶完整 SHA-256 的週報，按「Owner 覆核此週報」，核對週期、history hash，以及若有顯示的 candidate disposition（決定、理由、候選／來源 hash 與原決定檔 hash），再填寫覆核者姓名／識別、Owner 角色與理由，勾選確認並追加。程式會再查核歷史 ID、hash 與期間，將一筆核准以 append-only 方式寫到 projection；同一週期不允許覆寫或重複核准。姓名是操作者自我聲明，應由實際覆核者本人輸入，程式不驗證登入身份。缺少 projection 設定、舊紀錄無 hash、歷史已變更或本期已核准時，保存會停下並顯示原因。這只表示 owner 對該份週報快照留下人工覆核，不會接受資料來源、授予 Gate／ML credit、啟用 scheduler 或寫入正式資料庫。Candidate disposition 顯示為候選人工處置，不代表 Gate 2 接受或正式排程允許；舊週報沒有此欄時仍可照原流程核對。
 
-若週報 history 保存在 runbook 指定的 working-copy DB，可在「覆盤歷史」按「選擇 working-copy DB…」切換讀取來源；列表與 Owner 覆核時的 ID／hash 重查會使用同一檔案。選取只接受已存在的非正式 DB，並以唯讀方式開啟；缺少 history 表時顯示診斷，不建檔、不建立 schema。PERSONAL 或 LEGACY_READ_ONLY 個人資料路由不接受自訂 DB；「還原預設」回到目前應用程式資料路由。Owner 核准仍只追加到上述獨立 JSON projection，不寫入所選 DB。
+若週報 history 保存在 runbook 指定的 working-copy DB，可在「覆盤歷史」按「選擇 working-copy DB…」切換讀取來源；列表與 Owner 覆核時的 ID／hash 重查會使用同一檔案。選取只接受已存在的非正式 DB；一般列表仍唯讀，缺少 history 表時只顯示診斷。PERSONAL 或 LEGACY_READ_ONLY 個人資料路由不接受自訂 DB；「還原預設」回到目前應用程式資料路由。Owner 核准仍只追加到上述獨立 JSON projection，不寫入所選 DB。
+
+若要把候選處置接入週報 history，先明選 working-copy DB，填入開始日與結束日，再按「保存候選決定至週報 history…」。依序選取原 candidate JSON artifact 與其綁定的 collection sidecar，核對確認畫面中的路徑及期間後保存。程式會從同一 working-copy 重建週報，在保存前重驗 artifact bytes／SHA、sidecar SHA、collection 狀態與來源 hash、期間及 manifest binding，並讀回相同 history ID/hash。保存作業執行期間，資料庫來源、日期篩選、重新整理、Owner 覆核及 Action Item 操作會暫時停用，避免畫面切到其他 working-copy 或週期；保存成功或失敗後控制項會恢復。此操作只在所選非正式 working-copy 追加一筆週報 history；不寫 sidecar、正式資料、Owner approval projection 或 Action Items，也不授 Gate／排程資格。完成後重新整理並核對回報的 ID/hash，再另行由 Owner 覆核該筆快照。沒有 candidate artifact 時仍可依[每週 Evidence Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md#3-每週固定操作順序)使用 CLI 保存一般週報。
 
 在較寬視窗，覆盤歷史六張卡片改排單列，讓首屏直接多看幾筆可選的保存紀錄；較窄視窗仍分兩列。若要看完整選列詳情，請捲動結果內容區；上方限制提示與目前資料庫路徑仍可回到頁首查閱。卡片仍只統計目前頁面。
 
@@ -366,7 +374,7 @@ Research Lab「證據覆盤 → 覆盤歷史」表格在週期欄後直接列各
 
 批次回測結果的 CAGR／最大回撤中位數若沒有合格樣本，顯示「未知」及 `n=0`；有合格樣本且原觀測為零才顯 `0.00%`。排行榜的 CAGR、Sharpe、最大回撤及勝率只納入原版本化單股指標契約判定可用的值；舊 run 沒有此契約時維持舊格式呈現，不能由缺契約推定已驗證。
 
-在後續開發來源的「個股研究 → 決策 → 結果」，頁首按 5／10／20／60 個交易日分列來源標示 `ready`、待成熟及連結異常；再查看下表的逐期狀態與原因。`ready` 只是來源狀態，不代表已核准績效或實際成交損益。82原包未包含此顯示；目前指定候選已包含，仍依逐期原來源判讀；操作與缺件判讀見[決策到結果的回訪](manuals/WATCHLIST_AND_PORTFOLIO.md#決策到結果的回訪後續開發分支)。 固定134另列原計畫目標日、實際取價日與來源截止，區分缺價和待成熟；不重算日期、以後一筆價格補缺或提升原資格。
+在後續開發來源的「個股研究 → 決策 → 結果」，頁首按 5／10／20／60 個交易日分列來源標示 `ready`、待成熟及連結異常；再查看下表的逐期狀態與原因。`ready` 只是來源狀態，不代表已核准績效或實際成交損益。來源缺件會分開標示企業行動與交易限制；舊結果仍使用未細分的 `source_not_ingested` 時，介面會明示來源類型未知。82原包未包含此顯示；目前指定候選已包含，仍依逐期原來源判讀；操作與缺件判讀見[決策到結果的回訪](manuals/WATCHLIST_AND_PORTFOLIO.md#決策到結果的回訪後續開發分支)。 固定134另列原計畫目標日、實際取價日與來源截止，區分缺價和待成熟；不重算日期、以後一筆價格補缺或提升原資格。
 
 在後續開發來源的「推薦分析」亦可明選舊格式已保存推薦，唯讀看原列並以同一 result ID 下鑽個股結果；原保存日期、當次原件雜湊與結果 `ready` 都不自動授予歷史 PIT 或採用資格。操作、不可用動作及排錯見[舊格式已保存推薦的唯讀回訪](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊格式已保存推薦的唯讀回訪後續開發來源)。82原包未包含此入口；目前指定候選已包含。
 
@@ -424,7 +432,13 @@ Research Lab 的「研究 Registry」新增兩筆推薦回放的完整期間診�
 
 Evidence lane 的週收集進度會分列待人工審核收集數、需重收數、來源不可讀數與資料覆蓋資訊缺件數；這些分類來自現有唯讀 readiness 摘要，原因分類可能重疊，不能相加成總筆數。出現「需重收」表示來源證據不完整，Owner 核准不能補出缺失內容；正式週 Evidence 仍須逐筆核對來源與人工審查。
 
-在「整體 Gate 與缺口」按「檢視週收集明細（唯讀）」可查看最多 30 筆待審收集的期間、ID／source hash、覆蓋統計、品質發現與完整性例子。這是收集候選，畫面不核准、不寫入，也不授 Gate credit。若例子帶有官方收據路徑與 hash，可按「核驗並預覽收據」；只有路徑位於設定的 `output_root` 內、檔案未超過 256 KiB 且 SHA-256 與收集時記錄相符時，才顯示其 UTF-8 文字。預覽不代表來源已接受。舊記錄若需重收，需重新取得缺失證據。
+在「整體 Gate 與缺口」按「檢視週收集明細與覆核」可查看最多 30 筆待審收集的期間、ID／source hash、覆蓋統計、品質發現、完整性例子與逐期 Runbook evidence checklist。`missing` 表示附件未提供；`partial` 表示只有部分資訊或該證據仍缺必要驗證；`unverified` 表示 sidecar 只有 coverage 摘要，尚未核驗附件。載入 Runbook manifest 後，介面會檢查 collection ID、週期、附件角色、檔案 SHA-256 及 smoke／週報工作副本指紋；對應項目可標為 `verified`。此狀態只表示附件 bytes、契約與身分可核對，不代表來源已接受、人工 review 已完成或 Gate 通過。尚未取得的 freshness、完整 coverage、排程／手動週期收據、人工 review 與 recovery 仍會保持 partial／missing。明細與收據預覽仍唯讀；若例子帶有官方收據路徑與 hash，可按「核驗並預覽收據」；只有路徑位於設定的 `output_root` 內、檔案未超過 256 KiB 且 SHA-256 與收集時記錄相符時，才顯示其 UTF-8 文字。預覽不代表來源已接受。舊記錄若需重收，需重新取得缺失證據。
+
+有待審候選時可按「記錄具名覆核決定…」，重新讀取候選後選擇單筆收集，填寫實際 Owner／Reviewer 姓名、角色與覆核理由，並選擇「需後續跟進」、「已檢視（不代表 Gate 核准）」或「不採納此候選」。覆核視窗會列出期間、source hash、coverage 數字、品質發現、最多五個完整性例子及其收據 hash；收據 hash 在此只代表 sidecar 記錄，仍未核驗。需要檢查收據內容時，請取消覆核視窗，回明細按「核驗並預覽收據」，再重新開啟覆核。檢查後勾選確認並選擇一個尚不存在的新 JSON 檔案。程式會在寫入前再次核對 sidecar hash 與候選狀態，拒絕過期、已處置或不可覆核的候選，且不覆寫既有檔案、sidecar 或正式資料庫。這個檔案保存具名人工處置，但不是登入身分驗證，也不寫 weekly history／核准投影、不授 Gate credit、不啟用正式排程。若輸出路徑無效、檔案已存在或來源已變動，畫面會顯示原因；請重新載入候選並選擇新檔名。
+
+若尚未作出決定，仍可按「匯出覆核候選 JSON…」另存唯讀封包；匯出不會記錄人工處置。舊記錄若需重收，需重新取得缺失證據；人工標記「已檢視」也不會使資料品質缺口或 Gate 狀態自動通過。
+
+若已取得 Runbook 附件，先把收據 JSON 放在同一個受控附件目錄，再以 sidecar 內的實際 `collection_id`、`period_start`、`period_end` 建立 manifest。例如：`python scripts/build_weekly_runbook_manifest.py --collection-id <collection-id> --period-start YYYY-MM-DD --period-end YYYY-MM-DD --output-json <receipt-root>\manifest.json --artifact working_copy_smoke=<receipt-root>\smoke.json --artifact weekly_review_report=<receipt-root>\weekly-review.json`。每個附件以 `--artifact ROLE=PATH` 加入；manifest 會保存相對路徑與 SHA-256，拒絕重複角色、目錄外附件、連結／reparse path、非 JSON 與過大的檔案，且不覆寫既有輸出。回到明細按「載入 Runbook 附件 manifest…」，確認 manifest digest、逐角色狀態與附件 hash。具名決定視窗會列出同一組證據；寫入前會重讀並重新核對 sidecar、manifest 與附件。決定檔只留存人工處置及當時的證據 hash，不核准 Gate、不改 weekly history／正式資料，也不啟用排程。
 
 ### 4.6 市場資料完整性修復（受控 CLI）
 
@@ -518,7 +532,9 @@ M149 後，在「市場探索 → 市場總覽 → 每日決策 → 總覽」可
 
 排程排錯時先核 exact run／日期／root／hash，再核是否達到成功條件。Evidence 的 `scheduled_recommendation_status_not_passed:blocked` 表示推薦身分可辨但整體狀態未通過，pipeline仍不啟動；真正身分錯誤另列identity mismatch。日曆 `refreshed` 要讀同次刷新後終態，不能借刷新前inspection。Paper官方NULL open只允許原來源、原執行日內的有界retry；跨日仍保留missed session，不能用後日價格補成交。ML Forward shared-lock preflight尚未啟動時沒有maturity cutoff，但parent仍失敗；G9/H20終態核驗失敗或逾時不能當自然累積成功。操作與具名驗收見[雙報告修正QA](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)及[排程運維](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
 
-受控 Evidence dry-run 可用 `--recommendation-source-root <canonical-output-root>` 綁定原推薦快照，同時把 `--output-root` 與 `--status-path` 指向互不重疊的 scratch；工作資料庫與 `--data-root` 仍使用 working-copy。來源根是唯讀輸入，輸出根會建立 run、report、receipt 與 dry-run scratch。來源與輸出根重疊時命令拒絕執行；不得複製或改寫來源 `latest_status.json` 以通過身分驗證。需要納入 Paper 證據時，另以 `--paper-evidence-source-root <paper-source-root>` 指定唯讀輸入；未指定時，receipt 會明示本次 `not_configured_for_controlled_replay`，不把空 scratch 誤標成正式 Paper 缺件。Evidence Review 的「每日排程證據狀態」另以「主要缺口與下一步」卡摘要已知 blocker 的處理方向；原始診斷仍在明細中，未知診斷不會被改寫成已解決。這些驗證只提供該次 dry-run 證據，不會建立人工 review、scheduler approval 或 Gate credit。完整步驟見[每週 Evidence Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md#3-每週固定操作順序)。
+受控 Evidence dry-run 可用 `--recommendation-source-root <canonical-output-root>` 綁定原推薦快照，同時把 `--output-root` 與 `--status-path` 指向互不重疊的 scratch；行情原始 custody 預設沿用 `--recommendation-source-root`；若行情證據另在其他目錄，再以 `--market-quote-custody-root <market-custody-root>` 指定唯讀根，該根含 `scheduled/daily_price_source_custody`。不要讓 dry-run 輸出 scratch 同時充當行情證據來源。工作資料庫與 `--data-root` 依受控流程使用 working-copy。來源根是唯讀輸入，輸出根會建立 run、report、receipt 與 dry-run scratch。來源與輸出根重疊時命令拒絕執行；不得複製或改寫來源 `latest_status.json` 以通過身分驗證。受控流程要帶入手動 Watchlist 時，另指定 `--watchlist-source-root <canonical-output-root>`；wrapper 只接受 `watchlist/default.json` 的舊式 JSON 清單，先核對來源檔是一般檔案與合法 JSON，再以不可覆寫方式複製到 scratch 並讀回比對 SHA。來源根必須與 scratch 不重疊；若該根已啟用 SQLite Watchlist repository，命令拒絕以可能過期的 JSON 代替。receipt 記錄來源／副本 SHA 與項目數；未指定時不建立或推定 Watchlist 來源。需要納入 Paper 證據時，另以 `--paper-evidence-source-root <paper-source-root>` 指定唯讀輸入；未指定時，receipt 會明示本次 `not_configured_for_controlled_replay`，不把空 scratch 誤標成正式 Paper 缺件。Evidence Review 的「每日排程證據狀態」另以「主要缺口與下一步」卡摘要已知 blocker 的處理方向；原始診斷仍在明細中，未知診斷不會被改寫成已解決。報告中的 `market_breadth_source_declared_non_comparable_exclusions` 是來源已明確標記不可比並排除的筆數，分類為 advisory 並保留來源排除記錄；它不表示該列方向已知或改列成上漲／下跌／平盤。`market_breadth_skipped_rows` 仍是未知方向列數，屬 warning，須按原始診斷檢查。這些驗證只提供該次 dry-run 證據，不會建立人工 review、scheduler approval 或 Gate credit。覆盤歷史的 Action Item 追蹤需先明選已 checkpoint、操作期間沒有其他寫入者的非正式 working-copy DB，再選獨立 JSON 投影檔；按「檢視／更新 Action Items…」可查看來源身分與完整處置歷程，並依 `open → reviewed / dismissed / follow_up` 等允許轉移追加人工狀態。來源 DB 以唯讀方式開啟，處置者姓名與角色為自我聲明；事件只更新 append-only 狀態投影，不回寫 SQLite、Owner 核准投影或 Gate 資格。完整操作與可用狀態轉移見[每週 Evidence Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md#3-每週固定操作順序)。
+
+Forward outcome 的 maturity calendar 使用選取年度 cache 目錄內已存在的 `twse_temporary_closure_*.json` sidecar；日曆 loader 會照常核對原件 hash、來源及可得時間。明確指定 `temporary_closure_path` 或設定 config 時仍以該路徑優先；沒有 sidecar 時只依年度計畫，不能把未知解讀為沒有臨時休市。Markdown dry-run 報告的「Forward Performance Detail」會顯示各彙總組的樣本、待成熟／缺件數、品質與 warning counts；所有非 `READY` 組優先列出，最多顯示 50 組並標示總數與是否截斷。區塊提供群組彙總，不含逐事件診斷；要判斷個別事件的實際原因，仍須查相應 Forward 明細。這份報告不會因新增可見性解除資料缺口或 Gate。
 
 <details>
 <summary>舊手冊書籤與日期化工程補充（按需展開）</summary>
@@ -688,5 +704,7 @@ Workbench Advice 列表及選列卡會顯示「流動性 Gate：未通過／未�
 Advice 必要欄位判讀會把空值、`UNKNOWN`、`UNAVAILABLE`、「未知」與「未提供」列為待補；來源追溯必須含精確結果 ID 或具體來源／拒絕依據，只有 `RecommendationResultDTO` 這類來源型別名稱不算完成。已知的負向結果（如流動性 Gate 未通過、不可成交、資料缺失）仍可作為明確狀態呈現，不等於建議通過或資料完整。選列卡會列出待補欄位，請回查原推薦與策略設定，不要以分數或空白代填。
 
 Guided 模式只有在策略 Advice 契約隨精確策略版本保存、canonical 執行結果通過完整性核驗，且含進場論點、失效條件、持有期間與檢視頻率時，才可輸出「新增候選」。缺少或無法核驗契約時會顯示「暫不新增部位」及原因；原因會指出須以新的合格回測升版並填妥契約，再選用該新版本執行。既有版本不能事後補綁契約。分數、推薦理由或回測績效不能代填作者契約。Professional 候選仍以研究候選呈現；這項規則不要求連接帳戶或提供手動持倉。
+
+每日候選若整體 cohort 顯示 `degraded`，Workbench 會保留整體缺漏警告，並在來源結果、execution ID、cohort hash 與股票名單都精確核對時逐檔顯示同一 canonical cohort 的資料品質。其他資料已觀測的股票不會只因同批另一檔缺漏而一起降級；該檔自身為降級／缺失、或逐股品質無法精確核對時，仍以研究或未知呈現，不視為資料完整、策略通過或來源已接受。
 
 </details>

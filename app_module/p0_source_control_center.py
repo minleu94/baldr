@@ -1230,6 +1230,7 @@ def _require_formal_monthly_revenue_quality(payload: Mapping[str, Any]) -> None:
         count_fields = (
             "formal_row_count",
             "missing_announcement_date_row_count",
+            "report_level_date_unverified_row_count",
             "distinct_stock_code_count",
             "distinct_source_version_count",
         )

@@ -113,6 +113,7 @@ def build_service_backed_decision_desk_snapshot_builder(
     config: TWStockConfig,
     *,
     clock: Callable[[], datetime] | None = None,
+    market_quote_custody_root: Path | str | None = None,
     regime_service: RegimeService | None = None,
     portfolio_service: PortfolioService | None = None,
     watchlist_service: WatchlistService | None = None,
@@ -135,7 +136,11 @@ def build_service_backed_decision_desk_snapshot_builder(
             SQLiteDailyPriceMarketBreadthProvider(
                 config.db_file,
                 market_frame_loader=market_frame_loader,
-                quote_diagnostics=OfficialQuoteExclusionDiagnostics(Path(config.db_file).parent.parent / "output/scheduled/daily_price_source_custody", clock=cadence.clock),
+                quote_diagnostics=OfficialQuoteExclusionDiagnostics(
+                    Path(market_quote_custody_root or config.output_root)
+                    / "scheduled/daily_price_source_custody",
+                    clock=cadence.clock,
+                ),
             ),
             cadence=cadence,
         ),

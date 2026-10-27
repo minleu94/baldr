@@ -7,9 +7,124 @@ import sqlite3
 import subprocess
 import sys
 
+import pytest
+
 from app_module.decision_quality_dtos import DecisionQualityItem, DecisionQualityReview
 from app_module.decision_quality_repository import DecisionQualityRepository
+from app_module.evidence_weekly_approval_input import build_weekly_approval_input
+from app_module.evidence_weekly_review_decision import write_weekly_review_decision_artifact
 from data_module.config import TWStockConfig
+from runtime.sqlite_file_set_fingerprint import (
+    SQLITE_FILE_SET_FINGERPRINT_METHOD,
+    fingerprint_sqlite_file_set,
+)
+from scripts import build_evidence_operations_weekly_review as weekly_review_script
+from scripts import smoke_evidence_pipeline_working_copy as smoke_script
+from scripts import export_evidence_review_dashboard_snapshot as dashboard_script
+
+
+def _write_weekly_decision_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    sidecar_path = tmp_path / "weekly-sidecar.sqlite"
+    coverage = {
+        "status": "degraded",
+        "trading_day_count": 2,
+        "observed_row_count": 3,
+        "duplicate_symbol_rows": 0,
+        "quality_findings": ["required_price_values_missing"],
+        "incomplete_row_count": 1,
+        "integrity_examples": [],
+        "integrity_examples_truncated": False,
+    }
+    with sqlite3.connect(sidecar_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE evidence_weekly_collections (
+                collection_id TEXT PRIMARY KEY, period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL, source_path TEXT NOT NULL,
+                source_hash TEXT NOT NULL, status TEXT NOT NULL,
+                payload_json TEXT NOT NULL, error_type TEXT NOT NULL DEFAULT '',
+                error_message TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO evidence_weekly_collections (
+                collection_id, period_start, period_end, source_path, source_hash,
+                status, payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "ewc-cli-1", "2026-10-19", "2026-10-25", str(tmp_path / "source.json"),
+                "sha256:" + "a" * 64, "pending_human_review",
+                json.dumps({
+                    "last_trading_date": "2026-10-22",
+                    "human_approval_required": True,
+                    "source_coverage": coverage,
+                }),
+                "2026-10-26T12:00:00+00:00",
+            ),
+        )
+    packet = build_weekly_approval_input(
+        sidecar_path, owner_role="portfolio_owner", reviewer_role="independent_reviewer"
+    )
+    artifact_path = tmp_path / "decision.json"
+    write_weekly_review_decision_artifact(
+        packet,
+        sidecar_path,
+        collection_id="ewc-cli-1",
+        owner_name="Owner Example",
+        owner_role="portfolio_owner",
+        reviewer_name="Reviewer Example",
+        reviewer_role="independent_reviewer",
+        decision="follow_up",
+        note="本週須跟進未解資料缺口。",
+        output_path=artifact_path,
+        reviewed_at="2026-10-26T12:30:00+08:00",
+    )
+    return sidecar_path, artifact_path
+
+
+def test_runbook_producers_share_sqlite_file_set_fingerprint(tmp_path: Path) -> None:
+    db_path = tmp_path / "shared-working-copy.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE fixture(value TEXT)")
+    Path(str(db_path) + "-wal").write_bytes(b"fixture wal sidecar")
+
+    shared = fingerprint_sqlite_file_set(db_path)
+    smoke = smoke_script.fingerprint_sqlite_file_set(db_path)
+    weekly = weekly_review_script._sqlite_file_set_fingerprint(db_path)
+    dashboard = dashboard_script._fingerprint_sqlite_file_set(db_path)
+
+    assert shared["method"] == SQLITE_FILE_SET_FINGERPRINT_METHOD
+    assert smoke == shared
+    assert weekly == dashboard == shared["sha256"]
+
+
+def test_weekly_receipt_rejects_missing_lifecycle_apply_action(tmp_path: Path) -> None:
+    db_path = tmp_path / "working-copy.sqlite"
+    db_path.write_bytes(b"synthetic db identity")
+    payload = {
+        "start_date": "2026-10-19",
+        "end_date": "2026-10-25",
+        "write_performed": False,
+        "manual_approval": {"production_scheduler_allowed": False},
+        "signal_decay": {"demote_candidate_count": 1, "retire_candidate_count": 0},
+        "manual_lifecycle_candidates": [{"suggested_lifecycle_action": "demote"}],
+    }
+
+    with pytest.raises(ValueError, match="safety assertions failed"):
+        weekly_review_script._write_runbook_receipt(
+            tmp_path / "must-not-exist.json",
+            payload,
+            start_date="2026-10-19",
+            end_date="2026-10-25",
+            db_path=db_path,
+            fingerprint_before="sha256:stable",
+            fingerprint_after="sha256:stable",
+        )
+
+    assert not (tmp_path / "must-not-exist.json").exists()
 
 
 def test_weekly_review_cli_outputs_json_without_enabling_scheduler(tmp_path: Path) -> None:
@@ -43,10 +158,132 @@ def test_weekly_review_cli_outputs_json_without_enabling_scheduler(tmp_path: Pat
     assert payload["manual_approval"]["production_scheduler_allowed"] is False
     assert payload["status"] in {"coverage_only", "needs_manual_review", "ready_for_weekly_closeout"}
     assert payload["write_performed"] is False
+    assert payload["decision_quality"]["reviews_count"] == 0
+    assert payload["decision_quality"]["warnings_count"] >= 1
+    assert payload["signal_decay"]["status_counts"] == {"unknown": 1}
+    assert not db_path.exists()
+
+
+def test_weekly_review_cli_writes_self_describing_dry_run_receipt_exclusively(tmp_path: Path) -> None:
+    db_path = tmp_path / "working-copy.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE fixture(value TEXT)")
+    sqlite_files = [Path(f"{db_path}{suffix}") for suffix in ("", "-journal", "-wal", "-shm")]
+    file_set_before = {
+        path.name: path.read_bytes() if path.exists() else None
+        for path in sqlite_files
+    }
+    data_root = tmp_path / "data"
+    output_root = tmp_path / "output"
+    receipt_path = tmp_path / "weekly-review-receipt.json"
+    completed = subprocess.run(
+        [
+            sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+            "--start-date", "2026-10-19", "--end-date", "2026-10-25",
+            "--db-path", str(db_path), "--data-root", str(data_root),
+            "--output-root", str(output_root), "--receipt-output", str(receipt_path),
+            "--json-output",
+        ],
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert {
+        path.name: path.read_bytes() if path.exists() else None
+        for path in sqlite_files
+    } == file_set_before
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema_version"] == "baldr-weekly-runbook-artifact.v1"
+    assert receipt["artifact_role"] == "weekly_review_report"
+    assert receipt["period_start"] == "2026-10-19"
+    assert receipt["period_end"] == receipt["decision_date"] == "2026-10-25"
+    identity = receipt["database_identity"]
+    assert identity["role"] == "working_copy"
+    assert identity["fingerprint_method"] == SQLITE_FILE_SET_FINGERPRINT_METHOD
+    assert identity["stable"] is True
+    assert identity["fingerprint_before"] == identity["fingerprint_after"]
+    assert identity["fingerprint_before"].startswith("sha256:")
+    assert receipt["report_payload"]["action_item_plan"]["dry_run"] is True
+    assert receipt["report_payload"]["decision_quality"]["reviews_count"] == 0
+    assert receipt["report_payload"]["decision_quality"]["warnings_count"] >= 1
+    assert receipt["report_payload"]["signal_decay"]["status_counts"] == {"unknown": 1}
+    assert receipt["report_payload"]["warnings"] is not None
+    assert all(receipt["safety_flags_verified"].values())
+    assert receipt["safety_flags_verified"]["lifecycle_apply_action_all_false"] is True
+    assert receipt["safety_flags_verified"]["report_period_matches_receipt"] is True
+    assert receipt["production_scheduler_allowed"] is False
+    with sqlite3.connect(db_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+    assert tables == {"fixture"}
+
+    original = receipt_path.read_bytes()
+    repeated = subprocess.run(
+        [
+            sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+            "--start-date", "2026-10-19", "--end-date", "2026-10-25",
+            "--db-path", str(db_path), "--data-root", str(data_root),
+            "--output-root", str(output_root), "--receipt-output", str(receipt_path),
+        ],
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    assert repeated.returncode == 2
+    assert receipt_path.read_bytes() == original
+
+
+def test_weekly_review_cli_rejects_dry_run_receipt_with_write_request(tmp_path: Path) -> None:
+    db_path = tmp_path / "working-copy.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE fixture(value TEXT)")
+    data_root = tmp_path / "data"
+    output_root = tmp_path / "output"
+    receipt_path = tmp_path / "must-not-exist.json"
+    completed = subprocess.run(
+        [
+            sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+            "--start-date", "2026-10-19", "--end-date", "2026-10-25",
+            "--db-path", str(db_path), "--data-root", str(data_root),
+            "--output-root", str(output_root), "--receipt-output", str(receipt_path),
+            "--save-history",
+        ],
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    assert completed.returncode == 2
+    assert "dry-run only" in completed.stderr
+    assert not receipt_path.exists()
+
+
+def test_weekly_review_cli_rejects_receipt_with_markdown_output_without_writing(tmp_path: Path) -> None:
+    db_path = tmp_path / "working-copy.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE fixture(value TEXT)")
+    data_root = tmp_path / "data"
+    output_root = tmp_path / "output"
+    receipt_path = tmp_path / "must-not-exist.json"
+    markdown_path = tmp_path / "must-not-exist.md"
+    completed = subprocess.run(
+        [
+            sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+            "--start-date", "2026-10-19", "--end-date", "2026-10-25",
+            "--db-path", str(db_path), "--data-root", str(data_root),
+            "--output-root", str(output_root), "--receipt-output", str(receipt_path),
+            "--markdown-output", str(markdown_path),
+        ],
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    assert completed.returncode == 2
+    assert "markdown-output" in completed.stderr
+    assert not receipt_path.exists()
+    assert not markdown_path.exists()
 
 
 def test_weekly_review_cli_action_item_plan_dry_run_does_not_write(tmp_path: Path) -> None:
     db_path = tmp_path / "evidence-ops-cli.db"
+    data_root = tmp_path / "data"
+    output_root = tmp_path / "output"
 
     completed = subprocess.run(
         [
@@ -58,6 +295,10 @@ def test_weekly_review_cli_action_item_plan_dry_run_does_not_write(tmp_path: Pat
             "2026-06-30",
             "--db-path",
             str(db_path),
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
             "--plan-action-items",
             "--json-output",
         ],
@@ -72,6 +313,7 @@ def test_weekly_review_cli_action_item_plan_dry_run_does_not_write(tmp_path: Pat
     assert payload["action_item_plan"]["dry_run"] is True
     assert payload["action_item_plan"]["action_items_created"] == 0
     assert payload["write_performed"] is False
+    assert not db_path.exists()
 
 
 def test_weekly_review_cli_save_history_and_list_history(tmp_path: Path) -> None:
@@ -126,6 +368,56 @@ def test_weekly_review_cli_save_history_and_list_history(tmp_path: Path) -> None
     assert len(listed_payload["history_records"]) == 1
     assert listed_payload["history_records"][0]["period_start"] == "2026-07-06"
     assert listed_payload["history_records"][0]["payload_json"]["status"] == saved_payload["status"]
+
+
+def test_weekly_review_cli_embeds_valid_candidate_decision_in_saved_history(tmp_path: Path) -> None:
+    sidecar_path, artifact_path = _write_weekly_decision_fixture(tmp_path)
+    db_path = tmp_path / "approved-working-copy.sqlite"
+    completed = subprocess.run(
+        [
+            sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+            "--start-date", "2026-10-19", "--end-date", "2026-10-25",
+            "--db-path", str(db_path), "--data-root", str(tmp_path / "data"),
+            "--output-root", str(tmp_path / "output"), "--save-history",
+            "--candidate-review-artifact", str(artifact_path),
+            "--candidate-review-sidecar-path", str(sidecar_path), "--json-output",
+        ],
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    decision = payload["history_record"]["payload_json"]["candidate_review_decision"]
+    assert decision["decision"] == "follow_up"
+    assert decision["source"]["collection_id"] == "ewc-cli-1"
+    assert decision["source"]["sidecar_sha256"].startswith("sha256:")
+    assert decision["artifact_sha256"].startswith("sha256:")
+    assert decision["candidate_only"] is True
+    assert decision["formal_credit_authorized"] is False
+    assert decision["production_scheduler_allowed"] is False
+    assert payload["history_record"]["production_scheduler_allowed"] is False
+
+
+def test_weekly_review_cli_refuses_candidate_bridge_with_action_item_confirmation(
+    tmp_path: Path,
+) -> None:
+    sidecar_path, artifact_path = _write_weekly_decision_fixture(tmp_path)
+    db_path = tmp_path / "must-not-write.sqlite"
+    completed = subprocess.run(
+        [
+            sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+            "--start-date", "2026-10-19", "--end-date", "2026-10-25",
+            "--db-path", str(db_path), "--data-root", str(tmp_path / "data"),
+            "--output-root", str(tmp_path / "output"), "--save-history",
+            "--confirm-action-items", "--candidate-review-artifact", str(artifact_path),
+            "--candidate-review-sidecar-path", str(sidecar_path),
+        ],
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "cannot be combined with action-item confirmation" in completed.stderr
+    assert not db_path.exists()
 
 
 def test_list_history_missing_database_is_diagnostic_and_never_creates_it(tmp_path: Path) -> None:

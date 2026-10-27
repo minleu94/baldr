@@ -4004,6 +4004,18 @@ class RecommendationService:
                             raise RuntimeError(
                                 "missing final score 與 staged evaluator outcome 不一致"
                             )
+                        missing_inputs = self.strategy_configurator.scoring_engine.missing_indicator_inputs(
+                            result_df.iloc[[-1]], config
+                        )
+                        diagnostic = (
+                            "score_input_missing:" + ",".join(missing_inputs)
+                            if missing_inputs
+                            else "score_inputs_not_identified"
+                        )
+                        candidate_outcome = replace(
+                            candidate_outcome,
+                            warnings=tuple(dict.fromkeys((*candidate_outcome.warnings, diagnostic))),
+                        )
                         row = self._matrix_row(
                             stock_code=stock_code_text, stock_name=stock_name_text,
                             status=candidate_outcome.status,

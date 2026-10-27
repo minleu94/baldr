@@ -171,6 +171,34 @@ _SCREENING_REASON_DISPLAY_LABELS = {
     "official_delisted": "已核驗下市／終止",
     "liquidity_volume_ratio_below_min": "量能未達本次策略的放量門檻",
 }
+_SCORE_INPUT_DISPLAY_LABELS = {
+    "RSI": "RSI",
+    "MACD": "MACD",
+    "MACD_Signal": "MACD 訊號線",
+    "slowk": "KD 快線",
+    "slowd": "KD 慢線",
+    "ADX": "ADX",
+    "upperband": "布林上軌",
+    "lowerband": "布林下軌",
+    "收盤價": "收盤價",
+}
+
+
+def _screening_warning_display(value: str) -> str:
+    """只在畫面翻譯已知缺值警告，未知內容保留原文。"""
+    prefix = "score_input_missing:"
+    if not value.startswith(prefix):
+        return value
+    raw_fields = value[len(prefix):].split(",")
+    if not raw_fields or any(not field for field in raw_fields):
+        return value
+    labels = [
+        _SCORE_INPUT_DISPLAY_LABELS.get(field, field)
+        if not (field.startswith("MA") and field[2:].isdigit())
+        else field
+        for field in raw_fields
+    ]
+    return "啟用計分指標缺值：" + "、".join(labels)
 
 
 def _screening_code_display(value: str, labels: Mapping[str, str]) -> str:
@@ -238,7 +266,7 @@ def _screening_only_result_rows(
                 "觀測值": row["observed_value"],
                 "要求值": row["required_value"],
                 "證據品質": row["quality"],
-                "備註": "、".join(warnings) if warnings else "",
+                "備註": "、".join(_screening_warning_display(str(item)) for item in warnings) if warnings else "",
                 "決策日": row["as_of_date"],
             }
         )
@@ -763,6 +791,7 @@ class RecommendationView(QWidget):
     sendToBacktestRequested = Signal(dict)  # 一鍵送回測請求（Phase 3.3）
     stockResearchRequested = Signal(object)  # 單股研究上下文（唯讀下鑽）
     returnToDailyDecisionRequested = Signal()
+    savedResearchToWorkbenchRequested = Signal(str)
 
     def __init__(
         self,
@@ -3806,7 +3835,7 @@ class RecommendationView(QWidget):
         self.saved_source_combo.setMinimumWidth(0)
         self.saved_source_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.saved_source_combo.addItem("請先讀取可用來源", None)
-        self.saved_source_combo.currentIndexChanged.connect(self._select_saved_source)
+        self.saved_source_combo.currentIndexChanged.connect(self._on_saved_source_changed)
         saved_result_row.addWidget(self.saved_source_combo, 1)
         self.refresh_saved_sources_button = QPushButton("讀取可用來源")
         self.refresh_saved_sources_button.setEnabled(self.config is not None)
@@ -3844,6 +3873,18 @@ class RecommendationView(QWidget):
             self._load_saved_recommendation_result
         )
         saved_result_row.addWidget(self.load_saved_result_button)
+        self.saved_research_to_workbench_button = QPushButton("送至 Workbench 作研究")
+        self.saved_research_to_workbench_button.setObjectName("savedResearchToWorkbench")
+        self.saved_research_to_workbench_button.setProperty("variant", "secondary")
+        self.saved_research_to_workbench_button.setToolTip(
+            "只允許將明選且 canonical 已核驗的單筆保存推薦送到 Workbench 的獨立研究區；"
+            "保留原決策日／資料日，不列為今日排程 Advice，不寫入研究決定。"
+        )
+        self.saved_research_to_workbench_button.setEnabled(False)
+        self.saved_research_to_workbench_button.clicked.connect(
+            self._send_saved_research_to_workbench
+        )
+        saved_result_row.addWidget(self.saved_research_to_workbench_button)
         layout.addLayout(saved_result_row)
 
         # 標題和控制欄
@@ -5728,6 +5769,7 @@ class RecommendationView(QWidget):
         self.current_read_model = None
         self.current_save_receipt = None
         self._loaded_saved_result_identity = None
+        self._sync_saved_research_handoff_button()
         self._pending_save_receipt = None
         self._pending_save_metadata = None
         # 只有 verified canonical readback 才能進入持久化來源欄位。
@@ -6829,6 +6871,46 @@ class RecommendationView(QWidget):
         self._saved_source_expected_identity = identity
         self.saved_result_id_input.setText(identity[3] if identity is not None else "")
 
+    def _on_saved_source_changed(self, index: int) -> None:
+        self._select_saved_source(index)
+        self._sync_saved_research_handoff_button()
+
+    def _sync_saved_research_handoff_button(self) -> None:
+        button = getattr(self, "saved_research_to_workbench_button", None)
+        if button is None:
+            return
+        result_id = self._verified_saved_result_id()
+        read_model = getattr(self, "current_read_model", None)
+        execution = getattr(read_model, "execution", None)
+        expected_identity = getattr(self, "_saved_source_expected_identity", None)
+        selected_id = (
+            expected_identity[3]
+            if isinstance(expected_identity, tuple) and len(expected_identity) == 8
+            else None
+        )
+        button.setEnabled(
+            bool(
+                result_id
+                and result_id == getattr(read_model, "result_id", None)
+                and (selected_id is None or selected_id == result_id)
+                and execution is not None
+                and execution.items
+                and getattr(read_model, "integrity_basis", None)
+                == "canonical_payload_and_index_verified"
+            )
+        )
+
+    def _send_saved_research_to_workbench(self) -> None:
+        self._sync_saved_research_handoff_button()
+        if not self.saved_research_to_workbench_button.isEnabled():
+            self.result_status_label.setText(
+                "請先選取並完成 exact canonical 保存推薦讀回；舊格式或僅保存篩選不能送到研究區。"
+            )
+            return
+        result_id = self._verified_saved_result_id()
+        if result_id:
+            self.savedResearchToWorkbenchRequested.emit(result_id)
+
     def _refresh_saved_sources(self) -> None:
         """明示唯讀查詢原 saved seam，僅提供目前 reader 可讀的來源。"""
         if self.config is None or self._saved_source_list_worker is not None:
@@ -6910,6 +6992,7 @@ class RecommendationView(QWidget):
                 self.saved_source_combo.setCurrentIndex(index)
         self.saved_source_combo.blockSignals(False)
         self._select_saved_source(self.saved_source_combo.currentIndex())
+        self._sync_saved_research_handoff_button()
         self.result_status_label.setText(
             f"可讀保存推薦來源 {len(options)} 筆；不支援或缺件 {refused} 筆。"
             "請明確選擇後按讀取；每日研究條件是另一種研究來源。"
@@ -7051,6 +7134,8 @@ class RecommendationView(QWidget):
             if selected_result_id is not None
             else getattr(self, "_saved_source_expected_identity", None)
         )
+        if selected_result_id is not None:
+            self._saved_source_expected_identity = None
         if expected_identity is not None and expected_identity[3] != requested_result_id:
             self.result_status_label.setText("選項與結果 ID 不一致；請重新選擇來源。")
             return
@@ -7235,6 +7320,7 @@ class RecommendationView(QWidget):
         self._refresh_personal_choice_controls()
         self._refresh_personal_prediction_capture_controls()
         self._apply_responsive_layout(force=True)
+        self._sync_saved_research_handoff_button()
         self._schedule_public_saved_result_focus(requested_result_id, generation)
 
     def _apply_legacy_saved_result(
@@ -7311,6 +7397,7 @@ class RecommendationView(QWidget):
         self._refresh_personal_choice_controls()
         self._refresh_personal_prediction_capture_controls()
         self._apply_responsive_layout(force=True)
+        self._sync_saved_research_handoff_button()
 
     def _on_saved_result_load_error(
         self,
@@ -8165,10 +8252,12 @@ class RecommendationView(QWidget):
             self.current_read_model = read_model
             self.current_save_receipt = receipt
             self._loaded_saved_result_identity = None
+            self._saved_source_expected_identity = None
             self.current_result_id = read_model.result_id
             self._update_company_source_snapshot_display(read_model.execution)
             self._pending_save_receipt = None
             self._pending_save_metadata = None
+            self._sync_saved_research_handoff_button()
             selected_code = self._selected_stock_code()
             rows = self._current_result_table_rows()
             self.recommendations_model = (

@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from analysis_module.technical_analysis.indicator_parameter_registry import IndicatorParameterRegistry
@@ -76,8 +77,11 @@ def _columns_are_reusable(frame: pd.DataFrame, required_columns: tuple[str, ...]
         if column not in frame.columns:
             return False
         numeric = pd.to_numeric(frame[column], errors="coerce")
-        if not preserve_unknown and not bool(numeric.notna().any()):
-            return False
+        if not preserve_unknown:
+            if not bool(numeric.notna().any()):
+                return False
+            if numeric.empty or not bool(np.isfinite(numeric.iloc[-1])):
+                return False
     return True
 
 

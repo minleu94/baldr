@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -16,6 +18,10 @@ if str(ROOT) not in sys.path:
 from app_module.evidence_pipeline_runner import EvidencePipelineRunner, write_pipeline_report
 from app_module.evidence_pipeline_runner_dtos import EvidencePipelineRunRequest
 from data_module.config import TWStockConfig
+from runtime.sqlite_file_set_fingerprint import (
+    SQLITE_FILE_SET_FINGERPRINT_METHOD,
+    fingerprint_sqlite_file_set,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--windows", default="5,10,20,60")
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--report-output")
+    parser.add_argument("--receipt-output")
     parser.add_argument("--json-output", action="store_true")
     parser.add_argument("--keep-working-copy", action="store_true")
     parser.add_argument("--data-root")
@@ -91,11 +98,52 @@ def _report_path(base: Path | None, run_number: int) -> str | None:
     return str(base.with_name(f"{base.stem}_run_{run_number}{suffix}"))
 
 
+def _write_receipt(payload: dict[str, Any], path: Path) -> Path:
+    """Create a receipt at a new path; never replace an existing artifact."""
+    output = path.expanduser().resolve(strict=False)
+    if not output.parent.is_dir():
+        raise ValueError("receipt output parent must already exist")
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    created = False
+    try:
+        with output.open("x", encoding="utf-8", newline="\n") as handle:
+            created = True
+            handle.write(serialized)
+            handle.flush()
+    except FileExistsError as exc:
+        raise ValueError("receipt output already exists; choose a new file") from exc
+    except Exception:
+        if created and output.exists():
+            output.unlink()
+        raise
+    return output
+
+
 def run_working_copy_smoke(args: argparse.Namespace) -> dict[str, Any]:
     source_db = Path(args.source_db_path)
     working_copy = Path(args.working_copy_db_path)
     repeat = max(2, int(args.repeat or 2))
+    start_date = str(args.start_date or "").strip()
+    end_date = str(args.end_date or "").strip()
+    if bool(start_date) != bool(end_date):
+        raise ValueError("--start-date and --end-date must be provided together")
+    if args.receipt_output:
+        if not start_date or not end_date:
+            raise ValueError("--receipt-output requires explicit --start-date and --end-date")
+        try:
+            canonical_start = datetime.strptime(start_date, "%Y-%m-%d").date().isoformat()
+            canonical_end = datetime.strptime(end_date, "%Y-%m-%d").date().isoformat()
+        except ValueError as exc:
+            raise ValueError("receipt period dates must use canonical YYYY-MM-DD") from exc
+        if canonical_start != start_date or canonical_end != end_date:
+            raise ValueError("receipt period dates must use canonical YYYY-MM-DD")
+        if canonical_start > canonical_end:
+            raise ValueError("--start-date must not be after --end-date")
+    source_db_resolved = source_db.expanduser().resolve(strict=False)
+    working_copy_resolved = working_copy.expanduser().resolve(strict=False)
     _prepare_working_copy(source_db, working_copy)
+    source_fingerprint_before = fingerprint_sqlite_file_set(source_db)
+    working_copy_fingerprint_before = fingerprint_sqlite_file_set(working_copy)
     config = _config_from_args(args, working_copy)
     report_base = Path(args.report_output) if args.report_output else None
 
@@ -159,6 +207,31 @@ def run_working_copy_smoke(args: argparse.Namespace) -> dict[str, Any]:
     if report_base is not None:
         _write_smoke_report(payload, report_base)
         payload["report_paths"].append(str(report_base))
+    source_fingerprint_after = fingerprint_sqlite_file_set(source_db)
+    working_copy_fingerprint_after = fingerprint_sqlite_file_set(working_copy)
+    source_stable = source_fingerprint_before == source_fingerprint_after
+    payload["runbook_artifact"] = {
+        "schema_version": "baldr-weekly-runbook-artifact.v1",
+        "artifact_role": "working_copy_smoke",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "period_start": start_date or None,
+        "period_end": end_date or None,
+        "decision_date": args.decision_date,
+        "repeat_count": repeat,
+        "idempotency_check": idempotency_check,
+        "blocking_gaps": blocking_gaps,
+        "source_db_path": str(source_db_resolved),
+        "working_copy_db_path": str(working_copy_resolved),
+        "fingerprint_method": SQLITE_FILE_SET_FINGERPRINT_METHOD,
+        "source_fingerprint_before": source_fingerprint_before,
+        "source_fingerprint_after": source_fingerprint_after,
+        "source_identity_stable": source_stable,
+        "working_copy_fingerprint_before": working_copy_fingerprint_before,
+        "working_copy_fingerprint_after": working_copy_fingerprint_after,
+        "source_write_performed": False,
+        "working_copy_write_performed": True,
+        "diagnostics": [] if source_stable else ["source_sqlite_file_set_changed_during_smoke"],
+    }
     return payload
 
 
@@ -196,6 +269,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         payload = run_working_copy_smoke(args)
+        if args.receipt_output:
+            receipt = dict(payload["runbook_artifact"])
+            receipt.update(
+                {key: value for key, value in payload.items() if key != "runbook_artifact"}
+            )
+            receipt["source_db_path"] = payload["runbook_artifact"]["source_db_path"]
+            receipt["working_copy_db_path"] = payload["runbook_artifact"][
+                "working_copy_db_path"
+            ]
+            receipt_path = _write_receipt(receipt, Path(args.receipt_output))
+            raw = receipt_path.read_bytes()
+            payload["receipt_path"] = str(receipt_path)
+            payload["receipt_sha256"] = "sha256:" + sha256(raw).hexdigest()
     except ValueError as exc:
         parser.error(str(exc))
     print(json.dumps(payload, ensure_ascii=True, sort_keys=True, indent=2))

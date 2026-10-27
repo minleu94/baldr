@@ -212,7 +212,7 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
         ("stock_code", "標的"),
         ("advice_action", "動作"),
         ("confidence_tier", "決策信心"),
-        ("quick_reasons", "支持／反證"),
+        ("quick_reasons", "支持／政策資格"),
         ("primary_risk", "主要風險"),
         ("evidence_status", "資料與執行狀態"),
         # 保留具名唯讀欄位，供既有 model consumer 與輔助讀取使用；View 會收合。
@@ -328,20 +328,22 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
 
     if field_name == "quick_reasons":
         support = tuple(_public_advice_reason(item) for item in row.why_reasons if str(item).strip())
-        counter = tuple(
+        restrictions = tuple(
             _public_advice_reason(item)
             for item in row.why_not_reasons
             if str(item).strip()
         )
         support_text = _first_reason(support)
-        counter_text = _first_reason(counter)
+        restriction_text = _first_reason(restrictions)
         display = (
             f"支持：{_compact_advice_text(support_text)}｜"
-            f"反證：{_compact_advice_text(counter_text)}"
+            f"政策／資格限制：{_compact_advice_text(restriction_text)}"
         )
         detail = (
             f"支持理由：{'；'.join(support) if support else '未提供'}\n"
-            f"反證／不支持理由：{'；'.join(counter) if counter else '未提供'}"
+            f"政策／資格限制：{'；'.join(restrictions) if restrictions else '未提供'}\n"
+            "同股保存來源證據："
+            f"{'；'.join(row.source_evidence) if row.source_evidence else '未提供；不能據此推定沒有反證或風險'}"
         )
         return display, detail
 

@@ -92,6 +92,12 @@ AdviceComposer 另從同一保存結果 read model 投影逐股票篩選、Why N
 
 Advice 缺欄判讀卡的回查按鈕只沿 Advice DTO 的結構化 `source_result_id` 回開保存推薦結果；該欄位只在每日 read model 與 Advice 同一結果 ID／決策日／資料日對齊時填入。Workbench 再核對目前 daily candidate ID、股票與 fresh dashboard，Main 才呼叫 Recommendation exact open；canonical verified payload hash 可選附於 Advice DTO 及按鈕提示。自由文字 source trace 不用來解析 ID，缺 ID、日期／股票不符或 stale 時隱藏入口。此流程只回查原件，不補契約欄位或 Gate evidence；詳[Advice exact source 回查 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-advice-缺欄列的-exact-保存來源回查)。
 
+缺欄卡將同筆來源欄位與策略作者契約欄位分開：來源欄位只在同一個保存推薦結果有 exact ID 時提供回查；進場論點、失效條件、持有期間與檢視頻率若缺漏，明示只能在新合格回測建立新策略版本時由作者填寫。既有版本不補綁；新按鈕只透過 Main 切到 Backtest，不執行回測、不升版，也不回寫 Workbench Advice。新舊入口的條件與驗收見[Advice 缺欄 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-workbench-advice-缺欄改為按欄位來源導引)。
+
+Backtest 對新保存的單股 Research Run 升版時，criteria inspection 與 promotion 都使用同一個 Research Run Registry／StrategyVersionService。`PromotionReconciliationService` 再讀回版本 JSON 與 Registry backlink，核對來源 run、策略、參數和 Advice 契約 hash；只有兩側 identity 一致且狀態為 `synced` 才回報升版成功。讀回不符會留下 `reconciliation_required` 供後續查核；這是保存一致性保證，不等同正式 Advice 或 Gate 接受。
+
+RecommendationView 另提供使用者明確觸發的 canonical 保存結果 handoff：只發送單一 result ID，Main 由 WorkbenchSourceService 重新 query/readback，核對 canonical payload/index integrity、execution/result ID、schema revision、推薦列及原始 decision/data dates，再以 `research_only=True` 組成 Professional Advice。Workbench 把其顯示在獨立、記憶體內的 `ManualSavedResearchLaneDTO` 區塊，不寫入 `WorkbenchDashboardDTO`，不覆蓋 scheduled Advice／DailyInvestmentJourney，不接研究決定 writer。拒讀 legacy、缺日期、schema／hash／身份失配；明選 lane 清除或 app 重啟後不保留。此路徑保留原日期並強制 RESEARCH，不代表 Gate 1、正式來源或 PIT 通過。
+
 <a id="daily-decision-desk"></a>
 <a id="4-daily-decision-desk"></a>
 ## 工作區責任
@@ -130,6 +136,8 @@ View 只把已驗證的 application 結果投影到畫面。來源、時間、�
 ```
 
 服務先依決策日、資料可得日與來源資格界定輸入，再執行計算。Recommendation 結果保存來源、設定、母體與負面證據 metadata；畫面、報告與重開都讀取已產生或已保存的 DTO，不在 UI 重新評分。
+
+Decision Desk 的市場廣度由每日行情 SQLite 計算；僅在方向欄無法解析時，診斷器才讀取 hash-verified 官方日行情 custody，並以代碼、變動額、收盤價與成交量精確比對後分類空白方向符或官方排除狀態。Evidence CLI 將讀取根與本次可寫 output root 分離，dry-run 使用 scratch 時以 `--market-quote-custody-root` 指定只讀行情來源；不將 scratch 當成缺件證據，也不寫入正式快照。UI 可將快照中已有的分類分母與排除數呈現於廣度圖卡。驗收見[MarketSessionCadence／breadth QA](../../06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md)。
 
 ### 研究與持倉
 

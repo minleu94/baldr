@@ -34,6 +34,15 @@ class PromotionReconciliationIssue:
     details: str
 
 
+@dataclass(frozen=True)
+class RegistryPromotionAssessment:
+    """Research Run Registry 升版檢查結果；不代表正式 Gate 接受。"""
+
+    passed: bool
+    reasons: tuple[str, ...]
+    details: dict[str, Any]
+
+
 class PromotionReconciliationService:
     """以 Research Run Registry 作為 promotion 單一來源。"""
 
@@ -50,6 +59,42 @@ class PromotionReconciliationService:
         self.lifecycle_service = lifecycle_service or StrategyLifecycleService()
         self.lifecycle_evidence_repository = lifecycle_evidence_repository
 
+    def assess_registry_run(self, run_id: str) -> RegistryPromotionAssessment | None:
+        """若 run 屬於 Registry，依實際升版前置條件回報可讀檢查結果。"""
+        raw = self.research_repository.get_raw_metadata_row(run_id)
+        metadata = self.research_repository.get_metadata(run_id)
+        if raw is None or metadata is None:
+            return None
+
+        details: dict[str, Any] = {
+            "promotion_source": "research_run_registry",
+            "run_id": metadata.run_id,
+            "strategy_id": metadata.strategy_id,
+            "storage_state": raw.get("storage_state"),
+            "integrity_status": raw.get("integrity_status"),
+            "parameter_contract_version": metadata.parameter_contract_version,
+            "formal_gate_credit": False,
+        }
+        try:
+            lifecycle_decision = self._validate_preflight(raw, metadata)
+        except PromotionPreflightError as exc:
+            return RegistryPromotionAssessment(
+                passed=False,
+                reasons=(str(exc),),
+                details=details,
+            )
+
+        details["lifecycle_action"] = lifecycle_decision.action.value
+        details["lifecycle_reasons"] = lifecycle_decision.reasons
+        return RegistryPromotionAssessment(
+            passed=True,
+            reasons=(
+                "✓ Registry run 完整性與版本化參數契約已核對",
+                "✓ Registry lifecycle 升版前置條件通過",
+            ),
+            details=details,
+        )
+
     def promote_registry_run(
         self,
         run_id: str,
@@ -57,6 +102,7 @@ class PromotionReconciliationService:
         profile_id: str | None = None,
         notes: str | None = None,
         advice_contract: StrategyAdviceContract | None = None,
+        display_name: str | None = None,
     ) -> str:
         raw = self.research_repository.get_raw_metadata_row(run_id)
         metadata = self.research_repository.get_metadata(run_id)
@@ -91,6 +137,7 @@ class PromotionReconciliationService:
             },
             notes=notes,
             advice_contract=advice_contract,
+            display_name=display_name,
         )
 
         registry_marked = False
@@ -99,6 +146,26 @@ class PromotionReconciliationService:
             if not marked:
                 raise RuntimeError(f"registry run 回填失敗: {run_id}")
             registry_marked = True
+
+            version = self.strategy_version_service.get_version(version_id)
+            promoted = self.research_repository.get_metadata(run_id)
+            if version is None:
+                raise RuntimeError(f"StrategyVersion JSON 讀回失敗: {version_id}")
+            if (
+                version.source_run_id != run_id
+                or version.strategy_id != metadata.strategy_id
+                or version.params != dict(metadata.normalized_params)
+                or version.advice_contract != advice_contract
+                or version.display_name != (display_name.strip() or None if display_name else None)
+            ):
+                raise RuntimeError(f"StrategyVersion 身分、名稱或 Advice 契約讀回不符: {version_id}")
+            if (
+                promoted is None
+                or promoted.promoted_version_id != version_id
+                or promoted.promotion_reconciliation_status != "synced"
+            ):
+                raise RuntimeError(f"Research Run Registry backlink 讀回不符: {run_id}")
+
             if self.lifecycle_evidence_repository is not None:
                 self.lifecycle_evidence_repository.record_decision(
                     run=metadata,

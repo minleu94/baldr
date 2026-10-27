@@ -90,6 +90,30 @@ def test_repository_keeps_different_reason_hash_as_distinct_event(tmp_path):
     assert rows[1].reason_codes == ("liquidity_ok",)
 
 
+def test_repository_can_select_an_exact_event_id_allowlist(tmp_path):
+    config = _config(tmp_path)
+    repo = EvidenceEventRepository(config)
+    first = repo.insert_event(_event("hash-a"))
+    second = repo.insert_event(
+        replace(_event("hash-b"), event_id="event-b", source_id="rec-002")
+    )
+
+    assert [row.event_id for row in repo.list_events(event_ids=(second.event_id,))] == [
+        second.event_id
+    ]
+    assert repo.list_events(event_ids=[]) == []
+    assert [row.event_id for row in repo.list_events(event_ids=(first.event_id, second.event_id))] == [
+        first.event_id,
+        second.event_id,
+    ]
+    try:
+        repo.list_events(event_ids=(first.event_id, second.event_id), limit=1)
+    except ValueError as exc:
+        assert "must not truncate" in str(exc)
+    else:
+        raise AssertionError("an explicit allowlist must not be silently truncated")
+
+
 def test_repository_upserts_and_lists_outcomes(tmp_path):
     config = _config(tmp_path)
     repo = EvidenceEventRepository(config)

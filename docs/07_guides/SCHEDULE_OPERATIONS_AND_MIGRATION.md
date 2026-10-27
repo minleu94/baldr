@@ -66,6 +66,8 @@ Prompt 文字寫著某模型不代表實際 execution model；heartbeat 對話 m
 | `baldr-formal-input-producer-daily` | DAILY 21:25 · Pacific local | `scripts/scheduled/run_formal_input_producer_daily.cmd` | Rule、Paper、PIT candidate handoff |
 | `baldr-v2-2-weekly-collection` | WEEKLY SUN 18:00 · Pacific local | `scripts/scheduled/run_v2_2_weekly_collection.cmd` | Weekly collection 及有界研究 children |
 
+每日 Quick Update 與 freshness probe 必須以同一官方交易日證據判定最近交易日：例行 probe 會同時讀取年度休市表及共置的 TWSE 臨時休市 sidecar。若 freshness 顯示行情過舊，先對照兩份 status 的 `calendar_resolution`／`official_calendar` 與 sidecar 證據；不要因單一 freshness 狀態就重抓或回補正式行情。正式更新與 SQLite 寫入仍只由 Quick Update 的既有 writer 負責，freshness probe 本身唯讀。
+
 Windows task 啟動順序不代表上游成功或來源已完成。`IgnoreNew` 僅限制同一 task；跨 task 需沿 immutable receipt、run／date、lock、source identity 及 consumer readback 確認依賴，不以時間間隔替代。
 
 排錯先核[10/13晨間／晚間查核](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)及[唯讀稽核](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。現行consumer把刷新前inspection與刷新終態分開，Evidence把identity與not-passed分開；H20每日及manifest只在同一read operation共用完整binding，終態重驗後才發布reference，不跨operation保存快取。期限、Task配置與automation通知規則不因此改變。失敗來源與missed Paper session仍按原owner處理，不刪收據或重建歷史。
@@ -134,6 +136,10 @@ Manifest 公版欄位與範例見 [`examples/machine_bootstrap_manifest.example.
 開發來源的詳細欄位另會顯示「時間用途」與「共用資源等待」。即使同次 `passed`、snapshot 已保存、Evidence 已寫入，若顯示「收盤後研究；不具開盤前或自然證據資格」，這份結果只能依研究用途閱讀；等候時間用來定位排程衝突，不能改寫結果的可得時間或成熟資格。10/15 的唯讀核對正是此情形：05:25 啟動的擷取等鎖約70分鐘，06:35 以 `eod_research` 完成；同時段 Raw/PIT 的 current-stock cycle 用相同共用鎖，Raw/PIT 父 run 最終仍被歷史來源版本守衛擋下。兩個 Task 的 LastResult=0 均不取代各自終態。具名來源 SHA、收據與受影響驗證見[Increment91 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)；固定試用版90尚未包含此開發來源畫面，正式 Task 未更動。
 
 對 Paper／Forward，保留其共同 08:25 wakeup 與 08:30 readiness/cutoff 的不同角色；未到 cutoff、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 不能結案成成功或自然成熟。對 recommendation learning、Forward outcome、promotion 與 model shadow，source／樣本不完整或未到 maturity 保持 pending，不從工程試跑、舊 latest 或離線 replay 增授自然 credit。
+
+### 精確重算既有 Forward outcome
+
+`scripts/scheduled/run_scheduled_forward_outcomes.py` 可重複帶入 `--event-id <exact-id>`，把計算限定在明列事件；最多 800 IDs，明確 allowlist 不可被 `--max-events` 截斷。可再用 `--windows` 限定期限，日期參數依 event 的 `decision_date` 篩選。先在隔離 output root 做 dry-run，確認 `events_scanned` 等於指定且仍存在的事件數、期限與 warning；正式 production DB 更新只能走此排程 writer、共用 reservation lock、明確 `--confirm --allow-production-db-confirm`，不得用一般 calculator 或直接 SQL 寫表。寫入前建立可還原副本並驗證其完整性；完成後比較 before／after，確認只有 allowlist × 指定 window 的 outcome 自然鍵改變。狀態為 `ready` 不代表來源品質合格：缺企業行動、交易限制、PIT／時間證據等 warning 仍須保留，不能藉重算授予 Gate、ML 或正式來源資格。
 
 ## lane 操作入口
 

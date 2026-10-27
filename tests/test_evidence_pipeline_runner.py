@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -14,6 +15,8 @@ from app_module.evidence_event_service import EvidenceEventService
 from app_module.evidence_event_dtos import EvidenceDataQuality, EvidenceEventType
 from app_module.evidence_pipeline_runner import (
     EvidencePipelineRunner,
+    _forward_outcome_warning_counts,
+    _forward_summary_markdown_json,
     _advisory_count,
     _split_warning_and_advisory_counts,
     write_pipeline_report,
@@ -115,6 +118,83 @@ def test_runner_uses_explicit_read_only_recommendation_queries_for_coverage_and_
     assert observed["coverage_queries"] is queries
     assert observed["capture_queries"] is queries
     assert observed["coverage_result_id"] == "exact-result"
+
+
+def test_dry_run_capture_prefers_same_date_transient_snapshot_over_older_durable_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app_module import evidence_pipeline_runner as runner_module
+
+    config = _config(tmp_path)
+    runner = EvidencePipelineRunner(config)
+    request = EvidencePipelineRunRequest(decision_date="2026-10-27")
+    durable = SimpleNamespace(
+        snapshot_id="durable-2026-10-23",
+        snapshot_hash="durable-hash",
+        metadata_json={},
+    )
+    transient = SimpleNamespace(
+        decision_date="2026-10-27",
+        snapshot_id="transient-2026-10-27",
+        snapshot_hash="transient-hash",
+        metadata_json={},
+    )
+
+    class SnapshotRepository:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def latest_before_or_on(self, decision_date):
+            assert decision_date == "2026-10-27"
+            return durable
+
+    monkeypatch.setattr(runner_module, "DecisionDeskSnapshotRepository", SnapshotRepository)
+    monkeypatch.setattr(runner, "_transient_snapshot_for_request", lambda _request: transient)
+
+    importers = runner._build_importers(request, dry_run=True)
+
+    provider = importers["watchlist-trigger"].snapshot_provider
+    assert provider.stored_snapshot is transient
+    assert provider.snapshot_id == "transient-2026-10-27"
+    assert provider.metadata["decision_desk_snapshot_source"] == "dry_run_transient_snapshot"
+
+
+def test_non_dry_run_capture_keeps_using_durable_snapshot_when_transient_is_present(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app_module import evidence_pipeline_runner as runner_module
+
+    config = _config(tmp_path)
+    runner = EvidencePipelineRunner(config)
+    request = EvidencePipelineRunRequest(decision_date="2026-10-27")
+    durable = SimpleNamespace(
+        snapshot_id="durable-2026-10-23",
+        snapshot_hash="durable-hash",
+        metadata_json={},
+    )
+
+    class SnapshotRepository:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def latest_before_or_on(self, decision_date):
+            assert decision_date == "2026-10-27"
+            return durable
+
+    monkeypatch.setattr(runner_module, "DecisionDeskSnapshotRepository", SnapshotRepository)
+    monkeypatch.setattr(
+        runner,
+        "_transient_snapshot_for_request",
+        lambda _request: SimpleNamespace(snapshot_id="transient", snapshot_hash="transient-hash", metadata_json={}),
+    )
+
+    importers = runner._build_importers(request, dry_run=False)
+
+    provider = importers["watchlist-trigger"].snapshot_provider
+    assert provider.stored_snapshot is durable
+    assert provider.metadata["decision_desk_snapshot_source"] == "durable_snapshot"
 
 
 def test_runner_defaults_to_dry_run_and_does_not_write_events_or_outcomes(tmp_path: Path) -> None:
@@ -343,6 +423,20 @@ def test_pipeline_report_separates_warning_occurrences_from_unique_warning_token
         warning_counts={"risk_prompt_source_quality:portfolio_alerts:estimated": 10, "score_percentile_missing": 2},
         advisories_count=3,
         advisory_counts={"portfolio_alerts_chip_estimated:2330": 1, "portfolio_alerts_chip_estimated:2382": 1},
+        forward_summary=(
+            {
+                "group_by": "event_type",
+                "group_key": "recommendation_candidate",
+                "window_days": 20,
+                "sample_size": 30,
+                "pending_count": 13,
+                "missing_count": 0,
+                "quality_counts": {"DEGRADED": 11, "OBSERVED": 43},
+                "warning_counts": {"source_not_ingested": 22},
+                "summary_status": "DEGRADED",
+                "next_expected_maturity_date": None,
+            },
+        ),
         quality_coverage_rows=(
             {
                 "symbol": "2330",
@@ -371,6 +465,42 @@ def test_pipeline_report_separates_warning_occurrences_from_unique_warning_token
     assert "- portfolio_alerts_chip_estimated:2330: 1" in report
     assert "## Source Quality Coverage" in report
     assert "- 2330: observed=92, estimated=132, unavailable=0" in report
+    assert "## Forward Performance Detail" in report
+    detail_start = report.index("```json\n", report.index("## Forward Performance Detail")) + len("```json\n")
+    detail_end = report.index("\n```", detail_start)
+    detail = json.loads(report[detail_start:detail_end])
+    assert detail["total_group_count"] == 1
+    assert detail["truncated"] is False
+    assert detail["groups"][0]["summary_status"] == "DEGRADED"
+    assert detail["groups"][0]["warning_counts"] == {"source_not_ingested": 22}
+
+
+def test_forward_summary_markdown_json_escapes_fence_text_and_bounds_group_count() -> None:
+    forward_summary = [
+        {
+            "group_by": "profile_id",
+            "group_key": (
+                "profile ```\n## spoofed section"
+                if index == 1
+                else f"profile-{index:02d}"
+            ),
+            "window_days": index,
+            "summary_status": (
+                "READY" if index == 0 else "DEGRADED" if index == 1 else "MISSING_BENCHMARK"
+            ),
+        }
+        for index in range(60)
+    ]
+
+    serialized = _forward_summary_markdown_json(forward_summary)
+    assert "```\n## spoofed section" not in serialized
+    detail = json.loads(serialized.replace(r"\u0060", "`"))
+    assert detail["total_group_count"] == 60
+    assert detail["shown_group_count"] == 50
+    assert detail["truncated"] is True
+    assert all(group["summary_status"] != "READY" for group in detail["groups"])
+    assert detail["groups"][0]["summary_status"] == "DEGRADED"
+    assert any(group["group_key"] == "profile ```\n## spoofed section" for group in detail["groups"])
 
 
 def test_runner_returns_ready_with_advisories_without_missing_or_blocking_data(tmp_path: Path) -> None:
@@ -396,12 +526,31 @@ def test_warning_split_normalizes_stored_estimated_advisory_but_preserves_missin
     warnings, advisories = _split_warning_and_advisory_counts(
         (
             "portfolio_alerts:portfolio_alerts_chip_estimated:2330",
+            "market_breadth:market_breadth_source_declared_non_comparable_exclusions:1",
             "risk_prompts:risk_prompt_source_quality:portfolio_alerts:missing",
         )
     )
 
-    assert advisories == {"portfolio_alerts_chip_estimated:2330": 1}
+    assert advisories == {
+        "market_breadth_source_declared_non_comparable_exclusions:1": 1,
+        "portfolio_alerts_chip_estimated:2330": 1,
+    }
     assert warnings == {"risk_prompts:risk_prompt_source_quality:portfolio_alerts:missing": 1}
+
+
+def test_forward_summary_reports_source_warning_counts_without_unclassified_remainder() -> None:
+    summary = SimpleNamespace(
+        warnings_count=2,
+        warning_counts={
+            "corporate_action_source_not_ingested": 1,
+            "trading_restriction_source_not_ingested": 1,
+        },
+    )
+
+    assert _forward_outcome_warning_counts(summary) == {
+        "corporate_action_source_not_ingested": 1,
+        "trading_restriction_source_not_ingested": 1,
+    }
 
 
 def test_advisory_count_uses_deduplicated_advisory_counts() -> None:

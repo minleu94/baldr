@@ -84,6 +84,7 @@ def create_evidence_operations_history_dashboard_service(
 
 
 def _row_from_record(record: Any) -> EvidenceOperationsHistoryDashboardRow:
+    payload = getattr(record, "payload_json", {})
     return EvidenceOperationsHistoryDashboardRow(
         period_start=str(record.period_start),
         period_end=str(record.period_end),
@@ -97,7 +98,48 @@ def _row_from_record(record: Any) -> EvidenceOperationsHistoryDashboardRow:
         review_id=str(record.review_id),
         review_hash=str(record.review_hash),
         created_at=str(record.created_at),
+        candidate_review_decision_summary=_candidate_review_decision_summary(payload),
     )
+
+
+def _candidate_review_decision_summary(payload: Any) -> tuple[str, ...]:
+    """Expose only a recognized candidate-only disposition from saved history."""
+    if not isinstance(payload, dict):
+        return ()
+    decision = payload.get("candidate_review_decision")
+    if not isinstance(decision, dict):
+        return ()
+    if (
+        decision.get("candidate_only") is not True
+        or decision.get("formal_credit_authorized") is not False
+        or decision.get("production_scheduler_allowed") is not False
+        or decision.get("approved_projection_emitted") is not False
+    ):
+        return ()
+    owner = decision.get("owner")
+    reviewer = decision.get("reviewer")
+    source = decision.get("source")
+    if not isinstance(owner, dict) or not isinstance(reviewer, dict) or not isinstance(source, dict):
+        return ()
+
+    def _text(value: Any) -> str:
+        return str(value or "").strip()
+
+    fields = (
+        ("處置", decision.get("decision")),
+        ("Owner（自我聲明）", owner.get("name")),
+        ("Owner 角色（自我聲明）", owner.get("role")),
+        ("Reviewer（自我聲明）", reviewer.get("name")),
+        ("Reviewer 角色（自我聲明）", reviewer.get("role")),
+        ("理由", decision.get("note")),
+        ("候選 collection", source.get("collection_id")),
+        ("候選 source hash", source.get("source_hash")),
+        ("原始決定檔 SHA-256", decision.get("artifact_sha256")),
+    )
+    lines = tuple(f"{label}：{value}" for label, raw in fields if (value := _text(raw)))
+    if not lines:
+        return ()
+    return (*lines, "資格：候選人工處置；不代表 Gate 2 接受或正式排程允許。")
 
 
 def _cards_from_rows(rows: tuple[EvidenceOperationsHistoryDashboardRow, ...]) -> EvidenceOperationsHistoryDashboardCards:

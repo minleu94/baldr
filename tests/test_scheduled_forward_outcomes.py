@@ -217,7 +217,7 @@ def test_dry_run_is_read_only_and_persists_receipt(
         data_as_of_date="2026-09-10",
     )
 
-    assert result["status"] == "dry_run"
+    assert result["status"] == "dry_run", result
     assert result["writes_evidence_db"] is False
     assert result["source_db_changed"] is False
     assert result["daily_price_source_bundle"]["status"] == "unknown"
@@ -241,6 +241,50 @@ def test_dry_run_is_read_only_and_persists_receipt(
     assert status_path.is_file()
     assert run_path.is_file()
     assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "dry_run"
+
+
+def test_scheduled_dry_run_honors_exact_event_id_allowlist(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    service = EvidenceEventService(EvidenceEventRepository(config))
+    selected = EvidenceEventRepository(config).list_events()[0]
+    service.record_event(
+        event_date="2026-09-01",
+        decision_date="2026-09-01",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="recommendation_result",
+        source_id="scheduled-forward-unselected",
+        reason_codes=("rank_top",),
+        score_bp=7000,
+        data_quality=EvidenceDataQuality.OBSERVED,
+        as_of_date="2026-09-01",
+        available_date="2026-09-01",
+        source_version="test",
+        strategy_version_id="strategy-v1",
+        cost_model_id="cost-v1",
+        benchmark_id="TAIEX",
+        industry_benchmark_id="半導體類指數",
+        metadata={"universe_id": "universe-v1", "horizon_days": 5},
+    )
+
+    result = run_scheduled_forward_outcomes(
+        config=config,
+        now=_now(),
+        confirm=False,
+        windows=(5,),
+        start_date="2026-09-01",
+        end_date="2026-09-10",
+        event_ids=(selected.event_id,),
+        max_events=10,
+        data_as_of_date="2026-09-10",
+    )
+
+    assert result["event_ids"] == [selected.event_id]
+    assert result["summary"]["events_scanned"] == 1
+    assert result["summary"]["outcomes_written"] == 1
+    assert result["source_db_changed"] is False
+    assert EvidenceEventRepository(config).list_outcomes() == []
 
 
 def test_source_bundle_uses_configured_roots_and_explicit_descriptor(tmp_path, monkeypatch):

@@ -126,7 +126,9 @@ class SavedStrategyVersionLookupWidget(QWidget):
     @classmethod
     def _entry_label(cls, entry: SavedStrategyVersionEntry) -> str:
         source_entry = entry.source_entry
-        name = source_entry.run_name if source_entry is not None else entry.strategy_id
+        name = entry.display_name or (
+            source_entry.run_name if source_entry is not None else entry.strategy_id
+        )
         source_version = cls._source_execution_version(entry)
         label = (
             f"{name}｜保存版本 {entry.strategy_version}｜來源執行版本 {source_version}\n"

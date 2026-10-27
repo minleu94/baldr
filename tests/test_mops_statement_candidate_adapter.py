@@ -303,6 +303,85 @@ def test_adapter_date_only_cutoff_hides_capture_until_next_day(tmp_path) -> None
     assert visible[0].numeric_available_at.isoformat() == "2026-09-07T08:58:27.223577+00:00"
 
 
+def test_mops_announcement_event_drives_date_only_availability_not_later_numeric_capture(tmp_path) -> None:
+    candidate_row = _row(
+        statement_type="income_statement",
+        item_name="營業收入合計",
+        value=1_270_380_250_000,
+        value_unit="TWD",
+        value_scale=1000,
+        period_start="2026-04-01",
+        period_basis="quarter_single",
+    )
+    candidate_row.update(
+        {
+            "announcement_date": "2026-08-14T13:46:30+08:00",
+            "announcement_event_timestamp": "2026-08-14T13:46:30+08:00",
+            "available_date": "2026-08-15",
+            "availability_date_basis": "mops_announcement_next_taipei_calendar_date",
+            "announcement_event_evidence": {
+                "source_id": "mops.ezsearch.statement_publication",
+                "source_version": "mops-ezsearch-statement-publication.v1",
+                "source_artifact_sha256": "sha256:" + "e" * 64,
+                "event_hash": "sha256:" + "f" * 64,
+                "announcement_item": "F27",
+            },
+        }
+    )
+    path = _write_candidate(tmp_path, [candidate_row])
+
+    before_publication = load_mops_statement_candidate(path, decision_date=date(2026, 8, 14))
+    available_next_calendar_day = load_mops_statement_candidate(path, decision_date=date(2026, 8, 15))
+
+    assert before_publication == ()
+    assert len(available_next_calendar_day) == 1
+    row = available_next_calendar_day[0]
+    assert row.available_date == date(2026, 8, 15)
+    assert row.numeric_available_date == date(2026, 9, 8)
+    assert row.availability_date_basis == "mops_announcement_next_taipei_calendar_date"
+
+    isolated_db = tmp_path / "event-pit.sqlite"
+    materialize_mops_statement_candidates(
+        [path],
+        isolated_db,
+        decision_dates=[date(2026, 8, 14), date(2026, 8, 15)],
+    )
+    provider = FundamentalSQLiteProvider(isolated_db)
+    assert provider.load_statement_items(stock_code="2330", decision_date=date(2026, 8, 14)) == ()
+    loaded = provider.load_statement_items(stock_code="2330", decision_date=date(2026, 8, 15))
+    assert len(loaded) == 1
+    assert loaded[0].legacy_quality_wire_value == "degraded"
+
+
+def test_mops_announcement_event_rejects_capture_date_as_available_date(tmp_path) -> None:
+    candidate_row = _row(
+        statement_type="income_statement",
+        item_name="營業收入合計",
+        value=1_270_380_250_000,
+        value_unit="TWD",
+        value_scale=1000,
+        period_start="2026-04-01",
+        period_basis="quarter_single",
+    )
+    candidate_row.update(
+        {
+            "announcement_event_timestamp": "2026-08-14T13:46:30+08:00",
+            "availability_date_basis": "mops_announcement_next_taipei_calendar_date",
+            "announcement_event_evidence": {
+                "source_id": "mops.ezsearch.statement_publication",
+                "source_version": "mops-ezsearch-statement-publication.v1",
+                "source_artifact_sha256": "sha256:" + "e" * 64,
+                "event_hash": "sha256:" + "f" * 64,
+                "announcement_item": "F27",
+            },
+        }
+    )
+    path = _write_candidate(tmp_path, [candidate_row])
+
+    with pytest.raises(ValueError, match="available_date must follow"):
+        load_mops_statement_candidate(path)
+
+
 def test_adapter_rejects_unit_scale_mismatch(tmp_path) -> None:
     path = _write_candidate(
         tmp_path,

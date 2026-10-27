@@ -19,6 +19,8 @@ from ui_qt.views.research_lab.run_registry_compare_widget import RunRegistryComp
 from ui_qt.views.backtest.analyst_diagnostics_widget import AnalystDiagnosticsWidget
 from app_module.decision_quality_dashboard_service import create_decision_quality_dashboard_service
 from app_module.evidence_operations_history_dashboard_service import create_evidence_operations_history_dashboard_service
+from app_module.evidence_weekly_history_save_service import save_candidate_weekly_review_history
+from app_module.evidence_action_item_lifecycle import EvidenceActionItemLifecycleService
 from app_module.forward_performance_dashboard_service import create_forward_performance_dashboard_service
 from app_module.live_research_gap_dashboard_service import create_live_research_gap_dashboard_service
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
@@ -1502,6 +1504,17 @@ class BacktestResultPanel(QWidget):
                     "WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH"
                 ),
                 db_path=db_path,
+            ),
+            evidence_action_item_lifecycle_service_factory=lambda db_path, projection_path: EvidenceActionItemLifecycleService(
+                config,
+                db_path=db_path,
+                projection_path=projection_path,
+            ),
+            evidence_candidate_history_save_service_factory=lambda db_path, **kwargs: save_candidate_weekly_review_history(
+                config,
+                db_path=db_path,
+                authorized_receipt_root=getattr(config, "output_root", None),
+                **kwargs,
             ),
             evidence_history_source_path=str(getattr(config, "db_file", "")),
             scheduled_status_service=ScheduledEvidenceStatusService(config),

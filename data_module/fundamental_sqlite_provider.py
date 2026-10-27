@@ -79,6 +79,18 @@ class FundamentalSQLiteProvider:
                 (str(row["stock_code"] or "").strip(), str(row["period"] or "").strip()),
                 (),
             )
+            is_static_snapshot = (
+                str(row["source"] or "").strip()
+                == "mops.monthly_revenue_static_snapshot"
+            )
+            if is_static_snapshot:
+                # 舊 TWSE／TPEx OpenAPI mapping 的日期是報表層級日期，
+                # 不能替 MOPS 靜態快照的公司別公告日期背書。
+                mapping_history = tuple(
+                    mapping
+                    for mapping in mapping_history
+                    if mapping.provenance_mode != "legacy_official_compatibility"
+                )
             if not any(
                 _monthly_revenue_row_matches_formal_availability(row, mapping)
                 for mapping in mapping_history
@@ -342,6 +354,11 @@ def _monthly_revenue_row_matches_formal_availability(
         row_as_of_date == mapping.as_of_date
         and row_announced_date == mapping.announced_date
         and row_available_date == mapping.available_date
+        and (
+            mapping.target_source_version is None
+            or str(row["source_version"] or "").strip()
+            == mapping.target_source_version
+        )
     )
 
 

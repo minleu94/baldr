@@ -168,11 +168,13 @@ def test_service_backed_builder_factory_wires_non_ui_decision_desk_services(
     builder = factory.build_service_backed_decision_desk_snapshot_builder(
         _config(tmp_path),
         clock=clock,
+        market_quote_custody_root=tmp_path / "canonical-source-output",
     )
 
     assert builder.market_breadth_service is not None
     diagnostics = builder.market_breadth_service.provider.kwargs["quote_diagnostics"]
     assert diagnostics.clock is clock
+    assert diagnostics.custody_root == tmp_path / "canonical-source-output" / "scheduled" / "daily_price_source_custody"
 
     snapshot = builder.build_snapshot(date(2026, 7, 3))
 

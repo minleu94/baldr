@@ -50,6 +50,25 @@ def test_weekly_collection_detail_is_bounded_and_does_not_expose_paths_or_author
                     "reviewability_status": "reviewable_candidate",
                     "last_trading_date": "2026-10-16",
                     "reviewability_reasons": [],
+                    "runbook_evidence": {
+                        "status": "incomplete_required_evidence",
+                        "verified_count": 0,
+                        "required_count": 11,
+                        "missing_count": 9,
+                        "partial_count": 2,
+                        "items": [
+                            {
+                                "evidence_id": "working_copy_smoke",
+                                "label": "Working-copy smoke：重複執行與冪等收據",
+                                "status": "missing",
+                            },
+                            {
+                                "evidence_id": "source_coverage_snapshot",
+                                "label": "來源 coverage 快照",
+                                "status": "unverified",
+                            },
+                        ],
+                    },
                     "collection_payload": {
                         "source_coverage": {
                             "status": "degraded",
@@ -81,7 +100,10 @@ def test_weekly_collection_detail_is_bounded_and_does_not_expose_paths_or_author
     assert "missing_required_price_values" in detail
     assert "sha256:receipt" in detail
     assert "C:/private" not in detail
-    assert "不寫入審查決定" in detail
+    assert "不代表週審流程就緒或 Gate 通過" in detail
+    assert "9" in detail and "2" in detail
+    assert "Working-copy smoke" in detail
+    assert "來源 coverage 快照" in detail
 
 
 def test_format_manual_update_summary_clamps_progress_and_counts() -> None:

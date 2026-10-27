@@ -87,8 +87,20 @@ def _event(
         "market": market,
         "announcement_item": item,
         "announcement_at": f"{announced}T12:34:56+08:00",
+        "detail_url": f"https://mopsov.twse.com.tw/server-java/t57sb04?co_id={code}",
         "event_hash": hashlib.sha256(
-            f"{market}|{code}|{statement}|{period}|{announced}".encode("utf-8")
+            json.dumps(
+                {
+                    "announcement_at": f"{announced}T12:34:56+08:00",
+                    "announcement_item": item,
+                    "detail_url": f"https://mopsov.twse.com.tw/server-java/t57sb04?co_id={code}",
+                    "period": period,
+                    "stock_code": code,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
         ).hexdigest(),
     }
 
@@ -184,6 +196,9 @@ def test_crosswalk_matches_same_market_code_statement_and_period(tmp_path: Path)
     assert row["announcement_candidates"][0]["announced_date"] == "2026-08-12"
     assert row["announcement_candidates"][0]["announcement_at"] == "2026-08-12T12:34:56+08:00"
     assert row["announcement_candidates"][0]["event_sha256"]
+    assert row["announcement_candidates"][0]["detail_url"].startswith(
+        "https://mopsov.twse.com.tw/"
+    )
     assert row["announcement_timestamp_resolution"] == "unique_candidate_timestamp"
     assert audit["unique_announcement_timestamp_match_count"] == 1
     assert audit["candidate_only"] is True
@@ -204,6 +219,50 @@ def test_missing_event_is_only_described_within_selected_query_window(tmp_path: 
     row = audit["resources"][0]["rows"][0]
     assert row["status"] == "not_observed_in_selected_windows"
     assert "不等於未申報" in " ".join(audit["limitations"])
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "expected_error"),
+    (
+        (
+            "detail_url",
+            "https://mopsov.twse.com.tw.evil.example/report",
+            "announcement_raw_detail_url_invalid",
+        ),
+        (
+            "detail_url",
+            "http://mopsov.twse.com.tw/report",
+            "announcement_raw_detail_url_invalid",
+        ),
+        (
+            "detail_url",
+            "https://[invalid",
+            "announcement_raw_detail_url_invalid",
+        ),
+        (
+            "announcement_at",
+            "2026-08-12T12:35:56+08:00",
+            "announcement_raw_event_hash_mismatch",
+        ),
+    ),
+)
+def test_tampered_event_fields_or_untrusted_detail_urls_fail_closed(
+    tmp_path: Path,
+    field: str,
+    replacement: str,
+    expected_error: str,
+) -> None:
+    event = _event()
+    event[field] = replacement
+    root = _announcement_root(tmp_path / "announcements", events=[event])
+
+    with pytest.raises(QuarterlyAnnouncementCrosswalkError, match=expected_error):
+        build_quarterly_announcement_crosswalk(
+            quarterly_audit=_quarterly_audit(
+                [{"issuer_code": "2330", "fiscal_period": "115-Q2"}]
+            ),
+            announcement_candidate_roots=[root],
+        )
 
 
 def test_missing_query_group_is_not_reported_as_no_announcement(tmp_path: Path) -> None:

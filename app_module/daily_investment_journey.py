@@ -804,7 +804,10 @@ class DailyInvestmentJourneyService:
             diagnostics=tuple(diagnostics),
             source_trace=tuple(trace),
             recommendation_read_model=(
-                saved_read if status == "candidate" and saved_read is not None else None
+                saved_read
+                if status in {"candidate", "candidate_degraded"}
+                and saved_read is not None
+                else None
             ),
         )
 

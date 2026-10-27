@@ -40,6 +40,7 @@ from app_module.exit_effectiveness_read_model import (
     DEFAULT_EXIT_HORIZON_TRADING_DAYS,
 )
 from app_module.recommendation.queries import _read_regular_file_no_follow
+from app_module.recommendation.persistence import ExecutionArtifactIntegrityError
 
 
 EXIT_EFFECTIVENESS_TIMEOUT_SECONDS = 300
@@ -50,6 +51,84 @@ _SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _EXIT_EFFECTIVENESS_SUFFIX_RE = re.compile(r"(?P<date>\d{8})_(?P<digest>[0-9a-f]{16})\.json\Z")
 TAIPEI = timezone(timedelta(hours=8))
 PIPELINE_TIMEOUT_SECONDS = 600
+WATCHLIST_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _prepare_watchlist_source(
+    source_root: Path | None,
+    output_root: Path,
+) -> dict[str, Any] | None:
+    """將明選的手動 JSON Watchlist 唯讀複製到隔離 Evidence 輸出根。"""
+    if source_root is None:
+        return None
+    resolved_source_root = Path(os.path.abspath(source_root))
+    if not resolved_source_root.is_dir():
+        raise ValueError("watchlist_source_root_missing_or_not_directory")
+    resolved_output_root = output_root.resolve()
+    if (
+        resolved_source_root == resolved_output_root
+        or resolved_source_root in resolved_output_root.parents
+        or resolved_output_root in resolved_source_root.parents
+    ):
+        raise ValueError("controlled replay Watchlist source and output roots must be disjoint")
+
+    repository_path = resolved_source_root / "watchlist" / "watchlists.db"
+    active_markers = [repository_path.with_name(repository_path.name + ".active")]
+    try:
+        from app_module.watchlist_cow_activation import (
+            watchlist_cow_activation_source_candidates,
+        )
+
+        active_markers.extend(
+            marker
+            for _, marker in watchlist_cow_activation_source_candidates(repository_path)
+        )
+    except (OSError, ValueError):
+        raise ValueError("watchlist_source_repository_state_unverifiable") from None
+    if repository_path.exists() or any(marker.exists() for marker in active_markers):
+        raise ValueError("watchlist_source_requires_active_repository_snapshot")
+
+    source_path = resolved_source_root / "watchlist" / "default.json"
+    source_bytes = _read_regular_file_no_follow(
+        source_path,
+        resolved_source_root,
+        max_bytes=WATCHLIST_MAX_BYTES,
+    )
+    try:
+        source_payload = json.loads(source_bytes.decode("utf-8"))
+    except (UnicodeError, JSONDecodeError):
+        raise ValueError("watchlist_source_json_invalid") from None
+    if not isinstance(source_payload, dict) or not isinstance(source_payload.get("items"), list):
+        raise ValueError("watchlist_source_schema_invalid")
+
+    target_root = resolved_output_root / "watchlist"
+    target_root.mkdir(parents=True, exist_ok=True)
+    target_path = target_root / "default.json"
+    try:
+        with target_path.open("xb") as stream:
+            stream.write(source_bytes)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except FileExistsError:
+        raise ValueError("watchlist_output_already_exists") from None
+    copied_bytes = _read_regular_file_no_follow(
+        target_path,
+        resolved_output_root,
+        max_bytes=WATCHLIST_MAX_BYTES,
+    )
+    source_sha256 = "sha256:" + hashlib.sha256(source_bytes).hexdigest()
+    copied_sha256 = "sha256:" + hashlib.sha256(copied_bytes).hexdigest()
+    if copied_bytes != source_bytes or copied_sha256 != source_sha256:
+        raise ValueError("watchlist_source_copy_readback_mismatch")
+    return {
+        "status": "copied_and_verified",
+        "source_path": str(source_path),
+        "source_sha256": source_sha256,
+        "output_path": str(target_path),
+        "output_sha256": copied_sha256,
+        "item_count": len(source_payload["items"]),
+        "source_bytes_unchanged": True,
+    }
 
 
 def _scheduled_recommendation_binding(
@@ -710,6 +789,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="read-only canonical output root for recommendation/freshness artifacts; defaults to --output-root",
     )
+    parser.add_argument(
+        "--watchlist-source-root",
+        type=Path,
+        help=(
+            "read-only root containing the manual watchlist/default.json; "
+            "copies and hash-verifies it inside the isolated --output-root"
+        ),
+    )
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--sources", default="all")
     parser.add_argument("--validation-decision-date", help="Controlled read-only replay of an existing bound scheduled result; never changes its clocks")
@@ -838,11 +925,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if not args.dry_run:
         raise SystemExit("scheduled evidence wrapper requires --dry-run")
     output_root = Path(args.output_root)
     recommendation_source_root = args.recommendation_source_root or output_root
+    try:
+        watchlist_source = _prepare_watchlist_source(args.watchlist_source_root, output_root)
+    except (OSError, ValueError, ExecutionArtifactIntegrityError) as error:
+        parser.error(f"手動 Watchlist 唯讀接線失敗：{error}")
     if args.validation_decision_date:
         source_resolved = recommendation_source_root.resolve()
         output_resolved = output_root.resolve()
@@ -917,6 +1009,7 @@ def main(argv: list[str] | None = None) -> int:
                 "exit_code": 2, "pipeline_summary_available": False,
                 "pipeline_execution_started": False,
                 "recommendation_binding_error": f"{type(error).__name__}:{error}",
+                "watchlist_source": watchlist_source,
             }
             try:
                 payload["terminal_receipt"] = write_terminal_receipt(
@@ -1448,6 +1541,7 @@ def main(argv: list[str] | None = None) -> int:
         "pipeline_report_exists": report_path.is_file(),
         "pipeline_timeout_seconds": PIPELINE_TIMEOUT_SECONDS,
         "recommendation_binding": recommendation_binding,
+        "watchlist_source": watchlist_source,
         "controlled_validation": args.validation_decision_date is not None,
         "paper_evidence_input": {
             "status": (

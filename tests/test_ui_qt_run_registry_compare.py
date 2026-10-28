@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -116,8 +117,17 @@ class FakeResearchRunService:
                 {"日期": ["2026-01-02", "2026-01-05"], "portfolio_value": [1500, 1510]}
             ),
         }
+        self.list_runs_calls = 0
+        self.list_runs_thread_id = None
+        self.list_runs_error = None
+        self._list_runs_lock = threading.Lock()
 
     def list_runs(self, include_archived: bool = False):
+        with self._list_runs_lock:
+            self.list_runs_calls += 1
+        self.list_runs_thread_id = threading.get_ident()
+        if self.list_runs_error is not None:
+            raise self.list_runs_error
         return self.runs
 
     def load_run_data(self, run_id: str):
@@ -242,6 +252,118 @@ def test_registry_compare_selection_persists_across_pages_and_can_be_cleared(qt_
     widget.clear_selection()
     assert widget.selected_run_ids() == []
     assert widget.compare_button.isEnabled() is False
+    assert widget.selection_preview_label.isHidden()
+    assert widget.selection_preview_label.text() == ""
+
+
+def test_registry_selection_preview_matches_comparison_aliases_across_pages(qt_app):
+    from dataclasses import replace
+
+    service = FakeResearchRunService()
+    long_run_name = "run-a-" + "long-name-" * 6
+    service.runs[0] = replace(service.runs[0], run_name=long_run_name)
+    widget = RunRegistryCompareWidget(service, page_size=1)
+    widget.refresh_runs()
+
+    widget.run_list.item(0).setSelected(True)
+    widget.next_page()
+    widget.run_list.item(0).setSelected(True)
+
+    assert widget.selected_run_ids() == ["run-a", "run-b"]
+    preview = widget.selection_preview_label.text()
+    assert "A=run-a-long-name-long-name" in preview
+    assert long_run_name not in preview
+    assert "B=run-b｜單股回測｜baseline_score" in preview
+    assert preview.index("A=run-a") < preview.index("B=run-b")
+    assert f"A：{long_run_name}｜單股回測｜baseline_score｜run_id：run-a" in widget.selection_preview_label.toolTip()
+    assert "B：run-b｜單股回測｜baseline_score｜run_id：run-b" in widget.selection_preview_label.toolTip()
+
+    widget.compare_selected_runs()
+
+    result_summary = widget.selected_runs_label.text()
+    assert f"A：{long_run_name}｜單股回測｜baseline_score" in result_summary
+    assert "B：run-b｜單股回測｜baseline_score" in result_summary
+
+    widget.next_page()
+    widget.run_list.item(0).setSelected(True)
+    assert widget.selected_run_ids() == ["run-a", "run-b", "run-c"]
+    assert "目前選取 A–E：" in widget.selection_preview_label.text()
+    assert "下方仍保留上次比較：A=run-a-long-name-lon…" in widget.selection_preview_label.text()
+    assert "C=run-c" in widget.selection_preview_label.text()
+    assert "run_id：run-a" in widget.selection_preview_label.accessibleDescription()
+
+    widget.clear_selection()
+    assert widget.selected_run_ids() == []
+    assert "目前沒有選取的 run。" in widget.selection_preview_label.text()
+    assert "下方仍保留上次比較：A=run-a-long-name-lon…" in widget.selection_preview_label.text()
+
+
+def test_registry_selection_preview_marks_previous_comparison_after_filter_and_refresh(qt_app):
+    service = FakeResearchRunService()
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+    for index in range(widget.run_list.count()):
+        item = widget.run_list.item(index)
+        item.setSelected(item.data(Qt.ItemDataRole.UserRole) in {"run-a", "run-b"})
+
+    widget.compare_selected_runs()
+    widget.strategy_filter.setText("profile-a")
+
+    assert widget.selected_run_ids() == []
+    assert "目前沒有選取的 run。" in widget.selection_preview_label.text()
+    assert "下方仍保留上次比較：A=run-a" in widget.selection_preview_label.text()
+
+    widget.strategy_filter.clear()
+    for index in range(widget.run_list.count()):
+        item = widget.run_list.item(index)
+        item.setSelected(item.data(Qt.ItemDataRole.UserRole) in {"run-a", "run-b"})
+    assert widget.selected_run_ids() == ["run-a", "run-b"]
+    assert "下方仍保留上次比較：" not in widget.selection_preview_label.text()
+
+    service.runs = [run for run in service.runs if run.run_id != "run-b"]
+    widget.refresh_runs()
+
+    assert widget.selected_run_ids() == ["run-a"]
+    assert "目前選取 A–E：A=run-a" in widget.selection_preview_label.text()
+    assert "下方仍保留上次比較：A=run-a（run-a）；B=run-b（run-b）" in widget.selection_preview_label.text()
+
+
+def test_registry_load_failure_clears_previous_result_identity(qt_app):
+    service = FakeResearchRunService()
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+    for index in range(widget.run_list.count()):
+        item = widget.run_list.item(index)
+        item.setSelected(item.data(Qt.ItemDataRole.UserRole) in {"run-a", "run-b"})
+
+    widget.compare_selected_runs()
+    assert widget.metrics_table.model().rowCount() > 0
+    assert "比較代號：" in widget.selected_runs_label.text()
+
+    widget.clear_selection()
+    for index in range(widget.run_list.count()):
+        item = widget.run_list.item(index)
+        item.setSelected(item.data(Qt.ItemDataRole.UserRole) in {"run-a", "run-c"})
+    assert "下方仍保留上次比較：" in widget.selection_preview_label.text()
+
+    original_load_run_data = service.load_run_data
+
+    def fail_loading_c(run_id: str):
+        if run_id == "run-c":
+            raise OSError("run-c unavailable")
+        return original_load_run_data(run_id)
+
+    service.load_run_data = fail_loading_c
+    widget.compare_selected_runs()
+
+    assert widget.metrics_table.model().rowCount() == 0
+    assert widget.params_diff_table.model().rowCount() == 0
+    assert widget.selected_runs_label.text() == "研究載入失敗；未產生新的比較結果。"
+    assert widget._last_compared_runs == []
+    assert widget._run_aliases == {}
+    assert "目前選取 A–E：A=run-a" in widget.selection_preview_label.text()
+    assert "B=run-c" in widget.selection_preview_label.text()
+    assert "下方仍保留上次比較：" not in widget.selection_preview_label.text()
 
 
 def test_registry_open_button_only_accepts_one_recommendation_run(qt_app):
@@ -404,12 +526,153 @@ def test_registry_single_stock_cost_or_period_difference_hides_saved_metrics(qt_
 
 def test_registry_compare_widget_refreshes_on_first_show(qt_app):
     widget = RunRegistryCompareWidget(FakeResearchRunService(), page_size=10)
-    widget.refresh_runs = MagicMock()
+    widget.refresh_runs_async = MagicMock()
 
     widget.showEvent(None)
     widget.showEvent(None)
 
-    assert widget.refresh_runs.call_count == 1
+    assert widget.refresh_runs_async.call_count == 1
+
+
+def _wait_for_run_list(widget, qt_app, timeout=5):
+    deadline = time.monotonic() + timeout
+    while (widget._run_list_loading or widget._run_list_workers) and time.monotonic() < deadline:
+        qt_app.processEvents()
+        QTest.qWait(10)
+    qt_app.processEvents()
+    assert not widget._run_list_loading
+    assert not widget._run_list_workers
+
+
+def test_registry_filter_changes_use_loaded_snapshot_without_service_reads(qt_app):
+    service = FakeResearchRunService()
+    widget = RunRegistryCompareWidget(service, page_size=10)
+
+    widget.refresh_runs()
+    assert service.list_runs_calls == 1
+    assert widget.run_list_status_label.text() == "已載入 3 筆；目前符合 3 筆"
+
+    widget.strategy_filter.setText("baseline_score")
+    assert service.list_runs_calls == 1
+    assert widget.run_list.count() == 2
+    assert widget.run_list_status_label.text() == "已載入 3 筆；目前符合 2 筆"
+
+    widget.tag_filter.setText("no matching tag")
+    assert service.list_runs_calls == 1
+    assert widget.run_list.count() == 0
+    assert widget.run_list_status_label.text() == "已載入 3 筆；目前符合 0 筆"
+
+
+def test_registry_first_show_reads_off_thread_and_reports_loading_status(qt_app):
+    service = FakeResearchRunService()
+    service_started = threading.Event()
+    release_service = threading.Event()
+
+    def blocking_list_runs(include_archived=False):
+        service.list_runs_calls += 1
+        service.list_runs_thread_id = threading.get_ident()
+        service_started.set()
+        release_service.wait(timeout=2)
+        return service.runs
+
+    service.list_runs = blocking_list_runs
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    gui_thread_id = threading.get_ident()
+    fail_safe_release = threading.Timer(2, release_service.set)
+    fail_safe_release.start()
+    try:
+        widget.showEvent(None)
+        assert service_started.wait(timeout=1)
+        assert service.list_runs_thread_id != gui_thread_id
+        assert "載入中" in widget.run_list_status_label.text()
+        qt_app.processEvents()
+        assert not release_service.is_set()
+    finally:
+        release_service.set()
+        fail_safe_release.cancel()
+        fail_safe_release.join(timeout=1)
+
+    _wait_for_run_list(widget, qt_app)
+    assert widget.run_list.count() == 3
+    assert widget.run_list_status_label.text() == "已載入 3 筆；目前符合 3 筆"
+
+
+def test_registry_async_refresh_failure_preserves_previous_runs_and_reports_error(qt_app):
+    service = FakeResearchRunService()
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+    service.list_runs_error = RuntimeError("registry read failed")
+
+    widget.refresh_runs_async()
+    _wait_for_run_list(widget, qt_app)
+
+    assert len(widget._all_runs) == 3
+    assert widget.run_list.count() == 3
+    assert "更新失敗；保留 3 筆" in widget.run_list_status_label.text()
+    assert "registry read failed" in widget.run_list_status_label.toolTip()
+
+
+def test_registry_async_refresh_rejects_cancelled_stale_result(qt_app):
+    first_started = threading.Event()
+    release_first = threading.Event()
+
+    class SequencedService(FakeResearchRunService):
+        def list_runs(self, include_archived=False):
+            with self._list_runs_lock:
+                self.list_runs_calls += 1
+                call_number = self.list_runs_calls
+            if call_number == 1:
+                first_started.set()
+                release_first.wait(timeout=2)
+                return [_metadata("stale")]
+            return [_metadata("fresh")]
+
+    service = SequencedService()
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    try:
+        widget.refresh_runs_async()
+        assert first_started.wait(timeout=1)
+        widget.refresh_runs_async()
+
+        deadline = time.monotonic() + 3
+        while (
+            widget._run_list_loading
+            or not widget._all_runs
+        ) and time.monotonic() < deadline:
+            qt_app.processEvents()
+            QTest.qWait(10)
+        assert [run.run_id for run in widget._all_runs] == ["fresh"]
+    finally:
+        release_first.set()
+
+    _wait_for_run_list(widget, qt_app)
+    assert [run.run_id for run in widget._all_runs] == ["fresh"]
+
+
+def test_registry_list_response_is_discarded_after_shutdown(qt_app):
+    service = FakeResearchRunService()
+    service_started = threading.Event()
+    release_service = threading.Event()
+
+    def blocking_list_runs(include_archived=False):
+        service_started.set()
+        release_service.wait(timeout=2)
+        return [_metadata("late-after-shutdown")]
+
+    service.list_runs = blocking_list_runs
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs_async()
+    try:
+        assert service_started.wait(timeout=1)
+        widget.begin_run_list_shutdown()
+        assert not widget._run_list_loading
+    finally:
+        release_service.set()
+
+    _wait_for_run_list(widget, qt_app)
+    assert widget._all_runs == []
+    assert widget._run_list_snapshot_loaded is False
+    assert widget.run_list_status_label.text() == "尚未載入"
 
 
 def test_registry_compare_blocks_mixed_versions_and_clears_previous_results(qt_app):

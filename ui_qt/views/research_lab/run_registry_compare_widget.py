@@ -106,11 +106,17 @@ class RunRegistryCompareWidget(QWidget):
         self.current_page = 1
         self._loaded_once = False
         self._request_id = 0
+        self._run_list_snapshot_loaded = False
+        self._run_list_loading = False
+        self._run_list_error = ""
+        self._run_list_worker: TaskWorker | None = None
+        self._run_list_workers: list[TaskWorker] = []
         self._all_runs: list[ResearchRunMetadataDTO] = []
         self._filtered_runs: list[ResearchRunMetadataDTO] = []
         self._run_aliases: dict[str, str] = {}
         self._run_display_names: dict[str, str] = {}
         self._selected_run_ids: list[str] = []
+        self._last_compared_runs: list[ResearchRunMetadataDTO] = []
         self._rule_worker: TaskWorker | None = None
         self._rule_active_request_id = 0
         self._rule_active_run_id = ""
@@ -219,24 +225,35 @@ class RunRegistryCompareWidget(QWidget):
             RUN_TYPE_LABELS["recommendation_portfolio"],
             "recommendation_portfolio",
         )
-        self.run_type_filter.currentTextChanged.connect(self.refresh_runs)
+        self.run_type_filter.currentTextChanged.connect(self._on_run_filter_changed)
         filter_row.addWidget(self.run_type_filter)
 
         filter_row.addWidget(QLabel("策略"))
         self.strategy_filter = QLineEdit()
         self.strategy_filter.setPlaceholderText("strategy_id")
-        self.strategy_filter.textChanged.connect(self.refresh_runs)
+        self.strategy_filter.textChanged.connect(self._on_run_filter_changed)
         filter_row.addWidget(self.strategy_filter)
 
         filter_row.addWidget(QLabel("標籤"))
         self.tag_filter = QLineEdit()
         self.tag_filter.setPlaceholderText("tag")
-        self.tag_filter.textChanged.connect(self.refresh_runs)
+        self.tag_filter.textChanged.connect(self._on_run_filter_changed)
         filter_row.addWidget(self.tag_filter)
 
         self.refresh_button = QPushButton("重新整理")
-        self.refresh_button.clicked.connect(self.refresh_runs)
+        self.refresh_button.clicked.connect(self.refresh_runs_async)
         filter_row.addWidget(self.refresh_button)
+        self.run_list_status_label = QLabel("尚未載入")
+        self.run_list_status_label.setAccessibleName("Research Runs 清單狀態")
+        self.run_list_status_label.setAccessibleDescription(
+            "顯示 Research Registry 載入或刷新狀態，以及目前本地篩選符合的 run 筆數。"
+        )
+        self.run_list_status_label.setToolTip(
+            "類型、策略與標籤只篩選已載入的清單；按重新整理才重新讀取 Registry。"
+        )
+        self.run_list_status_label.setMinimumWidth(210)
+        self.run_list_status_label.setWordWrap(True)
+        filter_row.addWidget(self.run_list_status_label, stretch=1)
         layout.addLayout(filter_row)
 
         list_group = QGroupBox("Research Runs 清單")
@@ -266,6 +283,16 @@ class RunRegistryCompareWidget(QWidget):
         self.clear_selection_button.clicked.connect(self.clear_selection)
         selection_row.addWidget(self.clear_selection_button)
         list_layout.addLayout(selection_row)
+
+        self.selection_preview_label = QLabel()
+        self.selection_preview_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.selection_preview_label.setWordWrap(True)
+        self.selection_preview_label.setAccessibleName("目前選取與上次比較身份狀態")
+        self.selection_preview_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        self.selection_preview_label.hide()
+        list_layout.addWidget(self.selection_preview_label)
 
         page_row = QHBoxLayout()
         self.prev_page_btn = QPushButton("上一頁")
@@ -527,12 +554,105 @@ class RunRegistryCompareWidget(QWidget):
         if self._loaded_once:
             return
         self._loaded_once = True
-        self.refresh_runs()
+        self.refresh_runs_async()
 
     def refresh_runs(self) -> None:
+        """保留同步讀取相容入口；互動操作使用 refresh_runs_async。"""
+        self._cancel_active_run_list_worker()
         request_id = self.begin_run_list_request()
-        runs = self.research_run_service.list_runs(include_archived=False)
+        self._run_list_loading = True
+        self._run_list_error = ""
+        self._update_run_list_status()
+        try:
+            runs = self.research_run_service.list_runs(include_archived=False)
+        except Exception as exc:
+            self._on_run_list_error(request_id, str(exc))
+            raise
         self.apply_run_list_response(request_id, runs)
+
+    def refresh_runs_async(self, *_args: object) -> None:
+        """在背景讀取 Registry，讓首次開啟與手動刷新不阻塞 Qt 主執行緒。"""
+        from ui_qt.workers.task_worker import TaskWorker
+
+        self._cancel_active_run_list_worker()
+        request_id = self.begin_run_list_request()
+        self._run_list_loading = True
+        self._run_list_error = ""
+        self._update_run_list_status()
+
+        worker = TaskWorker(
+            lambda: self.research_run_service.list_runs(include_archived=False)
+        )
+        self._run_list_worker = worker
+        self._run_list_workers.append(worker)
+        worker.finished.connect(
+            lambda runs, rid=request_id: self.apply_run_list_response(rid, runs)
+        )
+        worker.error.connect(
+            lambda message, rid=request_id: self._on_run_list_error(rid, message)
+        )
+        worker.cancelled.connect(
+            lambda rid=request_id: self._on_run_list_cancelled(rid)
+        )
+        worker.native_thread_finished.connect(self._on_run_list_worker_finished)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _cancel_active_run_list_worker(self) -> None:
+        worker = self._run_list_worker
+        if worker is not None:
+            worker.cancel(cooperative=True, wait=False)
+
+    def _on_run_filter_changed(self, *_args: object) -> None:
+        self._apply_filters_and_render()
+
+    def _update_run_list_status(self) -> None:
+        total = len(self._all_runs)
+        matched = len(self._filtered_runs)
+        if self._run_list_loading:
+            if self._run_list_snapshot_loaded:
+                text = f"重新整理中；保留 {total} 筆（目前符合 {matched} 筆）"
+            else:
+                text = "Research Registry 載入中…"
+        elif self._run_list_error:
+            if self._run_list_snapshot_loaded:
+                text = f"更新失敗；保留 {total} 筆（目前符合 {matched} 筆）"
+            else:
+                text = "載入失敗；按「重新整理」重試"
+        elif self._run_list_snapshot_loaded:
+            text = f"已載入 {total} 筆；目前符合 {matched} 筆"
+        else:
+            text = "尚未載入"
+        self.run_list_status_label.setText(text)
+        self.run_list_status_label.setToolTip(
+            "類型、策略與標籤只篩選已載入的清單；按重新整理才重新讀取 Registry。"
+            + (f"\n讀取錯誤：{self._run_list_error}" if self._run_list_error else "")
+        )
+
+    def _on_run_list_error(self, request_id: int, message: str) -> None:
+        if request_id != self._request_id:
+            return
+        self._run_list_loading = False
+        self._run_list_error = str(message).strip() or "未知錯誤"
+        self._update_run_list_status()
+
+    def _on_run_list_cancelled(self, request_id: int) -> None:
+        if request_id != self._request_id:
+            return
+        self._run_list_loading = False
+        self._run_list_error = "清單讀取已取消。"
+        self._update_run_list_status()
+
+    def _on_run_list_worker_finished(self) -> None:
+        from ui_qt.workers.task_worker import TaskWorker
+
+        worker = self.sender()
+        if not isinstance(worker, TaskWorker):
+            return
+        if worker in self._run_list_workers:
+            self._run_list_workers.remove(worker)
+        if worker is self._run_list_worker:
+            self._run_list_worker = None
 
     def begin_run_list_request(self) -> int:
         self._request_id += 1
@@ -543,6 +663,9 @@ class RunRegistryCompareWidget(QWidget):
     ) -> None:
         if request_id != self._request_id:
             return
+        self._run_list_snapshot_loaded = True
+        self._run_list_loading = False
+        self._run_list_error = ""
         self._all_runs = list(runs)
         available_ids = {run.run_id for run in self._all_runs}
         self._selected_run_ids = [
@@ -624,6 +747,16 @@ class RunRegistryCompareWidget(QWidget):
             for table in (self.params_diff_table, self.metrics_table, self.regime_table,
                           self.benchmark_table, self.normalized_equity_table):
                 self._set_table_model(table, pd.DataFrame())
+            self._run_aliases = {}
+            self._run_display_names = {}
+            self._last_compared_runs = []
+            self.selected_runs_label.setText("研究載入失敗；未產生新的比較結果。")
+            selected_runs = {
+                run.run_id: run
+                for run in self._filtered_runs
+                if run.run_id in run_ids
+            }
+            self._render_selection_preview(run_ids, selected_runs)
             self._render_metrics_summary_table(pd.DataFrame())
             self.params_summary_label.setText("研究載入失敗")
             self.regime_summary_label.setText("比較已阻擋")
@@ -634,6 +767,10 @@ class RunRegistryCompareWidget(QWidget):
         metadata = [item.metadata for item in run_data]
         self._prepare_run_aliases(metadata)
         self.selected_runs_label.setText(self._selected_runs_summary(metadata))
+        self._last_compared_runs = list(metadata)
+        self._render_selection_preview(
+            run_ids, {run.run_id: run for run in metadata}
+        )
         comparability = self.comparison_service.evaluate_comparability(metadata)
         self._render_comparability_badge(comparability.status, comparability.reasons)
 
@@ -741,6 +878,7 @@ class RunRegistryCompareWidget(QWidget):
         self._clear_basic_pair_if_selection_changed()
         self._render_run_list()
         self._sync_period_pair_selection()
+        self._update_run_list_status()
 
     def _render_run_list(self) -> None:
         selected_ids = set(self._selected_run_ids)
@@ -786,6 +924,7 @@ class RunRegistryCompareWidget(QWidget):
         selected_runs = {
             run.run_id: run for run in self._filtered_runs if run.run_id in selected_ids
         }
+        self._render_selection_preview(selected_ids, selected_runs)
         self.signal_comparison.set_selection(tuple(selected_runs[run_id] for run_id in selected_ids if run_id in selected_runs))
         has_replay = any(
             run.run_type == "recommendation_portfolio"
@@ -816,6 +955,71 @@ class RunRegistryCompareWidget(QWidget):
             )
         self.selection_hint_label.setText(hint)
         self._update_period_pair_controls()
+
+    def _render_selection_preview(
+        self,
+        selected_ids: list[str],
+        selected_runs: dict[str, ResearchRunMetadataDTO],
+    ) -> None:
+        aliases = ["A", "B", "C", "D", "E"]
+        visible_entries: list[str] = []
+        current_tooltip_entries = ["目前選取；比較表代號依此順序對應："]
+        for alias, run_id in zip(aliases, selected_ids):
+            run = selected_runs.get(run_id)
+            if run is None:
+                continue
+            run_type = self._run_type_label(run.run_type)
+            visible_name = self._compact_identity_part(run.run_name, limit=28)
+            visible_type = self._compact_identity_part(run_type, limit=20)
+            visible_strategy = self._compact_identity_part(run.strategy_id, limit=24)
+            visible_entries.append(
+                f"{alias}={visible_name}｜{visible_type}｜{visible_strategy}"
+                f"（{self._short_run_id(run.run_id)}）"
+            )
+            current_tooltip_entries.append(
+                f"{alias}：{run.run_name}｜{run_type}｜{run.strategy_id}｜run_id：{run.run_id}"
+            )
+
+        last_ids = [run.run_id for run in self._last_compared_runs]
+        selection_changed_since_compare = bool(last_ids) and selected_ids != last_ids
+        if not visible_entries and not selection_changed_since_compare:
+            self.selection_preview_label.clear()
+            self.selection_preview_label.setToolTip("")
+            self.selection_preview_label.setAccessibleDescription("")
+            self.selection_preview_label.hide()
+            return
+
+        text_lines: list[str] = []
+        tooltip_entries: list[str] = []
+        if visible_entries:
+            text_lines.append("目前選取 A–E：" + "；".join(visible_entries))
+            tooltip_entries.extend(current_tooltip_entries)
+        elif selection_changed_since_compare:
+            text_lines.append("目前沒有選取的 run。")
+
+        if selection_changed_since_compare:
+            previous_entries: list[str] = []
+            previous_tooltip_entries = ["下方仍保留上次比較的 run 身份："]
+            for alias, run in zip(aliases, self._last_compared_runs):
+                run_type = self._run_type_label(run.run_type)
+                previous_name = self._compact_identity_part(run.run_name, limit=20)
+                previous_entries.append(
+                    f"{alias}={previous_name}（{self._short_run_id(run.run_id)}）"
+                )
+                previous_tooltip_entries.append(
+                    f"{alias}：{run.run_name}｜{run_type}｜{run.strategy_id}｜run_id：{run.run_id}"
+                )
+            text_lines.append(
+                "下方仍保留上次比較：" + "；".join(previous_entries)
+            )
+            tooltip_entries.extend(previous_tooltip_entries)
+
+        text = "\n".join(text_lines)
+        tooltip = "\n".join(tooltip_entries)
+        self.selection_preview_label.setText(text)
+        self.selection_preview_label.setToolTip(tooltip)
+        self.selection_preview_label.setAccessibleDescription(tooltip)
+        self.selection_preview_label.show()
 
     def _selected_basic_pair(self) -> tuple[ResearchRunMetadataDTO, ResearchRunMetadataDTO] | None:
         ids = self.selected_run_ids()
@@ -1512,6 +1716,7 @@ class RunRegistryCompareWidget(QWidget):
             if self.scenario_registry_widget.has_running_worker():
                 event.ignore()
                 return
+        self.begin_run_list_shutdown()
         self._rule_closed = True
         self._rule_request_id += 1
         if self._rule_worker is not None:
@@ -1529,10 +1734,20 @@ class RunRegistryCompareWidget(QWidget):
 
     def begin_basic_pair_shutdown(self) -> None:
         self.signal_comparison.begin_shutdown()
+        self.begin_run_list_shutdown()
         self._rule_closed = True
         self._basic_pair_request_id += 1
         if self._basic_pair_worker is not None:
             self._basic_pair_worker.cancel(cooperative=True, wait=False)
+
+    def begin_run_list_shutdown(self) -> None:
+        """使關閉期間的 Registry 清單回覆過期，並合作取消尚在讀取的 worker。"""
+        self._request_id += 1
+        self._loaded_once = False
+        self._run_list_loading = False
+        for worker in tuple(self._run_list_workers):
+            worker.cancel(cooperative=True, wait=False)
+        self._update_run_list_status()
 
     def _total_pages(self) -> int:
         if not self._filtered_runs:
@@ -1794,6 +2009,13 @@ class RunRegistryCompareWidget(QWidget):
         if len(run_id) <= 18:
             return run_id
         return f"{run_id[:12]}…{run_id[-4:]}"
+
+    @staticmethod
+    def _compact_identity_part(value: str, *, limit: int) -> str:
+        compact = " ".join(str(value).split())
+        if len(compact) <= limit:
+            return compact
+        return f"{compact[: limit - 1]}…"
 
     def _prepare_run_aliases(self, runs: list[ResearchRunMetadataDTO]) -> None:
         labels = ["A", "B", "C", "D", "E"]

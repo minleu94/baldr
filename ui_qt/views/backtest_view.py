@@ -2970,8 +2970,8 @@ class BacktestView(QWidget):
         if hasattr(self, "_refresh_portfolio_history_combo"):
             self._refresh_portfolio_history_combo()
         compare_widget = getattr(self, "run_registry_compare_widget", None)
-        if compare_widget is not None and hasattr(compare_widget, "refresh_runs"):
-            compare_widget.refresh_runs()
+        if compare_widget is not None and hasattr(compare_widget, "refresh_runs_async"):
+            compare_widget.refresh_runs_async()
 
     def _on_result_tab_changed(self, index: int) -> None:
         """首次進入結果子頁時自動載入可用的歷史資料與圖表來源。"""
@@ -2999,8 +2999,8 @@ class BacktestView(QWidget):
             if "registry_compare" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("registry_compare")
                 compare_widget = getattr(self, "run_registry_compare_widget", None)
-                if compare_widget is not None and hasattr(compare_widget, "refresh_runs"):
-                    compare_widget.refresh_runs()
+                if compare_widget is not None and hasattr(compare_widget, "refresh_runs_async"):
+                    compare_widget.refresh_runs_async()
 
     def _show_research_registry_progress(self, message: str) -> None:
         if hasattr(self, "progress_label"):
@@ -3010,13 +3010,13 @@ class BacktestView(QWidget):
     def _on_research_run_saved(self, run_id: str) -> None:
         self._refresh_research_registry()
         self._show_research_registry_progress(
-            f"Research Run 已保存：{run_id}。已刷新歷史列表、圖表選單與比較面板。"
+            f"Research Run 已保存：{run_id}。歷史與圖表選單已更新，Registry 比較清單正在背景刷新。"
         )
 
     def _on_research_run_deleted(self, run_id: str) -> None:
         self._refresh_research_registry()
         self._show_research_registry_progress(
-            f"Research Run 已刪除：{run_id}。已刷新歷史列表、圖表選單與比較面板。"
+            f"Research Run 已刪除：{run_id}。歷史與圖表選單已更新，Registry 比較清單正在背景刷新。"
         )
 
     def _on_strategy_version_promoted(self, version_id: str) -> None:
@@ -5949,7 +5949,13 @@ class BacktestView(QWidget):
             scenario_registry.begin_shutdown()
         if compare_widget is not None:
             compare_widget.begin_basic_pair_shutdown()
-            workers.extend((compare_widget._basic_pair_worker, compare_widget._rule_worker))
+            workers.extend(
+                [
+                    *getattr(compare_widget, "_run_list_workers", ()),
+                    compare_widget._basic_pair_worker,
+                    compare_widget._rule_worker,
+                ]
+            )
         pair_controller = getattr(
             getattr(self, "result_panel", None), "period_pair_controller", None
         )

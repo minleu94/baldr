@@ -18,7 +18,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QTableView, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QTableView, QVBoxLayout, QWidget
 from PySide6.QtTest import QTest
 
 from app_module.research_session import ResearchStockContextDTO
@@ -47,6 +47,7 @@ from ui_qt.views.stock_research_report_view import (
     StockPriceChartWidget,
     StockResearchReportDialog,
     StockResearchReportView,
+    _historical_portfolio_alert_summary,
     _price_change_text,
     _report_pending_text,
     _ml_estimate_summary,
@@ -54,6 +55,7 @@ from ui_qt.views.stock_research_report_view import (
     _decimal_text,
     _price_direction_color,
 )
+import ui_qt.views.stock_research_report_view as stock_research_report_view
 from ui_qt.views.stock_research_workspace import StockResearchWorkspace
 from ui_qt.theme.tokens import MIDNIGHT_ANALYST
 from ui_qt.theme.qss import build_global_stylesheet
@@ -90,7 +92,7 @@ def test_advice_bp_cost_assumption_is_not_rendered_as_twd_in_stock_report():
         view.close()
 
 
-def test_guided_advice_contract_refusal_is_explained_in_stock_report():
+def test_legacy_strategy_contract_reason_is_explained_without_becoming_a_gate():
     _app()
     view = StockResearchReportView(SimpleNamespace())
     container = QWidget()
@@ -108,8 +110,9 @@ def test_guided_advice_contract_refusal_is_explained_in_stock_report():
         view._render_advice_content(layout, advice)
         text = "\n".join(label.text() for label in container.findChildren(QLabel))
         assert "暫不新增" in text
-        assert "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選" in text
-        assert "請以新的合格回測升版並填妥契約" in text
+        assert "此策略版本的作者說明缺少或未核驗；仍提供 Advice" in text
+        assert "仍提供 Advice" in text
+        assert "合格回測升版" not in text
         assert reason not in text
     finally:
         container.close()
@@ -606,7 +609,9 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     assert "更新週期" in headers
     assert "預期資料期" in headers
     assert "資料可得時間" in headers
-    assert view.stock_search.accessibleName() == "搜尋個股代碼"
+    assert view.stock_search.placeholderText() == "輸入股票代號或公司名稱，例如 2330／台積電"
+    assert view.stock_search.accessibleName() == "搜尋股票代號或公司名稱"
+    assert view.stock_search.maxLength() == 64
     assert view.return_button.accessibleName() == "返回原持倉或觀察清單"
     assert view._summary_values["risk"].wordWrap() is True
     view.tabs.setCurrentIndex(1)
@@ -1609,6 +1614,162 @@ def test_late_started_signal_cannot_replace_new_stock_status(tmp_path: Path) -> 
     view.close()
 
 
+def _stock_search_view_with_registry(tmp_path: Path) -> StockResearchReportView:
+    registry = tmp_path / "companies.csv"
+    registry.write_text(
+        "industry_category,stock_id,stock_name,type,date,download_time\n"
+        "半導體,2330,台積電,上市,20261027,2026-10-27\n"
+        "半導體,2331,台積電測試,上市,20261027,2026-10-27\n"
+        "電子,2317,鴻海股份有限公司,上市,20261027,2026-10-27\n"
+        "電子,2317,鴻海,上市,20261027,2026-10-27\n"
+        "其他電子,2317,鴻海,上市,20261026,2026-10-26\n"
+        "ETF,00679B,元大美債20年,上市,20261027,2026-10-27\n"
+        "ETF,1234,Series 00679B Index,上市,20261027,2026-10-27\n",
+        encoding="utf-8-sig",
+    )
+    config = SimpleNamespace(meta_data_dir=tmp_path)
+    return StockResearchReportView(SimpleNamespace(config=config))
+
+
+def test_stock_search_resolves_unique_company_name_after_confirmation(tmp_path, monkeypatch) -> None:
+    _app()
+    view = _stock_search_view_with_registry(tmp_path)
+    requested: list[str] = []
+    prompts: list[str] = []
+    view._load_stock = requested.append
+
+    def confirm(_parent, _title, message, *_args):
+        prompts.append(message)
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", confirm)
+    view.stock_search.setText("鴻海")
+    view._load_from_search()
+
+    assert requested == ["2317"]
+    assert prompts and "鴻海" in prompts[0] and "2317" in prompts[0]
+    assert "鴻海、鴻海股份有限公司" in prompts[0]
+    view.close()
+
+
+def test_stock_search_unique_name_declined_by_user_does_not_load(tmp_path, monkeypatch) -> None:
+    _app()
+    view = _stock_search_view_with_registry(tmp_path)
+    requested: list[str] = []
+    view._load_stock = requested.append
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args: QMessageBox.StandardButton.No,
+    )
+    view.stock_search.setText("鴻海")
+
+    view._load_from_search()
+
+    assert requested == []
+    view.close()
+
+
+def test_stock_search_lists_ambiguous_company_matches_without_loading(tmp_path) -> None:
+    _app()
+    view = _stock_search_view_with_registry(tmp_path)
+    requested: list[str] = []
+    view._load_stock = requested.append
+    view.stock_search.setText("台積電")
+
+    view._load_from_search()
+
+    assert requested == []
+    assert "名稱符合多筆" in view.status_label.text()
+    assert "2330" in view.status_label.text()
+    assert "2331" in view.status_label.text()
+    view.close()
+
+
+def test_stock_search_shows_recoverable_message_for_unknown_cjk_name(tmp_path) -> None:
+    _app()
+    view = _stock_search_view_with_registry(tmp_path)
+    requested: list[str] = []
+    view._load_stock = requested.append
+    view.stock_search.setText("不存在的公司")
+
+    view._load_from_search()
+
+    assert requested == []
+    assert "找不到" in view.status_label.text()
+    assert "完整股票代號" in view.status_label.text()
+    view.close()
+
+
+def test_stock_search_keeps_stock_code_direct_load_path(tmp_path) -> None:
+    _app()
+    view = _stock_search_view_with_registry(tmp_path)
+    requested: list[str] = []
+    view._load_stock = requested.append
+    view.stock_search.setText("2330")
+
+    view._load_from_search()
+
+    assert requested == ["2330"]
+    view.close()
+
+
+def test_stock_search_exact_alphanumeric_registry_code_precedes_name_match(
+    tmp_path, monkeypatch
+) -> None:
+    _app()
+    view = _stock_search_view_with_registry(tmp_path)
+    requested: list[str] = []
+    prompted: list[bool] = []
+    view._load_stock = requested.append
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args: prompted.append(True) or QMessageBox.StandardButton.Yes,
+    )
+    view.stock_search.setText("00679B")
+
+    view._load_from_search()
+
+    assert requested == ["00679B"]
+    assert prompted == []
+    view.close()
+
+
+def test_stock_name_search_still_obeys_theme_source_identity_guard(
+    tmp_path, monkeypatch
+) -> None:
+    _app()
+    view = _stock_search_view_with_registry(tmp_path)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args: QMessageBox.StandardButton.Yes,
+    )
+    context = ResearchStockContextDTO(
+        stock_code="2330",
+        stock_name="台積電",
+        data_date="2026-10-16",
+        source_snapshot_id="a" * 64,
+        source_snapshot_hash="a" * 64,
+        source_id="local.theme_research_snapshot",
+        source_version="a" * 64,
+        mapping_version="2026-10-15",
+        source_kind="industry_theme_snapshot",
+        source_workspace="market_explore",
+        source_label="自選題材版本",
+    )
+    view.context = context
+    view.stock_search.setText("鴻海")
+
+    view._load_from_search()
+
+    assert view.context is context
+    assert view.stock_search.text() == "2330"
+    assert "已拒絕切換" in view.status_label.text()
+    view.close()
+
+
 def test_cross_stock_loading_clears_old_report_before_advanced_tab_is_opened() -> None:
     view = StockResearchReportView(SimpleNamespace())
     view.show()
@@ -2114,6 +2275,75 @@ def test_event_table_humanizes_portfolio_tokens_and_keeps_raw_tooltip() -> None:
     assert "尚待觀測" in presentation.details[0]
     assert "原始 event_type：portfolio_alert_condition_warning" in presentation.tooltips[0][1]
     assert "condition:warning" in presentation.tooltips[0][3]
+
+
+def test_historical_portfolio_alert_summary_formats_only_first_matching_event(monkeypatch) -> None:
+    ordinary = StockEvidenceEventDTO(
+        event_id="ordinary",
+        event_date="2026-09-19",
+        decision_date="2026-09-19",
+        event_type="technical_observation",
+        event_family="technical",
+        source_type="technical_scan",
+    )
+    first_alert = StockEvidenceEventDTO(
+        event_id="first-alert",
+        event_date="2026-09-20",
+        decision_date="2026-09-20",
+        event_type="portfolio_alert_condition_warning",
+        event_family="portfolio",
+        source_type="legacy_import",
+        data_quality="degraded",
+        reasons=("condition:warning",),
+    )
+    later_alert = StockEvidenceEventDTO(
+        event_id="later-alert",
+        event_date="2026-09-21",
+        decision_date="2026-09-21",
+        event_type="other_event",
+        event_family="portfolio",
+        source_type="daily_decision_desk_portfolio_alert",
+        data_quality="degraded",
+        reasons=("condition:warning",),
+    )
+
+    original_builder = build_stock_research_event_table
+    converted: list[tuple[StockEvidenceEventDTO, ...]] = []
+
+    def capture_single_event(events):
+        materialized = tuple(events)
+        converted.append(materialized)
+        return original_builder(materialized)
+
+    monkeypatch.setattr(
+        stock_research_report_view,
+        "build_stock_research_event_table",
+        capture_single_event,
+    )
+
+    summary = _historical_portfolio_alert_summary(
+        (ordinary, first_alert, later_alert)
+    )
+
+    baseline = original_builder((first_alert, later_alert))
+    date_text, event_label, _quality, reason = baseline.rows[0]
+    detail = baseline.details[0] if baseline.details else ""
+    source_text = next(
+        (line for line in detail.splitlines() if line.startswith("來源：")),
+        "來源：未提供",
+    )
+    expected = (
+        f"歷史持倉警示：{date_text}｜{event_label}｜{source_text}｜{reason or '原因未提供'}；"
+        "這是事件當時的保存記錄，不代表目前持倉狀態。"
+    )
+
+    assert summary == expected
+    assert converted == [(first_alert,)]
+
+    source_matched_summary = _historical_portfolio_alert_summary((later_alert,))
+
+    assert "2026-09-21" in source_matched_summary
+    assert converted == [(first_alert,), (later_alert,)]
 
 
 def test_flows_tab_separates_ownership_groups_and_event_table() -> None:

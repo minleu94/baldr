@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+import csv
 from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -14,6 +16,7 @@ from html import escape as html_escape
 import inspect
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -35,6 +38,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QComboBox,
     QPushButton,
     QToolButton,
@@ -129,6 +133,57 @@ def _price_direction_color(
     if close_price > open_price:
         return MIDNIGHT_ANALYST.market_up
     return MIDNIGHT_ANALYST.market_down
+
+
+def _company_registry_search_matches(
+    meta_data_dir: object, query: str
+) -> tuple[tuple[tuple[str, str], ...], bool] | None:
+    """唯讀搜尋 companies.csv 的現況名稱；不查詢行情資料表。"""
+
+    if meta_data_dir is None:
+        return None
+    registry_path = Path(meta_data_dir) / "companies.csv"
+    try:
+        rows = csv.DictReader(registry_path.read_text(encoding="utf-8-sig").splitlines())
+        normalized_query = query.strip().casefold()
+        matches: dict[str, set[str]] = {}
+        exact_stock_code = False
+        for row in rows:
+            code = str(row.get("stock_id") or "").strip()
+            name = str(row.get("stock_name") or "").strip()
+            if code.casefold() == normalized_query:
+                exact_stock_code = True
+            if code and name and normalized_query in name.casefold():
+                matches.setdefault(code, set()).add(name)
+        return (
+            tuple(
+                (code, "、".join(sorted(matches[code], key=str.casefold)))
+                for code in sorted(matches)
+            ),
+            exact_stock_code,
+        )
+    except (OSError, UnicodeError, csv.Error):
+        return None
+
+
+def _monthly_revenue_rows_have_visible_chart(
+    rows: Sequence[StockFundamentalObservationDTO],
+    rendered_groups: Sequence[ResearchVisualGroup],
+) -> bool:
+    """只在唯一可見月營收柱圖逐列對應原表時收合原表。"""
+
+    column_groups = tuple(group for group in rendered_groups if group.chart_kind == "column")
+    if not rows or len(column_groups) != 1:
+        return False
+
+    def value_identity(value: Decimal | None) -> Decimal | None:
+        return value if isinstance(value, Decimal) and value.is_finite() else None
+
+    table_rows = Counter((row.period, value_identity(row.value)) for row in rows)
+    chart_points = Counter(
+        (point.label, value_identity(point.value)) for point in column_groups[0].points
+    )
+    return bool(table_rows) and table_rows == chart_points
 
 
 class StockReportTableModel(QAbstractTableModel):
@@ -711,10 +766,10 @@ class StockResearchReportView(QWidget):
         search_row.setSpacing(4)
         self.stock_search = QLineEdit(self.search_panel)
         self.stock_search.setObjectName("stockResearchSearch")
-        self.stock_search.setPlaceholderText("輸入股票代碼，例如 2330")
-        self.stock_search.setMaxLength(12)
-        self.stock_search.setAccessibleName("搜尋個股代碼")
-        self.stock_search.setToolTip("輸入代碼後按 Enter 或按「載入個股報告」。")
+        self.stock_search.setPlaceholderText("輸入股票代號或公司名稱，例如 2330／台積電")
+        self.stock_search.setMaxLength(64)
+        self.stock_search.setAccessibleName("搜尋股票代號或公司名稱")
+        self.stock_search.setToolTip("輸入股票代號或公司名稱後按 Enter，或按「載入個股報告」。")
         self.stock_search.returnPressed.connect(self._load_from_search)
         search_row.addWidget(self.stock_search, 1)
 
@@ -1803,7 +1858,57 @@ class StockResearchReportView(QWidget):
         self.summary_source_trace_label.setText("完整來源 trace：\n" + full_trace)
 
     def _load_from_search(self) -> None:
-        self._load_stock(self.stock_search.text())
+        value = self.stock_search.text().strip()
+        if not value:
+            self._load_stock(value)
+            return
+        registry_result = _company_registry_search_matches(
+            getattr(getattr(self.service, "config", None), "meta_data_dir", None),
+            value,
+        )
+        matches, exact_stock_code = registry_result or ((), False)
+        if exact_stock_code:
+            self._load_stock(value)
+            return
+        # 數字代號及目前來源清單中的自訂代號維持原本直載行為；
+        # 未命中名錄的 ASCII token 也保留為代號輸入相容路徑。
+        if value.isascii() and value.isalnum() and (
+            value.isdigit() or value in self.stock_codes or not matches
+        ):
+            self._load_stock(value)
+            return
+        if registry_result is None:
+            self._set_status("無法讀取公司名錄；請改輸入完整股票代號。", "warning")
+            return
+        if len(matches) == 1:
+            code, name = matches[0]
+            answer = QMessageBox.question(
+                self,
+                "確認股票",
+                f"名稱「{value}」解析為 {code} {name}。要載入這檔個股報告嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._load_stock(code)
+            return
+        if len(matches) > 1:
+            candidates = "、".join(f"{code} {name}" for code, name in matches[:10])
+            suffix = f"；另有 {len(matches) - 10} 筆" if len(matches) > 10 else ""
+            self._set_status(
+                f"名稱符合多筆：{candidates}{suffix}。請輸入完整股票代號再載入。",
+                "warning",
+            )
+            return
+        if any(ord(character) > 127 for character in value) or any(
+            character.isspace() for character in value
+        ):
+            self._set_status(
+                f"公司名錄找不到「{value}」；請改輸入完整股票代號或名稱片段。",
+                "warning",
+            )
+            return
+        self._load_stock(value)
 
     def _reload(self) -> None:
         if self._active_code:
@@ -3892,8 +3997,9 @@ class StockResearchReportView(QWidget):
     def _render_fundamental(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("fundamental")
         layout.addWidget(self._section_heading("基本面／營收財報", report, "fundamental"))
-        self._add_research_visuals(
-            layout, fundamental_visuals(report),
+        visual_groups = fundamental_visuals(report)
+        visible_visual_groups = self._add_research_visuals(
+            layout, visual_groups,
             "目前沒有單位與期間基礎足以繪圖的原觀測；可查閱下方原表，不能據此判定營收趨勢。",
         )
         represented: set[tuple[str, str, str, str]] = set()
@@ -3935,12 +4041,43 @@ class StockResearchReportView(QWidget):
         monthly = tuple(item for item in remaining if item.kind == "monthly_revenue")
         if monthly:
             layout.addWidget(self._wrapped_label("月營收（目前研究；與半年財報分開）"))
+            monthly_table_layout = layout
+            monthly_table_details: QWidget | None = None
+            if _monthly_revenue_rows_have_visible_chart(monthly, visible_visual_groups):
+                monthly_table_details = QWidget()
+                monthly_table_details.setObjectName("fundamentalMonthlyRevenueTableDetails")
+                monthly_table_layout = QVBoxLayout(monthly_table_details)
+                monthly_table_layout.setContentsMargins(0, 0, 0, 0)
+                monthly_table_toggle = QToolButton()
+                monthly_table_toggle.setObjectName("fundamentalMonthlyRevenueTableToggle")
+                monthly_table_toggle.setCheckable(True)
+                monthly_table_toggle.setAccessibleName("展開逐筆月營收原值與來源明細")
+                monthly_table_toggle.setToolTip(
+                    "表格保留原報告的值、期間與可得時間；欄位提示可核對資料日、品質與來源。"
+                )
+                monthly_table_toggle.toggled.connect(monthly_table_details.setVisible)
+                layout.addWidget(monthly_table_toggle)
+
+                def update_monthly_table_toggle(expanded: bool) -> None:
+                    action = "收合" if expanded else "展開"
+                    monthly_table_toggle.setText(
+                        f"{action}逐筆月營收原值與來源明細（{len(monthly)} 筆）"
+                    )
+                    monthly_table_toggle.setAccessibleName(
+                        f"{action}逐筆月營收原值與來源明細"
+                    )
+
+                monthly_table_toggle.toggled.connect(update_monthly_table_toggle)
+                update_monthly_table_toggle(False)
+                monthly_table_details.hide()
             self._add_table(
-                layout, ("項目", "值／原披露單位", "期間", "資料可得時間"),
+                monthly_table_layout, ("項目", "值／原披露單位", "期間", "資料可得時間"),
                 tuple((item.label, _metric_text(item), item.period or "—", item.available_at or "—") for item in monthly),
                 240, tooltips=tuple(tuple(_fundamental_basis_tooltip(item) for _ in range(4)) for item in monthly),
                 object_name="fundamentalMonthlyRevenueTable", balanced_columns=True, numeric_columns=(1,),
             )
+            if monthly_table_details is not None:
+                layout.addWidget(monthly_table_details)
         remaining = tuple(item for item in remaining if item.kind != "monthly_revenue")
         rows = tuple(
             (
@@ -4113,13 +4250,15 @@ class StockResearchReportView(QWidget):
 
     def _add_research_visuals(
         self, layout: QVBoxLayout, groups: Sequence[ResearchVisualGroup], missing: str,
-    ) -> None:
+    ) -> tuple[ResearchVisualGroup, ...]:
         """圖卡先行；原表始終保留，不額外取得或改寫報告。"""
         if not groups:
             layout.addWidget(self._wrapped_label(missing))
-            return
+            return ()
+        visible_groups: list[ResearchVisualGroup] = []
         for group in groups[:4]:
-            self._add_research_chart(layout, group)
+            if self._add_research_chart(layout, group):
+                visible_groups.append(group)
         if len(groups) > 4:
             extra = QWidget()
             extra_layout = QVBoxLayout(extra)
@@ -4132,8 +4271,9 @@ class StockResearchReportView(QWidget):
             extra.hide()
             layout.addWidget(toggle)
             layout.addWidget(extra)
+        return tuple(visible_groups)
 
-    def _add_research_chart(self, layout: QVBoxLayout, group: ResearchVisualGroup) -> None:
+    def _add_research_chart(self, layout: QVBoxLayout, group: ResearchVisualGroup) -> bool:
         try:
             chart_kind = getattr(group, "chart_kind", "bar")
             semantic = getattr(group, "semantic", "generic")
@@ -4151,8 +4291,9 @@ class StockResearchReportView(QWidget):
             )
         except Exception:
             layout.addWidget(self._wrapped_label(f"{group.title}圖卡暫時無法顯示；下方原表仍可查閱。"))
-            return
+            return False
         layout.addWidget(chart)
+        return True
 
     def _render_metric_group(
         self,
@@ -6353,21 +6494,24 @@ def _report_conclusion(report: StockResearchReportDTO) -> str:
 
 
 def _historical_portfolio_alert_summary(events: Sequence[StockEvidenceEventDTO]) -> str:
-    alerts = tuple(
-        event
-        for event in events
-        if event.event_type.casefold().startswith("portfolio_alert")
-        or event.source_type.casefold()
-        in {
-            "daily_decision_desk_portfolio_alert",
-            "daily_decision_desk.portfolio_alert",
-            "portfolio_alert",
-            "portfolio-alert",
-        }
+    alert = next(
+        (
+            event
+            for event in events
+            if event.event_type.casefold().startswith("portfolio_alert")
+            or event.source_type.casefold()
+            in {
+                "daily_decision_desk_portfolio_alert",
+                "daily_decision_desk.portfolio_alert",
+                "portfolio_alert",
+                "portfolio-alert",
+            }
+        ),
+        None,
     )
-    if not alerts:
+    if alert is None:
         return ""
-    presentation = build_stock_research_event_table(alerts)
+    presentation = build_stock_research_event_table((alert,))
     if not presentation.rows:
         return ""
     date_text, event_label, _quality, reason = presentation.rows[0]

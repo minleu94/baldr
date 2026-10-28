@@ -403,14 +403,20 @@ def _seed_registered_legacy_payload(
     return path
 
 
-def _write_forward_receipt(config: TWStockConfig, *, skipped: int = 1) -> None:
+def _write_forward_receipt(
+    config: TWStockConfig,
+    *,
+    skipped: int = 1,
+    start_date: str = "2026-09-10",
+    end_date: str = "2026-09-14",
+) -> None:
     _write_json(
         config.output_root / "scheduled" / "forward_outcomes" / "latest_status.json",
         {
             "status": "passed_with_warnings",
             "event_type": "recommendation_included",
-            "start_date": "2026-09-10",
-            "end_date": "2026-09-14",
+            "start_date": start_date,
+            "end_date": end_date,
             "windows": [5, 10],
             "require_cohort_identity": True,
             "max_events": 2500,
@@ -584,6 +590,43 @@ def test_daily_journey_matches_scheduled_scope_and_keeps_learning_domains_separa
     assert "recommendation_included" not in daily.headline
     assert any("不完整 identity" in warning for warning in daily.warnings)
     assert any("candidate natural sample" in item for item in daily.diagnostics)
+
+
+def test_daily_journey_reuses_event_query_for_exact_single_day_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _config(tmp_path)
+    _seed_candidate_outputs(config)
+    _write_forward_receipt(
+        config,
+        start_date="2026-09-14",
+        end_date="2026-09-14",
+    )
+    _seed_evidence(config)
+
+    original_list_events = EvidenceEventRepository.list_events
+    query_calls: list[dict[str, object]] = []
+
+    def track_list_events(repository, **kwargs):
+        if (
+            repository.db_path == config.db_file
+            and kwargs.get("event_type") == "recommendation_included"
+        ):
+            query_calls.append(kwargs)
+        return original_list_events(repository, **kwargs)
+
+    monkeypatch.setattr(EvidenceEventRepository, "list_events", track_list_events)
+    daily = DailyInvestmentJourneyService(config, evidence_db_path=config.db_file).build(
+        decision_snapshot=None,
+        scheduled_status=_status(),
+        recommendation_learning_status=_learning_payload(),
+        requested_decision_date="2026-09-14",
+    )
+
+    assert len(query_calls) == 1
+    assert query_calls[0]["start_date"] == "2026-09-14"
+    assert query_calls[0]["end_date"] == "2026-09-14"
+    assert daily.evidence_event_count == daily.evidence_daily_event_count == 1
 
 
 def test_daily_journey_reads_canonical_execution_and_preserves_status_identity(tmp_path: Path) -> None:

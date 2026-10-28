@@ -908,14 +908,21 @@ class DailyInvestmentJourneyService:
                 outcome_windows=windows,
                 incomplete_outcomes_first=True,
             )
-            daily_events = repository.list_events(
-                event_type=event_type,
-                decision_date=requested_date if requested_date != "unknown" else None,
-                limit=max_events,
-                complete_cohort_identity_only=require_identity,
-                outcome_windows=windows,
-                incomplete_outcomes_first=True,
-            )
+            if (
+                requested_date != "unknown"
+                and scope_start == requested_date
+                and scope_end == requested_date
+            ):
+                daily_events = events
+            else:
+                daily_events = repository.list_events(
+                    event_type=event_type,
+                    decision_date=requested_date if requested_date != "unknown" else None,
+                    limit=max_events,
+                    complete_cohort_identity_only=require_identity,
+                    outcome_windows=windows,
+                    incomplete_outcomes_first=True,
+                )
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             diagnostics.append(f"evidence_read_failure:{type(exc).__name__}:{exc}")
             return _EvidenceRead(

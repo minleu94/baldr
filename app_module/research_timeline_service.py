@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
 from app_module.journal_service import JournalService
@@ -39,6 +39,8 @@ _SPECIAL_SOURCE_TYPES = frozenset(
     }
 )
 _MAX_ENTRIES = 500
+_SHARED_HISTORY_UNSET = object()
+_SHARED_HISTORY_UNAVAILABLE = object()
 
 
 class ResearchTimelineService:
@@ -66,6 +68,17 @@ class ResearchTimelineService:
         entries: list[ResearchTimelineEntry] = []
         warnings: list[str] = []
         cancelled = False
+        shared_history: object = _SHARED_HISTORY_UNSET
+
+        shared_read_supported = (
+            callable(getattr(self._journal, "list_journal_snapshot", None))
+            and callable(getattr(self._journal, "list_journal_entries_from_history", None))
+            and all(
+                getattr(reader, "_journal_service", None) is self._journal
+                and callable(getattr(reader, "list_notes_from_history", None))
+                for reader in (self._price_notes, self._report_notes, self._theme_notes)
+            )
+        )
 
         def is_cancelled() -> bool:
             nonlocal cancelled
@@ -78,11 +91,39 @@ class ResearchTimelineService:
                 warnings.append("取消狀態讀取失敗；已安全停止後續時間軸讀取。")
             return cancelled
 
+        def read_shared_history() -> object:
+            nonlocal shared_history
+            if shared_history is _SHARED_HISTORY_UNSET:
+                if not shared_read_supported:
+                    shared_history = _SHARED_HISTORY_UNAVAILABLE
+                else:
+                    try:
+                        snapshot = self._journal.list_journal_snapshot()
+                    except Exception:
+                        # Preserve each lane's existing read/error isolation if
+                        # one shared snapshot cannot be obtained.
+                        shared_history = _SHARED_HISTORY_UNAVAILABLE
+                    else:
+                        if (isinstance(snapshot, tuple) and len(snapshot) == 2
+                                and isinstance(snapshot[0], list)):
+                            shared_history = snapshot[0]
+                        else:
+                            shared_history = _SHARED_HISTORY_UNAVAILABLE
+            return shared_history
+
+        def with_shared_history(shared_reader, legacy_reader):
+            def read_lane():
+                history = read_shared_history()
+                if history is not _SHARED_HISTORY_UNAVAILABLE:
+                    return shared_reader(history)
+                return legacy_reader()
+            return read_lane
+
         lanes = (
-            ("manual", self._read_manual),
-            ("price", self._read_price),
-            ("report", self._read_reports),
-            ("theme", self._read_themes),
+            ("manual", with_shared_history(self._read_manual_from_history, self._read_manual)),
+            ("price", with_shared_history(self._read_price_from_history, self._read_price)),
+            ("report", with_shared_history(self._read_reports_from_history, self._read_reports)),
+            ("theme", with_shared_history(self._read_themes_from_history, self._read_themes)),
         )
         for lane_name, reader in lanes:
             if is_cancelled():
@@ -180,8 +221,20 @@ class ResearchTimelineService:
         return matches[0].reference, None
 
     def _read_manual(self) -> tuple[ResearchTimelineEntry, ...]:
+        return self._project_manual_records(self._journal.list_journal_entries())
+
+    def _read_manual_from_history(
+        self, history: Sequence[Mapping[str, Any]],
+    ) -> tuple[ResearchTimelineEntry, ...]:
+        records = self._journal.list_journal_entries_from_history(history)
+        return self._project_manual_records(records)
+
+    @staticmethod
+    def _project_manual_records(
+        records: Sequence[JournalEntryDTO],
+    ) -> tuple[ResearchTimelineEntry, ...]:
         result: list[ResearchTimelineEntry] = []
-        for record in self._journal.list_journal_entries():
+        for record in records:
             if type(record) is not JournalEntryDTO or record.source_type in _SPECIAL_SOURCE_TYPES:
                 continue
             identity = record.decision_identity
@@ -214,6 +267,15 @@ class ResearchTimelineService:
             result.append(_project_note("price", note))
         return tuple(result)
 
+    def _read_price_from_history(
+        self, history: Sequence[Mapping[str, Any]],
+    ) -> tuple[ResearchTimelineEntry, ...]:
+        return tuple(
+            _project_note("price", note)
+            for note in self._price_notes.list_notes_from_history(history)
+            if type(note) is PinnedStockResearchNote
+        )
+
     def _read_reports(self) -> tuple[ResearchTimelineEntry, ...]:
         result: list[ResearchTimelineEntry] = []
         for note in self._report_notes.list_notes():
@@ -222,6 +284,15 @@ class ResearchTimelineService:
             result.append(_project_note("report", note))
         return tuple(result)
 
+    def _read_reports_from_history(
+        self, history: Sequence[Mapping[str, Any]],
+    ) -> tuple[ResearchTimelineEntry, ...]:
+        return tuple(
+            _project_note("report", note)
+            for note in self._report_notes.list_notes_from_history(history)
+            if type(note) is StockResearchReportNote
+        )
+
     def _read_themes(self) -> tuple[ResearchTimelineEntry, ...]:
         result: list[ResearchTimelineEntry] = []
         for note in self._theme_notes.list_notes():
@@ -229,6 +300,15 @@ class ResearchTimelineService:
                 continue
             result.append(_project_note("theme", note))
         return tuple(result)
+
+    def _read_themes_from_history(
+        self, history: Sequence[Mapping[str, Any]],
+    ) -> tuple[ResearchTimelineEntry, ...]:
+        return tuple(
+            _project_note("theme", note)
+            for note in self._theme_notes.list_notes_from_history(history)
+            if type(note) is ThemeResearchNote
+        )
 
 
 def _project_note(kind: str, note: object) -> ResearchTimelineEntry:

@@ -476,6 +476,20 @@ def test_research_registry_refreshes_after_save_delete_and_promote(qt_app):
     assert "version-test-001" in view.progress_label.text()
 
 
+def test_backtest_refresh_uses_async_registry_list_reader(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    compare_widget = MagicMock()
+    view.result_panel.run_registry_compare_widget = compare_widget
+    view._refresh_history = MagicMock()
+    view._update_chart_run_combo = MagicMock()
+    view._refresh_portfolio_history_combo = MagicMock()
+
+    view._refresh_research_registry()
+
+    compare_widget.refresh_runs_async.assert_called_once_with()
+    compare_widget.refresh_runs.assert_not_called()
+
+
 def test_result_tabs_first_entry_refreshes_history_and_chart_once(qt_app, tmp_path):
     config = TWStockConfig(data_root=tmp_path / "data", output_root=tmp_path / "output")
     view = BacktestView(backtest_service=MagicMock(), config=config)

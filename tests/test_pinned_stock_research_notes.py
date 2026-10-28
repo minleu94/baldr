@@ -115,6 +115,7 @@ def test_saved_note_reopens_with_exact_f07_bookmark_identity_and_clock(
     reopened = PinnedStockResearchNoteService(_reopen_journal(paths))
     assert reopened.get_note(saved.revision_id) == saved
     assert reopened.list_notes() == (saved,)
+    assert reopened.list_notes_from_history(journal.list_journal_history()) == (saved,)
     assert reopened.verify_source(saved).bookmark.to_json() == bookmark.to_json()
 
 

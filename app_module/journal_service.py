@@ -24,7 +24,11 @@ from app_module.personalization_contract import (
     canonical_aware_datetime,
 )
 from app_module.personal_journal_paths import PersonalJournalPaths, PersonalJournalJsonlStore
-from app_module.portfolio_store import PortfolioJsonlStore, project_journal_records
+from app_module.portfolio_store import (
+    PortfolioJsonlStore,
+    parse_journal_decision_revisions,
+    project_journal_records,
+)
 from data_module.config import TWStockConfig
 
 if TYPE_CHECKING:
@@ -168,11 +172,44 @@ class JournalService:
             entries = [entry for entry in entries if entry.linked_id == linked_id]
         return sorted(entries, key=lambda entry: entry.created_at, reverse=True)
 
+    def list_journal_snapshot(self) -> tuple[list[dict[str, Any]], str]:
+        """Read raw Journal history and its token under one store lock."""
+
+        return self.store.load_journal_snapshot()
+
+    def list_journal_entries_from_history(
+        self,
+        history: Sequence[Mapping[str, Any]],
+        portfolio_id: str = "default",
+        stock_code: str = "",
+        linked_id: str = "",
+    ) -> List[JournalEntryDTO]:
+        """Project entries from an immutable Journal history already in memory."""
+
+        entries = [
+            JournalEntryDTO.from_dict(item)
+            for item in project_journal_records(history)
+        ]
+        entries = [entry for entry in entries if entry.portfolio_id == portfolio_id]
+        if stock_code:
+            entries = [entry for entry in entries if entry.stock_code == stock_code]
+        if linked_id:
+            entries = [entry for entry in entries if entry.linked_id == linked_id]
+        return sorted(entries, key=lambda entry: entry.created_at, reverse=True)
+
     def list_journal_history(self) -> List[Dict[str, Any]]:
         return self.store.load_journal_history()
 
     def list_decision_revisions(self) -> List[DecisionContinuityRevision]:
         return self.store.load_decision_revisions()
+
+    @staticmethod
+    def list_decision_revisions_from_history(
+        history: Sequence[Mapping[str, Any]],
+    ) -> List[DecisionContinuityRevision]:
+        """Parse continuity revisions from a shared immutable Journal history."""
+
+        return parse_journal_decision_revisions(history)
 
     def list_personalization_delivery_acks(
         self,

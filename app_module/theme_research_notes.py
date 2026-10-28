@@ -168,6 +168,21 @@ class ThemeResearchNoteService:
 
     def list_notes(self) -> tuple[ThemeResearchNote, ...]:
         revisions = self._journal_service.list_decision_revisions()
+        return self._notes_from_revisions(revisions)
+
+    def list_notes_from_history(
+        self,
+        history: Sequence[Mapping[str, Any]],
+    ) -> tuple[ThemeResearchNote, ...]:
+        """Decode notes from a Journal snapshot shared by a read-only caller."""
+
+        revisions = self._journal_service.list_decision_revisions_from_history(history)
+        return self._notes_from_revisions(revisions)
+
+    @staticmethod
+    def _notes_from_revisions(
+        revisions: Sequence[DecisionContinuityRevision],
+    ) -> tuple[ThemeResearchNote, ...]:
         revision_counts: dict[str, int] = {}
         for revision in revisions:
             revision_counts[revision.revision_id] = revision_counts.get(revision.revision_id, 0) + 1

@@ -124,6 +124,7 @@ def test_saved_report_note_reopens_with_full_canonical_report_context_and_origin
     reopened = StockResearchReportNoteService(_reopen_journal(paths))
     assert reopened.get_note(saved.revision_id) == saved
     assert reopened.list_notes() == (saved,)
+    assert reopened.list_notes_from_history(journal.list_journal_history()) == (saved,)
     assert reopened.read_exact(snapshot.identity_sha256).canonical_json == (
         snapshot.canonical_json
     )

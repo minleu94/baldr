@@ -7,9 +7,13 @@ import pytest
 
 from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
+from app_module.journal_service import JournalService
 from app_module.pinned_stock_research_notes import PinnedStockResearchNote
-from app_module.research_timeline_service import ResearchTimelineService
-from app_module.stock_research_report_notes import StockResearchReportNote
+from app_module.research_timeline_service import ResearchTimelineService, _sort_by_recorded_at
+from app_module.stock_research_report_notes import (
+    StockResearchReportNote,
+    StockResearchReportNoteService,
+)
 from app_module.stock_research_report_snapshot_codec import create_stock_research_report_projection_snapshot
 from app_module.theme_research_notes import ThemeResearchNote
 from tests.test_stock_research_report_snapshot_codec import _report
@@ -53,6 +57,35 @@ class _Notes:
     def verify_source(self, note, *, cancel_callback=None):
         self.verify_calls.append(note.revision_id)
         return self.source_state
+
+
+class _SharedJournal(_Journal):
+    def __init__(self, records=(), history=()):
+        super().__init__(tuple(records))
+        self.history = list(history)
+        self.snapshot_calls = 0
+        self.projected_history_calls = 0
+
+    def list_journal_snapshot(self):
+        self.snapshot_calls += 1
+        return self.history, "history-token"
+
+    def list_journal_entries_from_history(self, _history):
+        self.projected_history_calls += 1
+        return list(self.records)
+
+
+class _SharedNotes(_Notes):
+    def __init__(self, journal, notes=(), error=None):
+        super().__init__(notes, error)
+        self._journal_service = journal
+        self.shared_history = []
+
+    def list_notes_from_history(self, history):
+        self.shared_history.append(history)
+        if self.error is not None:
+            raise self.error
+        return self.notes
 
 
 def _service(*, manual=(), price=(), reports=(), themes=(), price_error=None):
@@ -233,6 +266,95 @@ def test_lane_error_keeps_other_lanes_and_reports_partial_result():
 
     assert {item.kind for item in result.entries} == {"manual", "theme"}
     assert result.warnings and "price lane" in result.warnings[0]
+
+
+def test_shared_snapshot_keeps_lane_error_isolation_and_uses_one_history_object():
+    manual = _manual("manual-1", recorded_at="2026-10-19T12:00:00+00:00")
+    report = _report_note()
+    theme = _theme_note()
+    journal = _SharedJournal((manual,), [{"journal_id": "raw"}])
+    price_reader = _SharedNotes(journal, error=OSError("price reader unavailable"))
+    report_reader = _SharedNotes(journal, (report,))
+    theme_reader = _SharedNotes(journal, (theme,))
+    service = ResearchTimelineService(
+        journal,
+        price_note_service=price_reader,
+        report_note_service=report_reader,
+        theme_note_service=theme_reader,
+    )
+
+    result = service.read()
+
+    assert journal.snapshot_calls == 1
+    assert journal.projected_history_calls == 1
+    assert [item.kind for item in result.entries] == ["theme", "report", "manual"]
+    assert len(result.warnings) == 1 and "price lane" in result.warnings[0]
+    assert price_reader.shared_history[0] is report_reader.shared_history[0]
+    assert report_reader.shared_history[0] is theme_reader.shared_history[0]
+
+
+def test_real_journal_timeline_reuses_one_jsonl_read_with_legacy_lane_parity(
+    tmp_path, monkeypatch,
+):
+    journal = JournalService(SimpleNamespace(output_root=tmp_path))
+    journal.store.overwrite_journal_entries([
+        _manual(
+            f"manual-{index}",
+            recorded_at=f"2026-10-19T12:{index // 60:02d}:{index % 60:02d}+00:00",
+        ).to_dict()
+        for index in range(600)
+    ])
+    StockResearchReportNoteService(journal).save(
+        _report_note().snapshot,
+        "合成報告研究原文",
+        revision_id="timeline-report-1",
+    )
+    service = ResearchTimelineService(journal)
+    read_count = [0]
+    read_jsonl = journal.store._read_jsonl_unlocked
+
+    def count_jsonl_reads(path):
+        read_count[0] += 1
+        return read_jsonl(path)
+
+    monkeypatch.setattr(journal.store, "_read_jsonl_unlocked", count_jsonl_reads)
+    legacy_entries = tuple(
+        _sort_by_recorded_at(
+            service._read_manual()
+            + service._read_price()
+            + service._read_reports()
+            + service._read_themes()
+        )[:500]
+    )
+    assert read_count[0] == 4
+
+    read_count[0] = 0
+    result = service.read()
+
+    assert read_count[0] == 1
+    assert result.entries == legacy_entries
+    assert result.warnings == ()
+    assert result.limited is True
+
+
+def test_shared_snapshot_failure_falls_back_to_independent_lane_reads(
+    tmp_path, monkeypatch,
+):
+    journal = JournalService(SimpleNamespace(output_root=tmp_path))
+    journal.store.overwrite_journal_entries([
+        _manual("manual-1", recorded_at="2026-10-19T12:00:00+00:00").to_dict()
+    ])
+    service = ResearchTimelineService(journal)
+
+    def fail_snapshot():
+        raise RuntimeError("snapshot token unavailable")
+
+    monkeypatch.setattr(journal.store, "load_journal_snapshot", fail_snapshot)
+
+    result = service.read()
+
+    assert [item.record_id for item in result.entries] == ["manual-1"]
+    assert len(result.warnings) == 1 and "report lane" in result.warnings[0]
 
 
 def test_cancellation_stops_between_records_and_later_lanes():

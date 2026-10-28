@@ -358,6 +358,23 @@ class PinnedStockResearchNoteService:
                 matching.append(note)
         return tuple(matching)
 
+    def list_notes_from_history(
+        self,
+        history: Sequence[Mapping[str, Any]],
+        *,
+        stock_code: str = "",
+    ) -> tuple[PinnedStockResearchNote, ...]:
+        """Decode notes from a Journal snapshot shared by a read-only caller."""
+
+        if not isinstance(stock_code, str) or stock_code.strip() != stock_code:
+            raise PinnedStockResearchNoteError("stock_code must be an exact string")
+        revisions = self._journal_service.list_decision_revisions_from_history(history)
+        notes = _decode_note_history(revisions)
+        return tuple(
+            note for note in notes
+            if not stock_code or note.source.stock_code == stock_code
+        )
+
     def delete_note_family(
         self, note: PinnedStockResearchNote, *, removal_revision_id: str,
     ) -> tuple[str, ...]:

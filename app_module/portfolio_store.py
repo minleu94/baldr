@@ -215,6 +215,22 @@ def project_journal_records(
     return anonymous + list(active.values())
 
 
+def parse_journal_decision_revisions(
+    records: Sequence[Mapping[str, Any]],
+) -> list[DecisionContinuityRevision]:
+    """Parse continuity revisions from an already-read Journal history."""
+
+    result: list[DecisionContinuityRevision] = []
+    for index, record in enumerate(records):
+        if not _is_revision_record(record):
+            continue
+        try:
+            result.append(DecisionContinuityRevision.from_mapping(record))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid journal continuity revision at {index}") from exc
+    return result
+
+
 class PortfolioJsonlStore:
     """Small storage adapter kept behind app_module services."""
 
@@ -390,16 +406,7 @@ class PortfolioJsonlStore:
             return records, _journal_history_token(records)
 
     def load_decision_revisions(self) -> List[DecisionContinuityRevision]:
-        records = self.load_journal_history()
-        result: list[DecisionContinuityRevision] = []
-        for index, record in enumerate(records):
-            if not _is_revision_record(record):
-                continue
-            try:
-                result.append(DecisionContinuityRevision.from_mapping(record))
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"invalid journal continuity revision at {index}") from exc
-        return result
+        return parse_journal_decision_revisions(self.load_journal_history())
 
     def overwrite_trades(self, trades: List[Dict[str, Any]]) -> None:
         """重寫所有交易紀錄（legacy API；continuity writer 不使用）。"""

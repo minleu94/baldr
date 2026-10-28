@@ -81,6 +81,7 @@ def test_saved_note_reopens_with_exact_source_identity_and_original_date(tmp_pat
     assert saved.data_date == "2026-10-17"
     assert saved.text == "供下次研究比對"
     assert reopened.list_notes() == (saved,)
+    assert reopened.list_notes_from_history(journal.list_journal_history()) == (saved,)
 
     revision = reopened_journal.list_decision_revisions()[0]
     assert revision.decision_identity.source_snapshot_id == snapshot.identity_sha256

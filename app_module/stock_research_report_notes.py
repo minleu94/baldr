@@ -250,6 +250,23 @@ class StockResearchReportNoteService:
             if not stock_code or item.note.snapshot.stock_code == stock_code
         )
 
+    def list_notes_from_history(
+        self,
+        history: Sequence[Mapping[str, Any]],
+        *,
+        stock_code: str = "",
+    ) -> tuple[StockResearchReportNote, ...]:
+        """Decode report notes from a Journal snapshot shared by a read-only caller."""
+
+        if type(stock_code) is not str or stock_code.strip() != stock_code:
+            raise StockResearchReportNoteError("stock_code must be an exact string")
+        stored_notes, _revision_id_counts = _decode_note_history(history)
+        return tuple(
+            item.note
+            for item in stored_notes
+            if not stock_code or item.note.snapshot.stock_code == stock_code
+        )
+
     def read_exact(self, identity_sha256: str) -> StockResearchReportProjectionSnapshot:
         if type(identity_sha256) is not str or _SHA256_RE.fullmatch(identity_sha256) is None:
             raise StockResearchReportNoteError(

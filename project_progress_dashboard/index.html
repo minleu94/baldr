@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Baldr 專案進度與接線地圖</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --surface: #111b2d;
+      --surface-2: #17243a;
+      --surface-3: #1d2d45;
+      --line: #293b56;
+      --text: #e8eef7;
+      --muted: #a1b0c5;
+      --subtle: #7588a2;
+      --blue: #78a9ff;
+      --cyan: #55d6c2;
+      --amber: #f5c46a;
+      --red: #ff8585;
+      --green: #80d6a7;
+      --shadow: 0 12px 32px rgba(0, 0, 0, .2);
+      font-family: "Segoe UI", "Microsoft JhengHei UI", "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); }
+    button, input, select, textarea { font: inherit; }
+    button, select, input { color: inherit; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 2px solid var(--cyan); outline-offset: 2px;
+    }
+    .shell { max-width: 1540px; margin: 0 auto; padding: 28px clamp(16px, 3vw, 42px) 52px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+    .brand { display: flex; gap: 12px; align-items: center; min-width: 0; }
+    .brand-mark { width: 36px; height: 36px; border: 1px solid #3b6388; border-radius: 11px; display: grid; place-items: center; color: var(--cyan); background: #12273a; flex: 0 0 auto; }
+    .brand-mark svg { width: 20px; height: 20px; }
+    .brand-name { font-size: 13px; color: var(--muted); letter-spacing: .06em; }
+    .brand-sub { color: var(--subtle); font-size: 12px; margin-top: 2px; }
+    .top-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .button { background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; cursor: pointer; min-height: 38px; transition: background .18s ease, border-color .18s ease; }
+    .button:hover { background: var(--surface-3); border-color: #49617f; }
+    .button.primary { background: #16364a; border-color: #286078; color: #c9fff3; }
+    .button.quiet { color: var(--muted); }
+    .hero { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(260px, .75fr); gap: 18px; align-items: stretch; }
+    .hero-main, .hero-side, .panel, .metric, .route-card, .blocker, .flow-node, .workspace-key, .timeline-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+    }
+    .hero-main { padding: clamp(22px, 3vw, 34px); position: relative; overflow: hidden; }
+    .hero-main::after { content: ""; position: absolute; width: 260px; height: 260px; right: -90px; top: -130px; border-radius: 50%; border: 1px solid rgba(85, 214, 194, .14); box-shadow: 0 0 0 26px rgba(85,214,194,.025), 0 0 0 55px rgba(85,214,194,.02); pointer-events: none; }
+    .eyebrow { color: var(--cyan); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { font-size: clamp(26px, 4vw, 40px); line-height: 1.16; letter-spacing: -.025em; margin: 12px 0 10px; }
+    .lede { margin: 0; color: #bdc9d9; max-width: 780px; line-height: 1.7; }
+    .meta-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+    .meta-pill, .tag, .state-pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 5px 9px; font-size: 12px; line-height: 1.3; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--subtle); }
+    .dot.green { background: var(--green); box-shadow: 0 0 10px rgba(128,214,167,.32); }
+    .dot.amber { background: var(--amber); }
+    .dot.red { background: var(--red); }
+    .dot.blue { background: var(--blue); }
+    .hero-side { padding: 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
+    .side-label { color: var(--muted); font-size: 12px; }
+    .focus-title { font-size: 19px; font-weight: 700; line-height: 1.45; margin-top: 7px; }
+    .focus-copy { color: var(--muted); line-height: 1.6; font-size: 13px; margin: 8px 0 0; }
+    .focus-link { display: inline-flex; margin-top: 12px; font-size: 13px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0 22px; }
+    .metric { padding: 15px 17px; }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { font-size: 27px; font-weight: 700; letter-spacing: -.02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .metric-note { color: var(--subtle); font-size: 11px; margin-top: 5px; line-height: 1.4; }
+    .nav-tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--line); margin: 24px 0 18px; overflow-x: auto; }
+    .nav-tab { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 11px 14px; white-space: nowrap; cursor: pointer; }
+    .nav-tab[aria-selected="true"] { border-bottom-color: var(--cyan); color: var(--text); font-weight: 700; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 14px; flex-wrap: wrap; }
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .field, .select { background: #0e1727; border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; min-height: 39px; }
+    .field { min-width: min(320px, 88vw); }
+    .select { cursor: pointer; }
+    .hint { font-size: 12px; color: var(--subtle); }
+    .panel { padding: 19px; margin: 18px 0; }
+    .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 0 0 14px; }
+    .section-head h2 { margin: 0; font-size: 19px; letter-spacing: -.01em; }
+    .section-head p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .live-grid, .ml-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .live-card, .ml-card, .snapshot-item { background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; padding: 13px 14px; min-width: 0; }
+    .live-label, .ml-label { color: var(--muted); font-size: 11px; }
+    .live-value, .ml-value { margin-top: 5px; font-size: 15px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+    .live-note, .ml-note { color: var(--subtle); font-size: 11px; line-height: 1.5; margin-top: 5px; }
+    .snapshot-feed { display: grid; gap: 8px; margin-top: 12px; }
+    .snapshot-item { padding: 10px 12px; }
+    .snapshot-date { color: var(--cyan); font-size: 11px; font-weight: 700; }
+    .snapshot-item p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 4px 0 0; }
+    .ml-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ml-card { padding: 16px; }
+    .ml-card h3 { font-size: 14px; margin: 0 0 7px; }
+    .ml-card p { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 6px 0 0; }
+    .ml-status { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; color: var(--muted); background: #0e1727; font-size: 11px; margin-top: 8px; }
+    .ml-status.good { color: var(--green); border-color: #315c4a; }
+    .ml-status.pending { color: var(--amber); border-color: #735a34; }
+    .ml-status.blocked { color: var(--red); border-color: #70434a; }
+    .progress-track { height: 9px; margin-top: 10px; border-radius: 999px; overflow: hidden; background: #0b1220; border: 1px solid var(--line); }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, #52bfa9, #8bd8ae); border-radius: inherit; }
+    .layer-list { display: grid; gap: 8px; }
+    .layer-row { display: grid; grid-template-columns: minmax(130px, .8fr) minmax(0, 2fr) auto; gap: 12px; align-items: center; padding: 11px 13px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
+    .layer-row strong { font-size: 12px; }
+    .layer-row p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0; }
+    .refresh-help { color: var(--subtle); font-size: 11px; line-height: 1.5; margin-top: 12px; }
+    .flow { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 9px; align-items: stretch; }
+    .flow-node { padding: 14px; box-shadow: none; background: var(--surface-2); position: relative; min-height: 105px; }
+    .flow-node:not(:last-child)::after { content: ""; position: absolute; width: 8px; height: 8px; border-top: 1px solid #5a7697; border-right: 1px solid #5a7697; transform: rotate(45deg); right: -6px; top: 34px; z-index: 1; background: var(--surface-2); }
+    .flow-step { color: var(--subtle); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .flow-title { font-size: 14px; font-weight: 700; line-height: 1.45; margin: 7px 0 6px; }
+    .flow-note { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .flow-node.is-focus { border-color: #336b71; background: #122b36; }
+    .flow-node.has-gap { border-color: #735a34; }
+    .split { display: grid; grid-template-columns: 1.15fr .85fr; gap: 14px; }
+    .blockers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .blocker { box-shadow: none; padding: 14px; border-left: 3px solid var(--amber); }
+    .blocker.redline { border-left-color: var(--red); }
+    .blocker h3 { margin: 0 0 6px; font-size: 14px; line-height: 1.45; }
+    .blocker p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .blocker .blocker-next { margin-top: 8px; color: #dce8f6; }
+    .blocker .source-line { margin-top: 10px; font-size: 11px; }
+    .timeline { display: grid; gap: 9px; }
+    .timeline-card { box-shadow: none; padding: 12px 14px; background: var(--surface-2); }
+    .timeline-date { color: var(--cyan); font-size: 11px; font-weight: 700; }
+    .timeline-card p { margin: 5px 0 0; font-size: 12px; color: var(--muted); line-height: 1.55; }
+    .route-groups { display: grid; gap: 14px; }
+    .route-group { background: #0d1726; border: 1px solid var(--line); border-radius: 13px; overflow: hidden; }
+    .group-head { padding: 14px 16px; background: var(--surface-2); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .group-title { font-size: 15px; font-weight: 700; }
+    .group-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .group-routes { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; padding: 10px; }
+    .route-card { box-shadow: none; overflow: hidden; }
+    .route-card[hidden] { display: none; }
+    .route-summary { list-style: none; cursor: pointer; padding: 14px; }
+    .route-summary::-webkit-details-marker { display: none; }
+    .route-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .route-name { font-weight: 700; font-size: 14px; line-height: 1.45; }
+    .route-key { color: var(--subtle); font-family: "Cascadia Code", Consolas, monospace; font-size: 10px; margin-top: 4px; overflow-wrap: anywhere; }
+    .route-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+    .tag { padding: 4px 7px; font-size: 10px; }
+    .tag.focus { color: #b4fff0; border-color: #28665d; background: #12312f; }
+    .tag.partial { color: #ffe0a0; border-color: #6c5531; background: #312817; }
+    .tag.deferred { color: #c5d2e5; border-color: #3a4b63; background: #1a2638; }
+    .tag.gap { color: #ffc0b8; border-color: #70413e; background: #321d22; }
+    .route-brief { color: #bdc9d9; font-size: 12px; line-height: 1.55; margin: 10px 0 0; }
+    .route-detail { border-top: 1px solid var(--line); padding: 14px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 14px; }
+    .detail-block h4 { color: var(--cyan); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 6px; }
+    .detail-block p, .detail-block ul { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .detail-block ul { padding-left: 17px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip { border: 1px solid #31445e; background: #17253a; border-radius: 6px; padding: 4px 7px; font: 10px/1.4 "Cascadia Code", Consolas, monospace; color: #c5d2e5; overflow-wrap: anywhere; }
+    .source-links { display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; }
+    .tracking { background: #0d1726; border: 1px solid #334861; border-radius: 10px; padding: 12px; margin-top: 14px; }
+    .tracking-head { font-size: 11px; color: var(--cyan); font-weight: 700; margin-bottom: 8px; }
+    .tracking-fields { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 8px; }
+    .tracking-fields select, .tracking-fields input { min-width: 0; width: 100%; background: #101b2b; border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; font-size: 12px; }
+    .workspace-list { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
+    .workspace-key { box-shadow: none; padding: 12px; background: var(--surface-2); }
+    .workspace-key code { color: var(--cyan); font-size: 11px; }
+    .workspace-key strong { display: block; font-size: 12px; margin: 5px 0 4px; }
+    .workspace-key p { color: var(--muted); font-size: 11px; line-height: 1.45; margin: 0; }
+    .gap-list { display: grid; gap: 10px; }
+    .gap-row { display: grid; grid-template-columns: 150px minmax(0,1fr) minmax(190px,.7fr); gap: 12px; align-items: start; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 13px; }
+    .gap-label { font-size: 13px; font-weight: 700; line-height: 1.45; }
+    .gap-row p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .gap-meta { color: var(--subtle); font-size: 11px; line-height: 1.55; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 12px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; background: var(--surface-2); position: sticky; top: 0; }
+    td { color: #bdc9d9; line-height: 1.5; }
+    .status-note { color: var(--muted); line-height: 1.65; font-size: 13px; }
+    .notice { border: 1px solid #465b75; background: #142237; border-radius: 10px; padding: 12px 14px; color: #c4d2e5; font-size: 12px; line-height: 1.6; }
+    .notice strong { color: var(--text); }
+    .empty { text-align: center; padding: 32px; color: var(--muted); }
+    .footer { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 15px; display: flex; justify-content: space-between; gap: 12px; color: var(--subtle); font-size: 11px; flex-wrap: wrap; }
+    .toast { position: fixed; right: 20px; bottom: 20px; padding: 11px 14px; background: #18362f; color: #dbfff2; border: 1px solid #2f796a; border-radius: 9px; box-shadow: var(--shadow); opacity: 0; transform: translateY(8px); transition: .2s ease; pointer-events: none; z-index: 20; font-size: 12px; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .hidden { display: none !important; }
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; }
+      .split { grid-template-columns: 1fr; }
+      .gap-row { grid-template-columns: 130px minmax(0,1fr); }
+      .gap-meta { grid-column: 2; }
+      .live-grid, .ml-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 700px) {
+      .shell { padding-top: 16px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .top-actions { justify-content: flex-start; }
+      .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .live-grid, .ml-grid { grid-template-columns: 1fr; }
+      .layer-row { grid-template-columns: 1fr; gap: 6px; }
+      .flow { grid-template-columns: 1fr; }
+      .flow-node { min-height: 0; }
+      .flow-node:not(:last-child)::after { right: 22px; top: auto; bottom: -6px; transform: rotate(135deg); }
+      .group-routes { grid-template-columns: 1fr; }
+      .blockers { grid-template-columns: 1fr; }
+      .workspace-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .detail-grid { grid-template-columns: 1fr; }
+      .tracking-fields { grid-template-columns: 1fr; }
+      .gap-row { grid-template-columns: 1fr; }
+      .gap-meta { grid-column: auto; }
+      .toolbar { align-items: stretch; }
+      .filters { width: 100%; }
+      .filters .field { flex: 1; min-width: 100%; }
+      .filters .select { flex: 1; min-width: 120px; }
+    }
+    @media (max-width: 400px) {
+      .workspace-list { grid-template-columns: 1fr; }
+      .metric { padding: 12px; }
+      .metric-value { font-size: 23px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg: #fff; --surface: #fff; --surface-2: #f3f6fa; --surface-3: #e9eef5; --line: #cbd5e1; --text: #152238; --muted: #44546a; --subtle: #596b82; --blue: #1759a6; --cyan: #087f73; --shadow: none; }
+      body { background: #fff; color: #152238; }
+      .shell { max-width: none; padding: 0; }
+      .top-actions, .nav-tabs, .toolbar, .tracking, .toast { display: none !important; }
+      .hero-main::after { display: none; }
+      .route-card { break-inside: avoid; }
+      .route-summary { cursor: default; }
+      details:not([open]) > .route-detail { display: block; }
+      a { color: #1759a6; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 18.5h16M6.5 15V9.5M12 15V5M17.5 15v-3.5" stroke-linecap="round"/><circle cx="6.5" cy="7" r="1.2"/><circle cx="12" cy="3" r="1.2"/><circle cx="17.5" cy="9.5" r="1.2"/></svg></div>
+        <div><div class="brand-name">BALDR · PROJECT CONTROL</div><div class="brand-sub">專案進度、頁面接線與缺口追蹤</div></div>
+      </div>
+      <div class="top-actions" aria-label="刷新、匯入與匯出">
+        <button class="button primary" id="refreshStatus" type="button">刷新專案狀態</button>
+        <button class="button" id="exportCsv" type="button">下載 CSV</button>
+        <button class="button" id="exportJson" type="button">匯出追蹤 JSON</button>
+        <button class="button primary" id="importButton" type="button">匯入追蹤 JSON</button>
+        <input class="hidden" id="importFile" type="file" accept="application/json,.json" aria-label="選擇追蹤 JSON 檔案">
+      </div>
+    </header>
+
+    <section class="hero" aria-labelledby="pageTitle">
+      <div class="hero-main">
+        <div class="eyebrow">Source-backed project map</div>
+        <h1 id="pageTitle">專案進度與接線地圖</h1>
+        <p class="lede">把主導覽、子頁、服務、畫面資料來源、交付證據和未接通缺口放在同一處。已接線、局部 QA、產品 Gate 與真人接受是不同狀態；本頁不把它們加總成虛假的完成百分比。</p>
+        <div class="meta-row" id="metaPills"></div>
+      </div>
+      <aside class="hero-side" aria-label="目前主線">
+        <div>
+          <div class="side-label">目前優先主線 · Gate 1</div>
+          <div class="focus-title">從資料日期走到人工決定，完成一條可讀回的日常研究流程</div>
+          <p class="focus-copy">市場／資料日期 → 候選與明確排除 → Why／Why Not／Risk／Evidence → 手動研究決定與讀回。</p>
+          <a class="focus-link" href="../docs/00_core/PROJECT_SNAPSHOT.md">開啟目前狀態摘要 ↗</a>
+        </div>
+        <div class="notice"><strong>解讀方式</strong><br>上方的「接線／驗收」來自原始碼與專案文件；每張頁面卡下方的「我的追蹤」是本機個人筆記，不會回寫程式、資料庫或專案 Gate。</div>
+      </aside>
+    </section>
+
+    <section class="metrics" id="metrics" aria-label="導覽盤點摘要"></section>
+
+    <section class="panel" aria-labelledby="liveTitle">
+      <div class="section-head"><div><h2 id="liveTitle">目前專案來源同步</h2><p>刷新會唯讀讀取目前工作樹、UI 路由與 PROJECT_SNAPSHOT；不啟動排程、不讀正式資料庫，也不寫入專案。</p></div><span class="state-pill" id="refreshBadge"><span class="dot amber"></span>尚未連線</span></div>
+      <div class="live-grid" id="liveStatus"></div>
+      <div class="snapshot-feed" id="snapshotEntries"></div>
+      <p class="refresh-help" id="refreshHelp">要啟用刷新：在 repository 根目錄執行 <code>python project_progress_dashboard/serve_dashboard.py</code>，再用輸出的本機網址開啟本頁。每次按刷新都重新讀取來源檔案。</p>
+    </section>
+
+    <nav class="nav-tabs" role="tablist" aria-label="Dashboard 分頁">
+      <button class="nav-tab" role="tab" id="tab-overview" aria-controls="view-overview" aria-selected="true" data-view="overview">進度總覽</button>
+      <button class="nav-tab" role="tab" id="tab-map" aria-controls="view-map" aria-selected="false" data-view="map">大頁籤／小頁籤地圖</button>
+      <button class="nav-tab" role="tab" id="tab-gaps" aria-controls="view-gaps" aria-selected="false" data-view="gaps">未接通與阻塞</button>
+      <button class="nav-tab" role="tab" id="tab-ml" aria-controls="view-ml" aria-selected="false" data-view="ml">ML 訓練與介入</button>
+      <button class="nav-tab" role="tab" id="tab-storage" aria-controls="view-storage" aria-selected="false" data-view="storage">儲存狀態</button>
+      <button class="nav-tab" role="tab" id="tab-keys" aria-controls="view-keys" aria-selected="false" data-view="keys">workspace key 對照</button>
+    </nav>
+
+    <section id="view-overview" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="panel">
+        <div class="section-head"><div><h2>Gate 1 垂直流程</h2><p>每一段都需要前一段的可追溯證據，工程接線不代表 Gate 已通過。</p></div><span class="state-pill"><span class="dot amber"></span>未整體接受</span></div>
+        <div class="flow" id="flow"></div>
+      </div>
+      <div class="split">
+        <div class="panel">
+        <div class="section-head"><div><h2>目前卡點與下一步</h2><p>先看可執行的下一步，再沿證據連結查原始依據。</p></div><a href="#" data-open-view="gaps">全部缺口</a></div>
+          <div class="blockers" id="topBlockers"></div>
+        </div>
+        <div class="panel">
+          <div class="section-head"><div><h2>最近有證據的進展</h2><p>只記錄有來源支持的變化，不按測試數量換算完成率。</p></div></div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>追蹤狀態</h2><p>尚未替每個子頁預填「完成／進行中」；請依你目前的工作安排更新。本機記錄可匯出成 JSON 備份。</p></div><button class="button quiet" id="clearTracking" type="button">清除本機追蹤</button></div>
+        <div class="status-note" id="trackingSummary"></div>
+      </div>
+    </section>
+
+    <section id="view-map" class="hidden" role="tabpanel" aria-labelledby="tab-map">
+      <div class="toolbar">
+        <div class="filters">
+          <label><span class="hidden">搜尋頁面、服務、來源或缺口</span><input class="field" id="search" type="search" placeholder="搜尋頁面、服務、資料來源、缺口…"></label>
+          <label><span class="hidden">主導覽篩選</span><select class="select" id="groupFilter"><option value="all">所有大頁籤</option></select></label>
+          <label><span class="hidden">工作優先序篩選</span><select class="select" id="focusFilter"><option value="all">所有工作範圍</option><option value="main">目前主線</option><option value="support">支援主線</option><option value="deferred">暫緩／選用</option></select></label>
+          <label><span class="hidden">個人追蹤狀態篩選</span><select class="select" id="ownerFilter"><option value="all">所有追蹤狀態</option><option value="未盤點">未盤點</option><option value="進行中">進行中</option><option value="已完成">已完成</option><option value="阻塞">阻塞</option><option value="延後">延後</option></select></label>
+        </div>
+        <div class="hint" id="resultCount" aria-live="polite"></div>
+      </div>
+      <div class="notice" style="margin-bottom:14px"><strong>頁籤範圍：</strong>以下完整列出目前 `PRODUCT_ROUTES` 的 5 個主導覽群與 16 個子頁；各頁卡內同時列出主要頁內分頁／視圖。共用「個股研究」是跨頁詳情，不是額外主導覽小頁籤。</div>
+      <div class="route-groups" id="routeGroups"></div>
+    </section>
+
+    <section id="view-gaps" class="hidden" role="tabpanel" aria-labelledby="tab-gaps">
+      <div class="panel">
+        <div class="section-head"><div><h2>尚未打通或尚未具備接受證據</h2><p>「未接通」包括來源版本無法精確橋接、來源品質／PIT 未接受、尚待自然成熟或產品 Gate 未通過。</p></div></div>
+        <div class="gap-list" id="gapList"></div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>目前已接線，但不可解讀成產品完成</h2><p>這些現況常被混在一起；維持分層才能知道真正卡在哪一段。</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>層次</th><th>目前證據</th><th>還不能推出的結論</th></tr></thead><tbody id="statusLayers"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="view-ml" class="hidden" role="tabpanel" aria-labelledby="tab-ml">
+      <div class="panel">
+        <div class="section-head"><div><h2>ML 在產品中的層次與狀態</h2><p>把 H20 個人研究模型和配置研究模型分開；程式存在、訓練完成、資料資格與正式決策介入是不同階段。</p></div><span class="state-pill"><span class="dot amber"></span>正式 ML 資格未通過</span></div>
+        <div class="layer-list" id="mlLayers"></div>
+        <div class="notice" id="mlSnapshotNote" style="margin-top:12px">刷新後顯示 Snapshot 最新 ML 相關狀態摘錄。</div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>訓練進度：依具名收據顯示</h2><p>進度條只代表特定訓練作業；不代表整個 ML 專案或模型資格完成。</p></div></div>
+        <div class="ml-grid" id="mlTraining"></div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>ML 介入程度</h2><p>介入要看產出是否進入正式 Advice／配置／交易流程，不以畫面上看得到模型預測作為依據。</p></div></div>
+        <div class="ml-grid" id="mlIntervention"></div>
+        <p class="refresh-help">目前刷新讀取程式路由、專案快照和具名 QA 文件。若要顯示「此刻正在跑的訓練百分比」，訓練 runner 還要寫出可讀的進度收據；沒有收據時顯示未知，不推估百分比。</p>
+      </div>
+    </section>
+
+    <section id="view-storage" class="hidden" role="tabpanel" aria-labelledby="tab-storage">
+      <div class="panel">
+        <div class="section-head"><div><h2>儲存狀態</h2><p>沿用 Baldr 的唯讀、有界盤點服務。容量是磁碟層級；同一磁碟的多個路徑不可相加。來源：<a href="../docs/02_features/UI_FEATURES_DOCUMENTATION.md#系統管理儲存維護" target="_blank" rel="noreferrer">儲存維護功能說明</a> · <a href="../docs/07_guides/APPLICATION_MANUAL.md#系統管理儲存維護" target="_blank" rel="noreferrer">操作手冊</a></p></div><span class="state-pill" id="storageBadge"><span class="dot amber"></span>尚未盤點</span></div>
+        <div class="live-grid" id="storageSummary"></div>
+        <div class="notice" id="storageNote" style="margin-top:12px">尚未刷新儲存盤點；不把缺失或不可讀路徑當成空清單。</div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>明示儲存位置</h2><p>顯示市場資料、產品輸出、應用狀態三個設定位置的磁碟容量及讀取狀態。</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>位置</th><th>路徑</th><th>磁碟總量 MiB</th><th>磁碟可用 MiB</th><th>狀態</th></tr></thead><tbody id="storageLocations"></tbody></table></div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>dist 版本／套件盤點</h2><p>最多 64 個版本、共用 4,096 個項目上限；遇到連結、不可讀或超限，大小會標成部分而不補估。</p></div></div>
+        <div class="table-wrap"><table><thead><tr><th>盤點項目</th><th>量測 MiB</th><th>大小完整</th><th>狀態</th></tr></thead><tbody id="storageArtifacts"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="view-keys" class="hidden" role="tabpanel" aria-labelledby="tab-keys">
+      <div class="panel">
+        <div class="section-head"><div><h2>九個穩定 workspace keys</h2><p>這些 key 維持路由、feature map 與來源上下文識別；不等於五個使用者可見主導覽分組。</p></div></div>
+        <div class="workspace-list" id="workspaceKeys"></div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>其他路由頁與共用詳情</h2><p>V2 子頁會路由到多個既有 view；另有專用工作區或跨頁詳情，不應漏掉，也不應誤算成九個穩定 key。</p></div></div>
+        <div class="workspace-list" id="auxiliaryKeys"></div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h2>狀態定義</h2></div></div>
+        <div class="table-wrap"><table><thead><tr><th>欄位</th><th>表示什麼</th><th>來源</th></tr></thead><tbody>
+          <tr><td>頁面接線</td><td>目前主導覽是否有路由、是否掛上 view／service 或只讀模型。</td><td>工作樹原始碼與 UI 功能文件。</td></tr>
+          <tr><td>來源狀態</td><td>資料能否精確追到日期、版本、品質與用途；`candidate`／`research-only` 不升格為正式。</td><td>PROJECT_SNAPSHOT、資料契約與 QA 收據。</td></tr>
+          <tr><td>Gate／接受</td><td>產品流程、真實來源、自然成熟、Owner／真人驗收及正式資格。</td><td>產品 Roadmap、PROJECT_SNAPSHOT、具名 QA。</td></tr>
+          <tr><td>我的追蹤</td><td>你在本 dashboard 設定的個人任務狀態與備註，只存在此瀏覽器或匯出的 JSON。</td><td>本機 localStorage／匯出檔；不屬於產品狀態。</td></tr>
+        </tbody></table></div>
+      </div>
+    </section>
+
+    <footer class="footer"><span id="footerVersion"></span><span><a href="README.md">查看使用與更新說明</a> · 資料來源相對連結指向 repository 文件</span></footer>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="application/json" id="dashboardData">
+  {
+    "version": "1.1",
+    "asOf": "2026-10-27",
+    "sourceState": "使用當前工作樹文件與原始碼盤點；不是已發布版本的功能清冊。",
+    "navSource": "../ui_qt/main_window_coordinator.py",
+    "featureMap": "../docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+    "snapshot": "../docs/00_core/PROJECT_SNAPSHOT.md",
+    "groups": [
+      {"id":"workbench","label":"今日總覽","routes":["overview"]},
+      {"id":"explore","label":"探索與研究","routes":["market","themes","screener","lookup"]},
+      {"id":"investment","label":"我的投資","routes":["lists","positions","paper","journal"]},
+      {"id":"laboratory","label":"策略實驗室","routes":["strategies","backtests","performance","ml"]},
+      {"id":"systems","label":"系統管理","routes":["data","operations","storage"]}
+    ],
+    "routes": [
+      {
+        "id":"overview","label":"今日總覽","group":"workbench","workspace":"workbench","focus":"main","connection":"已接線","acceptance":"局部工程驗收；Gate 1 全流程仍未接受",
+        "brief":"把今日資料、候選、Advice、持倉提醒和研究證據整理成下一步；UI 只消費既有 DTO／服務，不在畫面重新計算。",
+        "views":["總覽／今日行動中心","決策來源","研究證據（Research Console）","持倉追蹤","操作節奏","最近研究與跨頁回訪"],
+        "services":["WorkbenchSourceService","DecisionPresentationService","ResearchConsoleSourceService","DecisionDeskService（來源導覽）"],
+        "sources":["WorkbenchDashboardDTO 與各來源既有 read model","每日 Advice canonical execution／cohort","Evidence readiness、Portfolio alerts、已保存研究來源"],
+        "display":["資料／市場狀態、review items、Advice、Action Items","逐股票 observed／degraded／missing 與支持／反證／風險","來源日期、研究限制、下一步導覽"],
+        "state":"Gate 1 主線；現有呈現／導覽已接線，尚待作者策略契約、真來源與完整 Owner 驗收。",
+        "gaps":["Advice 的論點、失效條件、持有期間與檢視頻率需作者在合格新版本中提供。","目前局部 QA 與 source readback 不能代替 Gate 1 完整日常流程接受。"],
+        "evidence":[["UI 功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-decision-workbench"],["2026-10-27 Advice 接線與驗收界線","../docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-整體-degraded-cohort-保留逐檔可判讀建議"],["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"market","label":"市場分析","group":"explore","workspace":"market_explore","focus":"support","connection":"已接線；來源資格部分未核","acceptance":"局部視圖驗收；資料 PIT／用途仍有缺口",
+        "brief":"市場總覽與市場研究視圖，涵蓋指數、強弱勢、券商流向、來源覆蓋及官方市場資訊。",
+        "views":["市場總覽","大盤指數","加權指數走勢","強勢個股","弱勢個股","強勢產業","弱勢產業","主力流向","研究母體盤勢"],
+        "services":["DecisionDesk／市場呈現 service","RegimeService","MarketBreadthService","TAIEX history presentation","Smart Money source readers"],
+        "sources":["正式 SQLite 市場資料與其來源日期／品質","TWSE／TPEx 日行情、官方行事曆與來源原件","券商分點及 candidate-only 法人／基本面來源"],
+        "display":["市場 Regime、指數歷史、強弱排序、產業／個股焦點","個別來源品質、筆數、股票數、觀測日／可得日與用途限制","主力流向與券商分點明細"],
+        "state":"介面和多條來源讀取路徑存在；來源接受、歷史 PIT 與全市場覆蓋不能由畫面存在推定。",
+        "gaps":["法人、信用、TDCC、月營收及季報存在 candidate／research-only 或 PIT 限制。","正式資料來源與歷史可得時間尚有逐來源缺口。"],
+        "evidence":[["市場探索功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-market-exploration"],["現行資料流與來源邊界","../docs/01_architecture/system_architecture.md#主要資料流"],["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"themes","label":"產業與題材","group":"explore","workspace":"market_explore","focus":"support","connection":"已接線；須明選來源版本","acceptance":"有限定旅程證據；固定版／真人接受仍分開",
+        "brief":"讀取已保存的產業鏈／題材 manifest，顯示排行、成員與欄位覆蓋，並可接續到個股研究與 Journal。",
+        "views":["觀察卡與排行","產業鏈與題材清單","成員股票與欄位覆蓋","同源個股研究／研究筆記返回"],
+        "services":["IndustryThemeMapView／saved manifest reader","JournalService","ResearchStockContext 導覽"],
+        "sources":["明選本機保存的 theme／industry manifest 及其 SHA","行情原件（與題材來源日期分開）","Journal 中的人工判斷修訂"],
+        "display":["產業鏈、題材、成員、排行與來源版本","行情日、覆蓋率、缺件與來源限制","原文唯讀、修訂歷史與回到原查詢身份"],
+        "state":"接線以原件與明選 manifest 為前提；缺值維持未知，不以局部 UI／試用包證明整體 Gate。",
+        "gaps":["依主線先解除 Gate 1 日常研究阻塞；此頁延伸不應代替 Gate 1 驗收。","固定交付包、後繼原始碼與真人試用接受範圍需分開核對。"],
+        "evidence":[["市場探索與題材功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-market-exploration"],["當前研究方向","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"screener","label":"綜合選股","group":"explore","workspace":"recommendation","focus":"main","connection":"已接線；來源與資格分層","acceptance":"局部 QA；正式 Advice／PIT／Gate 未接受",
+        "brief":"條件篩選、推薦候選、已保存結果和每日市場研究共用既有推薦／研究管線。",
+        "views":["推薦條件與結果","已保存推薦／策略研究","每日市場研究／價格選股","官方市場／處置研究","四均線／技術條件與價格研究","ML 專區（由 ML route 明選）"],
+        "services":["RecommendationService","RecommendationProfileService","UniverseService","ResultArtifactStore","ResearchRun readers"],
+        "sources":["正式價量 SQLite／明示 CSV fallback","保存的 Query、推薦結果與 canonical execution","官方處置、市場條件、策略及 candidate source artifacts"],
+        "display":["候選與明確排除原因、日期／品質、Why／Why Not／Risk／Evidence","來源版本、保存身份、篩選條件、回訪與缺件","來源資格與 research-only 限制"],
+        "state":"目前每日 Advice 是 Gate 1 主線之一；工程修正不表示來源資格、PIT 或完整產品 Gate 通過。",
+        "gaps":["策略作者契約資料需由作者提供，不可由工程回填既有策略。","對兩個缺分個案與來源日期仍須依最新自然結果逐筆追蹤。"],
+        "evidence":[["推薦分析功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-recommendation"],["Advice cohort QA","../docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-策略排除與資料品質分離"],["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"lookup","label":"個股查詢","group":"explore","workspace":"stock_lookup","focus":"support","connection":"已接線；導向共用詳情頁","acceptance":"依查詢來源與每條保存旅程個別判讀",
+        "brief":"使用名錄／全域查找選股票，再以來源 context 開啟共用個股研究詳情，保留原始入口與返回位置。",
+        "views":["股票代號／名稱查詢","個股研究報告","保存時報告","我的判斷／Journal","決策 → 結果","來源返回與上下文"],
+        "services":["StockLookupLanding","read_stock_search_directory","StockResearchWorkspace","ResearchStockContext readers"],
+        "sources":["公司名錄（僅身份顯示，不補金融數值）","明選的市場／推薦／保存研究 source identity","原報告、Journal 或候選結果 artifact"],
+        "display":["個股報告、研究事實、來源資料日與品質","保存結果原文、決定紀錄與後續結果","來源身份、過期／缺件提示及返回目標"],
+        "state":"共用詳情可從多個頁面進入；來源身份隔離，不能以同股票代號替代原件驗證。",
+        "gaps":["來源缺件、歷史 PIT 與真人完整旅程依各個 source kind 尚有待驗項。","此共用詳情不是新增的第五個探索子頁或正式產品 Gate。"],
+        "evidence":[["個股研究 UI 契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-stock-research"],["來源日期與返回限制","../docs/01_architecture/current/application_and_workspaces.md#工作區責任"]]
+      },
+      {
+        "id":"lists","label":"自選與名單","group":"investment","workspace":"watchlist","focus":"support","connection":"已接線","acceptance":"功能依來源保存／讀回契約逐項核",
+        "brief":"管理自選、觀察與候選名單，並將原本有身份的研究候選帶到適當工作區。",
+        "views":["自選名單／候選池","Universe 與選股摘要","明選候選及來源返回","個股研究下鑽"],
+        "services":["WatchlistAnalysisService","UniverseService","DecisionPresentationService","source bookmark readers"],
+        "sources":["使用者自選／watchlist 保存記錄","研究名單及 query／候選 source identity","SQLite 價格資料與來源品質"],
+        "display":["名單、股票身份、原查詢與選取狀態","母體計數、納入／排除／缺資料","來源日期、保存記錄與回訪入口"],
+        "state":"列管與導航已存在；每日 Advice 的來源資格與 gate 狀態由其各自來源 reader 判斷。",
+        "gaps":["不以名單數量代表有效來源母體或可用投資訊號。","逾期／缺來源候選仍需保留明確狀態，不自動替換。"],
+        "evidence":[["觀察清單功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-watchlist"],["觀察清單與持倉手冊","../docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"]]
+      },
+      {
+        "id":"positions","label":"持倉管理","group":"investment","workspace":"portfolio","focus":"support","connection":"已接線；手動帳與 Paper 分離","acceptance":"多項研究功能已接線；Gate 4／真人接受仍待",
+        "brief":"呈現手動持倉、交易歷史、健康／策略／價格監控與個股回訪；金融值由領域 service 提供。",
+        "views":["手動持倉與交易歷史","覆盤日誌","聲明持倉研究","策略與價格監控","生命週期回顧","籌碼監控","情境壓力"],
+        "services":["PortfolioService","PositionHealthTransitionReadService","PortfolioFeedbackService","PortfolioChipService","PortfolioStressLabService"],
+        "sources":["手動交易／持倉紀錄與相應 portfolio_id","正式 SQLite／CSV fallback 價格","已保存策略版本及同身份健康來源"],
+        "display":["持倉、可用市場價、現金／市值與缺價狀態","策略條件、健康轉移、來源追溯及風險","Stress 研究結果與明確研究用途限制"],
+        "state":"手動帳不需要 Paper 或券商帳戶即可使用；Portfolio sizing 是 Gate 1 選用延伸。",
+        "gaps":["Gate 4 所需的正式 Paper evidence、來源接受與 Owner review 未全數接受。","缺價、缺欄維持未知；UI 不重算 Financial core。"],
+        "evidence":[["持倉管理功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-portfolio-management"],["Gate／Portfolio 限制","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"paper","label":"模擬帳與配置","group":"investment","workspace":"portfolio","focus":"deferred","connection":"研究／Paper 讀取及部分受控寫入","acceptance":"Gate 4 與正式資格尚未接受；非 Gate 1 前置",
+        "brief":"從持倉區切到 Paper readiness、研究週報、受控成交匯入、Stress history 與配置研究封存。",
+        "views":["Paper Portfolio 與 readiness","Paper weekly evidence","成交 CSV 預覽／受控匯入","配置研究封存","情境壓力：目前情境／已保存歷史"],
+        "services":["PaperPortfolioReadinessService","PaperPortfolioWeeklyEvidenceService","PaperTradeImportService","PortfolioResearchScenarioService","PortfolioStressHistoryReadService"],
+        "sources":["Paper append-only snapshot、benchmark ledger 與 cost ledger","已確認的 Paper fill CSV／來源事件","明選保存的配置研究 artifact 與來源 SHA"],
+        "display":["期間／筆數／缺件／degraded 與 readiness","研究週報、成本和對照狀態","保存情境、Stress history 與來源身份"],
+        "state":"Paper 是隔離研究區；不冒充正式持倉或實盤，不是 Gate 1 的前置條件。",
+        "gaps":["Gate 4 的正式 evidence、實際來源／Owner review 與自然週報接受仍待。","Paper degraded 不得由 dry-run、合成資料或手動狀態註記升格。"],
+        "evidence":[["持倉管理／Paper 功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-portfolio-management"],["目前 Gate 優先序","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"journal","label":"研究紀錄與覆盤","group":"investment","workspace":"research_timeline","focus":"support","connection":"已接線；exact source readback","acceptance":"各種 source journey 以具名 QA 分範圍驗收",
+        "brief":"瀏覽研究時間軸、Journal、原始保存版本與覆盤記錄；以 exact identity 重開並保留返回上下文。",
+        "views":["研究時間軸","手動筆記與編輯","生命週期研究","原版本／當前來源對照","決策 → 結果／Paper 條件檢查"],
+        "services":["ResearchTimelineService","JournalService","DecisionOutcomeJourneyService","exact artifact readers"],
+        "sources":["Journal append-only entries 與修訂鏈","保存研究原件 bytes／hash／metadata","原決策結果、日期和逐筆來源版本"],
+        "display":["原文、修訂關係、實際保存時間與來源資料日","可讀回的原始研究、後續 outcome 與人工決定","原件／目前來源對照及失配原因"],
+        "state":"歷史回訪以原件和 SHA 為準；新資料不能取代已保存版本。",
+        "gaps":["不同 note kind 有不同可比較／保存界線；不能把 UI 入口當成統一的金融資格。","Paper 建帳與來源合格條件仍需各自核對。"],
+        "evidence":[["個股研究與保存來源契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-stock-research"],["應用工作區責任","../docs/01_architecture/current/application_and_workspaces.md"]]
+      },
+      {
+        "id":"strategies","label":"策略庫","group":"laboratory","workspace":"strategy_library","focus":"main","connection":"策略版本與 Registry 已接線","acceptance":"Advice 作者欄位契約阻塞 Gate 1；Promote 不等於產品接受",
+        "brief":"瀏覽已保存策略版本、規則與研究 run backlink，供推薦／回測明選引用。",
+        "views":["策略版本清單","版本／參數／來源 run 詳情","保存與 Registry identity 核對"],
+        "services":["StrategyVersionService","Research Run Registry reader","PromotionReconciliationService"],
+        "sources":["策略版本 JSON／已保存 Research Run","策略 metadata、參數及 source run identity","Advice 作者契約所需 thesis／失效條件等欄位"],
+        "display":["版本、參數、來源 run、created／reconciled 狀態","策略與 Recommendation／Backtest 的可追溯關係","contract 缺件和 Promote／Lifecycle 限制"],
+        "state":"策略保存與回讀路徑存在；Gate 1 欄位內容須策略作者提供，工程不代填。",
+        "gaps":["Advice 所需論點、失效條件、持有期間、檢視頻率尚待作者決定並建立合格新版本。","Promotion 成功只說明 identity reconciliation，不代表 Gate／PIT／ML 資格。"],
+        "evidence":[["Gate 1 作者契約現況","../docs/00_core/PROJECT_SNAPSHOT.md"],["2026-10-27 欄位缺件導引","../docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-workbench-advice-missing-fields-field-specific-route"]]
+      },
+      {
+        "id":"backtests","label":"回測分析","group":"laboratory","workspace":"backtest","focus":"support","connection":"Research Run／回測服務已接線","acceptance":"局部工程 QA；歷史 PIT／績效／Gate 仍各自待證",
+        "brief":"執行研究用單股／批次回測、保存精確 run、檢視結果與治理生命週期。",
+        "views":["回測條件與執行","結果圖表／期間明細／個股貢獻／交易紀錄","策略／run registry","walk-forward／最佳化","promotion／reconciliation"],
+        "services":["ResearchRunService","BatchBacktestService","WalkForwardService","OptimizerService","PromotionService","PromotionReconciliationService"],
+        "sources":["決策時間可得的 SQLite／指定歷史價格來源","策略版本、run artifact、日曆／成本與 source pins","回測與 forward maturity 的原始結果"],
+        "display":["交易、績效、benchmark、成本、明細與可比性","保存 run identity／缺件／風險及資料版本","Promotion 條件／未滿足原因"],
+        "state":"研究回測不是未來績效；需分開 PIT、成本、樣本外、真實來源和接受證據。",
+        "gaps":["現有來源缺口及歷史 PIT 未確認時，不授正式績效或 ML credit。","此頁為 Gate 1 之支援工具，不應擴大成同時推進多條 Gate 主線。"],
+        "evidence":[["策略回測功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-backtest-research-lab"],["Gate 優先序","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"performance","label":"績效比較","group":"laboratory","workspace":"backtest","focus":"deferred","connection":"Forward／Registry dashboard 已接線","acceptance":"目前 Forward 有 13 筆未成熟；品質仍 degraded",
+        "brief":"比較保存 run、策略版本與 Forward outcome；將 ready、pending、missing、degraded 分開顯示。",
+        "views":["Research Run Registry 比較","Forward performance groups","Evidence Review：今日決策（決策品質／排程狀態）","Evidence Review：歷史驗證（前瞻證據／訊號衰退／覆盤歷史）","Evidence Review：資料缺口","來源／日曆／品質診斷","逐事件或期間明細"],
+        "services":["ForwardPerformanceService","ForwardPerformanceDashboardService","ScheduledForwardOutcomeService","Research Run Registry reader"],
+        "sources":["正式市場收盤價／明確價格來源","官方交易日曆與 temporary-closure sidecar","保存的 Forward event、outcome 與 warning"],
+        "display":["ready／pending／missing／degraded 數量和原因","回報期間、樣本、benchmark 與來源品質","來源缺件／成熟日／官方市場排除"],
+        "state":"截至 2026-10-26/27 的隔離盤點：43 筆事件中 30 ready、13 pending、0 missing；整體仍 degraded。",
+        "gaps":["13 個 outcome 要等市場收盤與成熟日；來源品質缺口不會因到期而自動消失。","60 個公司行動／交易限制 warning 仍在原證據中，完整績效資格未通過。"],
+        "evidence":[["Forward maturity 狀態摘要","../docs/00_core/PROJECT_SNAPSHOT.md"],["Forward 日曆／成熟 QA","../docs/06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md"]]
+      },
+      {
+        "id":"ml","label":"ML 研究","group":"laboratory","workspace":"recommendation","focus":"deferred","connection":"H20 個人研究區可進入","acceptance":"research/shadow only；Gate、PIT、ML credit 未通過",
+        "brief":"從推薦分析 route 明選切換到 H20 個人模型研究區；不是正式 Advice 排程或生產模型 loader。",
+        "views":["H20 個人模型選股研究（毛報酬）","研究資料／模型／評估摘要（依 artifact 可用性）","限制與資料覆蓋提示"],
+        "services":["Personal H20 research view","ml_module 既有研究／評估 services（不宣稱 production loader）"],
+        "sources":["明確保存的模型研究 artifact／固定 dataset 版本","可核驗的歷史來源與 decision-date features","研究輸出中明示的品質、coverage 與資料可得時間"],
+        "display":["研究輸出與樣本覆蓋、來源日期及限制","missing／unknown／research-only 警示","不將預測顯示為實際 outcome 或投資建議"],
+        "state":"目前 Snapshot 明確表示 ML 不在 Gate 1 主線，除非直接解除阻塞或有可驗收證據。",
+        "gaps":["歷史 PIT、自然成熟、真實 source acceptance 與產品 Gate 均未因此被 shadow receipt 取代。","不把模型畫面或 local study 結果計入正式 ML 資格。"],
+        "evidence":[["ML／Gate 優先序","../docs/00_core/PROJECT_SNAPSHOT.md"],["ML 權限與來源邊界","../docs/01_architecture/current/decision_research_portfolio.md#evidence-與模型權限"]]
+      },
+      {
+        "id":"data","label":"資料與更新","group":"systems","workspace":"update","focus":"main","connection":"更新、唯讀檢查及 P0 source control 已接線","acceptance":"日行情 current；整體 freshness 因月營收／季報 degraded",
+        "brief":"更新官方來源、查詢 freshness／來源品質、檢視 SQLite 和受控 candidate source 狀態。",
+        "views":["快速／安全更新","每日行情／大盤／產業／技術指標","SQLite Inspector／唯讀 SQL preview","P0 Data Source Control Center","月營收／季報 availability"],
+        "services":["UpdateService","SqliteInspectorService","P0SourceControlCenterService","formal quality readers"],
+        "sources":["TWSE／TPEx raw 與正式 SQLite","MOPS announcement event／statement candidates","來源 manifest、availability mapping 與 update receipts"],
+        "display":["更新進度、各來源最後日期／狀態、coverage 與錯誤","formal／candidate、品質、公告日／可得日和版本","唯讀表格／SQL preview 與 exact source diagnostics"],
+        "state":"正式日行情目前可用；月營收、季報公告日期與精確版本橋仍使整體 freshness degraded。",
+        "gaps":["截至 10/27 盤點：242,650 筆月營收列缺公告日；存在來源版本不匹配，不能靠公告 timestamp 直接解除。","2330／2026-Q2 正式季報列 0；161 筆 current observations 的 aggregate eligibility 均為 0。","只執行用戶授權的精確 writer；唯讀 dashboard 不觸碰正式 DB。"],
+        "evidence":[["正式資料品質與 bridge 現況","../docs/00_core/PROJECT_SNAPSHOT.md"],["Data／來源功能契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-data-update"],["MOPS 精確版本 QA","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"]]
+      },
+      {
+        "id":"operations","label":"系統狀態與診斷","group":"systems","workspace":"runtime","focus":"support","connection":"Runtime、排程與 Evidence 狀態讀取已接線","acceptance":"隔離 dry-run 可用；production scheduler disabled",
+        "brief":"觀測 Runtime event、worker、排程／更新終態、證據 receipt 與資料 freshness；此頁只看狀態，不啟動任務。",
+        "views":["Runtime Observatory","系統狀態與環境診斷","日常排程與資料 freshness","Evidence／Forward 詳細與收據"],
+        "services":["RuntimeEventBridge／Runtime status readers","ScheduledEvidenceStatusService","daily_operations_status readers"],
+        "sources":["Runtime event bus 與本機狀態快照","排程 run receipt、Evidence manifest／SHA","正式來源與隔離 dry-run 的分離狀態"],
+        "display":["FSM／health／events、完成時間、收據 SHA 與未完成階段","freshness、warning、advisory、blocking gap 與 readiness","原狀態碼、讀取模式、取消與逾時資訊"],
+        "state":"視圖不啟動排程；dry-run／manual confirm readiness 不等於 production enabled。",
+        "gaps":["production scheduler 仍 disabled；Evidence 寫入為 0，不能以零錯誤碼宣稱 Gate 完成。","每次自然執行仍需讀回新的原始 receipt 與 downstream 狀態。"],
+        "evidence":[["Runtime UI 契約","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#workspace-runtime-observatory"],["最新 Evidence／Forward 狀態","../docs/00_core/PROJECT_SNAPSHOT.md"]]
+      },
+      {
+        "id":"storage","label":"儲存維護","group":"systems","workspace":"storage","focus":"deferred","connection":"有界唯讀盤點已接線","acceptance":"不是清理工具；不授刪除、備份或回退資格",
+        "brief":"盤點已明示的資料、輸出、套件／repo 版本容器和儲存位置，保留超限／不可讀狀態。",
+        "views":["版本與路徑摘要","受限容量／項目盤點","刷新與不可用狀態"],
+        "services":["StorageOverviewView（bounded read-only inventory）"],
+        "sources":["TWStockConfig 明示的 DATA_ROOT／OUTPUT_ROOT","當前 repo／dist 或封裝套件位置","本機可讀檔案 metadata；不搜父磁碟或其他 Trial"],
+        "display":["明示根路徑、版本與有限數量盤點","磁碟容量（非目錄容量）、超限／不可讀提醒","本頁狀態不表示可清理或資料可恢復"],
+        "state":"唯讀、有界；最多 64 個版本與 4096 個項目，超限／不可讀保留部分狀態。",
+        "gaps":["沒有引用、備份、回退逐件核對時不做刪除／清理。","此系統頁不是主要產品進度阻塞，但可顯示維運盤點是否完成。"],
+        "evidence":[["Storage UI 限制","../docs/02_features/UI_FEATURES_DOCUMENTATION.md#系統管理儲存維護"],["儲存根目錄與 junction 狀態","../docs/01_architecture/system_architecture.md#儲存與排程"]]
+      }
+    ],
+    "blockers": [
+      {"id":"author-contract","label":"Gate 1 作者策略契約","state":"阻塞 Gate 1","tone":"redline","text":"Advice 所需的投資論點、失效條件、持有期間與檢視頻率需策略作者提供；工程不代填舊版本。需要合格新策略版本才能接續完整回讀。","next":"策略作者補齊四項契約，建立合格新策略版本，再回到 Advice 完成精確讀回。","routes":["overview","screener","strategies"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["欄位缺件導引 QA","../docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-workbench-advice-missing-fields-field-specific-route"]]},
+      {"id":"monthly-revenue","label":"月營收公告日／數值版本橋","state":"來源／PIT 缺口","tone":"","text":"10/27 唯讀盤點仍有 242,650 列缺公告日；只有可精確對上公司、期別、as-of、數值與 target source version 才可補映射。後續限定 mapping 更新沒有把品質 Gate 整體解除。","next":"只處理能精確綁定公司、期別、as-of、數值與 target source version 的列；無法唯一認領就保留缺口。","routes":["market","screener","data"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["資料品質盤點","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"]]},
+      {"id":"quarterly","label":"季報數值版本與資格","state":"正式列／eligibility 為 0","tone":"redline","text":"2330／2026-Q2 正式季報表為 0 列；161 筆 current observations、11 個 source versions 的 aggregate eligibility 均為 0。仍需精確來源版本認領與未解欄位語義證據。","next":"先解完 QA 列出的 4 個未解財報欄位語義，再建立同來源版本橋；完成前不寫入正式季報列。","routes":["market","screener","data","ml"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["MOPS 版本重盤","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"]]},
+      {"id":"forward-maturity","label":"Forward outcome 成熟與來源 warning","state":"13 筆待成熟；整體 degraded","tone":"","text":"10/26–27 隔離盤點的 43 個精確事件有 30 ready、13 pending、0 missing；尚有 60 個公司行動／交易限制 warnings。待成熟 outcome 和來源品質是兩種不同缺口。","next":"保留 13 筆 pending 等成熟；另補具名官方公司行動／交易限制證據，不把來源警告當成零事件。","routes":["performance","operations"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["Forward maturity QA","../docs/06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md"]]},
+      {"id":"gate-acceptance","label":"Gate／自然執行／Owner 接受","state":"未整體接受","tone":"","text":"局部測試、source readback、dry-run、shadow 或 Paper 都不是產品 Gate。Gate 2／3／ML 僅在直接解除 Gate 1 阻塞或具備可驗收證據時推進。","next":"集中完成 Gate 1 日常閉環與 Owner UAT；其他 Gate／ML 只有在解除此主線阻塞時再推進。","routes":["overview","backtests","performance","ml","operations","paper"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["產品 Gate roadmap","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]}
+    ],
+    "flow": [
+      {"title":"市場／資料日期","note":"來源、資料日、可得時間、品質", "state":"主線已接，資料品質降級", "className":"is-focus has-gap"},
+      {"title":"候選／明確排除","note":"保留母體、排除原因與缺件", "state":"10/27 語意修正，真缺件續追", "className":"is-focus"},
+      {"title":"Why／Why Not／Risk／Evidence","note":"逐檔來源與原始證據可讀", "state":"局部接線與讀回有證據", "className":"is-focus"},
+      {"title":"策略作者契約","note":"論點、失效條件、持有期、檢視頻率", "state":"待作者提供；Gate 1 阻塞", "className":"has-gap"},
+      {"title":"人工決定與讀回","note":"明確選擇、保存與精確回訪", "state":"完整 Gate 1／Owner UAT 尚未接受", "className":"has-gap"}
+    ],
+    "timeline": [
+      {"date":"2026-10-27 · Advice cohort","text":"正常流動性排除與無策略訊號不再誤標為資料降級；逐股品質、選中 Advice 的支持／反證／風險保留。必要 Workbench UI 與 source bridge 有限定 QA；原生 GUI／Owner UAT 未做。","href":"../docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-整體-degraded-cohort-保留逐檔可判讀建議"},
+      {"date":"2026-10-27 · 正式資料盤點","text":"月營收仍有大量公告日期／版本橋缺口；2330／2026-Q2 正式季報列 0、current observations 的 eligibility 仍為 0。沒有改正式資料或替缺值推定。","href":"../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"},
+      {"date":"2026-10-26/27 · Forward","text":"官方休市 sidecar 與成熟日盤點修正後，隔離 cohort 仍有 13 筆未成熟、公司行動／限制來源 warning；整體品質仍 degraded，production scheduler disabled。","href":"../docs/06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md"}
+    ],
+    "workspaceKeys": [
+      ["workbench","決策工作台","今日總覽／Advice／每日研究證據"],
+      ["market_explore","市場探索","市場總覽、Regime、指數、強弱勢、產業與題材"],
+      ["recommendation","推薦分析","綜合選股、保存推薦、H20 ML 子區"],
+      ["backtest","策略回測","回測分析、績效比較與 Research Lab"],
+      ["watchlist","觀察清單","自選、watchlist 與候選名單"],
+      ["stock_research","個股研究（共用詳情）","跨頁 source context 詳情；不是獨立 V2 小頁籤"],
+      ["portfolio","持倉管理","手動帳、Paper、配置研究、Stress"],
+      ["update","數據更新","更新／SQLite 檢視／來源品質控制"],
+      ["runtime","系統狀態","Runtime Observatory 與排程狀態"]
+    ],
+    "auxiliaryKeys": [
+      ["stock_lookup","個股查詢路由工作區","PRODUCT_ROUTES 的 lookup route；再導入共用 stock_research 詳情"],
+      ["strategy_library","策略庫路由工作區","策略版本清單與保存策略操作"],
+      ["research_timeline","研究紀錄與覆盤工作區","獨立時間軸頁，從投資導覽進入"],
+      ["storage","儲存維護路由工作區","唯讀、有界儲存與版本盤點"]
+    ],
+    "statusLayers": [
+      ["UI route／view 接線","目前 V2 有 5 組、16 個 PRODUCT_ROUTES 子頁，連到 9 個穩定 workspace keys 及 4 個輔助 route workspaces。","不能推出每條路徑來源完整、資料正確或已被使用者接受。"],
+      ["局部工程 QA","有具名、有限定範圍的測試／讀回證據；Snapshot 保留通過與失敗邊界。","不能把單一套件 PASS 或 UI 存在外推成整個 Gate 已通過。"],
+      ["正式來源／PIT／資料品質","市場日行情 current；月營收公告與季度報表版本／availability 仍有缺口。","raw／SQLite 有資料，不代表公告時點、source version 或 historical PIT 合格。"],
+      ["產品 Gate／自然成熟／Owner UAT","Gate 1 全流程、13 Forward maturity、production scheduler 與 Owner／真人接受仍分開追蹤。","dry-run、shadow、Paper、合成資料與工程成功都不替代正式接受。"]
+    ],
+    "ml": {
+      "layers": [
+        {"name":"產品 UI／入口","status":"研究入口已接線","tone":"good","detail":"推薦分析可明確切入 H20 個人模型研究子區；介面存在不代表進入正式 Advice。"},
+        {"name":"資料與 PIT","status":"正式資格未通過","tone":"blocked","detail":"來源接受、歷史 point-in-time 與自然成熟仍須各自具備證據；Snapshot 未授 ML credit。"},
+        {"name":"訓練／模型","status":"兩條 lane 分開追蹤","tone":"pending","detail":"H20 gross head 的 A02 lane 只有合成 artifact、沒有真實 fit；另一個 restated allocation H5 lane 有具名全量 fit 收據。"},
+        {"name":"推論／Shadow","status":"受限研究用途","tone":"pending","detail":"個人 H20 研究／shadow 輸出可供研究查看；shadow receipt 不會轉成正式推薦或資格。"},
+        {"name":"正式 Advice／配置／下單","status":"未介入","tone":"blocked","detail":"沒有正式 ML promotion／credit；H20 A03 receipt 固定 formal order false。"}
+      ],
+      "h20": {"title":"H20 個人模型／gross head","status":"此 lane 沒有真實 fit 收據","progress":null,"progressLabel":"即時作業進度：未接收據，未知","summary":"A02 文件只驗合成 artifact 與受控推論邊界，明確未做真實 fit、正式 Task 或產品啟用。不是全專案所有 H20 模型的訓練狀態。","evidence":[["A02 H20 gross model QA","../docs/06_qa/BALDR_A02_H20_GROSS_MODEL_20261006.md"],["A03 個人模型每日收據 QA","../docs/06_qa/BALDR_A03_PERSONAL_MODEL_DAILY_20261006.md"]]},
+      "allocation": {"title":"Restated allocation H5 research fit","status":"具名訓練作業已完成","runDate":"2026-09-23","datasetRows":3496189,"fitRows":3468254,"progress":100,"summary":"此數字只代表該份 H5 restated research 訓練作業完成；資料非歷史 PIT，目標／neutral meta 限制與 heldout 表現不支持升格。","evidence":[["完整 H5 訓練與評估收據","../docs/06_qa/RESTATED_ALLOCATION_REPAIR_TRAINING_2026_09_23.md"]]},
+      "intervention": [
+        {"label":"研究可見","value":"有","tone":"good","detail":"H20 個人研究入口可明確切入，僅供研究檢視與受限 Shadow。"},
+        {"label":"正式 Advice／配置","value":"0 個已接受的 ML 介入","tone":"blocked","detail":"Gate／PIT／ML credit 未通過；不把研究結果當成正式排序或資金配置依據。"},
+        {"label":"自動下單","value":"禁止／未啟用","tone":"blocked","detail":"A03 收據 contract 明定 formal_order_allowed=false；不會由 dashboard 啟動交易。"}
+      ]
+    }
+  }
+  </script>
+  <script>
+    (() => {
+      "use strict";
+      const data = JSON.parse(document.getElementById("dashboardData").textContent);
+      const statuses = ["未盤點", "進行中", "已完成", "阻塞", "延後"];
+      const storageKey = "baldr-project-progress-dashboard-v1";
+      let memoryTracking = {};
+      let storageAvailable = true;
+      let liveStatus = null;
+      const el = (id) => document.getElementById(id);
+      const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+      const getTracking = () => {
+        try { return JSON.parse(localStorage.getItem(storageKey) || "{}"); }
+        catch (_) { storageAvailable = false; return memoryTracking; }
+      };
+      const saveTracking = (next) => {
+        memoryTracking = next;
+        try { localStorage.setItem(storageKey, JSON.stringify(next)); storageAvailable = true; }
+        catch (_) { storageAvailable = false; }
+        renderTrackingSummary();
+      };
+      const displayDate = (date) => date.replaceAll("-", "/");
+      const safeHref = (href) => esc(href);
+      const linkList = (items) => `<div class="source-links">${items.map(([label, href]) => `<a href="${safeHref(href)}" target="_blank" rel="noreferrer">${esc(label)} ↗</a>`).join("")}</div>`;
+      const toast = (message) => { const node = el("toast"); node.textContent = message; node.classList.add("show"); setTimeout(() => node.classList.remove("show"), 2600); };
+      function renderHeader() {
+        const currentAsOf = liveStatus?.snapshot?.latestDate || data.asOf;
+        el("metaPills").innerHTML = [
+          `<span class="meta-pill"><span class="dot blue"></span>來源紀錄 ${displayDate(currentAsOf)}</span>`,
+          `<span class="meta-pill"><span class="dot green"></span>來源 ${esc(data.sourceState)}</span>`,
+          `<span class="meta-pill">不以測試數量推估完成率</span>`
+        ].join("");
+        const statusesCount = getTracking();
+        const metrics = [
+          [data.groups.length, "主導覽分組", "依當前 ProductShell navigation"],
+          [data.routes.length, "子頁 route", "PRODUCT_ROUTES 完整清單"],
+          [data.workspaceKeys.length, "穩定 workspace key", "含共用個股研究詳情"],
+          [data.routes.filter((route) => !statusesCount[route.id]?.status || statusesCount[route.id]?.status === "未盤點").length, "尚未登記追蹤", "個人進度欄位，不是產品完成率"]
+        ];
+        el("metrics").innerHTML = metrics.map(([value, label, note]) => `<article class="metric"><div class="metric-label">${esc(label)}</div><div class="metric-value">${esc(value)}</div><div class="metric-note">${esc(note)}</div></article>`).join("");
+        const groupFilter = el("groupFilter");
+        groupFilter.innerHTML = `<option value="all">所有大頁籤</option>` + data.groups.map((group) => `<option value="${esc(group.id)}">${esc(group.label)}</option>`).join("");
+        const refreshed = liveStatus?.refreshedAt ? ` · 最近刷新 ${formatTimestamp(liveStatus.refreshedAt)}` : " · 尚未從本機工作樹刷新";
+        el("footerVersion").textContent = `資料版 ${data.version} · Snapshot ${currentAsOf}${refreshed} · 追蹤資料為個人本機狀態`;
+      }
+      function formatTimestamp(value) {
+        if (!value) return "未知";
+        const date = new Date(value);
+        return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleString("zh-TW", {dateStyle:"short", timeStyle:"short"});
+      }
+      function renderLiveStatus() {
+        const badge = el("refreshBadge");
+        const host = el("liveStatus");
+        const feed = el("snapshotEntries");
+        if (!liveStatus) {
+          el("refreshHelp").textContent = "要啟用刷新：雙擊 project_progress_dashboard/Open Dashboard.cmd，或依 README 啟動唯讀本機服務。";
+          badge.innerHTML = `<span class="dot amber"></span>尚未連線`;
+          host.innerHTML = [
+            ["刷新模式", "尚未連線", "啟動 README 中的唯讀本機 server 後可用按鈕刷新。"],
+            ["刷新範圍", "工作樹／路由／Snapshot", "不讀正式資料庫、不啟動更新或訓練。"],
+            ["訓練即時百分比", "未知", "沒有 runner progress receipt 時不推估。"]
+          ].map(([label,value,note]) => `<article class="live-card"><div class="live-label">${esc(label)}</div><div class="live-value">${esc(value)}</div><div class="live-note">${esc(note)}</div></article>`).join("");
+          feed.innerHTML = "";
+          return;
+        }
+        el("refreshHelp").textContent = "已連線到本機唯讀服務。按刷新會重新讀取來源檔；不會執行產品任務、資料更新或模型訓練。";
+        badge.innerHTML = `<span class="dot green"></span>已連線 · ${esc(formatTimestamp(liveStatus.refreshedAt))}`;
+        const facts = [
+          ["目前版本", `${liveStatus.repository.branch} · ${liveStatus.repository.commit}`, "Git HEAD；只讀取得。"],
+          ["工作樹變更", `${liveStatus.repository.dirtyCount} 個檔案`, "只計數，不展示檔名或讀取變更內容。"],
+          ["目前 UI 導覽", liveStatus.routeSchema.error ? "路由解析失敗；保留內嵌清單" : `${liveStatus.routeSchema.groups.length} 個大頁籤 · ${liveStatus.routeSchema.routes.length} 個子頁`, liveStatus.routeSchema.error || `路由來源最後修改 ${formatTimestamp(liveStatus.routeSchema.modifiedAt)}。`],
+          ["狀態文件", `PROJECT_SNAPSHOT · ${liveStatus.snapshot.latestDate || "日期未知"}`, `檔案最後修改 ${formatTimestamp(liveStatus.snapshot.modifiedAt)}。`],
+          ["ML 訓練證據", liveStatus.ml.allocation.fitRows ? `${Number(liveStatus.ml.allocation.fitRows).toLocaleString()} 列完成 fit` : "未讀到可辨識 fit 收據", `證據文件最後修改 ${formatTimestamp(liveStatus.ml.allocation.modifiedAt)}。`],
+          ["儲存盤點", liveStatus.storage?.inventoryAvailable ? `${liveStatus.storage.artifacts.length} 個版本項目已讀` : "儲存盤點未完成", liveStatus.storage?.inventoryStatus || liveStatus.storage?.error || "不把缺失或不可讀路徑視為空清單。"],
+          ["資料讀取邊界", "唯讀本機檔案", "不查正式 DB、外部服務、排程狀態或執行中的訓練程序。"]
+        ];
+        host.innerHTML = facts.map(([label,value,note]) => `<article class="live-card"><div class="live-label">${esc(label)}</div><div class="live-value">${esc(value)}</div><div class="live-note">${esc(note)}</div></article>`).join("");
+        feed.innerHTML = (liveStatus.snapshot.entries || []).map((item) => `<article class="snapshot-item"><div class="snapshot-date">${esc(item.date)} · PROJECT_SNAPSHOT 最新紀錄</div><p>${esc(item.text)}</p></article>`).join("");
+      }
+      function renderMl() {
+        const ml = data.ml;
+        el("mlLayers").innerHTML = ml.layers.map((layer) => `<article class="layer-row"><strong>${esc(layer.name)}</strong><p>${esc(layer.detail)}</p><span class="ml-status ${esc(layer.tone)}">${esc(layer.status)}</span></article>`).join("");
+        const h20 = liveStatus?.ml?.h20 || {};
+        const h20Base = ml.h20;
+        const h20Status = h20.statusLabel || h20Base.status;
+        const h20Summary = h20.summary || h20Base.summary;
+        const h20EvidenceTime = h20.modifiedAt ? `<p class="ml-note">A02 收據最後修改：${esc(formatTimestamp(h20.modifiedAt))}</p>` : "";
+        const alloc = liveStatus?.ml?.allocation || {};
+        const allocBase = ml.allocation;
+        const fitRows = Number(alloc.fitRows || allocBase.fitRows);
+        const datasetRows = Number(alloc.datasetRows || allocBase.datasetRows);
+        const allocationDate = alloc.trainingDate || allocBase.runDate;
+        const allocationSummary = alloc.summary || allocBase.summary;
+        const progress = Number.isFinite(alloc.progress) ? alloc.progress : allocBase.progress;
+        el("mlSnapshotNote").innerHTML = liveStatus?.ml?.snapshotNote ? `<strong>Snapshot 最新相關紀錄 · ${esc(liveStatus.ml.snapshotNote.date)}</strong><br>${esc(liveStatus.ml.snapshotNote.text)}` : "目前顯示 dashboard 內嵌的 ML 資格摘要；刷新後可對照最新 Snapshot 紀錄。";
+        el("mlTraining").innerHTML = `
+          <article class="ml-card"><div class="ml-label">H20 個人模型研究 lane</div><h3>${esc(h20Base.title)}</h3><span class="ml-status pending">${esc(h20Status)}</span><p>${esc(h20Summary)}</p><p><strong>目前訓練進度：</strong>未知；dashboard 沒有連接此 lane 的即時 run receipt。</p>${h20EvidenceTime}${linkList(h20Base.evidence)}</article>
+          <article class="ml-card"><div class="ml-label">另一條配置研究 lane · H5</div><h3>${esc(allocBase.title)}</h3><span class="ml-status good">${esc(alloc.statusLabel || allocBase.status)}</span><p><strong>訓練收據日期：</strong>${esc(allocationDate)} · <strong>final fit：</strong>${fitRows.toLocaleString()} 列 · dataset ${datasetRows.toLocaleString()} 列。此 100% 只代表該份作業已完成，不代表 H20 lane 或全專案 ML 完成度。</p><div class="progress-track" role="progressbar" aria-label="該份 H5 訓練作業終態" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${esc(progress)}"><div class="progress-bar" style="width:${esc(progress)}%"></div></div><p>${esc(allocationSummary)}</p>${alloc.modifiedAt ? `<p class="ml-note">訓練 QA 最後修改：${esc(formatTimestamp(alloc.modifiedAt))}。</p>` : ""}${linkList(allocBase.evidence)}</article>`;
+        el("mlIntervention").innerHTML = ml.intervention.map((item) => `<article class="ml-card"><div class="ml-label">${esc(item.label)}</div><div class="ml-value">${esc(item.value)}</div><span class="ml-status ${esc(item.tone)}">${item.tone === "good" ? "已接研究入口" : "未獲正式資格"}</span><p>${esc(item.detail)}</p></article>`).join("");
+      }
+      function formatMib(value) {
+        return value === null || value === undefined ? "未提供" : Math.floor(Number(value) / (1024 * 1024)).toLocaleString();
+      }
+      function renderStorage() {
+        const storage = liveStatus?.storage;
+        const badge = el("storageBadge");
+        if (!storage) {
+          badge.innerHTML = `<span class="dot amber"></span>尚未盤點`;
+          el("storageSummary").innerHTML = `<article class="live-card"><div class="live-label">狀態</div><div class="live-value">尚未刷新</div><div class="live-note">按「刷新專案狀態」讀取和 Baldr 相同的唯讀盤點服務。</div></article>`;
+          el("storageNote").textContent = "尚未刷新儲存盤點；不把缺失或不可讀路徑當成空清單。";
+          el("storageLocations").innerHTML = `<tr><td colspan="5">尚未取得儲存位置狀態。</td></tr>`;
+          el("storageArtifacts").innerHTML = `<tr><td colspan="4">尚未取得版本盤點狀態。</td></tr>`;
+          return;
+        }
+        const artifacts = storage.artifacts || [];
+        const locations = storage.locations || [];
+        const incomplete = artifacts.filter((artifact) => !artifact.complete).length;
+        const inventoryWarning = /部分|超限|連結|不可讀|不完整|未必完整/.test(storage.inventoryStatus || "");
+        const complete = storage.inventoryAvailable && !storage.limited && incomplete === 0 && !inventoryWarning;
+        const tone = complete ? "green" : storage.inventoryAvailable ? "amber" : "red";
+        badge.innerHTML = `<span class="dot ${tone}"></span>${complete ? "盤點完整" : storage.inventoryAvailable ? "部分盤點" : "盤點未完成"}`;
+        const measured = artifacts.reduce((total, artifact) => total + Number(artifact.measuredBytes || 0), 0);
+        const measuredLabel = storage.inventoryAvailable ? `${formatMib(measured)} MiB${complete ? "（完整）" : "（部分量測）"}` : "未取得；不可視為 0";
+        el("storageSummary").innerHTML = [
+          ["明示盤點根", storage.inventoryPath || "未提供", storage.inventoryStatus || "未提供盤點狀態"],
+          ["版本項目", storage.inventoryAvailable ? `${artifacts.length} 項` : "未取得", storage.inventoryAvailable ? `所列項目大小完整：${Math.max(0, artifacts.length - incomplete)}／${artifacts.length} 項。` : "盤點不可用時不把空清單當成 0 項。"],
+          ["已量測版本大小", measuredLabel, storage.limited ? "已達 64 版本或 4,096 項上限；清單／大小不完整。" : "版本目錄量測值不等於磁碟可用空間。"],
+          ["最近盤點", formatTimestamp(storage.refreshedAt || liveStatus.refreshedAt), "每次按刷新執行一次；沒有背景輪詢。"]
+        ].map(([label,value,note]) => `<article class="live-card"><div class="live-label">${esc(label)}</div><div class="live-value">${esc(value)}</div><div class="live-note">${esc(note)}</div></article>`).join("");
+        const boundary = "只量測明示根及磁碟容量；不刪除、不清理、不讀檔案內容。磁碟容量是整個磁碟，不可把同一磁碟的路徑相加。";
+        el("storageNote").innerHTML = `<strong>${esc(storage.inventoryAvailable ? storage.inventoryStatus : "盤點未完成")}</strong><br>${esc(storage.error || "")}${storage.error ? "<br>" : ""}${esc(boundary)}`;
+        el("storageLocations").innerHTML = locations.length ? locations.map((location) => `<tr><td>${esc(location.name)}</td><td><code>${esc(location.path)}</code></td><td>${esc(formatMib(location.totalBytes))}</td><td>${esc(formatMib(location.freeBytes))}</td><td>${esc(location.status)}</td></tr>`).join("") : `<tr><td colspan="5">${esc(storage.error || "沒有回傳位置資料；這不代表磁碟為空。")}</td></tr>`;
+        el("storageArtifacts").innerHTML = artifacts.length ? artifacts.map((artifact) => `<tr><td>${esc(artifact.name)}</td><td>${esc(formatMib(artifact.measuredBytes))}</td><td>${artifact.complete ? "是" : "否／部分"}</td><td>${esc(artifact.status)}</td></tr>`).join("") : `<tr><td colspan="4">${storage.inventoryAvailable ? "盤點根可讀，未找到版本項目。" : "盤點未完成；不把空清單當成零個版本。"}</td></tr>`;
+      }
+      function reconcileRouteSchema(schema) {
+        if (!schema?.groups?.length || !schema?.routes?.length) return;
+        const oldRoutes = new Map(data.routes.map((route) => [route.id, route]));
+        const groups = schema.groups.map((group) => ({id:group.id, label:group.label, routes:schema.routes.filter((route) => route.group === group.id).map((route) => route.id)}));
+        const routes = schema.routes.map((source) => {
+          const previous = oldRoutes.get(source.id);
+          if (previous) return {...previous, label:source.label, group:source.group, workspace:source.workspace};
+          return {id:source.id,label:source.label,group:source.group,workspace:source.workspace,focus:"unknown",connection:"新 route；待來源盤點",acceptance:"服務與資料來源尚待核對",brief:"此 route 由目前 UI 原始碼自動讀出；請依 Scoped SSOT 補上服務、顯示資料、資訊來源和缺口。",views:["待盤點"],services:["待盤點；不由路由名稱推定"],sources:["PROJECT_SNAPSHOT、Feature Map 與對應 QA"],display:["待盤點"],state:"UI route 已出現在目前 PRODUCT_ROUTES；尚未有 dashboard 專屬的來源清冊。",gaps:["補齊頁內視圖、服務、資料來源、驗收及具名證據。"],evidence:[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]};
+        });
+        data.groups = groups;
+        data.routes = routes;
+      }
+      async function refreshProjectStatus({quiet = false} = {}) {
+        const button = el("refreshStatus");
+        button.disabled = true;
+        button.textContent = "讀取中…";
+        try {
+          const response = await fetch("/api/refresh", {cache:"no-store"});
+          if (!response.ok) throw new Error(`本機服務回覆 ${response.status}`);
+          const result = await response.json();
+          if (result.schema !== "baldr-dashboard-refresh.v1") throw new Error("刷新資料格式不相容");
+          liveStatus = result;
+          reconcileRouteSchema(result.routeSchema);
+          renderHeader(); renderLiveStatus(); renderBlockers(); renderRoutes(); renderKeys(); renderMl(); renderStorage(); renderTrackingSummary();
+          toast("已從目前工作樹與狀態文件刷新；個人追蹤狀態已保留。");
+        } catch (error) {
+          liveStatus = null;
+          renderHeader(); renderLiveStatus(); renderMl(); renderStorage();
+          if (!quiet) toast("無法連到本機刷新服務。請雙擊 Open Dashboard.cmd 啟動，再按刷新。");
+        } finally {
+          button.disabled = false;
+          button.textContent = "刷新專案狀態";
+        }
+      }
+      function renderFlow() {
+        el("flow").innerHTML = data.flow.map((step, i) => `<article class="flow-node ${esc(step.className)}"><div class="flow-step">STEP 0${i + 1}</div><div class="flow-title">${esc(step.title)}</div><div class="flow-note">${esc(step.note)}<br><strong>${esc(step.state)}</strong></div></article>`).join("");
+      }
+      function renderBlockers() {
+        const blocks = data.blockers.slice(0, 4);
+        el("topBlockers").innerHTML = blocks.map((block) => `<article class="blocker ${esc(block.tone)}"><h3>${esc(block.label)}</h3><p>${esc(block.text)}</p><p class="blocker-next"><strong>下一步：</strong>${esc(block.next || "沿具名證據核對目前狀態與阻塞原因。")}</p><div class="source-line">${linkList(block.evidence.slice(0, 1))}</div></article>`).join("");
+        el("gapList").innerHTML = data.blockers.map((block) => `<article class="gap-row"><div><div class="gap-label">${esc(block.label)}</div><div class="route-tags"><span class="tag ${block.tone === "redline" ? "gap" : "partial"}">${esc(block.state)}</span></div></div><p>${esc(block.text)}<br><strong>下一步：</strong>${esc(block.next || "依具名證據核對狀態。")}<br><span class="hint">相關子頁：${block.routes.map((id) => esc(data.routes.find((route) => route.id === id)?.label || id)).join("、")}</span></p><div class="gap-meta">${linkList(block.evidence)}</div></article>`).join("");
+      }
+      function renderTimeline() {
+        el("timeline").innerHTML = data.timeline.map((item) => `<article class="timeline-card"><div class="timeline-date">${esc(item.date)}</div><p>${esc(item.text)}</p><p><a href="${safeHref(item.href)}" target="_blank" rel="noreferrer">開啟具名 QA ↗</a></p></article>`).join("");
+      }
+      function trackingEditor(route) {
+        const entry = getTracking()[route.id] || {status:"未盤點", note:""};
+        const options = statuses.map((status) => `<option value="${esc(status)}" ${entry.status === status ? "selected" : ""}>${esc(status)}</option>`).join("");
+        return `<div class="tracking"><div class="tracking-head">我的追蹤（本機個人狀態）</div><div class="tracking-fields"><select data-track-status="${esc(route.id)}" aria-label="${esc(route.label)} 個人追蹤狀態">${options}</select><input data-track-note="${esc(route.id)}" value="${esc(entry.note || "")}" maxlength="240" placeholder="負責人／下一步／預計日期備註" aria-label="${esc(route.label)} 追蹤備註"></div></div>`;
+      }
+      function routeMatches(route) {
+        const query = el("search").value.trim().toLocaleLowerCase();
+        const group = el("groupFilter").value;
+        const focus = el("focusFilter").value;
+        const owner = el("ownerFilter").value;
+        const current = getTracking()[route.id] || {status:"未盤點"};
+        const haystack = [route.label, route.workspace, route.brief, route.state, ...route.views, ...route.services, ...route.sources, ...route.display, ...route.gaps].join(" ").toLocaleLowerCase();
+        return (!query || haystack.includes(query)) && (group === "all" || route.group === group) && (focus === "all" || route.focus === focus) && (owner === "all" || current.status === owner);
+      }
+      function renderRoutes() {
+        const host = el("routeGroups");
+        const previouslyOpen = new Set([...host.querySelectorAll("details[open]")].map((card) => card.dataset.route));
+        let visibleCount = 0;
+        host.innerHTML = data.groups.map((group) => {
+          const routes = data.routes.filter((route) => group.routes.includes(route.id));
+          const cards = routes.map((route) => {
+            const matching = routeMatches(route);
+            if (matching) visibleCount += 1;
+            const focusLabel = route.focus === "main" ? "目前主線" : route.focus === "support" ? "支援主線" : "暫緩／選用";
+            const focusClass = route.focus === "main" ? "focus" : route.focus === "deferred" ? "deferred" : "";
+            const stateTag = route.connection.includes("部分") || route.connection.includes("研究") || route.connection.includes("candidate") ? "partial" : "";
+            const trackingState = getTracking()[route.id] || {status:"未盤點"};
+            return `<details class="route-card" data-route="${esc(route.id)}" ${matching ? "" : "hidden"} ${previouslyOpen.has(route.id) ? "open" : ""}>
+              <summary class="route-summary"><div class="route-top"><div><div class="route-name">${esc(route.label)}</div><div class="route-key">${esc(route.workspace)} · route: ${esc(route.id)}</div></div><span class="state-pill"><span class="dot ${route.focus === "main" ? "amber" : route.focus === "deferred" ? "blue" : "green"}"></span>${esc(focusLabel)}</span></div>
+                <div class="route-tags"><span class="tag ${focusClass}">${esc(route.connection)}</span><span class="tag ${stateTag}">${esc(route.acceptance)}</span><span class="tag">我的追蹤：${esc(trackingState.status)}</span></div>
+                <p class="route-brief">${esc(route.brief)}</p>
+              </summary>
+              <div class="route-detail"><div class="detail-grid">
+                <div class="detail-block"><h4>頁內分頁／視圖</h4><div class="chips">${route.views.map((item) => `<span class="chip">${esc(item)}</span>`).join("")}</div></div>
+                <div class="detail-block"><h4>主要服務／讀取路徑</h4><div class="chips">${route.services.map((item) => `<span class="chip">${esc(item)}</span>`).join("")}</div></div>
+                <div class="detail-block"><h4>顯示的資訊</h4><ul>${route.display.map((item) => `<li>${esc(item)}</li>`).join("")}</ul></div>
+                <div class="detail-block"><h4>資訊來源</h4><ul>${route.sources.map((item) => `<li>${esc(item)}</li>`).join("")}</ul></div>
+                <div class="detail-block"><h4>目前狀態</h4><p>${esc(route.state)}<br><br><strong>接線：</strong>${esc(route.connection)}<br><strong>交付／接受：</strong>${esc(route.acceptance)}</p></div>
+                <div class="detail-block"><h4>未接通／待核項目</h4><ul>${route.gaps.map((item) => `<li>${esc(item)}</li>`).join("")}</ul></div>
+                <div class="detail-block" style="grid-column:1/-1"><h4>證據與權威文件</h4>${linkList(route.evidence)}</div>
+              </div>${trackingEditor(route)}</div>
+            </details>`;
+          }).join("");
+          return `<section class="route-group" data-group="${esc(group.id)}"><header class="group-head"><div><div class="group-title">${esc(group.label)}</div><div class="group-meta">${routes.length} 個小頁籤</div></div><span class="meta-pill">${routes.length} routes</span></header><div class="group-routes">${cards}</div></section>`;
+        }).join("");
+        document.querySelectorAll(".route-group").forEach((groupEl) => {
+          const cards = [...groupEl.querySelectorAll(".route-card")];
+          groupEl.hidden = cards.every((card) => card.hidden);
+        });
+        el("resultCount").textContent = `顯示 ${visibleCount}／${data.routes.length} 個小頁籤`;
+        document.querySelectorAll("[data-track-status]").forEach((select) => select.addEventListener("change", (event) => {
+          const next = getTracking(); const id = event.currentTarget.dataset.trackStatus; next[id] = {...(next[id] || {}), status:event.currentTarget.value}; saveTracking(next); renderHeader(); renderRoutes();
+        }));
+        document.querySelectorAll("[data-track-note]").forEach((input) => input.addEventListener("change", (event) => {
+          const next = getTracking(); const id = event.currentTarget.dataset.trackNote; next[id] = {...(next[id] || {status:"未盤點"}), note:event.currentTarget.value}; saveTracking(next); renderTrackingSummary();
+        }));
+      }
+      function renderKeys() {
+        el("workspaceKeys").innerHTML = data.workspaceKeys.map(([key,label,description]) => `<article class="workspace-key"><code>${esc(key)}</code><strong>${esc(label)}</strong><p>${esc(description)}</p></article>`).join("");
+        el("auxiliaryKeys").innerHTML = data.auxiliaryKeys.map(([key,label,description]) => `<article class="workspace-key"><code>${esc(key)}</code><strong>${esc(label)}</strong><p>${esc(description)}</p></article>`).join("");
+        el("statusLayers").innerHTML = data.statusLayers.map((row) => `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join("")}</tr>`).join("");
+      }
+      function renderTrackingSummary() {
+        const tracker = getTracking();
+        const counts = Object.fromEntries(statuses.map((status) => [status, data.routes.filter((route) => (tracker[route.id]?.status || "未盤點") === status).length]));
+        const note = storageAvailable ? "本機追蹤狀態可由目前瀏覽器儲存。" : "此瀏覽器不允許 file:// localStorage；本次備註暫存在此頁記憶體，請匯出 JSON 保存。";
+        el("trackingSummary").innerHTML = `未盤點 <strong>${counts["未盤點"]}</strong> · 進行中 <strong>${counts["進行中"]}</strong> · 已完成 <strong>${counts["已完成"]}</strong> · 阻塞 <strong>${counts["阻塞"]}</strong> · 延後 <strong>${counts["延後"]}</strong><br>${esc(note)} 狀態只代表你的工作追蹤，不改變來源文件的現況。`;
+      }
+      function activateView(view) {
+        document.querySelectorAll(".nav-tab").forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.view === view)));
+        ["overview","map","gaps","ml","storage","keys"].forEach((id) => el(`view-${id}`).classList.toggle("hidden", id !== view));
+      }
+      function toCsv(rows) {
+        const quote = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+        const header = ["主導覽","子頁","route_id","workspace","工作範圍","頁面接線","交付與接受","主要服務","資訊來源","顯示資訊","目前缺口","個人追蹤狀態","個人追蹤備註"];
+        return [header, ...rows.map((route) => {
+          const current = getTracking()[route.id] || {status:"未盤點",note:""};
+          const group = data.groups.find((item) => item.id === route.group);
+          return [group?.label, route.label, route.id, route.workspace, route.focus, route.connection, route.acceptance, route.services.join("；"), route.sources.join("；"), route.display.join("；"), route.gaps.join("；"), current.status, current.note];
+        })].map((row) => row.map(quote).join(",")).join("\r\n");
+      }
+      function download(name, content, mime) {
+        const blob = new Blob(["\ufeff", content], {type:mime});
+        const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      function importTracking(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const parsed = JSON.parse(String(reader.result || "{}"));
+            const incoming = parsed.tracking || parsed;
+            if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) throw new Error("JSON 根節點格式不正確");
+            const valid = {};
+            data.routes.forEach((route) => {
+              const item = incoming[route.id];
+              if (item && statuses.includes(item.status)) valid[route.id] = {status:item.status, note:String(item.note || "").slice(0,240)};
+            });
+            saveTracking(valid); renderHeader(); renderRoutes(); toast(`已匯入 ${Object.keys(valid).length} 個頁面的個人追蹤狀態`);
+          } catch (error) { toast(`匯入失敗：${error.message}`); }
+        };
+        reader.readAsText(file, "utf-8");
+      }
+      function init() {
+        renderHeader(); renderLiveStatus(); renderFlow(); renderBlockers(); renderTimeline(); renderRoutes(); renderKeys(); renderMl(); renderStorage(); renderTrackingSummary();
+        document.querySelectorAll(".nav-tab").forEach((tab) => tab.addEventListener("click", () => activateView(tab.dataset.view)));
+        el("refreshStatus").addEventListener("click", () => refreshProjectStatus());
+        document.querySelectorAll("[data-open-view]").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); activateView(event.currentTarget.dataset.openView); }));
+        ["search","groupFilter","focusFilter","ownerFilter"].forEach((id) => el(id).addEventListener(id === "search" ? "input" : "change", renderRoutes));
+        el("exportCsv").addEventListener("click", () => download("baldr-project-progress.csv", toCsv(data.routes), "text/csv;charset=utf-8"));
+        el("exportJson").addEventListener("click", () => download("baldr-project-progress-tracking.json", JSON.stringify({version:data.version, exportedAt:new Date().toISOString(), tracking:getTracking()}, null, 2), "application/json;charset=utf-8"));
+        el("importButton").addEventListener("click", () => el("importFile").click());
+        el("importFile").addEventListener("change", (event) => { const file = event.currentTarget.files?.[0]; if (file) importTracking(file); event.currentTarget.value = ""; });
+        el("clearTracking").addEventListener("click", () => { if (!confirm("清除這個瀏覽器儲存的所有個人追蹤狀態與備註？")) return; memoryTracking = {}; try { localStorage.removeItem(storageKey); storageAvailable = true; } catch (_) { storageAvailable = false; } renderHeader(); renderRoutes(); renderTrackingSummary(); toast("已清除本機追蹤狀態"); });
+        if (!storageAvailable) toast("此瀏覽器限制本機儲存；請匯出 JSON 保存追蹤狀態。");
+        refreshProjectStatus({quiet:true});
+      }
+      init();
+    })();
+  </script>
+</body>
+</html>

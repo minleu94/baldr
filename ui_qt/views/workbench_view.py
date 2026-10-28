@@ -657,7 +657,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         advice_panel.layout.addWidget(self.advice_recommendation_table)
         self.advice_candidate_label = QLabel("策略 Advice（人工判斷與採納）")
         self.advice_candidate_hint = QLabel(
-            "每檔以獨立小卡呈現。卡面列出主要理由與限制；點卡片可展開同一筆完整判讀與研究紀錄，不會自動下單。"
+            "每筆 Advice 以獨立小卡呈現。卡面列出主要理由與限制；點卡片可展開同一筆完整判讀與研究紀錄，不會自動下單。"
         )
         self.advice_candidate_hint.setObjectName("adviceCandidateHint")
         self.advice_candidate_hint.setWordWrap(True)
@@ -2655,21 +2655,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
             return None
 
         matches: list[tuple[QTableView, int]] = []
-        for table, model in (
-            (self.advice_recommendation_table, self.advice_recommendation_model),
-            (self.advice_candidate_table, self.advice_candidate_model),
-        ):
-            for row_index in range(model.rowCount()):
-                item = model.row_at(row_index)
-                if item is None:
-                    continue
-                if (
-                    str(getattr(item, "stock_code", "") or "").strip() == selected_code
-                    and getattr(item, "source_result_id", None) == result_id
-                    and str(getattr(item, "decision_date", "") or "").strip() == decision_date
-                    and str(getattr(item, "data_as_of_date", "") or "").strip() == data_date
-                ):
-                    matches.append((table, row_index))
+        model = self.advice_candidate_model
+        for row_index in range(model.rowCount()):
+            item = model.row_at(row_index)
+            if item is None:
+                continue
+            if (
+                str(getattr(item, "stock_code", "") or "").strip() == selected_code
+                and getattr(item, "source_result_id", None) == result_id
+                and str(getattr(item, "decision_date", "") or "").strip() == decision_date
+                and str(getattr(item, "data_as_of_date", "") or "").strip() == data_date
+            ):
+                matches.append((self.advice_candidate_table, row_index))
         return matches[0] if len(matches) == 1 else None
 
     def _sync_daily_candidate_advice_control(self) -> None:
@@ -4157,8 +4154,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             return
 
-        visible_formal_rows = formal_rows
-        total_rows = len(visible_formal_rows) + len(candidate_rows) + len(portfolio_rows)
+        advice_rows = tuple(
+            row
+            for row in advice.recommendations
+            if row.classification
+            in {
+                AdviceClassification.FORMAL_ADVICE,
+                AdviceClassification.PROFESSIONAL_CANDIDATE,
+            }
+        )
+        total_rows = len(advice_rows) + len(portfolio_rows)
         if total_rows == 0:
             self._set_advice_state(
                 "NO_ELIGIBLE_ADVICE",
@@ -4168,7 +4173,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             return
 
         self._set_advice_state("READY")
-        self.advice_metric_cards["formal"].value_label.setText(str(len(visible_formal_rows) + len(candidate_rows)))
+        self.advice_metric_cards["formal"].value_label.setText(
+            str(len(formal_rows) + len(candidate_rows))
+        )
         self.advice_metric_cards["research"].value_label.setText(str(len(candidate_rows)))
         self.advice_metric_cards["allocation"].value_label.setText(str(len(portfolio_rows)))
         self.advice_summary_metrics.setVisible(True)
@@ -4182,14 +4189,14 @@ class UnifiedDecisionWorkbenchView(QWidget):
             if advice.warnings
             else "來源警告：未回報警告；不能因此推定沒有風險。"
         )
-        self.advice_recommendation_model.set_rows(visible_formal_rows)
-        self.advice_candidate_model.set_rows(candidate_rows)
+        self.advice_recommendation_model.set_rows(formal_rows)
+        self.advice_candidate_model.set_rows(advice_rows)
         self.advice_portfolio_model.set_rows(portfolio_rows)
-        self.advice_recommendation_table.setVisible(bool(visible_formal_rows))
-        self.advice_candidate_label.setVisible(bool(candidate_rows))
-        self.advice_candidate_hint.setVisible(bool(candidate_rows))
-        self._render_advice_candidate_cards(candidate_rows)
-        self.advice_candidate_cards.setVisible(bool(candidate_rows))
+        self.advice_recommendation_table.setVisible(False)
+        self.advice_candidate_label.setVisible(bool(advice_rows))
+        self.advice_candidate_hint.setVisible(bool(advice_rows))
+        self._render_advice_candidate_cards(advice_rows)
+        self.advice_candidate_cards.setVisible(bool(advice_rows))
         self.advice_candidate_table.setVisible(False)
         self.advice_portfolio_table.setVisible(bool(portfolio_rows))
         self.advice_portfolio_label.setVisible(bool(portfolio_rows))
@@ -4217,7 +4224,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._advice_candidate_card_columns = 0
 
     def _render_advice_candidate_cards(self, rows: tuple[object, ...]) -> None:
-        """將未升格策略 Advice 投影為可在原地展開的唯讀卡片。"""
+        """將策略 Advice 列投影為可在原地展開的唯讀卡片。"""
 
         self._clear_advice_candidate_cards()
         self._expanded_advice_candidate_row = None
@@ -4226,9 +4233,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             card.setObjectName("adviceCandidateCard")
             card.setProperty("advice_candidate_row", row_index)
             card.setAccessibleDescription(
-                "點擊卡片查看此候選的完整判讀；展開後可在卡內記錄研究決定。"
+                "點擊卡片查看此 Advice 的完整判讀；展開後可在卡內記錄研究決定。"
             )
-            card.setToolTip("點擊卡片查看此候選詳情。")
+            card.setToolTip("點擊卡片查看此 Advice 詳情。")
             card.setCursor(Qt.PointingHandCursor)
             card.installEventFilter(self)
             card.setProperty("expanded", False)
@@ -4246,8 +4253,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
             header = QWidget(card)
             header.setObjectName("adviceCandidateHeader")
             header.setProperty("advice_candidate_row", row_index)
-            header.setAccessibleName("未升格策略 Advice；點擊展開詳情")
-            header.setToolTip("點擊候選卡可展開或收合完整判讀。")
+            header.setAccessibleName("策略 Advice；點擊展開詳情")
+            header.setToolTip("點擊 Advice 卡可展開或收合完整判讀。")
             header.setCursor(Qt.PointingHandCursor)
             header.installEventFilter(self)
             header_layout = QVBoxLayout(header)
@@ -4270,7 +4277,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 )
                 or "未提供標的"
             )
-            header.setAccessibleName(f"未升格策略 Advice {title}；點擊展開詳情")
+            header.setAccessibleName(f"策略 Advice {title}；點擊展開詳情")
             action = str(
                 self.advice_candidate_model.data(
                     self.advice_candidate_model.index(
@@ -4323,7 +4330,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             expand_button.setAccessibleName(f"展開 {title} 詳情")
             expand_button.setAccessibleDescription(
-                "顯示或收合完整判讀；展開內容沿用同筆候選的來源理由、風險與證據。"
+                "顯示或收合完整判讀；展開內容沿用同筆 Advice 的來源理由、風險與證據。"
             )
             expand_button.toggled.connect(
                 lambda expanded, index=row_index: self._toggle_advice_candidate_card(
@@ -4532,19 +4539,36 @@ class UnifiedDecisionWorkbenchView(QWidget):
         layout.addWidget(reason_label, 1)
         card_layout.addWidget(note)
 
-    def _layout_advice_candidate_cards(self, columns: int) -> None:
+    def _layout_advice_candidate_cards(
+        self, columns: int, *, force_reflow: bool = False
+    ) -> None:
         if not hasattr(self, "advice_candidate_cards_layout"):
             return
         columns = min(3, max(1, int(columns)))
-        if columns == self._advice_candidate_card_columns:
+        if columns == self._advice_candidate_card_columns and not force_reflow:
             return
         while self.advice_candidate_cards_layout.count():
             self.advice_candidate_cards_layout.takeAt(0)
         self._advice_candidate_card_columns = columns
+        grid_row = 0
+        grid_column = 0
         for index, card in enumerate(self._advice_candidate_card_frames):
+            if index == self._expanded_advice_candidate_row:
+                if grid_column:
+                    grid_row += 1
+                    grid_column = 0
+                self.advice_candidate_cards_layout.addWidget(
+                    card, grid_row, 0, 1, columns
+                )
+                grid_row += 1
+                continue
             self.advice_candidate_cards_layout.addWidget(
-                card, index // columns, index % columns
+                card, grid_row, grid_column
             )
+            grid_column += 1
+            if grid_column == columns:
+                grid_row += 1
+                grid_column = 0
         for column_index in range(3):
             self.advice_candidate_cards_layout.setColumnStretch(
                 column_index, 1 if column_index < columns else 0
@@ -4608,6 +4632,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             frame.setProperty("expanded", is_expanded)
             frame.style().unpolish(frame)
             frame.style().polish(frame)
+        columns = self._advice_candidate_card_columns or (
+            1 if self.width() < 820 else 2 if self.width() < 1000 else 3
+        )
+        self._layout_advice_candidate_cards(columns, force_reflow=True)
 
     def _place_advice_selection_detail_panel(self, candidate_row: int | None) -> None:
         """研究卡展開時將同一組判讀與操作移入卡片，收合時放回清單下方。"""
@@ -4710,7 +4738,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._selected_advice_presentation = presentation
         self._selected_advice_row = item
         is_candidate = getattr(getattr(item, "classification", None), "value", "") == "PROFESSIONAL_CANDIDATE"
-        if is_candidate:
+        is_card_row = model is self.advice_candidate_model
+        if is_card_row:
             self._set_advice_candidate_card_expanded_state(row)
         is_portfolio_row = model is self.advice_portfolio_model
         action_raw = getattr(getattr(item, "advice_action", None), "value", "") or ""
@@ -4797,7 +4826,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._update_advice_research_decision_action(item, model)
         self.advice_lineage_button.setEnabled(True)
         self._render_advice_presentation_detail()
-        if is_candidate:
+        if is_card_row:
             self._place_advice_selection_detail_panel(row)
         else:
             self._place_advice_selection_detail_panel(None)

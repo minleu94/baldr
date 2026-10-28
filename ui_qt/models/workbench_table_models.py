@@ -351,7 +351,7 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
 
 
 class AdviceCandidateTableModel(AdviceRecommendationTableModel):
-    """Advice candidate rows that remain separate from the primary recommendation table."""
+    """承載 Advice 卡片的展示模型，與原始建議表模型分開。"""
 
 
 def _advice_display_label(field_name: str, raw_value: str) -> str:

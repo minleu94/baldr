@@ -87,11 +87,12 @@ def _advice_row(
     result_id: str = "result-1",
     decision_date: str = "2026-10-16",
     data_date: str = "2026-10-15",
+    classification: AdviceClassification = AdviceClassification.PROFESSIONAL_CANDIDATE,
 ) -> RecommendationAdviceDTO:
     return RecommendationAdviceDTO(
         stock_code=stock_code,
         advice_action=AdviceAction.RESEARCH,
-        classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+        classification=classification,
         why_reasons=(f"{stock_code} 僅供研究。",),
         confidence_tier="low",
         evidence_tier="insufficient",
@@ -113,10 +114,21 @@ def _advice_dashboard(*rows: RecommendationAdviceDTO) -> AdviceDashboardDTO:
     )
 
 
-def test_selected_daily_candidate_opens_only_its_exact_matching_advice_row() -> None:
+@pytest.mark.parametrize(
+    "classification",
+    [
+        AdviceClassification.FORMAL_ADVICE,
+        AdviceClassification.PROFESSIONAL_CANDIDATE,
+    ],
+)
+def test_selected_daily_candidate_opens_only_its_exact_matching_advice_card(
+    classification: AdviceClassification,
+) -> None:
     application = _app()
     daily = _daily(("2330", "2603"))
-    advice = _advice_dashboard(_advice_row("2330"), _advice_row("2603"))
+    advice = _advice_dashboard(
+        _advice_row("2330"), _advice_row("2603", classification=classification)
+    )
     view, _contexts = _view(daily, advice)
     view.show()
     application.processEvents()
@@ -127,11 +139,15 @@ def test_selected_daily_candidate_opens_only_its_exact_matching_advice_row() -> 
     )
     assert view.daily_candidate_advice_button.isEnabled()
     assert view.daily_candidate_advice_button.text() == "查看 2603 的策略判讀"
+    assert view.advice_recommendation_table.isHidden()
+    assert len(view._advice_candidate_card_buttons) == 2
 
     view.daily_candidate_advice_button.click()
 
     assert view.advice_candidate_table.selectionModel().currentIndex().row() == 1
     assert view._selected_advice_presentation is not None
+    assert view._expanded_advice_candidate_row == 1
+    assert not view._advice_candidate_detail_hosts[1].isHidden()
     assert "2603 僅供研究" in view.advice_selection_card.text()
     assert view.overview_scroll_area.widget() is not None
     view.close()

@@ -208,7 +208,7 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     assert view.advice_metric_cards["research"].value_label.text() == "1"
     assert view.advice_metric_cards["allocation"].value_label.text() == "0"
     assert not view.advice_candidate_hint.isHidden()
-    assert "每檔以獨立研究卡呈現" in view.advice_candidate_hint.text()
+    assert "每筆 Advice 以獨立小卡呈現" in view.advice_candidate_hint.text()
     assert "不會自動下單" in view.advice_candidate_hint.text()
     assert not view.advice_candidate_cards.isHidden()
     assert len(view._advice_candidate_card_buttons) == 1
@@ -264,6 +264,10 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
 
     assert view.advice_candidate_table.isHidden()
     assert len(view._advice_candidate_card_buttons) == 3
+    for width, expected_columns in ((1120, 3), (900, 2), (700, 1)):
+        view.resize(width, 900)
+        view._apply_responsive_layout(force=True)
+        assert view._advice_candidate_card_columns == expected_columns
     view._layout_advice_candidate_cards(3)
     assert view.advice_candidate_cards_layout.itemAtPosition(0, 0).widget() == (
         view._advice_candidate_card_frames[0]
@@ -292,6 +296,16 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     assert view.advice_candidate_table.selectionModel().currentIndex().row() == 0
     assert not view._advice_candidate_detail_hosts[0].isHidden()
     assert view._advice_candidate_detail_hosts[1].isHidden()
+    expanded_position = view.advice_candidate_cards_layout.getItemPosition(
+        view.advice_candidate_cards_layout.indexOf(view._advice_candidate_card_frames[0])
+    )
+    assert expanded_position == (0, 0, 1, 3)
+    assert view.advice_candidate_cards_layout.itemAtPosition(1, 0).widget() == (
+        view._advice_candidate_card_frames[1]
+    )
+    assert view.advice_candidate_cards_layout.itemAtPosition(1, 1).widget() == (
+        view._advice_candidate_card_frames[2]
+    )
     assert view._advice_candidate_detail_hosts[0].isAncestorOf(
         view.advice_selection_detail_panel
     )
@@ -320,6 +334,9 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     QTest.mouseClick(first_reason_label, Qt.LeftButton)
     assert view._advice_candidate_detail_hosts[0].isHidden()
     assert view.advice_selection_detail_panel.isHidden()
+    assert view.advice_candidate_cards_layout.itemAtPosition(0, 2).widget() == (
+        view._advice_candidate_card_frames[2]
+    )
 
     QTest.mouseClick(view._advice_candidate_card_frames[1], Qt.LeftButton)
     assert view.advice_candidate_table.selectionModel().currentIndex().row() == 1
@@ -824,14 +841,31 @@ def test_advice_source_identity_round_trips_and_rejects_invalid_hash() -> None:
         replace(row, source_payload_sha256="not-a-hash")
 
 
-def test_advice_tables_hide_empty_models_and_bound_nonempty_rows() -> None:
+def test_formal_advice_uses_cards_and_optional_portfolio_stays_in_table() -> None:
     _app()
     dashboard = _dashboard_with_advice()
     one_row_view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
-    assert not one_row_view.advice_recommendation_table.isHidden()
+    assert one_row_view.advice_recommendation_model.rowCount() == 1
+    assert one_row_view.advice_candidate_model.rowCount() == 1
+    assert one_row_view.advice_recommendation_table.isHidden()
+    assert not one_row_view.advice_candidate_cards.isHidden()
+    assert len(one_row_view._advice_candidate_card_buttons) == 1
     assert one_row_view.advice_candidate_table.isHidden()
     assert not one_row_view.advice_portfolio_table.isHidden()
-    assert one_row_view.advice_recommendation_table.maximumHeight() < 160
+
+    card_texts = tuple(
+        label.text()
+        for label in one_row_view._advice_candidate_card_frames[0].findChildren(QLabel)
+    )
+    assert "暫不新增部位" in card_texts
+    assert not any(text.startswith("支持理由：") for text in card_texts)
+    one_row_view._advice_candidate_card_buttons[0].click()
+    assert one_row_view._expanded_advice_candidate_row == 0
+    assert not one_row_view._advice_candidate_detail_hosts[0].isHidden()
+    assert one_row_view._advice_candidate_detail_hosts[0].isAncestorOf(
+        one_row_view.advice_selection_detail_panel
+    )
+    one_row_view.close()
 
     many_recommendations = tuple(
         RecommendationAdviceDTO(
@@ -849,11 +883,11 @@ def test_advice_tables_hide_empty_models_and_bound_nonempty_rows() -> None:
         dashboard=replace(dashboard, advice_dashboard=many_advice),
         auto_refresh=False,
     )
-    table = many_row_view.advice_recommendation_table
-    assert table.model().rowCount() == 5
-    assert not table.isHidden()
-    assert table.maximumHeight() < 200
-    assert table.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded
-    assert table.horizontalScrollBarPolicy() == Qt.ScrollBarAsNeeded
+    assert many_row_view.advice_recommendation_model.rowCount() == 5
+    assert many_row_view.advice_candidate_model.rowCount() == 5
+    assert many_row_view.advice_recommendation_table.isHidden()
+    assert not many_row_view.advice_candidate_cards.isHidden()
+    assert len(many_row_view._advice_candidate_card_buttons) == 5
     assert many_row_view.advice_candidate_table.isHidden()
     assert many_row_view.advice_portfolio_table.isHidden()
+    many_row_view.close()

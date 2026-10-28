@@ -2,7 +2,7 @@
 
 2026-10-27 Gate 1 策略 Advice 解鎖：`candidate`／未 `promoted`、參數未鎖定、揭露未完成或作者契約缺漏不再阻擋 Advice，也不再分類成「非正式／研究專用」建議；Workbench Advice 計數包含未升格列，並以限制標籤提示成熟度。缺資料／品質降級、來源身份或日期不符、未核驗 PIT／source、不可成交仍依政策拒絕或降級；空白的 thesis／invalidation／持有期／檢視頻率保持未知，工程不代填。Advice 聚焦 suite 253 passed；另有一項不相關 MainWindow ML registry 初始化測試失敗，排除後上述 suite 全過。必要 Workbench UI 97 passed、Update validator 25 passed／0 failed／4 skipped、修改檔 py_compile 通過；全域 mypy 仍受未修改 T164 bridge 第 411 行語法錯誤阻擋。未驗正式資料端到端與原生 GUI／Owner UAT，不代表 Gate 1 整體完成。詳[Gate 1 Advice 解鎖 QA](../06_qa/BALDR_GATE1_ADVICE_UNLOCK_20261027.md)。
 
-2026-10-27 Workbench「今日策略建議」Advice、未升格 Advice 與配置列摘要卡下方改為獨立小卡；寬版三欄、中版雙欄、窄版單欄各自堆疊，最多兩項主要理由以編號標籤呈現，點卡面原地展開同筆判讀與人工研究操作。卡面只使用 DTO 已提供欄位，不推導訊號分數或新聞。Advice 升格／資格語意沿用 Gate 1，不改資料或 Gate。驗收紀錄與原生 GUI／Owner UAT 狀態見[卡面 QA](../06_qa/BALDR_WORKBENCH_ADVICE_CARD_LAYOUT_20261027.md)。
+2026-10-27 Workbench「今日策略建議」正式 Advice 與未升格 Advice 統一以小卡呈現；寬版三欄、中版雙欄、窄版單欄逐列排列，理由以編號標籤呈現；展開卡獨佔一列顯示同筆判讀與人工研究操作。原生 MainWindow 首次核對發現正式 Advice 仍走舊橫表，根因是舊渲染只把未升格候選送入卡片；修正後以實際 10 筆正式 Advice、0 筆未升格候選驗證三欄卡片及原地展開。聚焦 suite 100 passed、必要 Update UI 97 passed、validator 25／0／4、targeted mypy 與修改檔 compile 通過；repo-wide mypy 仍受未修改 T164 bridge 語法錯誤阻擋。原生 UI 已驗，其他 DPI／Owner UAT 未驗；來源資料仍需複核，不代表 Gate 接受。詳[卡面 QA](../06_qa/BALDR_WORKBENCH_ADVICE_CARD_LAYOUT_20261027.md)。
 
 2026-10-27 Workbench Advice 窄版首屏補上「研究／未提供／配置列 0」語意，理由摘要縮短，864 px 以下收合風險與資料狀態欄，寬版恢復；DTO、資料與資格不變。必要 Update Workbench UI 97 passed、Update validator 25／0／4、targeted mypy、編譯與 diff check 通過；Advice／契約聚焦 suite 65 passed／4 failed，四項未解範圍外舊斷言／導覽回歸；全域 mypy 仍受未修改 T164 bridge 第 411 行語法錯誤阻擋。Offscreen 欄位切換通過，原生 GUI／Owner UAT 未驗。詳[Advice 首屏快速判讀 QA](../06_qa/BALDR_WORKBENCH_ADVICE_QUICK_READ_RESPONSIVE_20261027.md)。
 

@@ -42,6 +42,7 @@ coverage.xml
 
 # 本機 Obsidian 工作區狀態與這份單次草稿白板。
 /.obsidian/
+/docs/.obsidian/
 /Untitled.canvas
 
 # Agent 本機任務狀態（不提交）

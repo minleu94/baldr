@@ -1,4 +1,4 @@
-# 功能文檔目錄
+﻿# 功能文檔目錄
 
 > **系統功能相關文檔**
 
@@ -51,6 +51,9 @@
 - **`STRATEGY_DESIGN_SPECIFICATION.md`**
   - 策略設計規格書
   - Baseline Score Threshold Strategy 的完整設計規格
+
+- **[`research_platform_ux_20261016/`](research_platform_ux_20261016/README.md)**
+  - 研究平台 UX 資訊分層分析與改善提案（2026-10-15）；伴隨 [UI 用詞與資訊分層候選清單](research_platform_ux_20261016/UI_WORDING_AUDIT.md) 與 [使用者旅程驗證腳本](research_platform_ux_20261016/USER_JOURNEY_VALIDATION.md)。為產品分析與提案，未修改程式或正式 Roadmap。
 
 - **Research Run Registry 設計規格（2026-06-14，歷史）**
   - [封存原文](../09_archive/RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md)：Month 1 schema／API 提案，只保留設計脈絡，不是現行契約。

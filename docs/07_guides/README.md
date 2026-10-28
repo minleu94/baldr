@@ -1,4 +1,4 @@
-# 指南與操作手冊
+﻿# 指南與操作手冊
 
 這裡提供首次安裝、日常 UI 操作、可攜版設定，以及 Windows／Codex 排程維運入口。一般使用者先看「快速開始」；已有資料或排程的 owner 搬機先看機器啟動 Runbook。
 
@@ -44,6 +44,7 @@
 - [tests 說明](tests_readme.md)：測試組織與驗收路由。
 - [週度 Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md)：Evidence Review、working-copy DB 與 sidecar 操作邊界。
 - [P0 Daily Source Candidate Runbook](P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md)：資料來源候選的唯讀品質稽核；現況仍依 Snapshot 與具名 QA 判讀。
-- [Evidence rehearsal](EVIDENCE_REHEARSAL_RUNBOOK.md)、[ML Shadow 推論](ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)、[歷史資料修復](PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md)：限定工程與維運操作，使用前先確認資料根、scope 與授權。
+- [Evidence rehearsal](EVIDENCE_REHEARSAL_RUNBOOK.md)、[ML Shadow 推論](ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)、[歷史資料修復](PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md)、[Phase3C 候選法人修復](PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md)：限定工程與維運操作，使用前先確認資料根、scope 與授權。
+- [歷史路徑導引：LUNA_PARALLEL_PLAN_2026_09_07](LUNA_PARALLEL_PLAN_2026_09_07.md)：舊計畫相容導引，原件已封存於 Archive。
 
 日期化工程筆記與原始文件版本供[歷史封存區](../09_archive/README.md)追溯；封存內容不能單獨作為目前操作或驗收依據。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，架構看[系統架構](../01_architecture/system_architecture.md)。

@@ -1,4 +1,4 @@
-# 核心文件導覽
+﻿# 核心文件導覽
 
 `docs/00_core/` 集中目前狀態、產品與工程方向，以及文件治理入口。本頁只負責導覽；各主題的權威文件互不取代。若內容看起來衝突，先按下表回到對應權威。
 
@@ -33,6 +33,7 @@
 | V4 收尾計畫快照 | [Archive 原文](../09_archive/V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)；只反映截至 2026-09-10 的計畫狀態。 |
 | 已完成安全重構與 rollback 參考 | [Safe Refactoring Master Report](../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md)；新工作依目前架構與核准計畫。 |
 | 文件整理／歸檔沿革 | [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)；逐批來源、去向、雜湊與替代入口。 |
+| 歷史路徑導引（一次性計畫） | [NEXT_ACTION_PLAN](NEXT_ACTION_PLAN.md)；原件已封存，保留舊路徑相容導引。 |
 
 ## 快速閱讀順序
 

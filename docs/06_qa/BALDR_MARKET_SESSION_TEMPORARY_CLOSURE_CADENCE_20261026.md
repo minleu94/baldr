@@ -98,6 +98,7 @@ CLI 現於未明示 `--market-quote-custody-root` 時，沿用 `--recommendation
 
 另以正式 DB、官方行情 custody、Recommendation、Paper 及日曆作唯讀輸入，隔離輸出全流程重跑 2026-10-27，刻意不傳 `--market-quote-custody-root`。CLI 自動取推薦來源根後，`risk_prompt_capture_ready=true`，breadth 不再出現 skipped-row 警告，`risk_prompt_not_ready` blocker 清空；唯一 blocker 是本次全新 scratch 未帶手動 Watchlist 的 `watchlist_trigger_not_ready`，這與前次成功完整重播先複製正式 Watchlist bytes（SHA 保持 `91C6FD…D9C14`）的設定不同。報告有 4 個 warnings、3 個 advisories；event capture 1,689 筆、寫入 0，forward outcomes 嘗試／新增／更新皆 0。正式 SQLite 前後 size 均為 4,111,114,240 bytes，`LastWriteTimeUtc` 相同；dry-run report SHA-256 `65FA731F3D232B0BA22521452CC933EA54ED225B27D553FADCF1988DDF0FEA08`，owned Job receipt SHA-256 `B982375CE0DA2DA6457615FF07EE1EB947097E32CF984DD5990C1B7765EB9649`，Job exit 0、8 GiB／12 process 上限讀回、歸零且 handles closed。來源日期仍是同日 transient snapshot；overall／scheduler 仍 degraded／not_ready，這次不構成 Gate 或來源資格通過。
 
+<a id="歷史回放以決策日評估行事曆證據-2026-10-26"></a>
 ## 歷史回放以決策日評估行事曆證據（2026-10-26）
 
 ### 修正
@@ -113,6 +114,7 @@ CLI 現於未明示 `--market-quote-custody-root` 時，沿用 `--recommendation
 
 本次只證明歷史 dry-run 的日曆 cadence 回放可用；未解除其他資料品質／Forward warning，未寫正式資料，也未改 Gate、PIT、ML 或排程狀態。
 
+<a id="官方不可比行情排除維持披露但改列-advisory-2026-10-26"></a>
 ## 官方不可比行情排除維持披露但改列 advisory（2026-10-26）
 
 Breadth 已依 hash-bound TWSE 原件確認 0056 原始方向符 `X` 代表不比價，該筆明確排除；它不是 missing／unknown。`MarketBreadthService` 會將官方不可比列從 unknown skipped 分母扣除，unknown 數為 0，quality 保持 `OBSERVED`，並保留排除原因與數量。Evidence pipeline 先前只將官方 corporate-action 排除列為 advisory，卻把同樣經官方來源確認的 non-comparable 排除列為 warning，造成 pipeline 呈現與資料品質狀態不一致。
@@ -125,6 +127,7 @@ Breadth 已依 hash-bound TWSE 原件確認 0056 原始方向符 `X` 代表不�
 
 Forward summary 的 degraded 仍未解除：本次 dry-run 未重算既有 outcome（`calculate_forward_outcomes: seen=0`），摘要缺逐 event 原因，不能用這份收據安全回填或降級處理。已知非可比排除只從 warning 移至 advisory；並非資料來源缺漏被補齊，Gate／PIT／ML、正式資料及排程核准均未改變。
 
+<a id="forward-degraded-群組明細與安全輸出-2026-10-26"></a>
 ## Forward degraded 群組明細與安全輸出（2026-10-26）
 
 Markdown dry-run 報告新增「Forward Performance Detail」，將已存在的 `forward_summary` 群組彙總輸出，讓 `forward_summary_status:DEGRADED` 不再只有一個泛化 warning。所有非 `READY` 組（包含缺基準與樣本不足）排在 `READY` 前，最多顯示 50 組，提供總組數／顯示組數／截斷旗標；DB 或來源欄位中的反引號會序列化為 `\u0060`，避免關閉 Markdown fence。排序使用既有群組參照，不複製未顯示群組；完整機器可讀 `forward_summary` 仍保存在 JSON summary。
@@ -135,6 +138,7 @@ Markdown dry-run 報告新增「Forward Performance Detail」，將已存在的 
 
 最終隔離 Markdown report SHA-256 `01bc8a2c539f8c3b789382fd871835d1c7c7835640b4651f53f5cb9befb16e40`；terminal receipt SHA-256 `851fe9320d7c9d51f0fa262c0ed37506e34e0d39576f03a5ec12985051dd7532`；owned Job receipt SHA-256 `67c4f9355033545eca949e10902325caa519df3ff8bab4dedb891e19a5c886da`，exit 0、Job 歸零、handles 關閉。只改善 degraded 摘要可見度；Forward 資料、Gate／PIT／ML、正式 DB 與排程核准均不變。下一步依明細窗口逐筆唯讀列出 event/outcome、目標日、來源警告與 custody，再對官方來源核對；不可將 `source_not_ingested` 群組數直接當成可補資料筆數。
 
+<a id="forward-maturity-calendar-自動沿用共置的官方臨時休市-sidecar-2026-10-26"></a>
 ## Forward maturity calendar 自動沿用共置的官方臨時休市 sidecar（2026-10-26）
 
 對同一 43 個 event IDs／20 日 window 唯讀重算時，Forward maturity calendar 原只載入年度行事曆，沒有傳入與年度檔共置、已核驗的 TWSE 2026-10-23 臨時休市 sidecar。年度規劃因此把 10/23 當作成熟交易日，造成 5 筆 9/22 cohort 暫時輸出 `missing_outcome_price`。同一批重算明確傳入既有 calendar-cache 目錄後，10/23 休市證據被讀到，這 5 筆回到尚待成熟；更新建構器讓它在已存在共置 sidecar 時自動沿用該目錄後，再以未指定 closure path 的相同唯讀重算確認結果一致。

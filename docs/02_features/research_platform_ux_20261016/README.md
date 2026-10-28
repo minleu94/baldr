@@ -1,4 +1,4 @@
-# Baldr：先看懂結果，再深入研究
+﻿# Baldr：先看懂結果，再深入研究
 
 2026-10-15｜依使用者最新定位及三個參考頁修訂。這是產品分析與改善提案，未修改產品程式或正式 Roadmap。
 
@@ -32,7 +32,7 @@
 
 ## 假設補完全部完成，仍有哪些問題要驗證
 
-原計畫已承諾來源連續、保存重開、正常頁、同版交付、非技術者理解與效能驗收。這些應在「補完完成」時成立，不能重列成完成後必然殘留的缺陷。[原首屏與完整旅程](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:254)
+原計畫已承諾來源連續、保存重開、正常頁、同版交付、非技術者理解與效能驗收。這些應在「補完完成」時成立，不能重列成完成後必然殘留的缺陷。[原首屏與完整旅程](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#日常研究候選的四項明確工作)
 
 真正還要驗證的是下列產品結果；目前屬有證據支持的風險假說，尚非本次真人觀察：
 
@@ -59,9 +59,9 @@
 | 這檔好不好 | 支持事實、反對事實、資料缺口與下一個研究動作 | 公司品質、短期動能與個人部位適合度 |
 | 我現在賺賠多少 | 指定帳本的已實現／未實現結果與估值日 | 手動帳、模擬帳和模型估計 |
 
-既有 2382 案例須保留「20 個交易日、未扣成本、+6.84%」，不能換成「一個月約賺 7%」。H5 的 −100bp 是成本後相對基準差額，不能說成股價下跌 1%。這些是金融含義，不是可任意簡寫的工程文字。[原案例與日期定義](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:198)
+既有 2382 案例須保留「20 個交易日、未扣成本、+6.84%」，不能換成「一個月約賺 7%」。H5 的 −100bp 是成本後相對基準差額，不能說成股價下跌 1%。這些是金融含義，不是可任意簡寫的工程文字。[原案例與日期定義](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)
 
-不用為首屏整齊而填滿成果卡。沒有可核結果時，呈現缺哪類結果及適用下一步；已有可核的走勢、條件和紀錄仍可使用。正式建議資格依原產品規範，不因換成圖卡而取得。[模式與結果資格](../../../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md:106)
+不用為首屏整齊而填滿成果卡。沒有可核結果時，呈現缺哪類結果及適用下一步；已有可核的走勢、條件和紀錄仍可使用。正式建議資格依原產品規範，不因換成圖卡而取得。[模式與結果資格](../../../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md#6-guided-mode-與-professional-mode)
 
 ## 目前真正需要施工與驗證的瓶頸
 
@@ -69,18 +69,18 @@
 
 | 瓶頸 | 可核對依據 | 下一步 |
 |---|---|---|
-| 已有首頁骨架，研究結論仍待整合 | [首頁入口與摘要](../../../ui_qt/views/workbench_view.py:884)；[原首頁工作](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:604) | 用原資料組裝結果卡，先交市場＋候選，不另建計算引擎 |
-| 首頁候選路由不能涵蓋所有卡片來源 | [目前取第一檔且固定來源種類](../../../ui_qt/views/workbench_view.py:1803) | 每列攜帶實際來源、選取和返回位置，再接多來源候選 |
-| 持倉入口尚非精確帳本定位 | [目前只切工作區](../../../ui_qt/main.py:1956) | 帶明選帳本、股票及評估日 |
-| 支持／風險摘要和績效已有基礎，尚須前移 | [個股摘要投影](../../../app_module/stock_research_product_summary.py:40)；[歷史與追蹤卡](../../../ui_qt/views/backtest/result_panel.py:514) | 共用原服務；缺序列不畫整段績效，缺歸因不生成模型理由 |
-| 產業已有強弱和代表股，但不是完整關係地圖 | [產業頁](../../../ui_qt/views/strong_industries_view.py:281)；[強度服務](../../../app_module/industry_strength_service.py:410) | 先圖卡化已核強弱與公司入口；供應鏈／題材關係另核來源和時效 |
-| 基本面及策略內容仍受來源／規則完整性限制 | [資料與規則缺口](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:184) | 完整來源→正常頁→保存重開逐條交付；未知項保留待辦 |
-| 程式完成到可試用的循環仍需縮短 | [既有交付改善規則](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:165) | 同旅程連固定包與指南交付；量測等待與返工，不無數據斷言治理是最大瓶頸 |
-| 真實規模效能及自然成熟不能被圖卡取代 | [原效能要求](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:555)；[營運證據](../../../docs/00_core/ROADMAP_6M_ENGINEERING.md:178) | 完整市場與原門檻維持；歷史缺件、執行失敗、自然等待分開 |
+| 已有首頁骨架，研究結論仍待整合 | [首頁入口與摘要](../../../ui_qt/views/workbench_view.py#L884)；[原首頁工作](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#57-自有三段轉折收縮研究100increment124已交固定候選) | 用原資料組裝結果卡，先交市場＋候選，不另建計算引擎 |
+| 首頁候選路由不能涵蓋所有卡片來源 | [目前取第一檔且固定來源種類](../../../ui_qt/views/workbench_view.py#L1803) | 每列攜帶實際來源、選取和返回位置，再接多來源候選 |
+| 持倉入口尚非精確帳本定位 | [目前只切工作區](../../../ui_qt/main.py#L1956) | 帶明選帳本、股票及評估日 |
+| 支持／風險摘要和績效已有基礎，尚須前移 | [個股摘要投影](../../../app_module/stock_research_product_summary.py#L40)；[歷史與追蹤卡](../../../ui_qt/views/backtest/result_panel.py#L514) | 共用原服務；缺序列不畫整段績效，缺歸因不生成模型理由 |
+| 產業已有強弱和代表股，但不是完整關係地圖 | [產業頁](../../../ui_qt/views/strong_industries_view.py#L281)；[強度服務](../../../app_module/industry_strength_service.py#L410) | 先圖卡化已核強弱與公司入口；供應鏈／題材關係另核來源和時效 |
+| 基本面及策略內容仍受來源／規則完整性限制 | [資料與規則缺口](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15) | 完整來源→正常頁→保存重開逐條交付；未知項保留待辦 |
+| 程式完成到可試用的循環仍需縮短 | [既有交付改善規則](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15) | 同旅程連固定包與指南交付；量測等待與返工，不無數據斷言治理是最大瓶頸 |
+| 真實規模效能及自然成熟不能被圖卡取代 | [原效能要求](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#53-w底基礎研究策略-100increment63-因果執行核心)；[營運證據](../../../docs/00_core/ROADMAP_6M_ENGINEERING.md#evidence-gate) | 完整市場與原門檻維持；歷史缺件、執行失敗、自然等待分開 |
 
-原個股頁已有摘要、價量、基本面、籌碼、持倉和規則等內容。先重排成可同時掃讀的首屏，再沿既有分頁深入；不以最新圖表覆蓋保存研究，缺 OHLC 不補成 K 線。[現有個股頁](../../../ui_qt/views/stock_research_report_view.py:790)
+原個股頁已有摘要、價量、基本面、籌碼、持倉和規則等內容。先重排成可同時掃讀的首屏，再沿既有分頁深入；不以最新圖表覆蓋保存研究，缺 OHLC 不補成 K 線。[現有個股頁](../../../ui_qt/views/stock_research_report_view.py#L790)
 
-大部分是既有承諾的具體化與接線：五問摘要、兩種成果卡、首頁和連續旅程原本就在計畫中。新的總評分、機率模型、產業關係資料則要另定來源與驗收。[個股與旅程](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:268)、[策略成果卡](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:504)
+大部分是既有承諾的具體化與接線：五問摘要、兩種成果卡、首頁和連續旅程原本就在計畫中。新的總評分、機率模型、產業關係資料則要另定來源與驗收。[個股與旅程](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#日常研究候選的四項明確工作)、[策略成果卡](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#5-選股條件與策略的完整盤點)
 
 ## 建議的改進順序
 
@@ -90,23 +90,23 @@
 4. **逐步擴充策略與日常回顧。** VCP、形態、族群與共振保留原承諾，接入共用旅程；再改善持倉變化、紀錄回訪及提醒去重。
 5. **持續驗證交付與資料維護。** 首次設定、離線、久未更新、移機及升級各有獨立情境；不以本機受控試用當作可攜版完成。
 
-這是提案排序，未另建競爭進度框架。既有工作卡補「第一屏回答什麼、可做什麼、如何回到原研究」即可。用詞修正伴隨同旅程交付，不能代替資料投影與精確路由。
+這是提案排序，未另建競爭進度框架。既有工作卡補「第一屏回答什麼、可做什麼、如何回到原研究」即可。用詞修正伴隨同旅程交付，不能代替資料投影與精確路由；抽樣候選見 [UI 用詞與資訊分層候選清單](UI_WORDING_AUDIT.md)。
 
 ## 對外部複審的採納與修正
 
 採納：先確認動機、提早真人試用、重視每日資料生命週期、減少工程詞、先結論再證據，以及按風險安排新增驗收。撤回零基礎教學優先與強制概念階梯；研究紀錄重要，但不要求先寫筆記才能得到價值。
 
-兩項事實需修正：已有快速／安全手動更新，不能說每日更新只有 Windows 排程；首次設定與資料狀態也不是原計畫完全未涉及，但完整設定／恢復體驗仍需具體驗證。[現行更新](../../../docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md:5)、[首次設定](../../../docs/07_guides/PORTABLE_WINDOWS.md:5)
+兩項事實需修正：已有快速／安全手動更新，不能說每日更新只有 Windows 排程；首次設定與資料狀態也不是原計畫完全未涉及，但完整設定／恢復體驗仍需具體驗證。[現行更新](../../../docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#檢查與更新資料)、[首次設定](../../../docs/07_guides/PORTABLE_WINDOWS.md#首次設定)
 
-71 是四股舊資料的固定本機候選，可安排受控試用，不能當跨機安裝包或全市場／模型能力的證明。已唯讀確認 EXE 為 NotSigned，未實測 SmartScreen／防毒攔截；簽章也不保證不出現信譽警告。[71 範圍](../../../docs/07_guides/TRIAL_VERSION_GUIDE.md:9)、[簽章記錄](CANDIDATE_SIGNATURE_AUDIT.json)、[Microsoft 說明](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+71 是四股舊資料的固定本機候選，可安排受控試用，不能當跨機安裝包或全市場／模型能力的證明。已唯讀確認 EXE 為 NotSigned，未實測 SmartScreen／防毒攔截；簽章也不保證不出現信譽警告。[71 範圍](../../../docs/07_guides/TRIAL_VERSION_GUIDE.md#入口與資料範圍)、[簽章記錄](CANDIDATE_SIGNATURE_AUDIT.json)、[Microsoft 說明](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 
-驗收可按風險增加不同案例；現行 UI 變更共同檢查仍維持。期間、成本、績效含義的文字涉及金融語意，不能視為單純文案。先合併相依修改、重用仍適用的證據，減少無效重跑。[共同規範](../../../docs/agents/shared_context.md:20)
+驗收可按風險增加不同案例；現行 UI 變更共同檢查仍維持。期間、成本、績效含義的文字涉及金融語意，不能視為單純文案。先合併相依修改、重用仍適用的證據，減少無效重跑。[共同規範](../../../docs/agents/shared_context.md#變更驗證與文件交付)
 
 ## 如何知道真的變好
 
 讓人不看手冊就能說出市場重點、關注理由、主要疑點、數字屬於估計還是成果，以及下一步。接著能比較、查證、返回、保存並找回當時判斷。[試用腳本](USER_JOURNEY_VALIDATION.md)
 
-保留原 3–5 位非技術者、30 秒判讀與 2 分鐘進個股收藏標準；前期 2–3 人試用用來找問題，不能代替正式接受。記求助、開錯來源、返回丟失及成果誤讀，不只問畫面好不好看。[原真人驗收](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md:898)
+保留原 3–5 位非技術者、30 秒判讀與 2 分鐘進個股收藏標準；前期 2–3 人試用用來找問題，不能代替正式接受。記求助、開錯來源、返回丟失及成果誤讀，不只問畫面好不好看。[原真人驗收](../../../docs/superpowers/plans/baldr_product_completion_plan_20261006.md#95-資料阻塞分流與下一批交付2026-10-14-調整)
 
 建議正式產品定位採用開頭表述，以「清楚的第一屏＋完整研究深度＋連續判斷紀錄」驗收。這次只更新分析提案，正式 Roadmap、程式及資料來源資格未變更。
 

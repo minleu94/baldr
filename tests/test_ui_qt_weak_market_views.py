@@ -1,12 +1,16 @@
 import os
 import sys
+from datetime import date
+from threading import Event, get_ident
+from time import sleep
 from types import SimpleNamespace
 
 import pandas as pd
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEventLoop, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+import ui_qt.shared_market_research_consumer as shared_market_research_consumer
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.views.weak_industries_view import WeakIndustriesView
 from ui_qt.views.weak_stocks_view import WeakStocksView
@@ -22,6 +26,24 @@ def app():
     if instance is None:
         instance = QApplication(sys.argv)
     return instance
+
+
+def _wait_for(predicate, timeout_ms: int = 5000):
+    if predicate():
+        return
+    loop = QEventLoop()
+    poll = QTimer()
+    poll.setInterval(5)
+    poll.timeout.connect(lambda: loop.quit() if predicate() else None)
+    timeout = QTimer()
+    timeout.setSingleShot(True)
+    timeout.timeout.connect(loop.quit)
+    poll.start()
+    timeout.start(timeout_ms)
+    loop.exec()
+    poll.stop()
+    timeout.stop()
+    assert predicate(), "condition did not become true before timeout"
 
 
 class _ScreeningService:
@@ -167,12 +189,17 @@ def test_market_views_clear_stale_rows_and_show_error_status(monkeypatch):
             view._refresh_stocks(use_cache=False)
         else:
             view._refresh_industries(use_cache=False)
+    _wait_for(lambda: views[0].status_label.text().startswith("已更新："))
+    _wait_for(lambda: views[0]._screening_worker is None)
     counts = [
         (view.stocks_model if hasattr(view, "stocks_model") else view.industries_model).rowCount()
         for view in views
     ]
     statuses = [view.status_label.text() for view in views]
     assert counts == [1, 1, 1, 1], statuses
+    assert views[0].universe_label.text() == "Universe: 20 stocks"
+    assert "掃描範圍 20 檔" in statuses[0]
+    assert "資料日未提供" in statuses[0]
 
     service.fail = True
     for view in views:
@@ -180,13 +207,271 @@ def test_market_views_clear_stale_rows_and_show_error_status(monkeypatch):
             view._refresh_stocks(use_cache=False)
         else:
             view._refresh_industries(use_cache=False)
+    _wait_for(lambda: views[0].status_label.text().startswith("載入失敗："))
+    _wait_for(lambda: views[0]._screening_worker is None)
 
     for view in views:
         model = view.stocks_model if hasattr(view, "stocks_model") else view.industries_model
         assert model is not None
         assert model.rowCount() == 0
         assert view.status_label.text().startswith("載入失敗：")
+    assert views[0].universe_label.text() == "Universe: unavailable"
+
+    for view in views:
         view.deleteLater()
+
+
+def test_strong_stocks_status_shows_dto_effective_date_including_cached_view():
+    app()
+    dto = SimpleNamespace(
+        effective_date=date(2026, 10, 27),
+        to_legacy=_ScreeningService._stocks,
+    )
+    service = SimpleNamespace(get_strong_stocks_dto=lambda **_: dto)
+    view = StrongStocksView(service)
+
+    view._refresh_stocks(use_cache=False)
+    assert view.status_label.text().startswith("載入中…")
+    _wait_for(lambda: view.status_label.text().startswith("已更新："))
+    _wait_for(lambda: view._screening_worker is None)
+    assert "資料日 2026-10-27" in view.status_label.text()
+    assert view.universe_label.text() == "Universe: 20 stocks"
+
+    view._cached_data["week"] = _ScreeningService._stocks()[0]
+    view._cached_effective_dates["week"] = date(2026, 10, 24)
+    view._cached_universe_counts["week"] = 31
+    view._on_period_changed("week")
+    assert "資料日 2026-10-24" in view.status_label.text()
+    assert "掃描範圍 31 檔" in view.status_label.text()
+    assert view.universe_label.text() == "Universe: 31 stocks"
+    view.deleteLater()
+
+
+def test_strong_stocks_status_marks_dto_without_effective_date_as_unprovided():
+    app()
+    dto = SimpleNamespace(
+        effective_date=None,
+        to_legacy=_ScreeningService._stocks,
+    )
+    service = SimpleNamespace(get_strong_stocks_dto=lambda **_: dto)
+    view = StrongStocksView(service)
+
+    view._refresh_stocks(use_cache=False)
+    _wait_for(lambda: view.status_label.text().startswith("已更新："))
+    _wait_for(lambda: view._screening_worker is None)
+
+    assert "資料日未提供" in view.status_label.text()
+    view.deleteLater()
+
+
+def test_strong_stocks_table_shows_row_market_date_and_marks_missing_date_unprovided():
+    app()
+    view = StrongStocksView(SimpleNamespace())
+    view._update_table_with_data(
+        pd.DataFrame(
+            [
+                {"排名": 1, "證券代號": "2330", "證券名稱": "台積電", "行情日": "2026-10-27"},
+                {"排名": 2, "證券代號": "2317", "證券名稱": "鴻海", "行情日": None},
+            ]
+        )
+    )
+
+    market_date_column = _column_index(view.stocks_model, "行情日")
+    model_frame = view.stocks_model.getDataFrame()
+    assert model_frame.iloc[0, market_date_column] == "2026-10-27"
+    assert model_frame.iloc[1, market_date_column] == "未提供"
+    assert view.stocks_search_count_label.text() == "目前清單 2 檔"
+
+    view._update_table_with_data(
+        pd.DataFrame([{"排名": 1, "證券代號": "2330", "證券名稱": "台積電"}])
+    )
+    assert view.stocks_model.getDataFrame().iloc[0, market_date_column] == "未提供"
+    view.deleteLater()
+
+
+def test_strong_stocks_local_search_filters_loaded_rows_and_restores_them():
+    app()
+    view = StrongStocksView(SimpleNamespace())
+    frame = pd.DataFrame(
+        [
+            {"排名": 1, "證券代號": "2330", "證券名稱": "台積電"},
+            {"排名": 2, "證券代號": "2454", "證券名稱": "聯發科"},
+            {"排名": 3, "證券代號": "2317", "證券名稱": "鴻海"},
+        ]
+    )
+    view._update_table_with_data(frame)
+    view.universe_label.setText("Universe: 20 stocks")
+    view._set_status_label(view.status_label, "已更新：3 筆", level="success")
+    source_model = view.stocks_model
+
+    assert view.stocks_search_count_label.text() == "目前清單 3 檔"
+    assert view.stocks_search_input.accessibleName() == "強勢個股目前清單搜尋"
+    assert "不會重新查詢" in view.stocks_search_input.accessibleDescription()
+
+    view.stocks_search_input.setText("2330")
+    assert view.stocks_search_count_label.text() == "符合 1／3 檔"
+    assert [view.stocks_table.isRowHidden(row) for row in range(3)] == [False, True, True]
+
+    view.stocks_search_input.setText("聯發")
+    assert view.stocks_search_count_label.text() == "符合 1／3 檔"
+    assert [view.stocks_table.isRowHidden(row) for row in range(3)] == [True, False, True]
+
+    view.stocks_search_input.setText("不存在")
+    assert view.stocks_search_count_label.text() == "此清單無符合標的（0／3）"
+    assert all(view.stocks_table.isRowHidden(row) for row in range(3))
+
+    view.stocks_search_input.clear()
+    assert view.stocks_search_count_label.text() == "目前清單 3 檔"
+    assert not any(view.stocks_table.isRowHidden(row) for row in range(3))
+    assert view.stocks_model is source_model
+    assert view.stocks_model.rowCount() == 3
+
+    code_column = _column_index(view.stocks_model, "證券代號")
+    view.stocks_table.sortByColumn(code_column, Qt.SortOrder.DescendingOrder)
+    sorted_codes = view.stocks_model.getDataFrame()["證券代號"].tolist()
+    view.stocks_table.selectRow(sorted_codes.index("2330"))
+    view.stocks_search_input.setText("2454")
+    assert view.stocks_search_count_label.text() == "符合 1／3 檔"
+    assert [view.stocks_table.isRowHidden(row) for row in range(3)] == [
+        code != "2454" for code in sorted_codes
+    ]
+    assert not view.stocks_table.selectionModel().selectedRows()
+    view.stocks_search_input.clear()
+    assert not any(view.stocks_table.isRowHidden(row) for row in range(3))
+    assert view.universe_label.text() == "Universe: 20 stocks"
+    assert view.status_label.text() == "已更新：3 筆"
+    view.deleteLater()
+
+
+def test_strong_stocks_local_search_distinguishes_unloaded_and_loaded_empty():
+    app()
+    view = StrongStocksView(SimpleNamespace())
+    assert view.stocks_search_count_label.text() == "尚未載入"
+
+    view._update_table_with_data(
+        pd.DataFrame(columns=["排名", "證券代號", "證券名稱"])
+    )
+    assert view.stocks_search_count_label.text() == "目前清單 0 檔（已載入空清單）"
+
+    view.stocks_search_input.setText("2330")
+    assert view.stocks_search_count_label.text() == "符合 0／0 檔（已載入空清單）"
+    view.deleteLater()
+
+
+def test_strong_stocks_shared_result_search_does_not_change_source_scope_or_query(
+    monkeypatch,
+):
+    app()
+    frame = pd.DataFrame(
+        [
+            {"原始名次": 1, "證券代號": "2330"},
+            {"原始名次": 2, "證券代號": "2454"},
+        ]
+    )
+    monkeypatch.setattr(
+        shared_market_research_consumer,
+        "shared_market_research_frame",
+        lambda _read: frame.copy(),
+    )
+    monkeypatch.setattr(
+        shared_market_research_consumer,
+        "shared_market_research_summary",
+        lambda _read: ("已核驗快照摘要", "快照稽核資料"),
+    )
+    view = StrongStocksView(SimpleNamespace())
+    selector = view.shared_research_mode_selector
+    selector.setCurrentIndex(selector.findData("shared_research"))
+    assert view.stocks_search_input.placeholderText() == "股票代號（快照目前不含名稱）"
+    assert "只有股票代號欄" in view.stocks_search_input.accessibleDescription()
+
+    query = SimpleNamespace(combine_mode="AND", filter_state="match")
+    read = SimpleNamespace(query=query, ranking_error="")
+    view._on_shared_research_result(read)
+    source_scope = view.source_scope_label.text()
+    requested_queries = []
+    view.request_shared_research = lambda: requested_queries.append("requested")
+
+    view.stocks_search_input.setText("台積")
+    assert view.stocks_search_count_label.text() == "此清單無符合標的（0／2）"
+    view.stocks_search_input.setText("2330")
+
+    assert view._shared_read is read
+    assert read.query is query
+    assert view.source_scope_label.text() == source_scope
+    assert view.stocks_search_count_label.text() == "符合 1／2 檔"
+    assert [view.stocks_table.isRowHidden(row) for row in range(2)] == [False, True]
+    assert requested_queries == []
+    view.deleteLater()
+
+
+def test_strong_stock_load_runs_in_worker_and_applies_result_on_gui_thread():
+    app()
+    main_thread = get_ident()
+    source_threads = []
+    render_threads = []
+
+    def load_dto(**_kwargs):
+        source_threads.append(get_ident())
+        sleep(0.05)
+        return SimpleNamespace(
+            effective_date=date(2026, 10, 27),
+            to_legacy=_ScreeningService._stocks,
+        )
+
+    view = StrongStocksView(SimpleNamespace(get_strong_stocks_dto=load_dto))
+    original_render = view._update_table_with_data
+
+    def render_on_gui_thread(frame):
+        render_threads.append(get_ident())
+        original_render(frame)
+
+    view._update_table_with_data = render_on_gui_thread
+    view._refresh_stocks(use_cache=False)
+
+    assert view.status_label.text().startswith("載入中…")
+    assert not view.load_btn.isEnabled()
+    _wait_for(lambda: view.status_label.text().startswith("已更新："))
+
+    assert source_threads and source_threads[0] != main_thread
+    assert render_threads == [main_thread]
+    _wait_for(lambda: view._screening_worker is None)
+    assert view.load_btn.isEnabled()
+    view.deleteLater()
+
+
+def test_strong_stock_period_switch_discards_slow_old_generation():
+    app()
+    started = Event()
+    release = Event()
+
+    def load_dto(*, period: str, **_kwargs):
+        if period == "day":
+            started.set()
+            release.wait(timeout=2)
+        return SimpleNamespace(
+            effective_date=date(2026, 10, 27),
+            to_legacy=_ScreeningService._stocks,
+        )
+
+    view = StrongStocksView(SimpleNamespace(get_strong_stocks_dto=load_dto))
+    view._refresh_stocks(use_cache=False)
+    assert started.wait(timeout=2)
+
+    view._on_period_changed("week")
+    assert view.status_label.text().startswith("尚未載入：")
+    assert view.universe_label.text() == "Universe: -"
+    assert view.stocks_model is not None
+    assert view.stocks_model.rowCount() == 0
+
+    release.set()
+    _wait_for(
+        lambda: view._screening_worker is None
+        and not view._retired_screening_workers
+    )
+    assert view.status_label.text().startswith("尚未載入：")
+    assert view._cached_data["day"] is None
+    assert view.stocks_model.rowCount() == 0
+    view.deleteLater()
 
 
 def test_industry_rows_drill_down_to_read_only_stock_research_context_without_watchlist_write():

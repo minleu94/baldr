@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
 import pandas as pd
+from app_module.screening_service import ScreeningService
 from app_module.decision_data_providers import (
     industry_screen_fallback_provider,
     stock_screen_fallback_provider,
@@ -12,15 +13,19 @@ from app_module.decision_data_providers import (
 from decision_module.stock_screener import StockScreener
 
 
-STOCK_COLUMNS = [
+STRONG_STOCK_COLUMNS = [
     "排名",
     "證券代號",
     "證券名稱",
+    "行情日",
     "收盤價",
     "漲幅%",
     "成交量變化率%",
     "評分",
     "推薦理由",
+]
+STOCK_COLUMNS = [
+    column for column in STRONG_STOCK_COLUMNS if column != "行情日"
 ]
 INDUSTRY_COLUMNS = ["排名", "指數名稱", "收盤指數", "漲幅%"]
 TODAY = date.today()
@@ -84,10 +89,11 @@ def test_public_stock_methods_use_injected_provider_and_keep_schema_and_universe
     strong, strong_universe = screener.get_strong_stocks(period="day", top_n=2)
     weak, weak_universe = screener.get_weak_stocks(period="day", top_n=2)
 
-    assert list(strong.columns) == STOCK_COLUMNS
+    assert list(strong.columns) == STRONG_STOCK_COLUMNS
     assert list(weak.columns) == STOCK_COLUMNS
     assert strong_universe == weak_universe == 3
     assert strong.iloc[0]["證券代號"] == "2330"
+    assert strong.iloc[0]["行情日"] == TODAY.isoformat()
     assert weak.iloc[0]["證券代號"] == "2317"
     assert strong.iloc[0]["評分"].startswith("Top")
     assert weak.iloc[0]["評分"].startswith("Bottom")
@@ -95,6 +101,60 @@ def test_public_stock_methods_use_injected_provider_and_keep_schema_and_universe
         call("day", screener.volume_lookback),
         call("day", screener.volume_lookback),
     ]
+
+
+def test_stock_screen_keeps_each_symbols_latest_source_date_separate_from_frame_max(tmp_path: Path) -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "日期": "20261024",
+                "證券代號": "2330",
+                "證券名稱": "台積電",
+                "收盤價": 100,
+                "成交股數": 1_000_000,
+                "成交金額": 100_000_000,
+            },
+            {
+                "日期": "20261025",
+                "證券代號": "2330",
+                "證券名稱": "台積電",
+                "收盤價": 110,
+                "成交股數": 1_100_000,
+                "成交金額": 121_000_000,
+            },
+            {
+                "日期": "20261025",
+                "證券代號": "2317",
+                "證券名稱": "鴻海",
+                "收盤價": 100,
+                "成交股數": 1_000_000,
+                "成交金額": 100_000_000,
+            },
+            {
+                "日期": "20261026",
+                "證券代號": "2317",
+                "證券名稱": "鴻海",
+                "收盤價": 110,
+                "成交股數": 1_100_000,
+                "成交金額": 121_000_000,
+            },
+        ]
+    )
+    screener = StockScreener(
+        _config(tmp_path), min_price=0, recent_stock_provider=MagicMock(return_value=frame)
+    )
+
+    service = ScreeningService(
+        SimpleNamespace(), industry_mapper=SimpleNamespace(), stock_screener=screener
+    )
+    result = service.get_strong_stocks_dto(period="day", top_n=2)
+
+    dates_by_code = {
+        row["證券代號"]: row["行情日"]
+        for row in result.rows
+    }
+    assert result.effective_date == date(2026, 10, 26)
+    assert dates_by_code == {"2330": "2026-10-25", "2317": "2026-10-26"}
 
 
 def test_public_industry_methods_use_injected_provider_and_keep_schema(tmp_path: Path) -> None:

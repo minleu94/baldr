@@ -6,7 +6,7 @@ import time
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QWidget
+from PySide6.QtWidgets import QBoxLayout, QApplication, QFrame, QLabel, QWidget
 
 from app_module.dtos import RegimeResultDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -314,6 +314,62 @@ def app():
     if instance is None:
         instance = QApplication(sys.argv)
     return instance
+
+
+def test_market_regime_summary_stacks_on_narrow_width_and_restores_wide_ratio():
+    application = app()
+    view = MarketRegimeView(FakeRegimeService())
+    dto = FakeRegimeService().detect_regime()
+
+    def visible_state():
+        return (
+            view.layer1_status.text(),
+            view.layer1_description.text(),
+            tuple(
+                (status.text(), condition.text(), row.accessibleDescription())
+                for row, status, condition in view.layer2_condition_rows
+            ),
+        )
+
+    try:
+        view._update_layer1(dto)
+        view._update_layer2(dto)
+        view.resize(1280, 850)
+        view.show()
+        application.processEvents()
+
+        layout = view.layer1_2_layout
+        assert layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert (layout.stretch(0), layout.stretch(1)) == (3, 2)
+        assert layout.itemAt(0).widget() == view.layer1_widget
+        assert layout.itemAt(1).widget() == view.layer2_widget
+        expected_state = visible_state()
+
+        view.resize(720, 850)
+        application.processEvents()
+        assert layout.direction() == QBoxLayout.Direction.TopToBottom
+        assert (layout.stretch(0), layout.stretch(1)) == (1, 1)
+        assert layout.itemAt(0).widget() == view.layer1_widget
+        assert layout.itemAt(1).widget() == view.layer2_widget
+        assert visible_state() == expected_state
+
+        view.resize(1024, 850)
+        application.processEvents()
+        assert layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert (layout.stretch(0), layout.stretch(1)) == (3, 2)
+        assert visible_state() == expected_state
+
+        view.resize(819, 850)
+        application.processEvents()
+        assert layout.direction() == QBoxLayout.Direction.TopToBottom
+        view.resize(820, 850)
+        application.processEvents()
+        assert layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert (layout.stretch(0), layout.stretch(1)) == (3, 2)
+        assert visible_state() == expected_state
+    finally:
+        view.close()
+        application.processEvents()
 
 
 def test_market_regime_detection_shows_technical_details():

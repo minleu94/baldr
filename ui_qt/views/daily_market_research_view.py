@@ -2409,8 +2409,18 @@ class DailyMarketResearchView(QWidget):
         rows = self._current_filtered_rows()
         rows = self._sort_filtered_rows(rows)
         self._visible_rows = rows
+        selected_filter = str(self.filter_state_combo.currentData() or "all")
+        state_label = self.filter_state_combo.currentText().strip()
+        active_filters: list[str] = []
+        if selected_filter != "all":
+            active_filters.append(f"狀態：{state_label}")
+        stock_filter = self.local_stock_filter.text().strip()
+        if stock_filter:
+            active_filters.append(f"代號包含「{stock_filter}」")
+        filter_summary = "；".join(active_filters) if active_filters else "無"
         self.local_filter_summary_label.setText(
-            f"局部顯示 {len(rows)}／{len(self._all_rows)} 核驗列；完整來源分母與未知條件保留。"
+            f"局部顯示 {len(rows)}／{len(self._all_rows)} 核驗列；"
+            f"已套用局部篩選：{filter_summary}；完整來源分母與未知條件保留。"
         )
         self.results_table.setSortingEnabled(False)
         self.results_table.clearContents()

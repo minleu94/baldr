@@ -183,6 +183,8 @@ def test_first_open_is_read_only_unknown_stays_visible_and_drilldown_is_pinned()
     assert service.produce_calls == []
     assert service.calls[0] == ("read_latest", "daily-market-research")
     assert view.results_table.rowCount() == 2
+    assert "局部顯示 2／2 核驗列" in view.local_filter_summary_label.text()
+    assert "已套用局部篩選：無" in view.local_filter_summary_label.text()
     assert "符合 0" in view.summary_label.text()  # default AND has one explicit no-match and one unknown
     assert "未知 1" in view.summary_label.text()
 
@@ -195,8 +197,21 @@ def test_first_open_is_read_only_unknown_stays_visible_and_drilldown_is_pinned()
     assert view.results_table.rowCount() == 1
     assert view.results_table.item(0, 0).text() == "1477"
     assert "insufficient_valid_ohlc_streak" in view.results_table.item(0, 5).text()
+    assert "局部顯示 1／2 核驗列" in view.local_filter_summary_label.text()
+    assert "狀態：未知" in view.local_filter_summary_label.text()
+
+    view.local_stock_filter.setText("1477")
+    app.processEvents()
+    assert view.results_table.rowCount() == 1
+    assert "代號包含「1477」" in view.local_filter_summary_label.text()
+    view.local_stock_filter.setText("2330")
+    app.processEvents()
+    assert view.results_table.rowCount() == 0
+    assert "局部顯示 0／2 核驗列" in view.local_filter_summary_label.text()
+    assert "代號包含「2330」" in view.local_filter_summary_label.text()
 
     _select_combo_data(view.filter_state_combo, "all")
+    view.local_stock_filter.clear()
     app.processEvents()
     row_number = next(
         index

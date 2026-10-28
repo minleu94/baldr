@@ -248,10 +248,9 @@ class DecisionDeskView(QWidget):
         conclusion_group = SectionPanel("今日主結論")
         conclusion_group.layout.addWidget(self.action_headline_label)
         conclusion_group.layout.addWidget(self.action_note_label)
-        content_layout.addWidget(conclusion_group)
-        # The conclusion is the first substantive section.  Date and generation
-        # details stay in the compact overview row above the warnings.
         content_layout.addWidget(info_group)
+        # 先顯示資料日期、品質與警示摘要，再呈現今日主結論。
+        content_layout.addWidget(conclusion_group)
 
         self.priority_sector_label = QLabel("優先產業：尚未載入")
         self.risk_sector_label = QLabel("避開產業 / 風險區：尚未載入")

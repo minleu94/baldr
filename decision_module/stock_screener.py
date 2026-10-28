@@ -186,7 +186,7 @@ class StockScreener:
                         stock_df, latest_row, price_change, volume_ratio, period, stock_code
                     )
 
-                all_stocks_data.append({
+                screen_row = {
                     '證券代號': stock_code,
                     '證券名稱': stock_name,
                     '收盤價': latest_price,
@@ -194,7 +194,12 @@ class StockScreener:
                     '成交量變化率%': volume_change,
                     '評分': score,
                     '推薦理由': reasons
-                })
+                }
+                if direction == "strong":
+                    screen_row["行情日"] = pd.Timestamp(
+                        latest_row["日期"]
+                    ).date().isoformat()
+                all_stocks_data.append(screen_row)
                 processed_count += 1
             except Exception as err:
                 skipped_count += 1
@@ -266,10 +271,11 @@ class StockScreener:
 
         result_df = result_df.head(top_n).copy()
         result_df['排名'] = range(1, len(result_df) + 1)
-        return (
-            result_df[['排名', '證券代號', '證券名稱', '收盤價', '漲幅%', '成交量變化率%', '評分', '推薦理由']],
-            total_stocks,
-        )
+        columns = ['排名', '證券代號', '證券名稱']
+        if '行情日' in result_df.columns:
+            columns.append('行情日')
+        columns.extend(['收盤價', '漲幅%', '成交量變化率%', '評分', '推薦理由'])
+        return result_df[columns], total_stocks
 
     def _try_get_sqlite_industry_screen(self, period, top_n, direction):
         df = self._load_sqlite_recent_industry_indices(period)

@@ -4,7 +4,7 @@
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel,
     QPushButton, QTextEdit, QPlainTextEdit, QGroupBox, QSplitter,
     QScrollArea, QFrame
 )
@@ -75,6 +75,8 @@ COLOR_BORDER = MIDNIGHT_ANALYST.border
 
 class MarketRegimeView(QWidget):
     """大盤指數視圖"""
+
+    LAYER1_2_STACK_BREAKPOINT = 820
     
     def __init__(self, regime_service: RegimeService, parent=None):
         """初始化大盤指數視圖
@@ -174,9 +176,11 @@ class MarketRegimeView(QWidget):
         status_layout.setContentsMargins(16, 12, 16, 14)  # 縮小 top margin，減少留白
         status_layout.setSpacing(15)
         
-        # Layer 1 + Layer 2: 並排顯示（水平配置，60:40 比例）
+        # Layer 1 + Layer 2: 寬版並排；窄版改為由上而下，避免來源條件被擠窄。
         layer1_2_container = QWidget()
-        layer1_2_layout = QHBoxLayout()
+        self.layer1_2_container = layer1_2_container
+        layer1_2_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.layer1_2_layout = layer1_2_layout
         layer1_2_layout.setContentsMargins(0, 0, 0, 0)
         layer1_2_layout.setSpacing(25)  # 增加間距
         
@@ -226,6 +230,7 @@ class MarketRegimeView(QWidget):
         
         layer1_layout.addStretch()
         layer1_widget.setLayout(layer1_layout)
+        self.layer1_widget = layer1_widget
         layer1_2_layout.addWidget(layer1_widget, 3)  # stretch factor = 3 (60%)
         
         # Layer 2: 判斷摘要層（Explanation Summary）- 右側 40%
@@ -307,9 +312,11 @@ class MarketRegimeView(QWidget):
         
         layer2_layout.addStretch()
         layer2_widget.setLayout(layer2_layout)
+        self.layer2_widget = layer2_widget
         layer1_2_layout.addWidget(layer2_widget, 2)  # stretch factor = 2 (40%)
         
         layer1_2_container.setLayout(layer1_2_layout)
+        self._sync_layer1_2_layout()
         status_layout.addWidget(layer1_2_container)
         self.market_risk_label = QLabel(
             "風險與限制：尚未檢測；資料不足不能當成安全訊號。"
@@ -487,6 +494,40 @@ class MarketRegimeView(QWidget):
             page_content, object_name="marketRegimePageScrollArea"
         )
         page_layout.addWidget(self.page_scroll_area)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._sync_layer1_2_layout()
+
+    def _sync_layer1_2_layout(self) -> None:
+        """窄版先呈現市場結論，再以完整寬度顯示來源條件。"""
+        layout = getattr(self, "layer1_2_layout", None)
+        container = getattr(self, "layer1_2_container", None)
+        if layout is None or container is None:
+            return
+
+        stacked = self.width() < self.LAYER1_2_STACK_BREAKPOINT
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if stacked
+            else QBoxLayout.Direction.LeftToRight
+        )
+        spacing = 14 if stacked else 25
+        first_stretch, second_stretch = (1, 1) if stacked else (3, 2)
+        if (
+            layout.direction() == direction
+            and layout.spacing() == spacing
+            and layout.stretch(0) == first_stretch
+            and layout.stretch(1) == second_stretch
+        ):
+            return
+
+        layout.setDirection(direction)
+        layout.setSpacing(spacing)
+        layout.setStretch(0, first_stretch)
+        layout.setStretch(1, second_stretch)
+        layout.invalidate()
+        container.updateGeometry()
 
     def set_shared_research_source(self, source_view: object | None) -> None:
         self.shared_research_consumer.set_source(source_view)

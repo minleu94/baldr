@@ -1958,10 +1958,15 @@ def test_decision_desk_market_breadth_bar_uses_integer_stretches_and_accessible_
     overview_top = view.generated_at_label.mapTo(
         outer_viewport, view.generated_at_label.rect().topLeft()
     ).y()
+    conclusion_top = view.action_headline_label.mapTo(
+        outer_viewport, view.action_headline_label.rect().topLeft()
+    ).y()
     focus_top = view.priority_sector_label.mapTo(
         outer_viewport, view.priority_sector_label.rect().topLeft()
     ).y()
-    assert overview_top < row_top
+    assert "來源市場資料日：" in view.generated_at_label.text()
+    assert view.warning_summary_label.text().startswith("資料品質：")
+    assert overview_top < conclusion_top < row_top
     assert row_top + view.market_breadth_row.height() <= focus_top
     main_content_layout = view.main_scroll_area.widget().layout()
     assert main_content_layout.indexOf(view.market_breadth_row) < main_content_layout.indexOf(

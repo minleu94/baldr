@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
+from ui_qt.workers.task_worker import TaskWorker
 
 
 def _plain(value: Any) -> str:
@@ -86,6 +87,11 @@ class StrategyLibraryView(QWidget):
         self._strategies: dict[str, dict[str, Any]] = {}
         self._choices: list[_VersionChoice] = []
         self._selected_strategy_id: str | None = None
+        self._version_load_generation = 0
+        self._version_load_worker: TaskWorker | None = None
+        self._version_load_request: tuple[int, str] | None = None
+        self._pending_version_load: tuple[int, str] | None = None
+        self._version_load_closing = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -121,6 +127,17 @@ class StrategyLibraryView(QWidget):
         self.version_combo = QComboBox()
         self.version_combo.setEnabled(False)
         detail_layout.addWidget(self.version_combo)
+        version_status_row = QHBoxLayout()
+        self.version_status_label = QLabel("尚未讀取保存版本")
+        self.version_status_label.setAccessibleName("策略保存版本讀取狀態")
+        self.version_status_label.setWordWrap(True)
+        version_status_row.addWidget(self.version_status_label, stretch=1)
+        self.retry_versions_button = QPushButton("重試讀取")
+        self.retry_versions_button.setAccessibleName("重試讀取保存版本")
+        self.retry_versions_button.setVisible(False)
+        self.retry_versions_button.clicked.connect(self._retry_saved_versions)
+        version_status_row.addWidget(self.retry_versions_button)
+        detail_layout.addLayout(version_status_row)
         self.details = QFormLayout()
         self.advanced_details = CollapsibleSectionPanel("參數設定與來源原文", collapsed=True)
         advanced_form = QFormLayout()
@@ -210,8 +227,12 @@ class StrategyLibraryView(QWidget):
             restore = self.strategy_list.item(0)
         self.strategy_list.setCurrentItem(restore)
         if restore is None:
+            self._version_load_generation += 1
+            self._pending_version_load = None
             self._selected_strategy_id = None
             self._clear_details("策略來源目前不可用")
+            self.version_status_label.setText("沒有可讀取的已登記策略。")
+            self.version_status_label.setToolTip("")
         return bool(strategies)
 
     def _find_strategy_item(self, strategy_id: str | None) -> QListWidgetItem | None:
@@ -235,13 +256,139 @@ class StrategyLibraryView(QWidget):
             item.setHidden(bool(query and query not in haystack))
 
     def _on_strategy_changed(self, current: QListWidgetItem | None, _previous) -> None:
+        self._version_load_generation += 1
+        generation = self._version_load_generation
+        self._pending_version_load = None
         strategy_id = current.data(Qt.ItemDataRole.UserRole) if current is not None else None
         if not isinstance(strategy_id, str) or strategy_id not in self._strategies:
             self._selected_strategy_id = None
             self._clear_details("請選擇已登記策略")
+            self.version_status_label.setText("未選擇策略。")
+            self.version_status_label.setToolTip("")
             return
         self._selected_strategy_id = strategy_id
-        choices = self._choices_for(strategy_id)
+        strategy_name = str(self._strategies[strategy_id].get("name") or strategy_id)
+        self._clear_details(f"{strategy_name}｜讀取版本中…")
+        self.version_combo.clear()
+        self.version_status_label.setText("讀取保存版本中…")
+        self.version_status_label.setToolTip("")
+        self.retry_versions_button.setEnabled(False)
+        self.retry_versions_button.setVisible(False)
+        if self._version_service is None:
+            self._apply_version_rows(
+                generation,
+                strategy_id,
+                (),
+                unavailable="保存版本來源未提供。",
+            )
+            return
+        if self._version_load_worker is not None:
+            self._pending_version_load = (generation, strategy_id)
+            return
+        self._start_version_load(generation, strategy_id)
+
+    def _start_version_load(self, generation: int, strategy_id: str) -> None:
+        if self._version_load_closing:
+            return
+        if self._version_load_worker is not None:
+            self._pending_version_load = (generation, strategy_id)
+            return
+        service = self._version_service
+        if service is None:
+            self._apply_version_rows(
+                generation,
+                strategy_id,
+                (),
+                unavailable="保存版本來源未提供。",
+            )
+            return
+        reader = getattr(service, "list_versions", None)
+        if not callable(reader):
+            self._apply_version_rows(
+                generation,
+                strategy_id,
+                (),
+                unavailable="保存版本服務未提供讀取方法。",
+            )
+            return
+        worker = TaskWorker(reader, strategy_id)
+        self._version_load_worker = worker
+        self._version_load_request = (generation, strategy_id)
+        worker.finished.connect(self._on_version_load_finished)
+        worker.error.connect(self._on_version_load_error)
+        worker.cancelled.connect(self._on_version_load_cancelled)
+        worker.native_thread_finished.connect(self._on_version_worker_finished)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        try:
+            worker.start()
+        except Exception as exc:
+            self._apply_version_rows(
+                generation,
+                strategy_id,
+                (),
+                unavailable=str(exc),
+            )
+            self._release_version_worker(worker)
+            worker.deleteLater()
+
+    def _on_version_load_finished(self, rows: object) -> None:
+        worker = self._version_load_worker
+        request = self._version_load_request
+        if worker is None or request is None:
+            return
+        generation, strategy_id = request
+        if not self._is_current_version_request(worker, generation, strategy_id):
+            return
+        self._apply_version_rows(
+            generation,
+            strategy_id,
+            rows if isinstance(rows, list) else (),
+        )
+
+    def _on_version_load_error(self, message: str) -> None:
+        worker = self._version_load_worker
+        request = self._version_load_request
+        if worker is None or request is None:
+            return
+        generation, strategy_id = request
+        if not self._is_current_version_request(worker, generation, strategy_id):
+            return
+        self._apply_version_rows(
+            generation,
+            strategy_id,
+            (),
+            unavailable=str(message or "保存版本來源無法讀取。"),
+        )
+
+    def _on_version_load_cancelled(self) -> None:
+        self._on_version_load_error("保存版本讀取已取消。")
+
+    def _is_current_version_request(
+        self, worker: TaskWorker, generation: int, strategy_id: str
+    ) -> bool:
+        return (
+            not self._version_load_closing
+            and self._version_load_worker is worker
+            and generation == self._version_load_generation
+            and strategy_id == self._selected_strategy_id
+        )
+
+    def _apply_version_rows(
+        self,
+        generation: int,
+        strategy_id: str,
+        rows: object,
+        *,
+        unavailable: str = "",
+    ) -> None:
+        if (
+            self._version_load_closing
+            or generation != self._version_load_generation
+            or strategy_id != self._selected_strategy_id
+        ):
+            return
+        saved_rows = rows if isinstance(rows, list) else []
+        choices = self._choices_for(strategy_id, saved_rows)
         self._choices = choices
         self.version_combo.blockSignals(True)
         self.version_combo.clear()
@@ -253,29 +400,97 @@ class StrategyLibraryView(QWidget):
             self.version_combo.addItem(f"版本 {choice.version}{suffix}", choice)
         self.version_combo.blockSignals(False)
         self.version_combo.setEnabled(bool(choices))
+        self.version_status_label.setToolTip(
+            unavailable.splitlines()[0] if unavailable else ""
+        )
+        if unavailable:
+            self.version_status_label.setText(
+                "保存版本來源不可用；目前僅顯示登記版本。"
+            )
+            can_retry = bool(
+                self._version_service is not None
+                and callable(getattr(self._version_service, "list_versions", None))
+            )
+            self.retry_versions_button.setVisible(can_retry)
+            self.retry_versions_button.setEnabled(can_retry)
+        else:
+            saved_count = sum(1 for choice in choices if choice.saved is not None)
+            self.version_status_label.setText(
+                f"保存版本來源已讀取；符合此策略 {saved_count} 筆。"
+            )
+            self.retry_versions_button.setVisible(False)
+            self.retry_versions_button.setEnabled(False)
         if choices:
             self.version_combo.setCurrentIndex(0)
             self._render_choice(choices[0])
         else:
             self._render_choice(None)
 
-    def _choices_for(self, strategy_id: str) -> list[_VersionChoice]:
+    def _retry_saved_versions(self) -> None:
+        strategy_id = self._selected_strategy_id
+        if (
+            self._version_load_closing
+            or not isinstance(strategy_id, str)
+            or strategy_id not in self._strategies
+            or self._version_service is None
+            or not callable(getattr(self._version_service, "list_versions", None))
+        ):
+            return
+        self._version_load_generation += 1
+        generation = self._version_load_generation
+        strategy_name = str(self._strategies[strategy_id].get("name") or strategy_id)
+        self._clear_details(f"{strategy_name}｜讀取版本中…")
+        self.version_combo.clear()
+        self.version_status_label.setText("讀取保存版本中…")
+        self.version_status_label.setToolTip("")
+        self.retry_versions_button.setVisible(False)
+        self.retry_versions_button.setEnabled(False)
+        if self._version_load_worker is not None:
+            self._pending_version_load = (generation, strategy_id)
+            return
+        self._start_version_load(generation, strategy_id)
+
+    def _on_version_worker_finished(self) -> None:
+        worker = self._version_load_worker
+        if worker is not None:
+            self._release_version_worker(worker)
+
+    def _release_version_worker(self, worker: TaskWorker) -> None:
+        if self._version_load_worker is not worker:
+            return
+        self._version_load_worker = None
+        self._version_load_request = None
+        pending = self._pending_version_load
+        self._pending_version_load = None
+        if (
+            pending is not None
+            and not self._version_load_closing
+            and pending[0] == self._version_load_generation
+            and pending[1] == self._selected_strategy_id
+        ):
+            self._start_version_load(*pending)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._version_load_closing = True
+        self._version_load_generation += 1
+        self._pending_version_load = None
+        worker = self._version_load_worker
+        if worker is not None and worker.isRunning():
+            worker.cancel(cooperative=True, wait=False)
+        super().closeEvent(event)
+
+    def _choices_for(
+        self, strategy_id: str, saved_rows: list[dict[str, Any]]
+    ) -> list[_VersionChoice]:
         saved_by_version: dict[str, dict[str, Any]] = {}
-        service = self._version_service
-        if service is not None:
-            try:
-                saved_rows = service.list_versions(strategy_id)
-            except Exception:
-                saved_rows = []
-            if isinstance(saved_rows, list):
-                for row in saved_rows:
-                    if not isinstance(row, dict) or row.get("strategy_id") != strategy_id:
-                        continue
-                    version = row.get("strategy_version")
-                    version_id = row.get("version_id")
-                    if (isinstance(version, str) and version and version == version.strip()
-                            and isinstance(version_id, str) and version_id):
-                        saved_by_version.setdefault(version, row)
+        for row in saved_rows:
+            if not isinstance(row, dict) or row.get("strategy_id") != strategy_id:
+                continue
+            version = row.get("strategy_version")
+            version_id = row.get("version_id")
+            if (isinstance(version, str) and version and version == version.strip()
+                    and isinstance(version_id, str) and version_id):
+                saved_by_version.setdefault(version, row)
 
         versions: list[str] = []
         base_meta = self._strategies.get(strategy_id)

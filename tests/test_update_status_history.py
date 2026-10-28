@@ -90,6 +90,66 @@ def test_read_history_reports_missing_and_invalid_without_inventing_records(tmp_
         append_update_status_history(invalid_path, _payload())
 
 
+def test_read_history_streams_all_diagnostics_but_keeps_only_the_requested_tail(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "history.jsonl"
+    rows = [
+        "{invalid-json",
+        "[]",
+        json.dumps({"schema_version": "another-version", "run_id": "bad-schema"}),
+        json.dumps({"schema_version": UPDATE_STATUS_HISTORY_SCHEMA, "record_id": "no-run"}),
+    ]
+
+    def record(record_id: str, run_id: str) -> dict[str, str]:
+        return {
+            "schema_version": UPDATE_STATUS_HISTORY_SCHEMA,
+            "record_id": record_id,
+            "run_id": run_id,
+        }
+
+    rows.append(json.dumps(record("record-0", "run-0")))
+    rows.append(json.dumps(record("record-0", "run-0-duplicate")))
+    rows.extend(
+        json.dumps(record(f"record-{index}", f"run-{index}"))
+        for index in range(1, 41)
+    )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    result = read_update_status_history(path, limit=32)
+
+    assert result["status"] == "invalid"
+    assert result["record_count"] == 42
+    assert [row["record_id"] for row in result["records"]] == [
+        f"record-{index}" for index in range(9, 41)
+    ]
+    assert result["latest"]["run_id"] == "run-40"
+    assert any(item.startswith("history_invalid_json_line:1:") for item in result["diagnostics"])
+    assert "history_record_not_object:2" in result["diagnostics"]
+    assert "history_schema_mismatch:3" in result["diagnostics"]
+    assert "history_record_identity_missing:4" in result["diagnostics"]
+    assert "history_duplicate_record:record-0" in result["diagnostics"]
+
+
+def test_read_history_keeps_splitlines_diagnostics_for_unicode_separators(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "unicode-separator.jsonl"
+    record = {
+        "schema_version": UPDATE_STATUS_HISTORY_SCHEMA,
+        "record_id": "record-1",
+        "run_id": "run-before\u2028after",
+    }
+    path.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    result = read_update_status_history(path)
+
+    assert result["status"] == "invalid"
+    assert result["record_count"] == 0
+    assert len(result["diagnostics"]) == 2
+    assert all(item.startswith("history_invalid_json_line:") for item in result["diagnostics"])
+
+
 def test_history_requires_run_identity() -> None:
     with pytest.raises(ValueError, match="requires run_id"):
         build_update_status_history_record({"status": "passed"})

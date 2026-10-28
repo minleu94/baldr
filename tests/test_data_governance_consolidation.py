@@ -295,3 +295,33 @@ def test_scheduler_health_observability_directory_fixtures(tmp_path: Path):
     assert t4.write_intent == "SIDECAR_PENDING_HUMAN_REVIEW"
     assert t4.last_run_timestamp == "2026-07-20T01:00:00"
     assert all(task.status != "MISSING" for task in report.tasks)
+
+
+def test_scheduler_status_resolver_uses_one_file_probe(tmp_path: Path, monkeypatch):
+    base_root = tmp_path / "output"
+    relative_path = "scheduled/data_update_quick/latest_status.json"
+    candidate = base_root / relative_path
+    candidate.parent.mkdir(parents=True)
+    candidate.write_text("{}", encoding="utf-8")
+    original_is_file = Path.is_file
+    probe_count = 0
+
+    def reject_exists(_path: Path) -> bool:
+        raise AssertionError("resolver should not issue a separate exists probe")
+
+    def count_is_file(path: Path) -> bool:
+        nonlocal probe_count
+        probe_count += 1
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "exists", reject_exists)
+    monkeypatch.setattr(Path, "is_file", count_is_file)
+
+    result = SchedulerHealthService._resolve_status_file(
+        base_root=base_root,
+        task_name="daily_data_update_quick",
+        candidate_rel_paths=(relative_path,),
+    )
+
+    assert result == candidate.resolve()
+    assert probe_count == 1

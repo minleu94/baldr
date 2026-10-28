@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -162,7 +163,6 @@ def read_update_status_history(
                 [f"history_artifact_too_large:{path}"],
                 configured=True,
             )
-        lines = path.read_text(encoding="utf-8").splitlines()
     except Exception as exc:  # noqa: BLE001
         return _invalid_history(
             path,
@@ -170,45 +170,63 @@ def read_update_status_history(
             configured=True,
         )
 
-    diagnostics: list[str] = []
-    records: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for line_number, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
-        try:
-            raw = json.loads(line)
-        except json.JSONDecodeError as exc:
-            diagnostics.append(f"history_invalid_json_line:{line_number}:{exc.msg}")
-            continue
-        if not isinstance(raw, dict):
-            diagnostics.append(f"history_record_not_object:{line_number}")
-            continue
-        if raw.get("schema_version") != UPDATE_STATUS_HISTORY_SCHEMA:
-            diagnostics.append(f"history_schema_mismatch:{line_number}")
-            continue
-        record_id = _text(raw.get("record_id"), limit=100)
-        run_id = _text(raw.get("run_id"), limit=200)
-        if not record_id or not run_id:
-            diagnostics.append(f"history_record_identity_missing:{line_number}")
-            continue
-        if record_id in seen_ids:
-            diagnostics.append(f"history_duplicate_record:{record_id}")
-        seen_ids.add(record_id)
-        records.append(raw)
-
     safe_limit = max(1, int(limit))
-    selected = records[-safe_limit:]
+    diagnostics: list[str] = []
+    records: deque[dict[str, Any]] = deque(maxlen=safe_limit)
+    seen_ids: set[str] = set()
+    record_count = 0
+    latest: dict[str, Any] | None = None
+    line_number = 0
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for chunk in handle:
+                for line in chunk.splitlines():
+                    line_number += 1
+                    if not line.strip():
+                        continue
+                    try:
+                        raw = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        diagnostics.append(
+                            f"history_invalid_json_line:{line_number}:{exc.msg}"
+                        )
+                        continue
+                    if not isinstance(raw, dict):
+                        diagnostics.append(f"history_record_not_object:{line_number}")
+                        continue
+                    if raw.get("schema_version") != UPDATE_STATUS_HISTORY_SCHEMA:
+                        diagnostics.append(f"history_schema_mismatch:{line_number}")
+                        continue
+                    record_id = _text(raw.get("record_id"), limit=100)
+                    run_id = _text(raw.get("run_id"), limit=200)
+                    if not record_id or not run_id:
+                        diagnostics.append(
+                            f"history_record_identity_missing:{line_number}"
+                        )
+                        continue
+                    if record_id in seen_ids:
+                        diagnostics.append(f"history_duplicate_record:{record_id}")
+                    seen_ids.add(record_id)
+                    records.append(raw)
+                    record_count += 1
+                    latest = raw
+    except Exception as exc:  # noqa: BLE001
+        return _invalid_history(
+            path,
+            [f"history_artifact_unreadable:{type(exc).__name__}:{exc}"],
+            configured=True,
+        )
+
     result = _invalid_history(
         path,
         diagnostics,
         configured=True,
         available=True,
-        records=selected,
+        records=list(records),
     )
-    result["record_count"] = len(records)
-    result["latest"] = records[-1] if records else None
-    if not diagnostics and records:
+    result["record_count"] = record_count
+    result["latest"] = latest
+    if not diagnostics and record_count:
         result["status"] = "current"
     return result
 

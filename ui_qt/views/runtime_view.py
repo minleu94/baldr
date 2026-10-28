@@ -3,7 +3,7 @@
     QTextEdit, QLabel, QListWidget, QGroupBox, QListWidgetItem, QSizePolicy,
     QScrollArea, QFrame, QPushButton, QComboBox, QProgressBar
 )
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Slot, QTimer
 from PySide6.QtGui import QFont
 from dataclasses import replace
 from datetime import datetime
@@ -67,6 +67,7 @@ OPERATION_STATE_LABELS = {
     "observed": "已觀測",
 }
 MAX_RENDERED_RUNTIME_EVENTS = 500
+RUNTIME_EVENT_SCROLL_COALESCE_MS = 16
 DEFAULT_HEALTH_SCOPE_NOTE = (
     "治理暫停或拒絕率升高只代表 agent / governance workflow 狀態，"
     "不代表日常營運排程或主 App 一般功能失敗。"
@@ -402,6 +403,10 @@ class RuntimeView(QWidget):
         self.event_list.setWordWrap(True)
         self.event_list.setUniformItemSizes(False)
         ensure_visible_rows(self.event_list, 5)
+        self._event_scroll_timer = QTimer(self)
+        self._event_scroll_timer.setSingleShot(True)
+        self._event_scroll_timer.setInterval(RUNTIME_EVENT_SCROLL_COALESCE_MS)
+        self._event_scroll_timer.timeout.connect(self._scroll_event_list_to_bottom)
         events_layout.addWidget(self.event_list)
 
         right_layout.addWidget(self.health_group)
@@ -1078,6 +1083,10 @@ class RuntimeView(QWidget):
         self.event_list.addItem(item)
         while self.event_list.count() > MAX_RENDERED_RUNTIME_EVENTS:
             self.event_list.takeItem(0)
+        if not self._event_scroll_timer.isActive():
+            self._event_scroll_timer.start()
+
+    def _scroll_event_list_to_bottom(self) -> None:
         self.event_list.scrollToBottom()
 
     def _localize_message(self, message: str) -> str:

@@ -116,7 +116,7 @@ class SchedulerHealthService:
         """解析邏輯任務對應的最新狀態檔，不修改任何排程產物。"""
         for relative_path in candidate_rel_paths:
             candidate = (base_root / relative_path).resolve()
-            if candidate.exists() and candidate.is_file():
+            if candidate.is_file():
                 return candidate
 
         if task_name != "v2_2_weekly_collection":

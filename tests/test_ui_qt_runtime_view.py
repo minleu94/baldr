@@ -9,6 +9,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QSizePolicy, QProgressBar, QLabel
 
 from app_module.dtos.runtime_dtos import (
@@ -26,7 +27,11 @@ from app_module.decision_capture_status_reader import (
     DecisionCaptureRunStatus,
     DecisionCaptureStage,
 )
-from ui_qt.views.runtime_view import MAX_RENDERED_RUNTIME_EVENTS, RuntimeView
+from ui_qt.views.runtime_view import (
+    MAX_RENDERED_RUNTIME_EVENTS,
+    RUNTIME_EVENT_SCROLL_COALESCE_MS,
+    RuntimeView,
+)
 from ui_qt.theme import MIDNIGHT_ANALYST
 
 
@@ -229,6 +234,55 @@ def test_runtime_event_stream_shows_chinese_summary_and_raw_tooltip():
     assert "驗證拒絕" in item.text()
     assert "JSON 格式錯誤" in item.text()
     assert "validation_rejected" in item.toolTip()
+
+
+def test_runtime_event_burst_coalesces_scroll_requests_without_dropping_events(
+    monkeypatch,
+):
+    app()
+    view = RuntimeView()
+    view.resize(900, 900)
+    view.show()
+    app().processEvents()
+
+    scroll_calls = []
+    scroll_to_bottom = view.event_list.scrollToBottom
+
+    def record_scroll() -> None:
+        scroll_calls.append(None)
+        scroll_to_bottom()
+
+    monkeypatch.setattr(view.event_list, "scrollToBottom", record_scroll)
+
+    for index in range(12):
+        view.on_event_received(
+            RuntimeEventDTO(
+                event_id=f"burst-{index}",
+                timestamp=datetime(2026, 6, 23, 9, 1, index, tzinfo=timezone.utc),
+                actor="agent",
+                event_type="validation_rejected",
+                severity=GovernanceSeverity.WARNING,
+                human_readable_message=f"event-{index}",
+                payload_preview={"index": index},
+            )
+        )
+
+    assert scroll_calls == []
+    QTest.qWait(RUNTIME_EVENT_SCROLL_COALESCE_MS + 20)
+
+    assert scroll_calls == [None]
+    assert view.event_list.count() == 12
+    assert "event-0" in view.event_list.item(0).text()
+    assert "event-11" in view.event_list.item(11).text()
+    assert "index" in view.event_list.item(11).toolTip()
+    assert "11" in view.event_list.item(11).toolTip()
+
+    view.on_event_received(make_runtime_event_dto(message="single-event"))
+    QTest.qWait(RUNTIME_EVENT_SCROLL_COALESCE_MS + 20)
+
+    assert scroll_calls == [None, None]
+    assert view.event_list.count() == 13
+    assert "single-event" in view.event_list.item(12).text()
 
 
 def test_runtime_view_renders_operation_status_without_claiming_scheduler_state():

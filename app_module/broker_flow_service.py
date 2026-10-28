@@ -14,7 +14,10 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
-from app_module.broker_flow_dashboard_dtos import BrokerFlowDashboardQuery
+from app_module.broker_flow_dashboard_dtos import (
+    BrokerFlowDashboardQuery,
+    BrokerFlowDashboardSnapshot,
+)
 from app_module.broker_flow_dashboard_query_service import BrokerFlowDashboardQueryService
 from app_module.broker_flow_sqlite_read_repository import BrokerFlowSQLiteReadRepository
 from app_module.smart_money_semantic_service import (
@@ -63,13 +66,30 @@ class BrokerFlowService:
         return self.dashboard_query_service.load_dashboard_snapshot(query)
 
     def load_stock_branch_detail(
-        self, stock_code: str, period: str, as_of_date: date
+        self,
+        stock_code: str,
+        period: str,
+        as_of_date: date,
+        *,
+        dashboard_snapshot: BrokerFlowDashboardSnapshot | None = None,
     ):
         query = BrokerFlowDashboardQuery(
             period=period,
             scope="all",
             requested_as_of_date=as_of_date,
         )
+        if dashboard_snapshot is not None:
+            snapshot_loader = getattr(
+                self.dashboard_query_service,
+                "load_stock_branch_detail_from_dashboard_snapshot",
+                None,
+            )
+            if callable(snapshot_loader):
+                detail = snapshot_loader(
+                    stock_code, query, dashboard_snapshot
+                )
+                if detail is not None:
+                    return detail
         return self.dashboard_query_service.load_stock_branch_detail(stock_code, query)
 
     def load_branch_tracker(

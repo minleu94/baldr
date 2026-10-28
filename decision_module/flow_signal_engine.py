@@ -91,11 +91,23 @@ class FlowSignalEngine:
             reasons.append(f"共有 {sell_branch_count} 家追蹤主力同步賣出")
 
         # 3. 連續吸籌 / 出貨 (Continuous Accumulation / Distribution)
-        # 按日期加總每日的淨量
+        # 每日淨量及方向性分點淨量沿同一次事件遍歷累計。
         daily_net_map: defaultdict[str, int] = defaultdict(int)
+        branch_net_buy: defaultdict[str, int] | None = (
+            defaultdict(int) if agg.total_net_qty > 0 else None
+        )
+        branch_net_sell: defaultdict[str, int] | None = (
+            defaultdict(int) if agg.total_net_qty < 0 else None
+        )
         for event in agg.events:
-            if event.net_qty is not None:
-                daily_net_map[event.date] += event.net_qty
+            net_qty = event.net_qty
+            if net_qty is None:
+                continue
+            daily_net_map[event.date] += net_qty
+            if branch_net_buy is not None and net_qty > 0:
+                branch_net_buy[event.branch_display_name] += net_qty
+            elif branch_net_sell is not None and net_qty < 0:
+                branch_net_sell[event.branch_display_name] += abs(net_qty)
 
         sorted_dates = sorted(daily_net_map.keys(), reverse=True) # 由新到舊
 
@@ -133,11 +145,6 @@ class FlowSignalEngine:
         # 計算買超/賣超最大的分點佔總買超/賣超的比例
         concentration = 0.0
         if agg.total_net_qty > 0 and agg.events:
-            branch_net_buy: defaultdict[str, int] = defaultdict(int)
-            for event in agg.events:
-                if event.net_qty is not None and event.net_qty > 0:
-                    branch_net_buy[event.branch_display_name] += event.net_qty
-
             if branch_net_buy:
                 max_branch_buy = max(branch_net_buy.values())
                 total_positive_buy = sum(branch_net_buy.values())
@@ -150,11 +157,6 @@ class FlowSignalEngine:
                         top_branch = max(branch_net_buy.items(), key=lambda x: x[1])[0]
                         reasons.append(f"籌碼高度集中於特定主力 ({top_branch} 佔 {concentration:.0%})")
         elif agg.total_net_qty < 0 and agg.events:
-            branch_net_sell: defaultdict[str, int] = defaultdict(int)
-            for event in agg.events:
-                if event.net_qty is not None and event.net_qty < 0:
-                    branch_net_sell[event.branch_display_name] += abs(event.net_qty)
-
             if branch_net_sell:
                 max_branch_sell = max(branch_net_sell.values())
                 total_negative_sell = sum(branch_net_sell.values())
@@ -213,14 +215,9 @@ class FlowSignalEngine:
             reasons.append(f"⚠️ 張數資料覆蓋率 {coverage_pct}%，榜外且無價格資料已排除。")
 
         # 5. 計算 Sparkline 資料 (依日期排序的每日淨買賣超序列)
-        daily_net: defaultdict[str, int] = defaultdict(int)
-        for event in agg.events:
-            if event.net_qty is not None:
-                daily_net[event.date] += event.net_qty
-
         # 依照日期排序，抽出淨買賣超數值
-        sorted_dates = sorted(daily_net.keys())
-        sparkline_data = [float(daily_net[d]) for d in sorted_dates]
+        sorted_dates = sorted(daily_net_map.keys())
+        sparkline_data = [float(daily_net_map[d]) for d in sorted_dates]
 
         # 6. 計算強度等級 Intensity Level (-3 到 3)
         intensity_level = 0

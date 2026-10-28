@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from typing import Mapping, Protocol
@@ -58,12 +59,16 @@ class BrokerFlowDashboardQueryService:
         self.semantic_port = semantic_port
         self.signal_engine = signal_engine or FlowSignalEngine()
         self._dashboard_cache: dict[tuple[object, ...], BrokerFlowDashboardSnapshot] = {}
+        self._dashboard_source_cache_key: object | None = None
+        self._dashboard_source_cache: BrokerFlowReadSnapshot | None = None
 
     def load_dashboard_snapshot(
         self, query: BrokerFlowDashboardQuery
     ) -> BrokerFlowDashboardSnapshot:
         version_getter = getattr(self.repository, "source_cache_key", None)
         source_version = version_getter() if callable(version_getter) else None
+        if source_version is not None:
+            self._discard_dashboard_cache_for_other_versions(source_version)
         cache_key = (
             source_version,
             query.requested_as_of_date,
@@ -73,7 +78,52 @@ class BrokerFlowDashboardQueryService:
         )
         if source_version is not None and cache_key in self._dashboard_cache:
             return self._dashboard_cache[cache_key]
-        source = self.repository.load_dashboard_source(query)
+
+        source_cache_key_getter = getattr(
+            self.repository, "dashboard_source_cache_key", None
+        )
+        source_cache_key = (
+            source_cache_key_getter(query)
+            if callable(source_cache_key_getter)
+            else None
+        )
+        if (
+            source_cache_key is not None
+            and source_cache_key == self._dashboard_source_cache_key
+            and self._dashboard_source_cache is not None
+        ):
+            source = self._dashboard_source_cache
+            source_is_cached = True
+        else:
+            source_is_cached = False
+            source = self.repository.load_dashboard_source(query)
+            if source_cache_key is not None and callable(source_cache_key_getter):
+                source_cache_key_after = source_cache_key_getter(query)
+                source_version_after = (
+                    version_getter() if callable(version_getter) else None
+                )
+                if (
+                    source_cache_key_after == source_cache_key
+                    and source_version_after == source_version
+                ):
+                    self._dashboard_source_cache_key = source_cache_key
+                    self._dashboard_source_cache = source
+                    source_is_cached = True
+                else:
+                    self._dashboard_source_cache_key = None
+                    self._dashboard_source_cache = None
+                    source_version = None
+                    cache_key = (
+                        source_version,
+                        query.requested_as_of_date,
+                        query.period,
+                        query.scope,
+                        query.limit_per_side,
+                    )
+            elif source_cache_key is None:
+                self._dashboard_source_cache_key = None
+                self._dashboard_source_cache = None
+
         if not source.events or not source.selected_trading_dates:
             snapshot = BrokerFlowDashboardSnapshot(
                 as_of_date=query.requested_as_of_date,
@@ -95,6 +145,9 @@ class BrokerFlowDashboardQueryService:
         aggregations = self._aggregate_market(source.events)
         all_signals = self.signal_engine.generate_signals(list(aggregations.values()))
         top_signals, bottom_signals = self._select_signals(all_signals, query)
+        if source_is_cached:
+            top_signals = self._detach_signal_events(top_signals)
+            bottom_signals = self._detach_signal_events(bottom_signals)
         selected_codes = tuple(
             dict.fromkeys(
                 signal.stock_code for signal in (*top_signals, *bottom_signals)
@@ -105,10 +158,25 @@ class BrokerFlowDashboardQueryService:
             semantics: Mapping[str, SmartMoneySemanticSummary] = {}
             semantic_query_count = 0
         else:
-            semantics = self.semantic_port.build_batch_semantics(
-                selected_codes,
-                actual_as_of,
+            reuse_builder = getattr(
+                self.semantic_port, "build_batch_semantics_from_dashboard", None
             )
+            if (
+                source_is_cached
+                and source_version is not None
+                and callable(reuse_builder)
+            ):
+                semantics = reuse_builder(
+                    selected_codes,
+                    actual_as_of,
+                    dashboard_source=source,
+                    expected_source_version=source_version,
+                )
+            else:
+                semantics = self.semantic_port.build_batch_semantics(
+                    selected_codes,
+                    actual_as_of,
+                )
             semantic_query_count = 1
         semantic_warnings = tuple(
             warning
@@ -137,6 +205,33 @@ class BrokerFlowDashboardQueryService:
         self._store_dashboard_cache(cache_key, source_version, snapshot)
         return snapshot
 
+    def _discard_dashboard_cache_for_other_versions(
+        self, source_version: object
+    ) -> None:
+        stale_keys = [
+            key
+            for key in self._dashboard_cache
+            if not key or key[0] != source_version
+        ]
+        for key in stale_keys:
+            self._dashboard_cache.pop(key, None)
+
+    @staticmethod
+    def _detach_signal_events(
+        signals: tuple[FlowSignalDTO, ...],
+    ) -> tuple[FlowSignalDTO, ...]:
+        """Keep mutable dashboard DTOs from changing a reused source snapshot."""
+        return tuple(
+            replace(
+                signal,
+                aggregation=replace(
+                    signal.aggregation,
+                    events=[replace(event) for event in signal.aggregation.events],
+                ),
+            )
+            for signal in signals
+        )
+
     def _store_dashboard_cache(
         self,
         cache_key: tuple[object, ...],
@@ -163,6 +258,59 @@ class BrokerFlowDashboardQueryService:
             warnings=source.warnings,
             source_fingerprint=source.source_fingerprint,
             query_count=source.query_count,
+        )
+
+    def load_stock_branch_detail_from_dashboard_snapshot(
+        self,
+        stock_code: str,
+        query: BrokerFlowDashboardQuery,
+        dashboard_snapshot: BrokerFlowDashboardSnapshot,
+    ) -> BrokerFlowStockDetailSnapshot | None:
+        """只從目前可見且完整的同股 snapshot 重用事件，否則交回唯讀查詢。"""
+
+        code = str(stock_code)
+        if (
+            dashboard_snapshot.period != query.period
+            or dashboard_snapshot.as_of_date != query.requested_as_of_date
+            or dashboard_snapshot.quality != "observed"
+            or dashboard_snapshot.warnings
+            or not dashboard_snapshot.source_fingerprint
+            or not dashboard_snapshot.selected_trading_dates
+        ):
+            return None
+
+        matching_signals = [
+            signal
+            for signal in (
+                *dashboard_snapshot.top_signals,
+                *dashboard_snapshot.bottom_signals,
+            )
+            if signal.stock_code == code
+        ]
+        if len(matching_signals) != 1:
+            return None
+
+        events = tuple(matching_signals[0].aggregation.events)
+        selected_dates = {
+            trading_day.isoformat()
+            for trading_day in dashboard_snapshot.selected_trading_dates
+        }
+        if not events or any(
+            event.stock_code != code or event.date not in selected_dates
+            for event in events
+        ):
+            return None
+
+        rows = self._aggregate_branches(events, group_by_branch=True)
+        return BrokerFlowStockDetailSnapshot(
+            as_of_date=dashboard_snapshot.as_of_date,
+            period=query.period,
+            stock_code=code,
+            rows=rows,
+            quality=dashboard_snapshot.quality,
+            warnings=dashboard_snapshot.warnings,
+            source_fingerprint=dashboard_snapshot.source_fingerprint,
+            query_count=0,
         )
 
     def load_branch_tracker(
@@ -234,14 +382,16 @@ class BrokerFlowDashboardQueryService:
         events: tuple[BrokerFlowEvent, ...]
     ) -> dict[str, StockFlowAggregation]:
         aggregations: dict[str, StockFlowAggregation] = {}
+        buying_branches_seen: dict[str, set[str]] = {}
+        selling_branches_seen: dict[str, set[str]] = {}
         for event in events:
-            aggregation = aggregations.setdefault(
-                event.stock_code,
-                StockFlowAggregation(
+            aggregation = aggregations.get(event.stock_code)
+            if aggregation is None:
+                aggregation = StockFlowAggregation(
                     stock_code=event.stock_code,
                     stock_name=event.stock_name,
-                ),
-            )
+                )
+                aggregations[event.stock_code] = aggregation
             aggregation.events.append(event)
             if event.lots_quality in {"observed", "degraded"}:
                 aggregation.observed_event_count += 1
@@ -257,10 +407,16 @@ class BrokerFlowDashboardQueryService:
                 aggregation.total_sell_qty += event.sell_qty
             if event.net_qty is not None:
                 aggregation.total_net_qty += event.net_qty
-                if event.net_qty > 0 and event.branch_display_name not in aggregation.buying_branches:
-                    aggregation.buying_branches.append(event.branch_display_name)
-                elif event.net_qty < 0 and event.branch_display_name not in aggregation.selling_branches:
-                    aggregation.selling_branches.append(event.branch_display_name)
+                if event.net_qty > 0:
+                    seen = buying_branches_seen.setdefault(event.stock_code, set())
+                    if event.branch_display_name not in seen:
+                        seen.add(event.branch_display_name)
+                        aggregation.buying_branches.append(event.branch_display_name)
+                elif event.net_qty < 0:
+                    seen = selling_branches_seen.setdefault(event.stock_code, set())
+                    if event.branch_display_name not in seen:
+                        seen.add(event.branch_display_name)
+                        aggregation.selling_branches.append(event.branch_display_name)
 
         for aggregation in aggregations.values():
             total = len(aggregation.events)
@@ -278,6 +434,28 @@ class BrokerFlowDashboardQueryService:
         signals: list[FlowSignalDTO],
         query: BrokerFlowDashboardQuery,
     ) -> tuple[tuple[FlowSignalDTO, ...], tuple[FlowSignalDTO, ...]]:
+        if query.scope == "top50":
+            top = sorted(
+                (
+                    signal
+                    for signal in signals
+                    if signal.aggregation.total_net_qty > 0
+                ),
+                key=lambda item: item.smart_money_score,
+                reverse=True,
+            )
+            return tuple(top[: query.limit_per_side]), ()
+        if query.scope == "bottom50":
+            bottom = sorted(
+                (
+                    signal
+                    for signal in signals
+                    if signal.aggregation.total_net_qty < 0
+                ),
+                key=lambda item: item.aggregation.total_net_qty,
+            )
+            return (), tuple(bottom[: query.limit_per_side])
+
         positive = [signal for signal in signals if signal.aggregation.total_net_qty > 0]
         negative = [signal for signal in signals if signal.aggregation.total_net_qty < 0]
         top = sorted(positive, key=lambda item: item.smart_money_score, reverse=True)
@@ -285,10 +463,6 @@ class BrokerFlowDashboardQueryService:
         if query.scope not in {"all"}:
             top = top[: query.limit_per_side]
             bottom = bottom[: query.limit_per_side]
-        if query.scope == "top50":
-            bottom = []
-        elif query.scope == "bottom50":
-            top = []
         return tuple(top), tuple(bottom)
 
     @staticmethod
@@ -306,9 +480,12 @@ class BrokerFlowDashboardQueryService:
                     summary.abnormal_signal_count += 1
 
         total = summary.bullish_stock_count + summary.bearish_stock_count
-        if total:
-            heat = Decimal(summary.bullish_stock_count) * Decimal(100) / Decimal(total)
-            summary.market_heat_score = float(heat)  # numeric-boundary: DTO/UI display
+        if total <= 0:
+            summary.market_regime = "Unknown"
+            return summary
+
+        heat = Decimal(summary.bullish_stock_count) * Decimal(100) / Decimal(total)
+        summary.market_heat_score = float(heat)  # numeric-boundary: DTO/UI display
         if summary.market_heat_score > 60:
             summary.market_regime = "Bullish Flow"
         elif summary.market_heat_score < 40:

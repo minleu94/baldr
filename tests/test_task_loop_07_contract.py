@@ -78,15 +78,59 @@ def test_stock_name_query_is_readonly_and_ui_has_no_storage_calls(tmp_path):
     settings = config(tmp_path)
     with sqlite3.connect(settings.db_file) as conn:
         conn.execute("CREATE TABLE daily_prices(日期 TEXT, 證券代號 TEXT, 證券名稱 TEXT)")
-        conn.execute("INSERT INTO daily_prices VALUES('20260520','2330','台積電')")
+        conn.executemany(
+            "INSERT INTO daily_prices VALUES(?,?,?)",
+            [
+                ("20260520", "2330", "舊名稱"),
+                ("20260521", "2330", "台積電"),
+                ("20260522", "2330", "  "),
+                ("20260520", "2317", "鴻海"),
+            ],
+        )
     before = settings.db_file.read_bytes()
     service = WatchlistService(settings)
-    assert service.query_stock_names(["2330", "9999"]) == {"2330": "台積電"}
+    with sqlite3.connect(settings.db_file) as conn:
+        assert not service._has_daily_prices_stock_date_index(conn)
+    assert service.query_stock_names(["2330", "2317", "9999", "2330"]) == {
+        "2330": "台積電",
+        "2317": "鴻海",
+    }
     assert settings.db_file.read_bytes() == before
     source = Path("ui_qt/views/watchlist_view.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     assert "DBManager" not in source and "sqlite3" not in source
     assert not [node for node in ast.walk(tree) if isinstance(node, ast.Attribute) and node.attr in {"read_csv", "read_sql", "read_text", "read_bytes", "write_text"}]
+
+
+def test_stock_name_query_uses_ordered_key_for_latest_nonempty_name(tmp_path):
+    settings = config(tmp_path)
+    with sqlite3.connect(settings.db_file) as conn:
+        conn.execute(
+            "CREATE TABLE daily_prices("
+            "日期 TEXT, 證券代號 TEXT, 證券名稱 TEXT, "
+            "PRIMARY KEY (證券代號, 日期))"
+        )
+        conn.executemany(
+            "INSERT INTO daily_prices VALUES(?,?,?)",
+            [
+                ("20260520", "2330", "舊名稱"),
+                ("20260521", "2330", "台積電"),
+                ("20260522", "2330", ""),
+                ("20260523", "2330", None),
+                ("20260524", "2330", " \t\u3000"),
+                ("20260520", "2317", "鴻海"),
+            ],
+        )
+    before = settings.db_file.read_bytes()
+    service = WatchlistService(settings)
+    with sqlite3.connect(settings.db_file) as conn:
+        assert service._has_daily_prices_stock_date_index(conn)
+
+    assert service.query_stock_names(["2330", "2317", "9999", "2330"]) == {
+        "2330": "台積電",
+        "2317": "鴻海",
+    }
+    assert settings.db_file.read_bytes() == before
 
 
 def test_watchlist_future_membership_and_empty_pool_are_distinct_from_missing(tmp_path):
@@ -169,6 +213,7 @@ def test_stale_async_result_or_error_cannot_overwrite_new_date(monkeypatch):
         def __init__(self, function, request_date):
             self.function, self.request_date = function, request_date
             self.finished, self.error, self.cancelled = Signal(), Signal(), Signal()
+            self.native_thread_finished = Signal()
             self.running = True
             Worker.created.append(self)
         def start(self): pass

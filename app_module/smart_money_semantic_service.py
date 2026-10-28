@@ -12,6 +12,7 @@ from typing import Callable, Iterable, Mapping, Protocol
 from app_module.decision_market_frame import DecisionMarketFrameLoader
 from app_module.exceptions import BacktestCancelledError
 from app_module.decision_snapshot_diagnostics import snapshot_stage
+from app_module.broker_flow_sqlite_read_repository import BrokerFlowReadSnapshot
 from decision_module.flow_contracts import BrokerFlowEvent
 from app_module.dtos.smart_money_semantic_dtos import (
     SmartMoneyDashboardSummary,
@@ -200,9 +201,53 @@ class SQLiteSmartMoneyBatchSemanticAdapter:
         source = self.broker_flow_repository.load_stock_semantic_batch(
             codes, decision_date, trading_day_limit=60
         )
+        return self._build_batch_semantics_from_source(codes, decision_date, source)
+
+    def build_batch_semantics_from_dashboard(
+        self,
+        stock_codes: tuple[str, ...],
+        decision_date: date,
+        *,
+        dashboard_source: BrokerFlowReadSnapshot,
+        expected_source_version: str,
+    ) -> Mapping[str, "SmartMoneySemanticSummary"]:
+        """在來源版本吻合時重用 dashboard 已載入的近期事件。"""
+        codes = tuple(dict.fromkeys(str(code) for code in stock_codes if str(code)))
+        if not codes:
+            return {}
+        source = self.broker_flow_repository.load_stock_semantic_batch(
+            codes,
+            decision_date,
+            trading_day_limit=60,
+            dashboard_source=dashboard_source,
+            expected_source_version=expected_source_version,
+        )
+        return self._build_batch_semantics_from_source(codes, decision_date, source)
+
+    def _build_batch_semantics_from_source(
+        self,
+        codes: tuple[str, ...],
+        decision_date: date,
+        source: BrokerFlowReadSnapshot,
+    ) -> Mapping[str, "SmartMoneySemanticSummary"]:
         prices_by_code = self.price_provider.load_recent_prices_batch(
             codes, decision_date, 60
         )
+        indexed_events = self._index_verified_source_events(
+            codes, decision_date, source
+        )
+        if indexed_events is not None:
+            summaries: dict[str, SmartMoneySemanticSummary] = {}
+            for code in codes:
+                service = SmartMoneySemanticService(
+                    _StaticEventProvider([]),
+                    price_provider=_StaticPriceProvider(prices_by_code.get(code, [])),
+                )
+                summaries[code] = service._build_stock_semantics_from_events(
+                    code, decision_date, indexed_events[code]
+                )
+            return summaries
+
         events_by_code: dict[str, list[BrokerFlowEvent]] = defaultdict(list)
         for event in source.events:
             events_by_code[event.stock_code].append(event)
@@ -213,6 +258,46 @@ class SQLiteSmartMoneyBatchSemanticAdapter:
             ).build_stock_semantics(code, decision_date)
             for code in codes
         }
+
+    @staticmethod
+    def _index_verified_source_events(
+        codes: tuple[str, ...],
+        decision_date: date,
+        source: BrokerFlowReadSnapshot,
+    ) -> dict[str, list[tuple[date, BrokerFlowEvent]]] | None:
+        selected_dates = source.selected_trading_dates
+        if any(type(trading_day) is not date for trading_day in selected_dates):
+            return None
+        if (
+            tuple(sorted(set(selected_dates))) != selected_dates
+            or any(trading_day > decision_date for trading_day in selected_dates)
+        ):
+            return None
+
+        date_index = {
+            trading_day.isoformat(): trading_day for trading_day in selected_dates
+        }
+        grouped: dict[str, list[tuple[date, BrokerFlowEvent]]] = {
+            code: [] for code in codes
+        }
+        previous_date_by_code: dict[str, date] = {}
+        for event in source.events:
+            if type(event.stock_code) is not str:
+                return None
+            code = event.stock_code
+            if code not in grouped:
+                continue
+            if type(event.date) is not str:
+                return None
+            event_date = date_index.get(event.date)
+            if event_date is None:
+                return None
+            previous_date = previous_date_by_code.get(code)
+            if previous_date is not None and event_date > previous_date:
+                return None
+            previous_date_by_code[code] = event_date
+            grouped[code].append((event_date, event))
+        return grouped
 
 
 def _parse_event_date(raw: object) -> date:
@@ -298,6 +383,22 @@ class SmartMoneySemanticService:
             decision_date,
             cancel_callback=cancel_callback,
         )
+        return self._build_stock_semantics_from_events(
+            stock_code,
+            decision_date,
+            events,
+            cancel_callback=cancel_callback,
+        )
+
+    def _build_stock_semantics_from_events(
+        self,
+        stock_code: str,
+        decision_date: date,
+        events: list[tuple[date, BrokerFlowEvent]],
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> SmartMoneySemanticSummary:
+        _raise_if_cancelled(cancel_callback)
         stock_name = next((event.stock_name for _, event in events if event.stock_name), stock_code)
         w5 = self._window_stats(events, 5, top_n=3)
         w20 = self._window_stats(events, 20, top_n=5)

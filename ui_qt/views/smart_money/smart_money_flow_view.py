@@ -4,14 +4,17 @@ Smart Money Flow - Terminal Style Scanner 主視圖
 已優化：採用左右分欄、增加股票資訊摘要面板、整合雙向资金長條圖分點明細表、美化控制列與表格樣式。
 """
 
+import inspect
 import pandas as pd
 from datetime import date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QTableView, QMessageBox,
+    QPushButton, QTableView, QMessageBox, QLineEdit,
     QTabWidget, QSplitter, QComboBox, QHeaderView, QFrame, QSizePolicy,
 )
-from PySide6.QtCore import QEvent, Qt, QItemSelectionModel
+from PySide6.QtCore import (
+    QEvent, QItemSelectionModel, QModelIndex, QSortFilterProxyModel, QTimer, Qt,
+)
 from PySide6.QtGui import QColor
 
 from ui_qt.widgets.info_button import InfoButton
@@ -30,6 +33,79 @@ from ui_qt.views.smart_money.detail_table_delegate import DetailTableDelegate
 from ui_qt.models.pandas_table_model import PandasTableModel # 給 Detail Table 用
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
+
+
+class SmartMoneyScannerProxyModel(QSortFilterProxyModel):
+    """在目前 scanner model 範圍內篩選代號／名稱，並沿用原始排序語意。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._search_text = ""
+        self.setDynamicSortFilter(True)
+
+    def set_search_text(self, value: str) -> None:
+        normalized = str(value or "").strip().casefold()
+        if normalized == self._search_text:
+            return
+        self.beginFilterChange()
+        self._search_text = normalized
+        self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+
+    def matches_signal(self, signal) -> bool:
+        if not self._search_text:
+            return True
+        stock_code = str(getattr(signal, "stock_code", "") or "").casefold()
+        stock_name = str(getattr(signal, "stock_name", "") or "").casefold()
+        return self._search_text in stock_code or self._search_text in stock_name
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder) -> None:
+        if column in {0, 1, 2, 3, 4}:
+            super().sort(column, order)
+
+    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:  # noqa: N802
+        source_model = self.sourceModel()
+        if not isinstance(source_model, TerminalTableModel):
+            return True
+        return self.matches_signal(source_model.get_signal_at(source_row))
+
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:  # noqa: N802
+        source_model = self.sourceModel()
+        if not isinstance(source_model, TerminalTableModel):
+            return super().lessThan(left, right)
+        left_signal = source_model.get_signal_at(left.row())
+        right_signal = source_model.get_signal_at(right.row())
+        if left_signal is None or right_signal is None:
+            return super().lessThan(left, right)
+
+        column = left.column()
+        if column == 0:
+            return left_signal.smart_money_score < right_signal.smart_money_score
+        if column == 1:
+            return (left_signal.stock_code, left_signal.stock_name) < (
+                right_signal.stock_code,
+                right_signal.stock_name,
+            )
+        if column == 2:
+            return left_signal.aggregation.total_net_qty < right_signal.aggregation.total_net_qty
+        if column == 3:
+            return left_signal.branch_concentration < right_signal.branch_concentration
+        if column == 4:
+            left_semantic = source_model.semantics_by_code.get(left_signal.stock_code)
+            right_semantic = source_model.semantics_by_code.get(right_signal.stock_code)
+            return str(getattr(left_semantic, "primary_state", "")) < str(
+                getattr(right_semantic, "primary_state", "")
+            )
+        return False
+
+    def get_signal_at(self, row: int):
+        if not (0 <= row < self.rowCount()):
+            return None
+        source_model = self.sourceModel()
+        if not isinstance(source_model, TerminalTableModel):
+            return None
+        source_index = self.mapToSource(self.index(row, 0))
+        return source_model.get_signal_at(source_index.row())
+
 
 class SmartMoneyFlowView(QWidget):
     """Terminal Style Smart Money Scanner 主視圖"""
@@ -57,7 +133,16 @@ class SmartMoneyFlowView(QWidget):
         # Details must share the dashboard's verified Taiwan-market cutoff.
         # Until the first snapshot arrives, there is no safe as-of date to use.
         self._dashboard_as_of_date: date | None = None
+        self._dashboard_snapshot = None
+        self._dashboard_period: str | None = None
+        self._dashboard_scope: str | None = None
+        self._branch_request_context: tuple[str, str, date] | None = None
         self._requested_stock_code: str | None = None
+        self._scanner_source_model: TerminalTableModel | None = None
+        self._scanner_has_result = False
+        self._scanner_width_cache_model: object | None = None
+        self._scanner_width_cache_font_signature: tuple[str, float, int, int] | None = None
+        self._scanner_width_cache: tuple[int, int, int, int] | None = None
 
         # 色彩設定 (更為精緻的深藍黑背景)
         palette = self.palette()
@@ -84,6 +169,14 @@ class SmartMoneyFlowView(QWidget):
                 color: #f1f5f9;
                 selection-background-color: #3b82f6;
                 border: 1px solid #334155;
+            }
+            QLineEdit {
+                background-color: #1e293b;
+                color: #f1f5f9;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                padding: 5px 10px;
+                min-width: 150px;
             }
         """)
 
@@ -148,6 +241,43 @@ class SmartMoneyFlowView(QWidget):
         self.scope_combo.setToolTip("主表預設顯示買超前 50 與賣超前 50；Summary Strip 仍以全市場訊號為統計母體。")
         self.scope_combo.currentIndexChanged.connect(lambda _idx=False: self._on_scope_changed())
         control_layout.addWidget(self.scope_combo)
+        control_layout.addWidget(QLabel("搜尋:", styleSheet="color: #94a3b8; font-weight: bold;"))
+        self.scanner_search_input = QLineEdit()
+        self.scanner_search_input.setPlaceholderText("代號或名稱")
+        self.scanner_search_input.setAccessibleName("搜尋目前主表")
+        self.scanner_search_input.setAccessibleDescription(
+            "只搜尋目前已載入的 Top／Bottom／All 主表範圍，不擴大市場範圍，也不重新查詢資料。"
+        )
+        self.scanner_search_input.setToolTip(
+            "只搜尋目前主表範圍內的股票代號或名稱；不會搜尋全市場或重新讀取資料。"
+        )
+        self.scanner_search_input.setClearButtonEnabled(True)
+        self.scanner_search_input.setMaximumWidth(220)
+        self.scanner_search_input.textChanged.connect(self._on_scanner_search_changed)
+        control_layout.addWidget(self.scanner_search_input)
+        self.scanner_row_count_label = QLabel("尚未載入")
+        self.scanner_row_count_label.setAccessibleName("主表顯示筆數")
+        self.scanner_row_count_label.setAccessibleDescription(
+            "計算目前所選主表範圍與搜尋條件的符合列，不代表市場完整母體。"
+        )
+        self.scanner_row_count_label.setToolTip(
+            "只計算目前所選主表範圍與搜尋條件的符合列，不代表市場完整母體。"
+        )
+        self.scanner_row_count_label.setStyleSheet("color: #94a3b8; margin-left: 4px;")
+        control_layout.addWidget(self.scanner_row_count_label)
+        self.scanner_quality_label = QLabel("品質：尚未載入")
+        self.scanner_quality_label.setAccessibleName("主表顯示列品質分類筆數")
+        self.scanner_quality_label.setAccessibleDescription(
+            "統計目前主表顯示列中含估算事件、張數未知事件及事件分類未知的股票列數；"
+            "不代表市場完整母體。"
+        )
+        self.scanner_quality_label.setToolTip(
+            "統計目前主表顯示列。含估算事件或張數未知事件的列，只要至少有一筆相應事件便計一檔。"
+            "張數未知表示無法折算，不代表沒有交易或 0 張。事件分類計數合計為 0 時，品質按未知顯示。"
+            "這些數字不代表市場完整母體。"
+        )
+        self.scanner_quality_label.setStyleSheet("color: #94a3b8; margin-left: 6px;")
+        control_layout.addWidget(self.scanner_quality_label)
 
         # Sparkline 圖表類型
         control_layout.addWidget(QLabel(" 趨勢圖樣:", styleSheet="color: #94a3b8; font-weight: bold; margin-right: 4px;"))
@@ -179,8 +309,13 @@ class SmartMoneyFlowView(QWidget):
         control_layout.addWidget(self.refresh_btn)
 
         self.load_status_label = QLabel("就緒")
+        self.load_status_label.setAccessibleName("主力掃描狀態")
+        self.load_status_label.setAccessibleDescription(
+            "顯示主力主表最近一次載入或刷新狀態。"
+        )
+        self.load_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.load_status_label.setWordWrap(True)
         self.load_status_label.setStyleSheet("color: #94a3b8; margin-left: 8px;")
-        control_layout.addWidget(self.load_status_label)
 
         if self.watchlist_service:
             self.add_watchlist_btn = QPushButton("+ 觀察清單")
@@ -217,6 +352,7 @@ class SmartMoneyFlowView(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         main_layout.addWidget(self.controls_scroll_area)
+        main_layout.addWidget(self.load_status_label)
 
         # --- Body: Tabs ---
         self.tab_widget = QTabWidget()
@@ -244,6 +380,11 @@ class SmartMoneyFlowView(QWidget):
         self.scanner_table.setAccessibleName("主力資金流向掃描結果")
         self.scanner_table.setAccessibleDescription(
             "使用方向鍵或 Tab 瀏覽股票；信號與近期趨勢提供文字數值替代。"
+        )
+        self._scanner_proxy_model = SmartMoneyScannerProxyModel(self)
+        self.scanner_table.setModel(self._scanner_proxy_model)
+        self.scanner_table.selectionModel().selectionChanged.connect(
+            self._on_scanner_selection_changed
         )
         self.scanner_table.setSortingEnabled(True)
         self.scanner_table.setMinimumWidth(0)
@@ -329,6 +470,15 @@ class SmartMoneyFlowView(QWidget):
         self.detail_label.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;")
         detail_layout.addWidget(self.detail_label)
 
+        self.detail_status_label = QLabel("選取股票後查看分點資料")
+        self.detail_status_label.setAccessibleName("個股分點明細狀態")
+        self.detail_status_label.setAccessibleDescription(
+            "顯示目前選取股票、資料日，以及分點明細的載入或結果狀態。"
+        )
+        self.detail_status_label.setWordWrap(True)
+        self.detail_status_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        detail_layout.addWidget(self.detail_status_label)
+
         # 3. 分點明細表格 (套用雙向水平長條圖 Delegate)
         self.detail_table = QTableView()
         self.detail_table.setSelectionBehavior(QTableView.SelectRows)
@@ -336,6 +486,7 @@ class SmartMoneyFlowView(QWidget):
         self.detail_table.setTabKeyNavigation(True)
         self.detail_table.setAccessibleName("個股分點明細")
         self.detail_table.setAccessibleDescription("使用方向鍵或 Tab 瀏覽分點買賣明細。")
+        self.detail_table.installEventFilter(self)
         self.detail_table.setSortingEnabled(True)
         self.detail_table.setShowGrid(False)
         self.detail_table.horizontalHeader().setStretchLastSection(False)
@@ -398,6 +549,16 @@ class SmartMoneyFlowView(QWidget):
         b_control_layout.addStretch()
         tab2_layout.addWidget(b_control_widget)
 
+        self.branch_status_label = QLabel("尚未載入分點追蹤資料。")
+        self.branch_status_label.setAccessibleName("分點追蹤載入狀態")
+        self.branch_status_label.setAccessibleDescription(
+            "顯示分點追蹤目前選取的分點、資料日與載入結果。"
+        )
+        self.branch_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.branch_status_label.setWordWrap(True)
+        self.branch_status_label.setStyleSheet("color: #94a3b8;")
+        tab2_layout.addWidget(self.branch_status_label)
+
         self.branch_table = QTableView()
         self.branch_table.setSelectionBehavior(QTableView.SelectRows)
         self.branch_table.setFocusPolicy(Qt.StrongFocus)
@@ -435,6 +596,8 @@ class SmartMoneyFlowView(QWidget):
     def eventFilter(self, watched, event):  # noqa: N802 - Qt override
         if watched is self and event.type() == QEvent.Type.Resize:
             self._apply_responsive_layout()
+        elif watched is getattr(self, "detail_table", None) and event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, self._fit_detail_table_columns)
         return super().eventFilter(watched, event)
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
@@ -505,8 +668,18 @@ class SmartMoneyFlowView(QWidget):
     def _apply_scanner_signals(self, signals, *, semantics_by_code=None):
         filtered_signals = self._filter_scanner_signals(signals)
         semantics_by_code = semantics_by_code or {}
-        self.scanner_model = TerminalTableModel(filtered_signals, semantics_by_code=semantics_by_code)
-        self.scanner_table.setModel(self.scanner_model)
+        self._scanner_source_model = TerminalTableModel(
+            filtered_signals, semantics_by_code=semantics_by_code
+        )
+        self._scanner_proxy_model.setSourceModel(self._scanner_source_model)
+        self._scanner_proxy_model.set_search_text(self.scanner_search_input.text())
+        self.scanner_model = self._scanner_proxy_model
+        self._scanner_has_result = True
+        self._scanner_width_cache_model = None
+        self._scanner_width_cache_font_signature = None
+        self._scanner_width_cache = None
+        self.scanner_table.clearSelection()
+        self._update_scanner_search_summary()
 
         scanner_header = self.scanner_table.horizontalHeader()
         scanner_header.setStretchLastSection(False)
@@ -526,13 +699,93 @@ class SmartMoneyFlowView(QWidget):
         scanner_header.setSectionResizeMode(5, QHeaderView.Interactive)
         self._fit_scanner_diagnostic_column()
 
-        sel_model = self.scanner_table.selectionModel()
-        if sel_model:
-            sel_model.selectionChanged.connect(self._on_scanner_selection_changed)
-
         self.sub_card_title.setText("未選取股票")
         self.sub_card_stats.setText("請從左側表格點選股票以查看主力分點進出明細與原因")
         self.detail_table.setModel(PandasTableModel(pd.DataFrame(columns=['分點名稱', '買進張數', '賣出張數', '淨買賣超'])))
+
+    def _update_scanner_search_summary(self) -> None:
+        source_model = self._scanner_source_model
+        if not self._scanner_has_result or source_model is None:
+            self.scanner_row_count_label.setText("尚未載入")
+            self.scanner_quality_label.setText("品質：尚未載入")
+            return
+
+        scope_count = source_model.rowCount()
+        matching_count = self._scanner_proxy_model.rowCount()
+        query = self.scanner_search_input.text().strip()
+        if scope_count == 0:
+            count_text = "顯示 0 檔"
+        elif query and matching_count == 0:
+            count_text = f"此範圍無符合標的（0／{scope_count}）"
+        elif query:
+            count_text = f"符合 {matching_count}／範圍 {scope_count} 檔"
+        else:
+            count_text = f"顯示 {scope_count} 檔"
+        self.scanner_row_count_label.setText(count_text)
+
+        estimated_rows = 0
+        unavailable_rows = 0
+        unclassified_rows = 0
+        for row in range(matching_count):
+            signal = self._scanner_proxy_model.get_signal_at(row)
+            if signal is None:
+                continue
+            try:
+                observed_count = int(
+                    getattr(signal, "observed_event_count", 0) or 0
+                )
+                estimated_count = int(
+                    getattr(signal, "estimated_event_count", 0) or 0
+                )
+                unavailable_count = int(
+                    getattr(signal, "unavailable_event_count", 0) or 0
+                )
+            except (TypeError, ValueError):
+                unclassified_rows += 1
+                continue
+            if min(observed_count, estimated_count, unavailable_count) < 0:
+                unclassified_rows += 1
+                continue
+            if observed_count + estimated_count + unavailable_count <= 0:
+                unclassified_rows += 1
+                continue
+            if estimated_count > 0:
+                estimated_rows += 1
+            if unavailable_count > 0:
+                unavailable_rows += 1
+        self.scanner_quality_label.setText(
+            f"品質：估算 {estimated_rows}／張數未知 {unavailable_rows}／"
+            f"未分類 {unclassified_rows}"
+        )
+
+    def _on_scanner_search_changed(self, text: str) -> None:
+        selection = self.scanner_table.selectionModel().selectedRows()
+        selected_signal = (
+            self._scanner_proxy_model.get_signal_at(selection[0].row())
+            if selection and self._scanner_source_model is not None
+            else None
+        )
+        self._scanner_proxy_model.set_search_text(text)
+        self._update_scanner_search_summary()
+        if selected_signal is not None and not self._scanner_proxy_model.matches_signal(selected_signal):
+            self.scanner_table.clearSelection()
+            self._clear_hidden_scanner_selection(selected_signal)
+
+    def _clear_hidden_scanner_selection(self, signal) -> None:
+        self._requested_stock_code = None
+        self._request_ids["detail"] += 1
+        worker = self._workers.pop("detail", None)
+        if worker is not None:
+            worker.cancel(cooperative=True, wait=False)
+            self._retired_workers.append(worker)
+        self._clear_stock_detail()
+        self.detail_label.setText("分點買賣明細 (BRANCH DRILL-DOWN)")
+        self.detail_status_label.setText(
+            f"搜尋已隱藏 {signal.stock_name}（{signal.stock_code}）；調整搜尋或重新選股以查看分點資料。"
+        )
+        self.detail_status_label.setToolTip("")
+        self.sub_card_title.setText("未選取股票")
+        self.sub_card_stats.setText("請從左側表格點選股票以查看主力分點進出明細與原因")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -543,7 +796,11 @@ class SmartMoneyFlowView(QWidget):
 
     def _fit_scanner_diagnostic_column(self):
         model = self.scanner_table.model()
-        if model is None:
+        content_model = self._scanner_source_model
+        if model is None or content_model is None:
+            self._scanner_width_cache_model = None
+            self._scanner_width_cache_font_signature = None
+            self._scanner_width_cache = None
             return
 
         concentration_col = 3
@@ -553,23 +810,17 @@ class SmartMoneyFlowView(QWidget):
         trend_col = 7
 
         font_metrics = self.scanner_table.fontMetrics()
-
-        concentration_width = self._fit_text_column_width(model, concentration_col, minimum=54, maximum=70, padding=18)
-        semantic_width = self._fit_text_column_width(model, semantic_col, minimum=66, maximum=86, padding=18)
-        badges_width = self._fit_badges_column_width(model, badges_col, font_metrics)
+        (
+            concentration_width,
+            semantic_width,
+            badges_width,
+            diagnostic_content_width,
+        ) = self._scanner_column_content_widths(content_model, font_metrics)
         trend_width = 190
         self.scanner_table.setColumnWidth(concentration_col, concentration_width)
         self.scanner_table.setColumnWidth(semantic_col, semantic_width)
         self.scanner_table.setColumnWidth(badges_col, badges_width)
         self.scanner_table.setColumnWidth(trend_col, trend_width)
-
-        diagnostic_content_width = self._fit_text_column_width(
-            model,
-            diagnostic_col,
-            minimum=250,
-            maximum=420,
-            padding=34,
-        )
 
         left_and_middle_width = sum(
             self.scanner_table.columnWidth(col)
@@ -587,6 +838,36 @@ class SmartMoneyFlowView(QWidget):
         )
         preferred_table_width = total_column_width + 24
         self.scanner_table.setMaximumWidth(max(920, preferred_table_width))
+
+    def _scanner_column_content_widths(
+        self, model, font_metrics
+    ) -> tuple[int, int, int, int]:
+        font_signature = (
+            self.scanner_table.font().toString(),
+            self.scanner_table.devicePixelRatioF(),
+            font_metrics.height(),
+            font_metrics.horizontalAdvance("MW測試"),
+        )
+        if (
+            self._scanner_width_cache_model is not model
+            or self._scanner_width_cache_font_signature != font_signature
+            or self._scanner_width_cache is None
+        ):
+            self._scanner_width_cache = (
+                self._fit_text_column_width(
+                    model, 3, minimum=54, maximum=70, padding=18
+                ),
+                self._fit_text_column_width(
+                    model, 4, minimum=66, maximum=86, padding=18
+                ),
+                self._fit_badges_column_width(model, 6, font_metrics),
+                self._fit_text_column_width(
+                    model, 5, minimum=250, maximum=420, padding=34
+                ),
+            )
+            self._scanner_width_cache_model = model
+            self._scanner_width_cache_font_signature = font_signature
+        return self._scanner_width_cache
 
     def _fit_text_column_width(self, model, column: int, minimum: int, maximum: int, padding: int) -> int:
         font_metrics = self.scanner_table.fontMetrics()
@@ -634,6 +915,40 @@ class SmartMoneyFlowView(QWidget):
         self.branch_combo.setCurrentIndex(match_idx)
         self._on_branch_changed()
 
+    def _period_display_label(self, period):
+        return {
+            "day": "日線 (DAY)",
+            "week": "週線 (WEEK)",
+            "month": "月線 (MONTH)",
+        }.get(str(period), str(period))
+
+    def _scope_display_label(self, scope):
+        index = self.scope_combo.findData(scope)
+        return self.scope_combo.itemText(index) if index >= 0 else "範圍未知"
+
+    def _dashboard_query_label(self, period, scope):
+        return (
+            f"{self._period_display_label(period)}／"
+            f"{self._scope_display_label(scope)}"
+        )
+
+    def _current_dashboard_query_label(self):
+        return self._dashboard_query_label(
+            self._get_current_period_val(), self.scope_combo.currentData()
+        )
+
+    def _retained_dashboard_notice(self):
+        snapshot = self._dashboard_snapshot
+        if snapshot is None:
+            return ""
+        previous_query = self._dashboard_query_label(
+            self._dashboard_period, self._dashboard_scope
+        )
+        return (
+            f"畫面仍顯示前次成功結果「{previous_query}」"
+            f"（資料日：{snapshot.as_of_date.isoformat()}）"
+        )
+
     def _refresh_data(self):
         try:
             requested_as_of_date = taiwan_market_today()
@@ -650,8 +965,15 @@ class SmartMoneyFlowView(QWidget):
             self.period_combo.setEnabled(True)
             self.scope_combo.setEnabled(True)
             detail = str(exc).strip().splitlines()
+            retained_notice = self._retained_dashboard_notice()
+            retained_suffix = (
+                f"｜目前選擇「{self._current_dashboard_query_label()}」；{retained_notice}"
+                if retained_notice
+                else ""
+            )
             self.load_status_label.setText(
                 f"主力資料日期無法取得：{detail[0] if detail else type(exc).__name__}"
+                f"{retained_suffix}"
             )
             return
 
@@ -664,11 +986,20 @@ class SmartMoneyFlowView(QWidget):
         self.refresh_btn.setEnabled(False)
         self.period_combo.setEnabled(False)
         self.scope_combo.setEnabled(False)
-        self.load_status_label.setText("主力資料載入中…")
+        retained_notice = self._retained_dashboard_notice()
+        loading_status = "主力資料更新中…" if retained_notice else "主力資料載入中…"
+        retained_suffix = (
+            f"｜目前選擇「{self._current_dashboard_query_label()}」；{retained_notice}"
+            if retained_notice
+            else ""
+        )
+        self.load_status_label.setText(f"{loading_status}{retained_suffix}")
         self._start_request(
             "dashboard",
             lambda: self.flow_service.load_dashboard_snapshot(query),
-            self._apply_dashboard_snapshot,
+            lambda snapshot, requested_scope=query.scope: self._apply_dashboard_snapshot(
+                snapshot, scope=requested_scope
+            ),
         )
 
     def _start_request(self, kind, task, on_success):
@@ -713,10 +1044,56 @@ class SmartMoneyFlowView(QWidget):
             self.scope_combo.setEnabled(True)
 
     def _show_request_error(self, kind, message):
-        labels = {"dashboard": "主力資料", "detail": "個股分點", "branch": "分點追蹤"}
-        self.load_status_label.setText(f"{labels[kind]}載入失敗：{str(message).splitlines()[0]}")
+        error_lines = str(message).strip().splitlines()
+        error_summary = error_lines[0] if error_lines else "未知錯誤"
+        if kind == "dashboard":
+            retained_notice = self._retained_dashboard_notice()
+            action = "更新" if retained_notice else "載入"
+            retained_suffix = (
+                f"｜目前選擇「{self._current_dashboard_query_label()}」；{retained_notice}"
+                if retained_notice
+                else ""
+            )
+            self.load_status_label.setText(
+                f"主力資料{action}失敗：{error_summary}{retained_suffix}"
+            )
+            return
+        if kind == "branch":
+            context = self._branch_request_context
+            if context is None:
+                prefix = "分點追蹤"
+            else:
+                branch_name, period, as_of_date = context
+                prefix = (
+                    f"{branch_name}｜{self._period_display_label(period)}｜"
+                    f"資料日 {as_of_date.isoformat()}｜分點追蹤"
+                )
+            self.branch_status_label.setText(f"{prefix}載入失敗：{error_summary}")
+            self.branch_status_label.setToolTip(str(message).strip())
+            return
+        if kind == "detail":
+            self._clear_stock_detail()
+            self.detail_label.setText("分點買賣明細 (BRANCH DRILL-DOWN)")
+            stock_code = self._requested_stock_code or "目前選取股票"
+            as_of_date = (
+                self._dashboard_as_of_date.isoformat()
+                if self._dashboard_as_of_date is not None
+                else "日期未知"
+            )
+            self.detail_status_label.setText(
+                f"{stock_code}｜資料日 {as_of_date}｜分點明細載入失敗，請重新選取或刷新"
+            )
+            self.detail_status_label.setToolTip(str(message).strip())
+            return
+        self.load_status_label.setText(f"載入失敗：{error_summary}")
 
-    def _apply_dashboard_snapshot(self, snapshot):
+    def _apply_dashboard_snapshot(self, snapshot, *, scope=None):
+        self._dashboard_snapshot = snapshot
+        current_scope = self.scope_combo.currentData() if scope is None else scope
+        self._dashboard_scope = str(current_scope) if current_scope is not None else None
+        self._dashboard_period = getattr(
+            snapshot, "period", self._get_current_period_val()
+        )
         self._dashboard_as_of_date = snapshot.as_of_date
         self._all_scanner_signals = list((*snapshot.top_signals, *snapshot.bottom_signals))
         self.summary_strip.update_summary(snapshot.summary)
@@ -736,8 +1113,12 @@ class SmartMoneyFlowView(QWidget):
             self.branch_combo.setCurrentIndex(selected_index)
         self.branch_combo.blockSignals(False)
         self._data_loaded = True
+        query_label = self._dashboard_query_label(
+            self._dashboard_period, self._dashboard_scope
+        )
         self.load_status_label.setText(
-            f"完成｜資料日 {snapshot.as_of_date.isoformat()}｜{snapshot.quality}"
+            f"主力資料完成｜{query_label}｜資料日 {snapshot.as_of_date.isoformat()}｜"
+            f"{snapshot.quality}"
         )
         self._on_branch_changed()
 
@@ -777,14 +1158,44 @@ class SmartMoneyFlowView(QWidget):
 
         # 2. 載入 Detail
         period = self._get_current_period_val()
+        as_of_date = self._dashboard_as_of_date
+        dashboard_snapshot = self._dashboard_snapshot
+        self._clear_stock_detail()
         self.detail_label.setText("分點買賣明細 (BRANCH DRILL-DOWN)｜載入中…")
+        self.detail_status_label.setText(
+            f"{signal.stock_code}｜資料日 {as_of_date.isoformat()}｜"
+            "分點明細載入中…"
+        )
+        self.detail_status_label.setToolTip("")
+        detail_task = self._stock_detail_task(
+            signal.stock_code, period, as_of_date, dashboard_snapshot
+        )
         self._start_request(
             "detail",
-            lambda: self.flow_service.load_stock_branch_detail(
-                signal.stock_code, period, self._dashboard_as_of_date
-            ),
+            detail_task,
             self._apply_stock_detail,
         )
+
+    def _stock_detail_task(self, stock_code, period, as_of_date, dashboard_snapshot):
+        loader = self.flow_service.load_stock_branch_detail
+        if dashboard_snapshot is not None:
+            try:
+                inspect.signature(loader).bind(
+                    stock_code,
+                    period,
+                    as_of_date,
+                    dashboard_snapshot=dashboard_snapshot,
+                )
+            except (TypeError, ValueError):
+                pass
+            else:
+                return lambda: loader(
+                    stock_code,
+                    period,
+                    as_of_date,
+                    dashboard_snapshot=dashboard_snapshot,
+                )
+        return lambda: loader(stock_code, period, as_of_date)
 
     def _apply_stock_detail(self, snapshot):
         self.detail_label.setText("分點買賣明細 (BRANCH DRILL-DOWN)")
@@ -823,6 +1234,29 @@ class SmartMoneyFlowView(QWidget):
         df_detail = pd.DataFrame(data) if data else pd.DataFrame(columns=['分點名稱', '買進張數', '賣出張數', '淨買賣超'])
         self.detail_table.setModel(PandasTableModel(df_detail))
         self._fit_detail_table_columns()
+        status_prefix = (
+            f"{snapshot.stock_code}｜資料日 {snapshot.as_of_date.isoformat()}｜品質 {snapshot.quality}"
+        )
+        self.detail_status_label.setToolTip("\n".join(snapshot.warnings))
+        if details:
+            self.detail_status_label.setText(f"{status_prefix}｜{len(details)} 個分點")
+        elif snapshot.quality in {"missing", "unavailable"}:
+            self.detail_status_label.setText(
+                f"{status_prefix}｜來源資料不可用，無法確認是否有分點交易"
+            )
+        elif snapshot.quality == "degraded":
+            self.detail_status_label.setText(
+                f"{status_prefix}｜沒有可呈現的分點資料；請檢查來源警示"
+            )
+        else:
+            self.detail_status_label.setText(f"{status_prefix}｜本次沒有可呈現的分點資料")
+
+    def _clear_stock_detail(self):
+        self.detail_table.setModel(
+            PandasTableModel(
+                pd.DataFrame(columns=['分點名稱', '買進張數', '賣出張數', '淨買賣超'])
+            )
+        )
 
     def _fit_detail_table_columns(self):
         model = self.detail_table.model()
@@ -839,8 +1273,8 @@ class SmartMoneyFlowView(QWidget):
 
         column_count = min(model.columnCount(), 4)
         font_metrics = self.detail_table.fontMetrics()
-        minimums = [98, 68, 68, 128]
-        paddings = [24, 20, 20, 86]
+        minimums = [98, 56, 56, 128]
+        paddings = [16, 12, 12, 56]
         desired_widths = []
         for col in range(column_count):
             header_text = str(model.headerData(col, Qt.Horizontal) or "")
@@ -880,11 +1314,19 @@ class SmartMoneyFlowView(QWidget):
             return
 
         period = self._get_current_period_val()
-        self.load_status_label.setText("分點追蹤載入中…")
+        as_of_date = self._dashboard_as_of_date
+        branch_name = self.branch_combo.currentText()
+        self._branch_request_context = (branch_name, period, as_of_date)
+        self.branch_table.setModel(BranchTrackerTableModel([]))
+        self.branch_status_label.setToolTip("")
+        self.branch_status_label.setText(
+            f"{branch_name}｜{self._period_display_label(period)}｜"
+            f"資料日 {as_of_date.isoformat()}｜分點追蹤載入中…"
+        )
         self._start_request(
             "branch",
             lambda: self.flow_service.load_branch_tracker(
-                branch_key, period, self._dashboard_as_of_date
+                branch_key, period, as_of_date
             ),
             self._apply_branch_tracker,
         )
@@ -905,8 +1347,11 @@ class SmartMoneyFlowView(QWidget):
         self.branch_table.setColumnWidth(3, 90)  # 賣出
         self.branch_table.setColumnWidth(4, 200) # Badges
         self.branch_table.setColumnWidth(5, 150) # Sparkline
-        self.load_status_label.setText(
-            f"分點完成｜資料日 {snapshot.as_of_date.isoformat()}｜{snapshot.quality}"
+        self.branch_status_label.setToolTip("\n".join(snapshot.warnings))
+        self.branch_status_label.setText(
+            f"{self.branch_combo.currentText()}｜{self._period_display_label(snapshot.period)}｜"
+            f"資料日 {snapshot.as_of_date.isoformat()}｜{snapshot.quality}｜"
+            f"{len(branch_flows)} 檔"
         )
 
     def _add_to_watchlist(self):
@@ -970,37 +1415,54 @@ class SmartMoneyFlowView(QWidget):
         self.load_data_if_needed()
         if self._dashboard_as_of_date is None:
             return
-        if not hasattr(self, 'scanner_model') or self.scanner_model is None:
+        source_model = self._scanner_source_model
+        if source_model is None:
             return
 
         stock_code = str(stock_code).strip()
         row_idx = -1
-        for r in range(self.scanner_model.rowCount()):
-            sig = self.scanner_model.get_signal_at(r)
+        for r in range(source_model.rowCount()):
+            sig = source_model.get_signal_at(r)
             if sig and sig.stock_code == stock_code:
                 row_idx = r
                 break
 
         if row_idx != -1:
+            view_index = self._scanner_proxy_model.mapFromSource(
+                source_model.index(row_idx, 0)
+            )
+            if not view_index.isValid():
+                self.scanner_search_input.clear()
+                view_index = self._scanner_proxy_model.mapFromSource(
+                    source_model.index(row_idx, 0)
+                )
             selection_model = self.scanner_table.selectionModel()
-            if selection_model:
-                index = self.scanner_model.index(row_idx, 0)
+            if selection_model and view_index.isValid():
                 selection_model.select(
-                    index,
+                    view_index,
                     QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
                 )
-                self.scanner_table.scrollTo(index)
+                self.scanner_table.scrollTo(view_index)
                 self._on_scanner_selection_changed()
         else:
             self.scanner_table.clearSelection()
             self.sub_card_title.setText(stock_code)
             self.sub_card_stats.setText("此股票未列入目前掃描榜；未提供榜單分數，仍可查看分點資料。")
-            self.detail_table.setModel(PandasTableModel(pd.DataFrame()))
+            self._clear_stock_detail()
             self.detail_label.setText("分點買賣明細 (BRANCH DRILL-DOWN)｜載入中…")
+            self.detail_status_label.setText(
+                f"{stock_code}｜資料日 {self._dashboard_as_of_date.isoformat()}｜"
+                "分點明細載入中…"
+            )
+            self.detail_status_label.setToolTip("")
             period = self._get_current_period_val()
             as_of_date = self._dashboard_as_of_date
+            dashboard_snapshot = self._dashboard_snapshot
+            detail_task = self._stock_detail_task(
+                stock_code, period, as_of_date, dashboard_snapshot
+            )
             self._start_request(
                 "detail",
-                lambda: self.flow_service.load_stock_branch_detail(stock_code, period, as_of_date),
+                detail_task,
                 self._apply_stock_detail,
             )

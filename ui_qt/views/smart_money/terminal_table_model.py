@@ -15,6 +15,14 @@ ROLE_SPARKLINE = Qt.UserRole + 2
 ROLE_BADGES = Qt.UserRole + 3
 ROLE_SCORE = Qt.UserRole + 4
 
+_SCORE_DEFINITION = (
+    "買方主力規則分數，範圍 0–100；賣方列不計買方分數，通常為 0。不是勝率或機率。"
+)
+_CONCENTRATION_DEFINITION = (
+    "最大單一分點的同方向淨量 ÷ 所有同方向分點淨量，僅計目前載入期間與資料；"
+    "不是全市場或股權持有集中度。"
+)
+
 
 def _format_accessible_number(value: Any) -> str:
     """保留數值語意的文字呈現，供螢幕閱讀器與鍵盤替代內容使用。"""
@@ -63,6 +71,24 @@ def _format_trend_accessible(details: Any, values: Any) -> str:
 def _format_badges_accessible(tags: Any) -> str:
     values = [str(tag).strip() for tag in (tags or ()) if str(tag).strip()]
     return "、".join(values) if values else "無"
+
+
+def _format_data_quality_coverage(
+    observed_count: int,
+    estimated_count: int,
+    unavailable_count: int,
+) -> str:
+    total = observed_count + estimated_count + unavailable_count
+    if total <= 0:
+        return "資料品質：未知（未提供事件分類計數）"
+
+    observed_pct = observed_count / total * 100.0
+    estimated_pct = estimated_count / total * 100.0
+    unavailable_pct = unavailable_count / total * 100.0
+    return (
+        f"資料品質：真實 {observed_pct:.0f}%｜估算 {estimated_pct:.0f}%｜"
+        f"不可用 {unavailable_pct:.0f}%"
+    )
 
 
 class TerminalTableModel(QAbstractTableModel):
@@ -121,13 +147,13 @@ class TerminalTableModel(QAbstractTableModel):
         semantic_state = getattr(semantic, "primary_state", "未計算") if semantic else "未計算"
         diagnostics = self._format_window_diagnostics(semantic) if semantic else "無語意診斷"
         if col == 0:
-            return f"分數：{score}"
+            return f"分數：{score}。{_SCORE_DEFINITION}"
         if col == 1:
             return f"股票：{stock}"
         if col == 2:
             return f"淨量：{net_qty}"
         if col == 3:
-            return f"集中度：{concentration_text}"
+            return f"集中度：{concentration_text}。{_CONCENTRATION_DEFINITION}"
         if col == 4:
             return f"語意狀態：{semantic_state}"
         if col == 5:
@@ -237,15 +263,9 @@ class TerminalTableModel(QAbstractTableModel):
             obs_cnt = getattr(signal, 'observed_event_count', 0)
             est_cnt = getattr(signal, 'estimated_event_count', 0)
             unavail_cnt = getattr(signal, 'unavailable_event_count', 0)
-            total_cnt = obs_cnt + est_cnt + unavail_cnt
-
-            if total_cnt > 0:
-                obs_pct = (obs_cnt / total_cnt) * 100.0
-                est_pct = (est_cnt / total_cnt) * 100.0
-                unavail_pct = (unavail_cnt / total_cnt) * 100.0
-                tooltip_lines.append(f"資料品質：真實 {obs_pct:.0f}%｜估算 {est_pct:.0f}%｜不可用 {unavail_pct:.0f}%")
-            else:
-                tooltip_lines.append("資料品質：真實 100%｜估算 0%｜不可用 0%")
+            tooltip_lines.append(
+                _format_data_quality_coverage(obs_cnt, est_cnt, unavail_cnt)
+            )
 
             tooltip_lines.append("💡 MoneyDJ 榜單特性說明：")
             tooltip_lines.append("• MoneyDJ 分點買賣包含張數榜 (c=E) 與金額榜 (c=B)，均僅取前 50 名。")
@@ -268,12 +288,18 @@ class TerminalTableModel(QAbstractTableModel):
         return None
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
-        if orientation == Qt.Horizontal and role in (
-            Qt.DisplayRole,
-            Qt.AccessibleTextRole,
-            Qt.StatusTipRole,
-        ):
-            if 0 <= section < len(self.headers):
+        if orientation == Qt.Horizontal and 0 <= section < len(self.headers):
+            if role == Qt.ToolTipRole:
+                if section == 0:
+                    return _SCORE_DEFINITION
+                if section == 3:
+                    return _CONCENTRATION_DEFINITION
+            if role == Qt.AccessibleTextRole:
+                if section == 0:
+                    return f"分數。{_SCORE_DEFINITION}"
+                if section == 3:
+                    return f"集中度。{_CONCENTRATION_DEFINITION}"
+            if role in (Qt.DisplayRole, Qt.AccessibleTextRole, Qt.StatusTipRole):
                 return self.headers[section]
         return None
 
@@ -430,15 +456,9 @@ class BranchTrackerTableModel(QAbstractTableModel):
             obs_cnt = getattr(agg, 'observed_event_count', 0)
             est_cnt = getattr(agg, 'estimated_event_count', 0)
             unavail_cnt = getattr(agg, 'unavailable_event_count', 0)
-            total_cnt = obs_cnt + est_cnt + unavail_cnt
-
-            if total_cnt > 0:
-                obs_pct = (obs_cnt / total_cnt) * 100.0
-                est_pct = (est_cnt / total_cnt) * 100.0
-                unavail_pct = (unavail_cnt / total_cnt) * 100.0
-                tooltip_lines.append(f"資料品質：真實 {obs_pct:.0f}%｜估算 {est_pct:.0f}%｜不可用 {unavail_pct:.0f}%")
-            else:
-                tooltip_lines.append("資料品質：真實 100%｜估算 0%｜不可用 0%")
+            tooltip_lines.append(
+                _format_data_quality_coverage(obs_cnt, est_cnt, unavail_cnt)
+            )
 
             tooltip_lines.append("💡 MoneyDJ 榜單特性說明：")
             tooltip_lines.append("• MoneyDJ 分點買賣包含張數榜 (c=E) 與金額榜 (c=B)，均僅取前 50 名。")

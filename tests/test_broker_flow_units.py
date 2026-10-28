@@ -1,5 +1,6 @@
 import hashlib
 import sqlite3
+from decimal import Decimal
 from types import SimpleNamespace
 import pandas as pd
 from app_module.broker_flow_service import BrokerFlowService
@@ -133,6 +134,155 @@ def test_flow_signal_engine_estimated_discount():
     assert signal.confidence == 0.6  # base_confidence 0.6 * coverage_ratio 1.0 = 0.6. max_confidence = 1.0 - 0.4 * 1.0 = 0.6. min(0.6, 0.6) = 0.6
     assert signal.has_estimated_lots is True
     assert "金額估算" in signal.signal_tags
+
+
+def test_flow_signal_engine_reuses_daily_totals_for_buy_concentration_and_sparkline():
+    from decision_module.flow_contracts import BrokerFlowEvent, StockFlowAggregation
+    from decision_module.flow_signal_engine import FlowSignalEngine
+
+    def event(trading_day: str, branch: str, net_qty: int | None) -> BrokerFlowEvent:
+        return BrokerFlowEvent(
+            date=trading_day,
+            branch_system_key=branch,
+            branch_display_name=branch,
+            stock_code="2330",
+            stock_name="台積電",
+            net_qty=net_qty,
+            lots_quality="unavailable" if net_qty is None else "observed",
+        )
+
+    events = [
+        event("2026-07-03", "分點甲", 50),
+        event("2026-06-30", "分點丙", -40),
+        event("2026-07-03", "分點乙", 20),
+        event("2026-07-04", "資料缺值", None),
+        event("2026-07-02", "平盤分點", 0),
+        event("2026-07-01", "分點甲", 20),
+        event("2026-07-01", "分點乙", 10),
+    ]
+    aggregation = StockFlowAggregation(
+        stock_code="2330",
+        stock_name="台積電",
+        total_buy_qty=100,
+        total_sell_qty=40,
+        total_net_qty=60,
+        buying_branches=["分點甲", "分點乙"],
+        selling_branches=["分點丙"],
+        events=events,
+        lots_available=True,
+        has_estimated_lots=False,
+        observed_event_count=6,
+        estimated_event_count=0,
+        unavailable_event_count=1,
+        usable_event_count=6,
+        lots_coverage_ratio=Decimal(6) / Decimal(7),
+    )
+
+    signal = FlowSignalEngine()._process_single_stock(aggregation)
+
+    assert signal.smart_money_score == 23.9
+    assert signal.confidence == 0.43
+    assert signal.branch_concentration == 0.7
+    assert signal.signal_tags == ["主力一致買超", "高度集中"]
+    assert signal.explainable_reasons == [
+        "共有 2 家追蹤主力同步買進",
+        "籌碼高度集中於特定主力 (分點甲 佔 70%)",
+        "⚠️ 張數資料覆蓋率 85%，榜外且無價格資料已排除。",
+    ]
+    # 連續日由新到舊遇到平盤即停止；sparkline 仍由舊到新且保留零值。
+    assert signal.sparkline_data == [-40.0, 30.0, 0.0, 70.0]
+    assert signal.intensity_level == 1
+    assert signal.aggregation.events == events
+
+
+def test_flow_signal_engine_preserves_sell_side_concentration_and_daily_order():
+    from decision_module.flow_contracts import BrokerFlowEvent, StockFlowAggregation
+    from decision_module.flow_signal_engine import FlowSignalEngine
+
+    def event(trading_day: str, branch: str, net_qty: int) -> BrokerFlowEvent:
+        return BrokerFlowEvent(
+            date=trading_day,
+            branch_system_key=branch,
+            branch_display_name=branch,
+            stock_code="2317",
+            stock_name="鴻海",
+            net_qty=net_qty,
+        )
+
+    aggregation = StockFlowAggregation(
+        stock_code="2317",
+        stock_name="鴻海",
+        total_buy_qty=50,
+        total_sell_qty=150,
+        total_net_qty=-50,
+        buying_branches=["分點丙"],
+        selling_branches=["分點甲", "分點乙"],
+        events=[
+            event("2026-08-05", "分點甲", -30),
+            event("2026-08-03", "分點丙", 50),
+            event("2026-08-05", "分點乙", -10),
+            event("2026-08-04", "分點甲", -40),
+            event("2026-08-04", "分點乙", -20),
+        ],
+        lots_available=True,
+        observed_event_count=5,
+        usable_event_count=5,
+        lots_coverage_ratio=Decimal("1"),
+    )
+
+    signal = FlowSignalEngine()._process_single_stock(aggregation)
+
+    assert signal.smart_money_score == 0.0
+    assert signal.confidence == 0.1
+    assert signal.branch_concentration == 0.7
+    assert signal.signal_tags == ["主力一致賣超", "連續出貨", "高度集中"]
+    assert signal.explainable_reasons == [
+        "共有 2 家追蹤主力同步賣出",
+        "主力在過去期間內連續 2 天呈現淨賣超",
+        "籌碼高度集中於特定賣方主力 (分點甲 佔 70%)",
+    ]
+    assert signal.sparkline_data == [50.0, -60.0, -40.0]
+    assert signal.intensity_level == -1
+
+
+def test_flow_signal_engine_keeps_unusable_lot_early_return_contract():
+    from decision_module.flow_contracts import BrokerFlowEvent, StockFlowAggregation
+    from decision_module.flow_signal_engine import FlowSignalEngine
+
+    aggregation = StockFlowAggregation(
+        stock_code="2881",
+        stock_name="富邦金",
+        total_net_qty=100,
+        events=[BrokerFlowEvent(
+            date="2026-08-05",
+            branch_system_key="分點甲",
+            branch_display_name="分點甲",
+            stock_code="2881",
+            stock_name="富邦金",
+            net_qty=100,
+        )],
+        lots_available=False,
+        has_estimated_lots=True,
+        observed_event_count=1,
+        estimated_event_count=1,
+        unavailable_event_count=1,
+        usable_event_count=0,
+        lots_coverage_ratio=Decimal("0"),
+    )
+
+    signal = FlowSignalEngine()._process_single_stock(aggregation)
+
+    assert signal.smart_money_score == 0.0
+    assert signal.confidence == 0.0
+    assert signal.branch_concentration == 0.0
+    assert signal.signal_tags == ["無張數數據"]
+    assert signal.sparkline_data == []
+    assert signal.intensity_level == 0
+    assert signal.observed_event_count == 1
+    assert signal.estimated_event_count == 1
+    assert signal.unavailable_event_count == 1
+    assert signal.usable_event_count == 0
+    assert signal.lots_coverage_ratio == Decimal("0")
 
 
 def test_broker_flow_service_no_price_remains_none(tmp_path, monkeypatch):

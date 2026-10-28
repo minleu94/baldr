@@ -43,16 +43,60 @@ class PandasTableModel(QAbstractTableModel):
         self._sort_column = -1
         self._sort_order = Qt.AscendingOrder
         self._visible_columns = list(dataframe.columns)  # 可見欄位列表
+        self._column_positions_by_name = self._build_column_positions(
+            self._dataframe.columns
+        )
         self._red_positive_columns = set(red_positive_columns or ())
         self._market_direction_columns = set(market_direction_columns or ())
         self._market_direction_value_columns = self._validated_market_direction_value_columns(
             dataframe,
             market_direction_value_columns,
         )
+        self._market_direction_source_positions = (
+            self._build_market_direction_source_positions()
+        )
+        self._refresh_visible_source_positions()
         self._decimal_places_by_column = self._validated_decimal_places(
             dataframe,
             decimal_places_by_column,
         )
+
+    @staticmethod
+    def _build_column_positions(columns: Any) -> dict[object, tuple[int, ...]]:
+        """一次建立欄名到來源位置的索引，支援重名欄位。"""
+
+        positions_by_name: dict[object, list[int]] = {}
+        for position, column_name in enumerate(columns):
+            positions_by_name.setdefault(column_name, []).append(position)
+        return {
+            column_name: tuple(positions)
+            for column_name, positions in positions_by_name.items()
+        }
+
+    def _refresh_visible_source_positions(self) -> None:
+        """依可見欄位順序快取來源位置，重名欄沿用 occurrence 對應。"""
+
+        occurrences: dict[object, int] = {}
+        source_positions: list[int] = []
+        for column_name in self._visible_columns:
+            positions = self._column_positions_by_name.get(column_name, ())
+            occurrence = occurrences.get(column_name, 0)
+            if positions:
+                source_positions.append(positions[min(occurrence, len(positions) - 1)])
+                occurrences[column_name] = occurrence + 1
+            else:
+                source_positions.append(-1)
+        self._visible_source_positions = tuple(source_positions)
+
+    def _build_market_direction_source_positions(self) -> dict[str, int]:
+        """快取方向色引用的同列數值欄，缺少來源欄時保留無色語意。"""
+
+        source_positions: dict[str, int] = {}
+        for display_column, value_column in self._market_direction_value_columns.items():
+            positions = self._column_positions_by_name.get(value_column, ())
+            if positions:
+                source_positions[display_column] = positions[0]
+        return source_positions
 
     @staticmethod
     def _validated_decimal_places(
@@ -165,27 +209,10 @@ class PandasTableModel(QAbstractTableModel):
             return None
         
         try:
-            col_name = self._visible_columns[col]
-            
-            # 檢查欄位是否存在
-            if col_name not in self._dataframe.columns:
+            source_column = self._visible_source_positions[col]
+            if source_column < 0:
                 return None
-            
-            # 可見欄位可能只是原始 DataFrame 的子集；必須依欄名取值，
-            # 不能把可見欄位位置誤當成原始欄位位置，否則表頭與內容會錯位。
-            # 同名欄位則依 visible occurrence 對應回原始 occurrence，避免
-            # pandas get_loc 回傳 slice／Series。
-            source_positions = [
-                position
-                for position, name in enumerate(self._dataframe.columns)
-                if name == col_name
-            ]
-            visible_occurrence = sum(
-                1 for name in self._visible_columns[:col] if name == col_name
-            )
-            source_column = source_positions[
-                min(visible_occurrence, len(source_positions) - 1)
-            ]
+            col_name = self._visible_columns[col]
             value = self._dataframe.iloc[row, source_column]
             
             if role in (Qt.DisplayRole, Qt.ToolTipRole):
@@ -238,16 +265,11 @@ class PandasTableModel(QAbstractTableModel):
 
                 if col_name in self._market_direction_columns:
                     return self._market_direction_color(value)
-                direction_value_column = self._market_direction_value_columns.get(col_name)
-                if direction_value_column is not None:
-                    source_positions = [
-                        position
-                        for position, name in enumerate(self._dataframe.columns)
-                        if name == direction_value_column
-                    ]
-                    if not source_positions:
-                        return None
-                    direction_value = self._dataframe.iloc[row, source_positions[0]]
+                direction_source_column = self._market_direction_source_positions.get(
+                    col_name
+                )
+                if direction_source_column is not None:
+                    direction_value = self._dataframe.iloc[row, direction_source_column]
                     return self._market_direction_color(direction_value)
                 
                 if isinstance(value, (int, float)):
@@ -319,6 +341,13 @@ class PandasTableModel(QAbstractTableModel):
         self._visible_columns = [col for col in self._visible_columns if col in dataframe.columns]
         if not self._visible_columns:
             self._visible_columns = list(dataframe.columns)
+        self._column_positions_by_name = self._build_column_positions(
+            self._dataframe.columns
+        )
+        self._market_direction_source_positions = (
+            self._build_market_direction_source_positions()
+        )
+        self._refresh_visible_source_positions()
         self.endResetModel()
     
     def getDataFrame(self) -> pd.DataFrame:
@@ -332,6 +361,7 @@ class PandasTableModel(QAbstractTableModel):
         if valid_columns:
             self.beginResetModel()
             self._visible_columns = valid_columns
+            self._refresh_visible_source_positions()
             self.endResetModel()
     
     def getVisibleColumns(self) -> List[str]:

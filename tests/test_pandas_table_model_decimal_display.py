@@ -6,11 +6,13 @@ import numpy as np
 import pandas as pd
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 
 from decision_module.recommendation.contracts import RecommendationItem
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.views.recommendation.presenter import recommendation_item_to_view_row
 from ui_qt.views.recommendation_view import _recommendation_results_table_model
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 def _decimal_model(values: list[object]) -> PandasTableModel:
@@ -112,3 +114,45 @@ def test_decimal_display_options_are_strict_and_unconfigured_behavior_is_unchang
 
     unconfigured = PandasTableModel(frame)
     assert unconfigured.data(unconfigured.index(0, 0), Qt.DisplayRole) == "1.2345"
+
+
+def test_column_position_cache_preserves_duplicate_projection_after_resets(monkeypatch):
+    frame = pd.DataFrame(
+        [[11, 22, -1]],
+        columns=["值", "值", "方向來源"],
+    )
+    model = PandasTableModel(
+        frame,
+        market_direction_value_columns={"值": "方向來源"},
+    )
+    model.setVisibleColumns(["值", "方向來源", "值", "值"])
+    direction_color_column = QColor(MIDNIGHT_ANALYST.market_down)
+
+    def assert_projected_values(expected_values, expected_color):
+        for column, expected in enumerate(expected_values):
+            index = model.index(0, column)
+            assert model.data(index, Qt.DisplayRole) == str(expected)
+            assert model.data(index, Qt.ToolTipRole) == str(expected)
+        for column in (0, 2, 3):
+            assert model.data(model.index(0, column), Qt.ForegroundRole) == expected_color
+
+    assert_projected_values([11, -1, 22, 22], direction_color_column)
+
+    def unexpected_rebuild(*args):
+        pytest.fail("column positions should be reused while rendering cells")
+
+    with monkeypatch.context() as guard:
+        guard.setattr(model, "_build_column_positions", unexpected_rebuild)
+        guard.setattr(model, "_refresh_visible_source_positions", unexpected_rebuild)
+        assert_projected_values([11, -1, 22, 22], direction_color_column)
+
+    model.setDataFrame(
+        pd.DataFrame(
+            [[101, 202, 1]],
+            columns=["值", "值", "方向來源"],
+        )
+    )
+    assert_projected_values(
+        [101, 1, 202, 202],
+        QColor(MIDNIGHT_ANALYST.market_up),
+    )

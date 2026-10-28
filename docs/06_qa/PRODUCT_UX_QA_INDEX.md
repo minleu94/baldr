@@ -1,8 +1,10 @@
 # 產品與個股研究 QA 索引
 
+[可比產業超額圖卡清晰度](BALDR_INDUSTRY_STRENGTH_CARDS_20261028.md)記錄 3／2／1 欄產業小卡、明示相對基準方向、成分資料覆蓋率、期別 hover 與卡內詳情。Decision Desk／必要 Workbench UI 152 passed、Update validator 25 passed／0 failed／4 skipped、定向 mypy、py_compile、原生主程式畫面確認通過；repo-wide mypy 仍被未修改 T164 bridge 第 411 行語法錯誤阻擋。原生視窗載入快照品質降級；固定舊 EXE 與 Owner UAT 未驗。
+
 [Gate 1 Advice 解鎖](BALDR_GATE1_ADVICE_UNLOCK_20261027.md)：策略升格、參數鎖定、揭露與作者契約不再作 Advice 輸出 Gate；未升格 Advice 保留限制提示。聚焦 suite 253 passed，1 項既有 MainWindow ML registry 初始化測試失敗／排除；必要 Workbench UI 97 passed、Update validator 25 passed／0 failed／4 skipped、py_compile 通過。全域 mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋；未驗正式資料端到端與原生 GUI／Owner UAT。
 
-[Workbench Advice 摘要與候選卡](BALDR_WORKBENCH_ADVICE_CARD_LAYOUT_20261027.md)記錄 Advice／未升格 Advice／配置列數摘要、寬版三欄／中版雙欄／窄版一欄獨立堆疊、編號理由及點卡原地展開；驗收結果與限制依 QA 報告更新。
+[Workbench Advice 摘要與候選卡](BALDR_WORKBENCH_ADVICE_CARD_LAYOUT_20261027.md)記錄 Advice／未升格 Advice／配置列數摘要、寬版三欄／中版雙欄／窄版一欄逐列網格、編號理由及點卡原地展開。聚焦 suite 99 passed，必要 Update UI 97 passed、validator 25／0／4、targeted mypy／py_compile 通過。Repo-wide mypy 受未修改 T164 bridge 語法錯誤阻擋；Offscreen fallback 字型無法供中文字體視覺判讀，原生 GUI／Owner UAT 未驗。
 
 [Workbench Advice 快速判讀與窄版欄位](BALDR_WORKBENCH_ADVICE_QUICK_READ_RESPONSIVE_20261027.md)記錄 864 px 截圖中固定欄寬讓理由摘要只剩約 32 px，以及來源缺值與零配置列的語意；窄版收合風險／資料狀態欄、寬版恢復，並補上候選用途說明。Advice／契約聚焦測試 65 passed／4 failed（失敗為目前工作樹的範圍外舊斷言／導覽回歸），必要 Update Workbench UI 97 passed、Update validator 25／0／4、targeted mypy、py_compile 與 diff check 通過；全域 mypy 仍受既存 T164 bridge 語法錯誤阻擋。Offscreen 欄位切換通過；原生 MainWindow／Owner UAT 未驗。
 

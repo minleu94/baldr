@@ -10,7 +10,7 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QFrame, QPushButton, QScrollArea
+from PySide6.QtWidgets import QApplication, QLabel, QFrame, QPushButton, QScrollArea, QWidget
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
@@ -537,8 +537,11 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
                 market_return_20d_bp=50,
                 excess_5d_bp=100,
                 excess_20d_bp=200,
+                constituent_count=102,
+                eligible_stock_count_5d=102,
+                eligible_stock_count_20d=100,
                 coverage_5d_bp=10000,
-                coverage_20d_bp=9000,
+                coverage_20d_bp=9803,
                 representative_stocks=(
                     IndustryRepresentativeStock(
                         stock_code="0001",
@@ -558,6 +561,8 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
                 market_return_20d_bp=0,
                 excess_5d_bp=0,
                 excess_20d_bp=None,
+                constituent_count=10,
+                eligible_stock_count_5d=8,
                 coverage_5d_bp=8000,
                 coverage_20d_bp=None,
                 representative_stocks=(
@@ -609,51 +614,79 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     assert "industry_level=leaf" in selector.accessibleDescription()
     assert "TAIEX" in view.industry_strength_meta.text()
     assert "僅供當期研究（非歷史 PIT）" in view.industry_strength_meta.text()
-    assert "current research only" in view.industry_strength_meta.toolTip()
-    assert "摘要覆蓋：Unknown" in view.industry_strength_meta.toolTip()
-    assert "industry_strength.snapshot" in view.industry_strength_meta.toolTip()
+    assert "超額＝產業指數報酬減去 TAIEX 報酬" in view.industry_strength_meta.toolTip()
+    assert "可計算報酬的成分股比例" in view.industry_strength_meta.toolTip()
+    assert "industry_strength.snapshot" in view.industry_strength_meta.accessibleDescription()
     assert view.industry_strength_leading_button.isEnabled()
     assert view.industry_strength_trailing_button.isEnabled()
     assert "領先列（可定位）" in view.industry_strength_navigation_status.text()
     chart_text = " ".join(label.text() for label in view.industry_strength_chart_content.findChildren(QLabel))
-    assert "+0 bp" in chart_text
-    assert "Unknown（缺值）" in chart_text
-    assert "覆蓋 8,000 bp" in chart_text
+    assert "0 bp" in chart_text
+    assert "資料不足" in chart_text
+    assert "成分資料 98.03%" in chart_text
+    assert "成分資料 80.00%" in chart_text
+    assert "落後大盤 0.50 個百分點" in chart_text
+    assert "覆蓋 8,000 bp" not in chart_text
     assert all(button.text() != "整體層級" for button in view._industry_strength_row_buttons)
     assert all(
         bar.property("scaleMaxAbsBp") == 200
         for bar in view.industry_strength_chart_content.findChildren(QFrame, "decisionDeskIndustryStrengthBar")
     )
-    selected_context = view.industry_strength_selected_context
-    context_title = selected_context.findChild(
-        QLabel, "decisionDeskIndustryStrengthSelectedTitle"
+    positive_bar = next(
+        bar
+        for bar in view.industry_strength_chart_content.findChildren(
+            QFrame, "decisionDeskIndustryStrengthBar"
+        )
+        if bar.property("excessBp") == 100
     )
-    assert context_title is not None
-    assert context_title.text() == "選中產業報酬背景｜領先列"
-    five_day_values = list(view.industry_strength_selected_period_rows["5d"])
-    twenty_day_values = list(view.industry_strength_selected_period_rows["20d"])
-    assert [label.text() for label in five_day_values] == [
-        "產業指數 +150 bp", "TAIEX +25 bp", "來源超額 +100 bp"
-    ]
-    assert [label.text() for label in twenty_day_values] == [
-        "產業指數 +300 bp", "TAIEX +50 bp", "來源超額 +200 bp"
-    ]
-    assert all(label.minimumHeight() >= 24 for label in five_day_values + twenty_day_values)
-    assert "current research only" in selected_context.accessibleDescription()
-    assert "資料日 2026-06-13" in selected_context.accessibleDescription()
+    negative_bar = next(
+        bar
+        for bar in view.industry_strength_chart_content.findChildren(
+            QFrame, "decisionDeskIndustryStrengthBar"
+        )
+        if bar.property("excessBp") == -50
+    )
+    assert MIDNIGHT_ANALYST.market_up in positive_bar.styleSheet()
+    assert MIDNIGHT_ANALYST.market_down in negative_bar.styleSheet()
+    five_day_lane = view.industry_strength_chart_content.findChild(
+        QWidget, "decisionDeskIndustryStrength5dLane"
+    )
+    assert five_day_lane is not None
+    assert "產業指數報酬：+1.50%" in five_day_lane.toolTip()
+    assert "相對表現：領先 1.00 個百分點（+100 bp）" in five_day_lane.toolTip()
+    assert "可計算成分股：102/102 檔（覆蓋 100%）" in five_day_lane.toolTip()
+    assert "點擊卡片標題" in five_day_lane.toolTip()
+    assert view._industry_strength_card_details["領先列"].isHidden()
+    view._industry_strength_row_buttons[0].click()
+    expanded_text = " ".join(
+        label.text()
+        for label in view._industry_strength_card_details["領先列"].findChildren(QLabel)
+    )
+    assert not view._industry_strength_card_details["領先列"].isHidden()
+    assert "5 日報酬｜產業 +1.50%｜TAIEX +0.25%" in expanded_text
+    assert "100/102 檔" in expanded_text
+    assert "資料日 2026-06-13｜快照品質 品質降級｜此列品質" in expanded_text
+    assert "僅供當期研究，非歷史 PIT" in expanded_text
+    assert "來源 industry_strength.snapshot／snapshot-v2" in expanded_text
+    view._industry_strength_row_buttons[0].click()
+    assert view._industry_strength_card_details["領先列"].isHidden()
+    assert view._industry_strength_selected_name == "領先列"
 
     selector.setCurrentIndex(1)
     assert tuple(selector.currentData()) == ("aggregate", "twse")
     assert selector.currentText() == "層級：整體層級｜市場範圍：上市（TWSE）"
     assert "industry_level=aggregate" in selector.accessibleDescription()
     assert [button.text() for button in view._industry_strength_row_buttons] == ["整體層級"]
-    assert context_title.text() == "選中產業報酬背景｜整體層級"
-    assert [label.text() for label in five_day_values] == [
-        "產業指數 Unknown", "TAIEX Unknown", "來源超額 +500 bp"
-    ]
+    assert view._industry_strength_selected_name == "整體層級"
+    aggregate_detail = " ".join(
+        label.text()
+        for label in view._industry_strength_card_details["整體層級"].findChildren(QLabel)
+    )
+    assert "5 日報酬｜產業 Unknown｜TAIEX Unknown" in aggregate_detail
+    assert "領先大盤 +500 bp" in aggregate_detail
     selector.setCurrentIndex(0)
     assert [button.text() for button in view._industry_strength_row_buttons] == ["領先列", "非領先列", "尾列"]
-    assert context_title.text() == "選中產業報酬背景｜領先列"
+    assert view._industry_strength_selected_name == "領先列"
 
     old_representative_buttons = view.industry_strength_representatives.findChildren(QPushButton)
     assert [button.text() for button in old_representative_buttons] == ["0001 舊代表股"]
@@ -663,13 +696,15 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     chart_scrollbar.setValue(chart_scrollbar.maximum())
     scroll_position_before = chart_scrollbar.value()
     row_buttons_before[1].click()
-    assert context_title.text() == "選中產業報酬背景｜非領先列"
-    assert [label.text() for label in five_day_values] == [
-        "產業指數 0 bp", "TAIEX Unknown", "來源超額 0 bp"
-    ]
-    assert [label.text() for label in twenty_day_values] == [
-        "產業指數 Unknown", "TAIEX 0 bp", "來源超額 Unknown"
-    ]
+    assert view._industry_strength_selected_name == "非領先列"
+    assert not view._industry_strength_card_details["非領先列"].isHidden()
+    nonleading_detail = " ".join(
+        label.text()
+        for label in view._industry_strength_card_details["非領先列"].findChildren(QLabel)
+    )
+    assert "5 日報酬｜產業 0.00%｜TAIEX Unknown" in nonleading_detail
+    assert "與大盤持平 0 bp" in nonleading_detail
+    assert "超額缺值（不代表 0）" in nonleading_detail
     assert all(
         before is after
         for before, after in zip(row_buttons_before, view._industry_strength_row_buttons)
@@ -697,9 +732,7 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     assert not view.industry_strength_trailing_button.isEnabled()
     assert "沒有可用快照列" in view.industry_strength_navigation_status.text()
     assert view.industry_strength_empty_state.isHidden()
-    assert selected_context.isHidden()
-    assert context_title.text() == ""
-    assert all(not label.text() for label in five_day_values + twenty_day_values)
+    assert view._industry_strength_card_details == {}
     view._display_exception_snapshot("snapshot unavailable")
     assert view._industry_strength_rows == ()
     assert "Unknown" in view.industry_strength_meta.text()
@@ -876,7 +909,7 @@ def test_industry_strength_all_unknown_group_keeps_metadata_and_partial_unknown_
     assert view.industry_strength_chart_scroll.isHidden()
     assert "2026-06-14" in view.industry_strength_meta.text()
     assert "品質" in view.industry_strength_meta.text()
-    assert "industry_strength.all_unknown" in view.industry_strength_meta.toolTip()
+    assert "industry_strength.all_unknown" in view.industry_strength_meta.accessibleDescription()
     assert not view.industry_strength_leading_button.isEnabled()
     assert not view.industry_strength_trailing_button.isEnabled()
     assert "未出現在產業列表" in view.industry_strength_navigation_status.text()
@@ -886,8 +919,8 @@ def test_industry_strength_all_unknown_group_keeps_metadata_and_partial_unknown_
     assert not view.industry_strength_chart_scroll.isHidden()
     assert [button.text() for button in view._industry_strength_row_buttons] == ["部分缺值"]
     chart_text = " ".join(label.text() for label in view.industry_strength_chart_content.findChildren(QLabel))
-    assert "+0 bp" in chart_text
-    assert "Unknown（缺值）" in chart_text
+    assert "0 bp" in chart_text
+    assert "資料不足" in chart_text
 
 
 def test_industry_strength_chart_keeps_full_row_viewport_and_representatives_below_at_1280_width():
@@ -938,14 +971,22 @@ def test_industry_strength_chart_keeps_full_row_viewport_and_representatives_bel
     assert main_scroll.widgetResizable()
     viewport = view.industry_strength_chart_scroll.viewport()
     assert viewport.height() >= 220
-    first_industry_row = view.industry_strength_chart_layout.itemAt(1).widget()
+    first_industry_row = view._industry_strength_row_widgets[("leaf", "twse", "半導體")]
     assert first_industry_row is not None
     assert first_industry_row.height() <= viewport.height()
+    assert view._industry_strength_grid_columns == 3
     assert view.industry_strength_representatives.isVisible()
     assert (
         view.industry_strength_representatives.geometry().top()
         >= view.industry_strength_chart_scroll.geometry().bottom() + 1
     )
+
+    view.resize(800, 760)
+    application.processEvents()
+    assert view._industry_strength_grid_columns == 2
+    view.resize(600, 760)
+    application.processEvents()
+    assert view._industry_strength_grid_columns == 1
 
     view.close()
 

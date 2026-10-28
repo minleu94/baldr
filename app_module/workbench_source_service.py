@@ -397,7 +397,7 @@ class WorkbenchSourceService:
         }.get(quality_status, "UNKNOWN")
         warnings = (
             "這是你明確選取的保存結果，日期沿用原結果；不是今日排程候選。",
-            "此區僅供 Professional 研究；不構成正式 Advice、來源接受、PIT 或 Gate 通過。",
+            "這是你明確選取的保存結果 Advice；不代表來源已接受、具 PIT 資格或 Gate 已通過。",
             f"保存 execution 品質狀態為 {quality_status}；未由本次載入重新核驗逐來源品質或授權。",
             *tuple(execution.quality.warnings),
             *tuple(execution.context.warnings),
@@ -622,8 +622,7 @@ class WorkbenchSourceService:
                 diagnostics=("recommendation_read_model_unsupported",),
                 warnings=("保存推薦格式無法由 Advice 安全讀取；未注入候選。",),
             )
-        # 沒有精確綁定的採用／鎖參／揭露證據時，保留研究候選供每日判讀，
-        # 並強制降為 RESEARCH；不得把保存結果中的 promoted 字樣當正式建議資格。
+        # 保存結果中的 promoted 是來源狀態；本讀取流程不把它當成人工 Advice 的必要資格。
         promoted_without_acceptance = config.get("strategy_status") == "promoted"
         data_as_of_date = daily_evidence.candidate_data_date
         if not data_as_of_date:
@@ -648,8 +647,8 @@ class WorkbenchSourceService:
             "OBSERVED" if daily_evidence.candidate_quality == "observed" else "DEGRADED"
         )
         warnings: tuple[str, ...] = (
-            "排程候選已核對保存結果與日期／cohort；目前僅供研究，不代表策略已通過正式採用 Gate。",
-            "此策略建議不需要連接真實帳戶；持倉與交易由使用者手動記錄。這裡不計算個人配置或加碼金額。",
+            "排程結果已核對保存身份、日期與 cohort；以下 Advice 供使用者判斷與手動記錄，不會自動下單。",
+            "Advice 不需要連接真實帳戶；持倉與交易由使用者手動記錄。這裡不計算個人配置或加碼金額。",
         )
         if daily_evidence.candidate_status == "candidate_degraded":
             warnings = (
@@ -658,7 +657,7 @@ class WorkbenchSourceService:
             )
         if promoted_without_acceptance:
             warnings = (
-                "保存策略標示為 promoted，但沒有精確綁定的正式採用、參數鎖定與揭露核驗證據；此列已降為研究候選，不構成正式新增部位建議。",
+                "保存結果標示為 promoted，但本次讀回未核驗採用、參數鎖定與揭露證據；此狀態是 Advice 的限制提示，不阻止你查看建議或自行決定。",
                 *warnings,
             )
         per_stock_quality = WorkbenchSourceService._candidate_quality_by_stock(
@@ -674,7 +673,6 @@ class WorkbenchSourceService:
             data_as_of_date=data_as_of_date,
             mode=AdviceMode.PROFESSIONAL,
             evidence_warnings=warnings,
-            research_only=promoted_without_acceptance,
             evidence_quality_by_stock=per_stock_quality,
         )
         cohort_rows = tuple(
@@ -710,7 +708,7 @@ class WorkbenchSourceService:
                 advice,
                 diagnostics=tuple(dict.fromkeys((
                     *advice.diagnostics,
-                    "promoted_strategy_acceptance_evidence_missing_research_only",
+                    "promoted_strategy_acceptance_unverified_advice_caveat",
                 ))),
             )
         return advice

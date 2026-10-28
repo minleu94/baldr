@@ -156,7 +156,7 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
 
     recommendation = result.recommendations[0]
     portfolio = result.portfolio_rows[0]
-    assert recommendation.advice_action is AdviceAction.NO_NEW_POSITION
+    assert recommendation.advice_action is AdviceAction.ADD_CANDIDATE
     assert recommendation.source_trace == ("RecommendationResultDTO", "rec-20260712-001")
     assert recommendation.source_result_id == "rec-20260712-001"
     assert recommendation.source_payload_sha256 is None
@@ -165,11 +165,11 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     assert recommendation.data_as_of_date == "2026-07-11"
     assert recommendation.why_reasons == ("技術型態完整", "量能支持")
     assert recommendation.why_not_reasons == (
-        "guided_mode_strategy_advice_contract_missing_or_unverified",
+        "strategy_advice_contract_missing_or_unverified",
     )
     assert recommendation.risk_reasons == (
         "evidence_freshness_review_required",
-        "guided_mode_strategy_advice_contract_missing_or_unverified",
+        "strategy_advice_contract_missing_or_unverified",
     )
     assert portfolio.target_weight_bp == 1500
     assert portfolio.current_weight_bp == 500
@@ -216,9 +216,9 @@ def test_composer_projects_only_exact_stock_saved_screening_and_risk_evidence() 
 
     advice = result.recommendations[0]
     assert advice.stock_code == "2330"
-    assert advice.advice_action is AdviceAction.NO_NEW_POSITION
+    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
     assert advice.why_not_reasons == (
-        "guided_mode_strategy_advice_contract_missing_or_unverified",
+        "strategy_advice_contract_missing_or_unverified",
     )
     assert advice.liquidity_state == "UNKNOWN"
     assert advice.source_evidence == (
@@ -383,7 +383,7 @@ def test_composer_reads_canonical_typed_evidence_for_exact_recommended_stock() -
     ).recommendations[0]
 
     assert advice.stock_code == "2330"
-    assert advice.advice_action is AdviceAction.NO_NEW_POSITION
+    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
     assert advice.source_evidence == (
         "篩選：階段=final_selection；結果=通過；資料品質=已觀測",
     )
@@ -407,9 +407,9 @@ def test_strategy_advice_does_not_require_account_budget_or_position_inputs() ->
     )
 
     advice = result.recommendations[0]
-    assert advice.advice_action is AdviceAction.NO_NEW_POSITION
+    assert advice.advice_action is AdviceAction.ADD_CANDIDATE
     assert advice.why_not_reasons == (
-        "guided_mode_strategy_advice_contract_missing_or_unverified",
+        "strategy_advice_contract_missing_or_unverified",
     )
     assert advice.execution_feasibility == "UNKNOWN"
     assert "risk_budget_not_confirmed" not in advice.risk_reasons
@@ -623,9 +623,9 @@ def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() 
         mode=AdviceMode.GUIDED,
     ).recommendations[0]
     assert unverified.entry_thesis == ""
-    assert unverified.advice_action is AdviceAction.NO_NEW_POSITION
+    assert unverified.advice_action is AdviceAction.ADD_CANDIDATE
     assert unverified.why_not_reasons == (
-        "guided_mode_strategy_advice_contract_missing_or_unverified",
+        "strategy_advice_contract_missing_or_unverified",
     )
     assert unverified.invalidation_conditions == ()
     assert unverified.holding_horizon == ""
@@ -640,9 +640,9 @@ def test_composer_uses_only_canonical_saved_strategy_advice_contract_snapshot() 
         mode=AdviceMode.GUIDED,
     ).recommendations[0]
     assert legacy.entry_thesis == ""
-    assert legacy.advice_action is AdviceAction.NO_NEW_POSITION
+    assert legacy.advice_action is AdviceAction.ADD_CANDIDATE
     assert legacy.why_not_reasons == (
-        "guided_mode_strategy_advice_contract_missing_or_unverified",
+        "strategy_advice_contract_missing_or_unverified",
     )
     assert legacy.invalidation_conditions == ()
     assert legacy.holding_horizon == ""
@@ -1045,7 +1045,7 @@ def test_recommendation_dto_projection_is_reused_by_normal_advice_and_portfolio_
     assert presentation.sample_size == 120
 
 
-def test_professional_candidate_is_classified_for_research_section() -> None:
+def test_professional_candidate_is_formal_advice_with_lifecycle_caveat() -> None:
     from app_module.advice_composer import AdviceComposer
 
     source = _recommendation_result()
@@ -1060,12 +1060,13 @@ def test_professional_candidate_is_classified_for_research_section() -> None:
     )
 
     recommendation = result.recommendations[0]
-    assert recommendation.advice_action is AdviceAction.RESEARCH
-    assert recommendation.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+    assert recommendation.advice_action is AdviceAction.ADD_CANDIDATE
+    assert recommendation.classification is AdviceClassification.FORMAL_ADVICE
+    assert "strategy_lifecycle_not_qualified" in recommendation.why_not_reasons
 
 
 @pytest.mark.parametrize("strategy_status", [None, "", "unknown", "retired"])
-def test_professional_without_promoted_strategy_status_stays_research_candidate(
+def test_professional_without_promoted_strategy_status_still_provides_advice(
     strategy_status: str | None,
 ) -> None:
     from app_module.advice_composer import AdviceComposer
@@ -1084,8 +1085,9 @@ def test_professional_without_promoted_strategy_status_stays_research_candidate(
     )
 
     recommendation = result.recommendations[0]
-    assert recommendation.advice_action is AdviceAction.RESEARCH
-    assert recommendation.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+    assert recommendation.advice_action is AdviceAction.ADD_CANDIDATE
+    assert recommendation.classification is AdviceClassification.FORMAL_ADVICE
+    assert "strategy_lifecycle_not_qualified" in recommendation.why_not_reasons
 
 
 def test_professional_promoted_strategy_is_independent_of_portfolio_inputs() -> None:

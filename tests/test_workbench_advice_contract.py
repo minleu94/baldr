@@ -9,8 +9,9 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDateTimeEdit, QDialog
+from PySide6.QtWidgets import QApplication, QDateTimeEdit, QDialog, QLabel
 from PySide6.QtCore import QDateTime, Qt
+from PySide6.QtTest import QTest
 
 from app_module.advice_dtos import (
     AdviceAction,
@@ -93,7 +94,7 @@ def test_workbench_renders_advice_dto_without_policy_execution() -> None:
 
     assert "模式：引導模式" in view.advice_summary.text()
     assert "決策日：2026-07-12｜資料日：2026-07-11" in view.advice_summary.text()
-    assert "正式 Advice：1 列" in view.advice_summary.text()
+    assert view.advice_metric_cards["formal"].value_label.text() == "1"
     assert "evidence_degraded" in view.advice_warning_status.text()
     action_index = view.advice_recommendation_model.index(
         0, view.advice_recommendation_model.column_index("advice_action")
@@ -115,8 +116,7 @@ def test_workbench_renders_advice_dto_without_policy_execution() -> None:
     assert _advice_warning_text(
         "guided_mode_strategy_advice_contract_missing_or_unverified"
     ) == (
-        "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選；"
-        "請以新的合格回測升版並填妥契約，再選用該新版本執行。"
+        "此策略版本的作者說明缺少或未核驗；仍提供 Advice，請將此限制納入判斷。"
     )
     assert view.advice_portfolio_model.data(
         view.advice_portfolio_model.index(0, view.advice_portfolio_model.column_index("target_weight_bp"))
@@ -204,15 +204,118 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
 
     assert view.advice_recommendation_model.rowCount() == 0
     assert view.advice_candidate_model.rowCount() == 1
-    assert "正式 Advice：0 列" in view.advice_summary.text()
-    assert "Professional 研究候選：1 列" in view.advice_summary.text()
+    assert view.advice_metric_cards["formal"].value_label.text() == "1"
+    assert view.advice_metric_cards["research"].value_label.text() == "1"
+    assert view.advice_metric_cards["allocation"].value_label.text() == "0"
+    assert not view.advice_candidate_hint.isHidden()
+    assert "每檔以獨立研究卡呈現" in view.advice_candidate_hint.text()
+    assert "不會自動下單" in view.advice_candidate_hint.text()
+    assert not view.advice_candidate_cards.isHidden()
+    assert len(view._advice_candidate_card_buttons) == 1
     view._show_advice_row_presentation(view.advice_candidate_model, 0)
-    assert "Professional 研究候選（不屬於正式 Advice）" in view.advice_selection_card.text()
+    assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
     assert "動作：研究（原碼：RESEARCH）" in view.advice_selection_card.text()
     assert "適用期間：未提供" in view.advice_selection_card.text()
     assert "風險：未提供" in view.advice_selection_card.text()
     assert "失效條件：未提供" in view.advice_selection_card.text()
     assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
+
+
+def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_card() -> None:
+    _app()
+    dashboard = _dashboard_with_advice()
+    candidates = (
+        RecommendationAdviceDTO(
+            stock_code="2330",
+            stock_name="台積電",
+            advice_action=AdviceAction.RESEARCH,
+            classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+            why_reasons=("research_gate_passed", "volume_confirmation"),
+            why_not_reasons=("price_current_session_missing",),
+            risk_reasons=("low_liquidity_review",),
+            source_evidence=("同筆來源證據 Alpha",),
+        ),
+        RecommendationAdviceDTO(
+            stock_code="2603",
+            stock_name="長榮",
+            advice_action=AdviceAction.RESEARCH,
+            classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+            why_reasons=("retest_observed",),
+        ),
+    )
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        mode=AdviceMode.PROFESSIONAL,
+        policy=AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL),
+        recommendations=candidates,
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(dashboard, advice_dashboard=advice),
+        auto_refresh=False,
+    )
+
+    assert view.advice_candidate_table.isHidden()
+    assert len(view._advice_candidate_card_buttons) == 2
+    view._layout_advice_candidate_cards(2)
+    assert view._advice_candidate_card_column_layouts[0].itemAt(0).widget() == (
+        view._advice_candidate_card_frames[0]
+    )
+    assert view._advice_candidate_card_column_layouts[1].itemAt(0).widget() == (
+        view._advice_candidate_card_frames[1]
+    )
+    view._layout_advice_candidate_cards(1)
+    assert view._advice_candidate_card_column_layouts[0].itemAt(1).widget() == (
+        view._advice_candidate_card_frames[1]
+    )
+    view._layout_advice_candidate_cards(2)
+    first = view._advice_candidate_card_buttons[0]
+    first.click()
+
+    assert view.advice_candidate_table.selectionModel().currentIndex().row() == 0
+    assert not view._advice_candidate_detail_hosts[0].isHidden()
+    assert view._advice_candidate_detail_hosts[1].isHidden()
+    assert view._advice_candidate_detail_hosts[0].isAncestorOf(
+        view.advice_selection_detail_panel
+    )
+    assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
+    candidate_card = view._advice_candidate_card_frames[0]
+    summary_texts = tuple(
+        label.text() for label in candidate_card.findChildren(QLabel)
+    )
+    assert "符合研究條件" in summary_texts
+    assert "缺少當日價格" in summary_texts
+    assert "01" in summary_texts
+    assert not any(text.startswith("支持理由：") for text in summary_texts)
+    assert "同筆來源證據 Alpha" in view.advice_selection_card.toolTip()
+    assert not view.advice_selection_card.isHidden()
+    assert not view.advice_presentation_detail.isHidden()
+    assert view._advice_candidate_detail_hosts[0].isAncestorOf(
+        view.advice_accept_decision_button
+    )
+
+    first_reason_label = view._advice_candidate_card_frames[0].findChild(
+        QLabel, "adviceCandidateReasonText"
+    )
+    assert first_reason_label is not None
+    QTest.mouseClick(first_reason_label, Qt.LeftButton)
+    assert view._advice_candidate_detail_hosts[0].isHidden()
+    assert view.advice_selection_detail_panel.isHidden()
+
+    QTest.mouseClick(view._advice_candidate_card_frames[1], Qt.LeftButton)
+    assert view.advice_candidate_table.selectionModel().currentIndex().row() == 1
+    assert view._advice_candidate_detail_hosts[0].isHidden()
+    assert not view._advice_candidate_detail_hosts[1].isHidden()
+
+    view._advice_candidate_card_buttons[1].click()
+    assert view.advice_candidate_table.selectionModel().currentIndex().row() == -1
+    assert view._advice_candidate_detail_hosts[0].isHidden()
+    assert view._advice_candidate_detail_hosts[1].isHidden()
+    assert view.advice_selection_detail_panel.isHidden()
+    assert not view._advice_candidate_detail_hosts[1].isAncestorOf(
+        view.advice_selection_detail_panel
+    )
+    assert not view.advice_accept_decision_button.isEnabled()
 
 
 def test_advice_selection_and_warnings_clear_when_state_changes() -> None:
@@ -248,10 +351,10 @@ def test_no_eligible_advice_keeps_empty_reason_separate_from_source_warnings() -
         auto_refresh=False,
     )
 
-    assert "本次沒有可呈現的 Advice" in view.advice_empty_label.text()
+    assert "本次沒有可顯示的建議" in view.advice_empty_label.text()
     assert "first_warning" in view.advice_empty_label.text()
     assert "second_warning" in view.advice_empty_label.text()
-    assert "不會自動補齊資料或取得正式資格" in view.advice_empty_label.text()
+    assert "不會自動補齊缺失資料" in view.advice_empty_label.text()
     assert "原警告：" in view.advice_warning_status.text()
     assert "first_warning\n• second_warning" in view.advice_warning_status.text()
     assert "無合格標的" not in view.advice_warning_status.text()
@@ -262,7 +365,7 @@ def test_no_eligible_advice_keeps_empty_reason_separate_from_source_warnings() -
         auto_refresh=False,
     )
     assert "無原警告回報；這不代表沒有風險" in no_warning_view.advice_warning_status.text()
-    assert "沒有提供空結果原因" in no_warning_view.advice_empty_label.text()
+    assert "沒有說明原因" in no_warning_view.advice_empty_label.text()
     assert "不能僅由空結果推斷資料完整或風險已解除" in no_warning_view.advice_empty_label.text()
     assert view.advice_recommendation_table.isHidden()
     assert view.advice_candidate_table.isHidden()

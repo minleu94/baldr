@@ -136,11 +136,6 @@ class RecommendationAdviceDTO:
     stock_name: str = ""
 
     def __post_init__(self) -> None:
-        if (
-            self.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
-            and self.advice_action is not AdviceAction.RESEARCH
-        ):
-            raise ValueError("professional candidates must remain RESEARCH only")
         _validate_optional_bp("ranking_percentile_bp", self.ranking_percentile_bp)
         _validate_optional_bp("calibrated_probability_bp", self.calibrated_probability_bp)
         _validate_optional_bp("after_cost_profit_probability_bp", self.after_cost_profit_probability_bp)

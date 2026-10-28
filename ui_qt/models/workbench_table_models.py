@@ -208,11 +208,15 @@ class WorkbenchChecklistTableModel(_WorkbenchTableModel):
 
 
 class AdviceRecommendationTableModel(_WorkbenchTableModel):
+    QUICK_READ_FIELDS = ("quick_reasons", "primary_risk", "evidence_status")
+    QUICK_READ_FIELD_INDEX = {
+        field_name: index for index, field_name in enumerate(QUICK_READ_FIELDS)
+    }
     COLUMNS = (
         ("stock_code", "標的"),
         ("advice_action", "動作"),
         ("confidence_tier", "決策信心"),
-        ("quick_reasons", "支持／政策資格"),
+        ("quick_reasons", "支持理由／資格限制"),
         ("primary_risk", "主要風險"),
         ("evidence_status", "資料與執行狀態"),
         # 保留具名唯讀欄位，供既有 model consumer 與輔助讀取使用；View 會收合。
@@ -222,6 +226,72 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
 
     def __init__(self, rows: Sequence[RecommendationAdviceDTO] = (), parent=None) -> None:
         super().__init__(rows, parent)
+        self._quick_read_cache = self._build_quick_read_cache(self._rows)
+
+    def set_rows(self, rows: Sequence[RecommendationAdviceDTO]) -> None:
+        next_rows = tuple(rows)
+        next_quick_read_cache = self._build_quick_read_cache(next_rows)
+        self.beginResetModel()
+        self._rows = next_rows
+        self._quick_read_cache = next_quick_read_cache
+        self.endResetModel()
+
+    def candidate_card_summary(self, row_index: int) -> tuple[str, str]:
+        """回傳卡片首屏的支持／限制短句，沿用既有公開理由清理規則。"""
+
+        row = self.row_at(row_index)
+        if row is None:
+            return "未提供", "未提供"
+        support = tuple(
+            _public_advice_reason(item)
+            for item in row.why_reasons
+            if str(item).strip()
+        )
+        restrictions = tuple(
+            _public_advice_reason(item)
+            for item in row.why_not_reasons
+            if str(item).strip()
+        )
+        return (
+            _compact_advice_text(_first_reason(support), limit=56),
+            _compact_advice_text(_first_reason(restrictions), limit=56),
+        )
+
+    def candidate_card_reasons(
+        self, row_index: int
+    ) -> tuple[tuple[str, ...], int, tuple[str, ...], int]:
+        """回傳可編號的首屏理由及未顯示項數；完整內容仍由詳情呈現。"""
+
+        row = self.row_at(row_index)
+        if row is None:
+            return (), 0, (), 0
+        support = tuple(
+            _compact_advice_text(_public_advice_reason(item), limit=42)
+            for item in row.why_reasons
+            if str(item).strip()
+        )
+        restrictions = tuple(
+            _compact_advice_text(_public_advice_reason(item), limit=42)
+            for item in row.why_not_reasons
+            if str(item).strip()
+        )
+        visible_support = support[:2]
+        visible_restrictions = restrictions[:1]
+        return (
+            visible_support,
+            max(0, len(support) - len(visible_support)),
+            visible_restrictions,
+            max(0, len(restrictions) - len(visible_restrictions)),
+        )
+
+    @classmethod
+    def _build_quick_read_cache(
+        cls, rows: Sequence[RecommendationAdviceDTO]
+    ) -> tuple[tuple[tuple[str, str], ...], ...]:
+        return tuple(
+            tuple(_advice_quick_read(row, field_name) for field_name in cls.QUICK_READ_FIELDS)
+            for row in rows
+        )
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         if not index.isValid() or not (0 <= index.row() < len(self._rows)):
@@ -245,7 +315,11 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
                 return detail
             return None
         if field_name in {"quick_reasons", "primary_risk", "evidence_status"}:
-            display, detail = _advice_quick_read(row, field_name)
+            if role not in {Qt.DisplayRole, Qt.ToolTipRole, Qt.AccessibleTextRole}:
+                return None
+            display, detail = self._quick_read_cache[index.row()][
+                self.QUICK_READ_FIELD_INDEX[field_name]
+            ]
             if role == Qt.DisplayRole:
                 return display
             if role == Qt.ToolTipRole:
@@ -277,7 +351,7 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
 
 
 class AdviceCandidateTableModel(AdviceRecommendationTableModel):
-    """Professional research candidates only; never used for formal Advice rows."""
+    """Advice candidate rows that remain separate from the primary recommendation table."""
 
 
 def _advice_display_label(field_name: str, raw_value: str) -> str:
@@ -336,8 +410,8 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
         support_text = _first_reason(support)
         restriction_text = _first_reason(restrictions)
         display = (
-            f"支持：{_compact_advice_text(support_text)}｜"
-            f"政策／資格限制：{_compact_advice_text(restriction_text)}"
+            f"支持：{_compact_advice_text(support_text, limit=14)}｜"
+            f"政策／資格限制：{_compact_advice_text(restriction_text, limit=14)}"
         )
         detail = (
             f"支持理由：{'；'.join(support) if support else '未提供'}\n"
@@ -422,11 +496,15 @@ def _public_advice_reason(value: object) -> str:
         "data_quality_missing": "資料品質缺漏",
         "data_quality_degraded": "資料品質降級",
         "data_quality_not_observed": "資料尚未驗證",
-        "guided_mode_strategy_not_promoted": "策略尚未正式採用",
-        "guided_mode_strategy_parameters_not_locked": "策略參數尚未鎖定",
-        "guided_mode_strategy_disclosure_incomplete": "策略揭露尚未完整",
-        "professional_candidate_research_only": "僅供研究，不屬正式建議",
-        "strategy_status_not_promoted": "策略尚未正式採用",
+        "guided_mode_strategy_not_promoted": "策略尚未通過升格核驗；Advice 仍供你判斷",
+        "guided_mode_strategy_parameters_not_locked": "策略參數尚未鎖定；請將此限制納入判斷",
+        "guided_mode_strategy_disclosure_incomplete": "策略揭露尚未完整；請將此限制納入判斷",
+        "professional_candidate_research_only": "策略尚未通過升格核驗；Advice 仍供你判斷",
+        "strategy_status_not_promoted": "策略尚未通過升格核驗；Advice 仍供你判斷",
+        "strategy_lifecycle_not_qualified": "策略生命週期尚未通過核驗；Advice 仍供你判斷",
+        "strategy_parameters_not_locked": "策略參數尚未鎖定；請將此限制納入判斷",
+        "strategy_disclosure_incomplete": "策略揭露尚未完整；請將此限制納入判斷",
+        "strategy_advice_contract_missing_or_unverified": "策略版本說明未提供或未核驗；不阻擋 Advice",
         "execution_not_feasible": "目前不可成交",
         "price_current_session_missing": "缺少當日價格",
         "source_not_fresh": "來源資料非最新",

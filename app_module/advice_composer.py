@@ -159,11 +159,8 @@ class AdviceComposer:
             if current_weights_known
             else None
         )
-        strategy_status = (
-            "candidate"
-            if research_only
-            else self._string_or_none(config.get("strategy_status"))
-        )
+        # research_only 保留為舊呼叫相容參數，不再把系統建議降成非正式輸出。
+        strategy_status = self._string_or_none(config.get("strategy_status"))
         parameters_locked = self._bool_or_none(config.get("parameters_locked"))
         disclosure_complete = self._bool_or_none(config.get("disclosure_complete"))
         execution_feasible = config.get("execution_feasible")
@@ -1184,6 +1181,5 @@ class AdviceComposer:
         *,
         strategy_status: str | None,
     ) -> AdviceClassification:
-        if mode is AdviceMode.PROFESSIONAL and strategy_status != "promoted":
-            return AdviceClassification.PROFESSIONAL_CANDIDATE
+        del mode, strategy_status
         return AdviceClassification.FORMAL_ADVICE

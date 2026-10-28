@@ -48,6 +48,7 @@ from app_module.advice_dtos import (
     RecommendationAdviceDTO,
 )
 from ui_qt.models.workbench_table_models import (
+    AdviceRecommendationTableModel,
     WorkbenchActionItemTableModel,
     WorkbenchEvidenceFeedTableModel,
     WorkbenchEvidenceTableModel,
@@ -55,6 +56,7 @@ from ui_qt.models.workbench_table_models import (
     _is_attention_status,
     _status_tone,
 )
+import ui_qt.models.workbench_table_models as workbench_table_models
 from ui_qt.views.workbench_view import (
     UnifiedDecisionWorkbenchView,
     WORKBENCH_TONES,
@@ -124,7 +126,7 @@ def test_manual_saved_research_lane_is_separate_and_survives_dashboard_refresh()
     assert "原決策日：2026-09-08" in view.manual_research_text.toPlainText()
     assert "不代表今日排程建議" in view.manual_research_text.toPlainText()
     assert "saved reason" in view.manual_research_text.toPlainText()
-    assert "所選保存結果（研究專用）" in view.manual_research_section_title.text()
+    assert "所選保存結果 Advice" in view.manual_research_section_title.text()
 
     dashboard = _dashboard_with_replay()
     scheduled_advice = dashboard.advice_dashboard
@@ -137,15 +139,16 @@ def test_manual_saved_research_lane_is_separate_and_survives_dashboard_refresh()
     assert view.manual_research_panel.isHidden()
 
 
-def test_advice_detail_lists_missing_required_contract_fields_without_filling_them() -> None:
+def test_advice_detail_marks_author_fields_optional_and_does_not_fill_them() -> None:
     summary = _advice_contract_completeness(
         RecommendationAdviceDTO(stock_code="2330", advice_action=AdviceAction.RESEARCH)
     )
 
-    assert "Advice 必要欄位待補：成立理由、信心層級" in summary
+    assert "Advice 證據欄位待核對：成立理由、信心層級" in summary
     assert "資料日" in summary
     assert "來源追溯" in summary
-    assert "不可由分數或空白推定" in summary
+    assert "不阻擋 Advice" in summary
+    assert "未知或缺少來源的證據不會由排名分數、其他股票或空白欄位代填" in summary
 
 
 def test_advice_contract_completeness_treats_unknown_states_and_empty_trace_as_missing() -> None:
@@ -162,7 +165,8 @@ def test_advice_contract_completeness_treats_unknown_states_and_empty_trace_as_m
     assert "流動性狀態" in summary
     assert "可成交性" in summary
     assert "來源追溯" in summary
-    assert "UNKNOWN／UNAVAILABLE 不算完成" in summary
+    assert "策略版本選填說明未提供" in summary
+    assert "這些欄位不阻擋 Advice" in summary
 
 
 def test_advice_contract_completeness_rejects_source_kind_without_identity() -> None:
@@ -200,7 +204,7 @@ def test_advice_contract_completeness_accepts_known_negative_states_with_trace()
         )
     )
 
-    assert "目前均有可判讀值與來源追溯" in summary
+    assert "Advice 核心欄位與來源追溯可判讀" in summary
 
 
 def test_advice_does_not_require_account_connection_or_offer_account_source_gate() -> None:
@@ -223,6 +227,70 @@ def test_advice_does_not_require_account_connection_or_offer_account_source_gate
     assert "不需要連接真實帳戶" in view.advice_warning_status.text()
     assert not hasattr(view, "advice_account_source_button")
     assert navigations == []
+    view.close()
+
+
+def test_workbench_advice_loading_empty_and_error_states_keep_plain_language_and_diagnostics() -> None:
+    app()
+    view = UnifiedDecisionWorkbenchView(auto_refresh=False)
+
+    view._set_advice_state("WAITING_FOR_ADVICE_DTO")
+    waiting_text = view.advice_empty_label.text()
+    assert "尚未載入今日策略建議" in waiting_text
+    assert "WAITING_FOR_ADVICE_DTO" not in waiting_text
+    assert "AdviceDashboardDTO" not in view.advice_summary.text()
+    assert "重新整理狀態" in waiting_text
+    assert not view.advice_technical_diagnostics_button.isHidden()
+    assert view.advice_technical_diagnostics_text.isHidden()
+
+    view.advice_technical_diagnostics_button.click()
+    assert not view.advice_technical_diagnostics_text.isHidden()
+    assert "狀態代碼：WAITING_FOR_ADVICE_DTO" in view.advice_technical_diagnostics_text.toPlainText()
+    assert view.advice_technical_diagnostics_button.text() == "隱藏技術診斷"
+
+    source_warning = "策略候選需回查來源保存狀態"
+    raw_diagnostic = "candidate_query_empty:source_id=example-1"
+    view._set_advice_state(
+        "NO_ELIGIBLE_ADVICE",
+        raw_diagnostic,
+        warnings=(source_warning,),
+    )
+    empty_text = view.advice_empty_label.text()
+    assert "本次沒有可顯示的建議" in empty_text
+    assert "NO_ELIGIBLE_ADVICE" not in empty_text
+    assert "DTO" not in empty_text
+    assert source_warning in empty_text
+    assert raw_diagnostic not in empty_text
+    assert source_warning in view.advice_warning_status.text()
+    assert view.advice_technical_diagnostics_button.isChecked() is False
+    assert view.advice_technical_diagnostics_text.isHidden()
+
+    view.advice_technical_diagnostics_button.click()
+    empty_diagnostics = view.advice_technical_diagnostics_text.toPlainText()
+    assert "狀態代碼：NO_ELIGIBLE_ADVICE" in empty_diagnostics
+    assert raw_diagnostic in empty_diagnostics
+    assert view.advice_recommendation_model.rowCount() == 0
+    assert view.advice_candidate_model.rowCount() == 0
+    assert view.advice_portfolio_model.rowCount() == 0
+
+    raw_error = "OSError: permission denied while reading saved recommendation"
+    view._set_advice_state("ADVICE_DTO_ERROR", raw_error)
+    error_text = view.advice_empty_label.text()
+    assert "無法載入策略建議" in error_text
+    assert "ADVICE_DTO_ERROR" not in error_text
+    assert raw_error not in error_text
+    assert "重新整理狀態" in error_text
+    assert "技術診斷" in error_text
+    assert "讀取失敗；舊建議已清除" in view.advice_summary.text()
+    assert not view.advice_technical_diagnostics_button.isChecked()
+    assert view.advice_technical_diagnostics_text.isHidden()
+    assert view.advice_warning_status.text() == "警告狀態：載入失敗，舊警告已清除。"
+
+    view.advice_technical_diagnostics_button.click()
+    error_diagnostics = view.advice_technical_diagnostics_text.toPlainText()
+    assert "狀態代碼：ADVICE_DTO_ERROR" in error_diagnostics
+    assert raw_error in error_diagnostics
+    assert "收合本次 Advice 狀態" in view.advice_technical_diagnostics_button.accessibleDescription()
     view.close()
 
 
@@ -1325,6 +1393,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert view.advanced_overview_layout.indexOf(view.advice_panel) == -1
     assert not view.advanced_workbench_panel.isAncestorOf(view.advice_panel)
     assert view.paper_account_context_label.isHidden()
+    assert not view.advice_summary_hint.isHidden()
     assert view.advice_recommendation_model.columnCount() == 8
     assert view.advice_recommendation_table.isColumnHidden(
         view.advice_recommendation_model.column_index("data_quality")
@@ -1332,8 +1401,24 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert view.advice_recommendation_table.isColumnHidden(
         view.advice_recommendation_model.column_index("execution_feasibility")
     )
-    assert "正式 Advice：1 列" in view.advice_summary.text()
-    assert "無原警告回報；這不代表沒有風險" in view.advice_warning_status.text()
+    view.resize(864, 900)
+    view._apply_responsive_layout(force=True)
+    assert view.advice_recommendation_table.isColumnHidden(
+        view.advice_recommendation_model.column_index("primary_risk")
+    )
+    assert view.advice_recommendation_table.isColumnHidden(
+        view.advice_recommendation_model.column_index("evidence_status")
+    )
+    view.resize(1280, 900)
+    view._apply_responsive_layout(force=True)
+    assert not view.advice_recommendation_table.isColumnHidden(
+        view.advice_recommendation_model.column_index("primary_risk")
+    )
+    assert not view.advice_recommendation_table.isColumnHidden(
+        view.advice_recommendation_model.column_index("evidence_status")
+    )
+    assert view.advice_metric_cards["formal"].value_label.text() == "1"
+    assert "未回報警告；不能因此推定沒有風險" in view.advice_warning_status.text()
     action_index = view.advice_recommendation_model.index(
         0, view.advice_recommendation_model.column_index("advice_action")
     )
@@ -1384,7 +1469,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     view.advice_recommendation_table.setCurrentIndex(
         view.advice_recommendation_model.index(0, 0)
     )
-    assert "正式 Advice" in view.advice_selection_card.text()
+    assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
     assert "evidence_quality_missing" in view.advice_selection_card.text()
     assert "證據成熟度：未知／未對齊（原始值：未提供）" in view.advice_selection_card.text()
     assert "證據層級" in view.advice_selection_card.text()
@@ -1411,6 +1496,7 @@ def test_advice_contract_backtest_navigation_carries_exact_current_candidate_ide
                 data_as_of_date="2026-07-03",
                 source_result_id="daily-result-001",
                 source_trace=("daily-result-001",),
+                data_quality="OBSERVED",
             ),
         ),
     )
@@ -1499,7 +1585,7 @@ def test_workbench_advice_quick_read_separates_policy_restrictions_from_source_e
 
     assert model.headerData(
         model.column_index("quick_reasons"), Qt.Orientation.Horizontal
-    ) == "支持／政策資格"
+    ) == "支持理由／資格限制"
     assert model.data(quick_index).startswith("支持：符合研究條件（另 1 項）｜政策／資格限制：")
     assert "缺少當日價格" in model.data(quick_index, Qt.ToolTipRole)
     assert "同股保存來源證據：Why Not：結果=未通過" in model.data(
@@ -1552,6 +1638,45 @@ def test_workbench_advice_quick_read_separates_policy_restrictions_from_source_e
     assert "證據成熟度：未知／未對齊" in reviewed_view.advice_recommendation_model.data(raw_forward_status)
     assert "forward／paper／live" in reviewed_view.advice_recommendation_model.data(
         raw_forward_status, Qt.ToolTipRole
+    )
+
+
+def test_workbench_advice_quick_read_is_cached_until_rows_change(monkeypatch) -> None:
+    app()
+    calls: list[str] = []
+    format_quick_read = workbench_table_models._advice_quick_read
+
+    def count_formatting(row, field_name: str) -> tuple[str, str]:
+        calls.append(field_name)
+        return format_quick_read(row, field_name)
+
+    monkeypatch.setattr(workbench_table_models, "_advice_quick_read", count_formatting)
+    first = RecommendationAdviceDTO(
+        stock_code="2330",
+        advice_action=AdviceAction.RESEARCH,
+        why_reasons=("research_gate_passed",),
+        risk_reasons=("position_limit_review",),
+        data_quality="OBSERVED",
+        liquidity_state="UNKNOWN",
+        execution_feasibility="UNKNOWN",
+    )
+    model = AdviceRecommendationTableModel((first,))
+
+    assert calls == list(model.QUICK_READ_FIELDS)
+    quick_index = model.index(0, model.column_index("quick_reasons"))
+    for role in (Qt.DisplayRole, Qt.ToolTipRole, Qt.AccessibleTextRole):
+        assert model.data(quick_index, role)
+    assert calls == list(model.QUICK_READ_FIELDS)
+
+    updated = replace(first, why_reasons=("source_not_fresh",))
+    model.set_rows((updated,))
+
+    assert calls == list(model.QUICK_READ_FIELDS) * 2
+    updated_quick_index = model.index(0, model.column_index("quick_reasons"))
+    assert model.data(updated_quick_index).startswith("支持：")
+    assert "來源資料非最新" in model.data(updated_quick_index, Qt.ToolTipRole)
+    assert model.data(updated_quick_index, Qt.AccessibleTextRole) == model.data(
+        updated_quick_index, Qt.ToolTipRole
     )
 
 
@@ -1624,6 +1749,7 @@ def test_workbench_renders_missing_evidence_refusal_as_explicit_no_new_position(
     assert "缺少合格證據" in view.advice_empty_label.text()
     assert "候選資料日期缺失" in view.advice_empty_label.text()
     assert "不是賣出或清倉指令" in view.advice_empty_label.text()
+    assert view.advice_technical_diagnostics_button.isHidden()
     assert view.advice_recommendation_table.isHidden()
     assert view.advice_recommendation_model.rowCount() == 0
 

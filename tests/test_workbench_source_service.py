@@ -390,7 +390,7 @@ def _scheduled_outputs(config: TWStockConfig) -> None:
         (evidence_report_dir / f"{day}_evidence_pipeline_dry_run.md").write_text("report", encoding="utf-8")
 
 
-def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> None:
+def test_workbench_advice_injects_verified_non_promoted_candidates_as_advice() -> None:
     result = RecommendationResultDTO(
         result_id="scheduled-result",
         result_name="Scheduled result",
@@ -451,8 +451,8 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
     assert [row.stock_code for row in advice.recommendations] == ["2330"]
     assert "scheduled_candidate_cohort_filtered" in advice.diagnostics
     assert any("其他股票已排除" in warning for warning in advice.warnings)
-    assert advice.recommendations[0].advice_action is AdviceAction.RESEARCH
-    assert advice.recommendations[0].classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+    assert advice.recommendations[0].advice_action is AdviceAction.ADD_CANDIDATE
+    assert advice.recommendations[0].classification is AdviceClassification.FORMAL_ADVICE
     assert "scheduled-result" in advice.recommendations[0].source_trace
     assert advice.portfolio_rows == ()
     degraded_advice = WorkbenchSourceService._compose_scheduled_candidate_advice(
@@ -566,11 +566,11 @@ def test_workbench_advice_injects_only_verified_non_promoted_candidates() -> Non
     )
     assert len(promoted_advice.recommendations) == 1
     promoted_candidate = promoted_advice.recommendations[0]
-    assert promoted_candidate.advice_action is AdviceAction.RESEARCH
-    assert promoted_candidate.classification is AdviceClassification.PROFESSIONAL_CANDIDATE
+    assert promoted_candidate.advice_action is AdviceAction.ADD_CANDIDATE
+    assert promoted_candidate.classification is AdviceClassification.FORMAL_ADVICE
     assert "promoted-result" in promoted_candidate.source_trace
-    assert "promoted_strategy_acceptance_evidence_missing_research_only" in promoted_advice.diagnostics
-    assert any("已降為研究候選" in warning for warning in promoted_advice.warnings)
+    assert "promoted_strategy_acceptance_unverified_advice_caveat" in promoted_advice.diagnostics
+    assert any("不阻止你查看建議" in warning for warning in promoted_advice.warnings)
 
 
 def test_workbench_source_service_reads_real_read_only_sources(tmp_path: Path) -> None:
@@ -652,7 +652,7 @@ def test_workbench_source_service_reads_real_read_only_sources(tmp_path: Path) -
     assert not any(item["write_intent"] for item in payload["action_items"])
 
 
-def test_workbench_source_service_injects_exact_current_legacy_candidate_read(
+def test_workbench_source_service_injects_exact_current_legacy_candidate_as_advice(
     tmp_path: Path,
 ) -> None:
     config = _config(tmp_path)
@@ -722,8 +722,8 @@ def test_workbench_source_service_injects_exact_current_legacy_candidate_read(
     advice = dashboard.advice_dashboard.recommendations[0]
     assert advice.stock_code == "2330"
     assert advice.stock_name == "TSMC"
-    assert advice.advice_action.value == "RESEARCH"
-    assert advice.classification.value == "PROFESSIONAL_CANDIDATE"
+    assert advice.advice_action.value == "ADD_CANDIDATE"
+    assert advice.classification.value == "FORMAL_ADVICE"
     assert advice.execution_feasibility == "UNKNOWN"
     assert result_id in advice.source_trace
     assert advice.source_result_id == result_id

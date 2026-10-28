@@ -1012,9 +1012,12 @@ def decision_reason_label(value: str) -> str:
     token = str(value or "").strip()
     return {
         "guided_mode_strategy_advice_contract_missing_or_unverified": (
-            "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選；"
-            "請以新的合格回測升版並填妥契約，再選用該新版本執行。"
+            "此策略版本的作者說明缺少或未核驗；仍提供 Advice，請將此限制納入判斷。"
         ),
+        "strategy_lifecycle_not_qualified": "策略生命週期尚未通過核驗；仍提供 Advice，請將此限制納入判斷。",
+        "strategy_parameters_not_locked": "策略參數尚未鎖定；仍提供 Advice，請將此限制納入判斷。",
+        "strategy_disclosure_incomplete": "策略揭露尚未完整；仍提供 Advice，請將此限制納入判斷。",
+        "strategy_advice_contract_missing_or_unverified": "策略作者說明未提供或未核驗；仍提供 Advice，請將此限制納入判斷。",
     }.get(token, token or "未提供")
 
 

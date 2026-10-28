@@ -6,7 +6,7 @@ from app_module.advice_dtos import AdviceAction, AdviceMode, AdvicePolicyConfig
 from app_module.advice_policy import AdvicePolicy
 
 
-def test_guided_mode_rejects_candidate_strategy() -> None:
+def test_guided_mode_advises_on_candidate_strategy_with_lifecycle_caveat() -> None:
     decision = AdvicePolicy().decide(
         mode=AdviceMode.GUIDED,
         strategy_status="candidate",
@@ -15,11 +15,11 @@ def test_guided_mode_rejects_candidate_strategy() -> None:
         risk_budget_available=True,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
-    assert "guided_mode_strategy_not_promoted" in decision.reasons
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert "strategy_lifecycle_not_qualified" in decision.reasons
 
 
-def test_guided_mode_rejects_shadow_strategy() -> None:
+def test_guided_mode_advises_on_shadow_strategy_with_lifecycle_caveat() -> None:
     decision = AdvicePolicy().decide(
         mode=AdviceMode.GUIDED,
         strategy_status="shadow",
@@ -28,14 +28,17 @@ def test_guided_mode_rejects_shadow_strategy() -> None:
         risk_budget_available=True,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
-    assert decision.reasons == ("guided_mode_strategy_not_promoted",)
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ("strategy_lifecycle_not_qualified",)
 
 
-def test_guided_mode_requires_promoted_locked_and_disclosed_strategy() -> None:
+def test_guided_mode_reports_maturity_gaps_without_blocking_advice() -> None:
     decision = AdvicePolicy().decide(
         mode=AdviceMode.GUIDED,
         strategy_status="promoted",
+        parameters_locked=False,
+        disclosure_complete=False,
+        strategy_advice_contract_verified=False,
         data_quality="OBSERVED",
         execution_feasible=True,
         risk_budget_available=True,
@@ -44,8 +47,12 @@ def test_guided_mode_requires_promoted_locked_and_disclosed_strategy() -> None:
         target_weight_bp=1500,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
-    assert decision.reasons == ("guided_mode_strategy_parameters_not_locked",)
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == (
+        "strategy_parameters_not_locked",
+        "strategy_disclosure_incomplete",
+        "strategy_advice_contract_missing_or_unverified",
+    )
 
 
 def test_advice_policy_config_rejects_position_cap_above_eight() -> None:
@@ -75,7 +82,7 @@ def test_account_specific_position_cap_does_not_gate_strategy_advice() -> None:
     assert decision.reasons == ()
 
 
-def test_guided_mode_rejects_incomplete_disclosure_even_when_parameters_are_locked() -> None:
+def test_guided_mode_reports_incomplete_disclosure_without_blocking_advice() -> None:
     decision = AdvicePolicy().decide(
         mode=AdviceMode.GUIDED,
         strategy_status="promoted",
@@ -89,11 +96,11 @@ def test_guided_mode_rejects_incomplete_disclosure_even_when_parameters_are_lock
         target_weight_bp=1500,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
-    assert decision.reasons == ("guided_mode_strategy_disclosure_incomplete",)
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ("strategy_disclosure_incomplete",)
 
 
-def test_guided_mode_requires_verified_strategy_advice_contract() -> None:
+def test_guided_mode_reports_missing_strategy_contract_without_blocking_advice() -> None:
     decision = AdvicePolicy().decide(
         mode=AdviceMode.GUIDED,
         strategy_status="promoted",
@@ -101,11 +108,12 @@ def test_guided_mode_requires_verified_strategy_advice_contract() -> None:
         disclosure_complete=True,
         data_quality="OBSERVED",
         execution_feasible=True,
+        strategy_advice_contract_verified=False,
     )
 
-    assert decision.action is AdviceAction.NO_NEW_POSITION
+    assert decision.action is AdviceAction.ADD_CANDIDATE
     assert decision.reasons == (
-        "guided_mode_strategy_advice_contract_missing_or_unverified",
+        "strategy_advice_contract_missing_or_unverified",
     )
 
 
@@ -273,7 +281,7 @@ def test_unavailable_risk_budget_does_not_gate_strategy_recommendation() -> None
     assert decision.reasons == ()
 
 
-def test_professional_candidate_is_research_only() -> None:
+def test_professional_candidate_is_actionable_advice_with_lifecycle_caveat() -> None:
     decision = AdvicePolicy(AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL)).decide(
         mode=AdviceMode.PROFESSIONAL,
         strategy_status="candidate",
@@ -282,8 +290,8 @@ def test_professional_candidate_is_research_only() -> None:
         risk_budget_available=True,
     )
 
-    assert decision.action is AdviceAction.RESEARCH
-    assert decision.reasons == ("professional_candidate_research_only",)
+    assert decision.action is AdviceAction.ADD_CANDIDATE
+    assert decision.reasons == ("strategy_lifecycle_not_qualified",)
 
 
 def test_cash_and_single_position_limits_do_not_gate_strategy_recommendation() -> None:

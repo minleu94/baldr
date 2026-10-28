@@ -36,66 +36,52 @@ class AdvicePolicy:
             return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("invalid_mode",))
         if mode is not self._config.mode:
             return AdvicePolicyDecision(AdviceAction.NO_NEW_POSITION, ("mode_config_mismatch",))
-        strategy_decision = self._strategy_decision(
+        strategy_reasons = self._strategy_reasons(
             mode,
             strategy_status,
             parameters_locked=parameters_locked,
             disclosure_complete=disclosure_complete,
+            strategy_advice_contract_verified=strategy_advice_contract_verified,
         )
-        if strategy_decision is not None:
-            return strategy_decision
 
         quality_decision = self._quality_decision(data_quality)
         if quality_decision is not None:
-            return quality_decision
+            return AdvicePolicyDecision(
+                quality_decision.action,
+                tuple(dict.fromkeys((*strategy_reasons, *quality_decision.reasons))),
+            )
 
         if execution_feasible is False:
-            return AdvicePolicyDecision(AdviceAction.AVOID, ("execution_not_feasible",))
-        if (
-            mode is AdviceMode.GUIDED
-            and strategy_advice_contract_verified is not True
-        ):
             return AdvicePolicyDecision(
-                AdviceAction.NO_NEW_POSITION,
-                ("guided_mode_strategy_advice_contract_missing_or_unverified",),
+                AdviceAction.AVOID,
+                tuple(dict.fromkeys((*strategy_reasons, "execution_not_feasible"))),
             )
         # risk_budget／current positions／cash／target weight 屬於可選的
         # Portfolio sizing；不得把它們套成策略 Advice 的帳戶前置條件。
-        return AdvicePolicyDecision(AdviceAction.ADD_CANDIDATE)
+        return AdvicePolicyDecision(AdviceAction.ADD_CANDIDATE, strategy_reasons)
 
     @staticmethod
-    def _strategy_decision(
+    def _strategy_reasons(
         mode: AdviceMode,
         strategy_status: str | None,
         *,
         parameters_locked: bool | None,
         disclosure_complete: bool | None,
-    ) -> AdvicePolicyDecision | None:
-        if mode is AdviceMode.GUIDED:
-            if strategy_status != "promoted":
-                return AdvicePolicyDecision(
-                    AdviceAction.NO_NEW_POSITION,
-                    ("guided_mode_strategy_not_promoted",),
-                )
-            if parameters_locked is not True:
-                return AdvicePolicyDecision(
-                    AdviceAction.NO_NEW_POSITION,
-                    ("guided_mode_strategy_parameters_not_locked",),
-                )
-            if disclosure_complete is not True:
-                return AdvicePolicyDecision(
-                    AdviceAction.NO_NEW_POSITION,
-                    ("guided_mode_strategy_disclosure_incomplete",),
-                )
-            return None
-        if strategy_status == "promoted":
-            return None
-        if strategy_status == "candidate":
-            return AdvicePolicyDecision(
-                AdviceAction.RESEARCH,
-                ("professional_candidate_research_only",),
-            )
-        return AdvicePolicyDecision(AdviceAction.RESEARCH, ("strategy_status_not_promoted",))
+        strategy_advice_contract_verified: bool | None,
+    ) -> tuple[str, ...]:
+        """回報策略生命週期限制，但不以升格／作者文件阻擋人工 Advice。"""
+
+        del mode  # Guided／Professional 都是 Advice 使用方式，不是交易權限。
+        reasons: list[str] = []
+        if strategy_status != "promoted":
+            reasons.append("strategy_lifecycle_not_qualified")
+        if parameters_locked is False:
+            reasons.append("strategy_parameters_not_locked")
+        if disclosure_complete is False:
+            reasons.append("strategy_disclosure_incomplete")
+        if strategy_advice_contract_verified is False:
+            reasons.append("strategy_advice_contract_missing_or_unverified")
+        return tuple(reasons)
 
     @staticmethod
     def _quality_decision(data_quality: str | None) -> AdvicePolicyDecision | None:

@@ -8,8 +8,16 @@ from datetime import date, datetime, timedelta, timezone
 from typing import cast
 from zoneinfo import ZoneInfo
 
-from PySide6.QtCore import QDateTime, QTimer, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtCore import (
+    QDateTime,
+    QEvent,
+    QItemSelectionModel,
+    QModelIndex,
+    QObject,
+    QTimer,
+    Qt,
+)
+from PySide6.QtGui import QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
     QBoxLayout,
@@ -237,6 +245,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._dashboard_stale = False
         self._viewed_review_item_ids: set[str] = set()
         self._workbench_narrow = False
+        self._workbench_advice_compact: bool | None = None
+        self._workbench_advice_compact = None
         self.presentation_service = DecisionPresentationService()
         self._selected_advice_presentation = None
         self._selected_advice_row = None
@@ -543,8 +553,41 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         advice_panel, self.advice_section_title = self._panel_with_title("今日策略建議")
         self.advice_panel = advice_panel
+        self.advice_summary_metrics = QWidget(self)
+        self.advice_summary_metrics.setObjectName("adviceSummaryMetrics")
+        self.advice_summary_metrics_layout = QHBoxLayout(self.advice_summary_metrics)
+        self.advice_summary_metrics_layout.setContentsMargins(0, 0, 0, 0)
+        self.advice_summary_metrics_layout.setSpacing(8)
+        self.advice_metric_cards: dict[str, MetricCard] = {}
+        for key, title, detail in (
+            ("formal", "Advice", "提供給你判斷與手動記錄的策略建議"),
+            ("research", "未升格 Advice", "仍可使用；策略成熟度限制另行提示"),
+            ("allocation", "配置資料列", "0 列不代表 0% 配置"),
+        ):
+            metric = MetricCard(title, "0", self.advice_summary_metrics)
+            metric.setAccessibleName(title)
+            metric.value_label.setAccessibleName(f"{title}數量")
+            detail_label = QLabel(detail, metric)
+            detail_label.setWordWrap(True)
+            detail_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 9pt;"
+            )
+            metric.layout().addWidget(detail_label)
+            self.advice_summary_metrics_layout.addWidget(metric, 1)
+            self.advice_metric_cards[key] = metric
+        self.advice_summary_metrics.setVisible(False)
         self.advice_summary = self._make_state_label()
         self.advice_summary.setTextFormat(Qt.PlainText)
+        self.advice_summary_hint = QLabel(
+            "數量是來源回傳的資料列；「未提供」表示來源沒有該欄位。"
+        )
+        self.advice_summary_hint.setObjectName("adviceSummaryHint")
+        self.advice_summary_hint.setWordWrap(True)
+        self.advice_summary_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.advice_summary_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 2px 4px;"
+        )
+        self.advice_summary_hint.setVisible(False)
         self.advice_warning_status = self._make_state_label()
         self.advice_warning_status.setObjectName("adviceWarningStatus")
         self.advice_warning_status.setTextFormat(Qt.PlainText)
@@ -588,7 +631,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 self.advice_portfolio_model, index.row()
             )
         )
+        advice_panel.layout.addWidget(self.advice_summary_metrics)
         advice_panel.layout.addWidget(self.advice_summary)
+        advice_panel.layout.addWidget(self.advice_summary_hint)
         advice_panel.layout.addWidget(self.advice_warning_status)
         self.paper_account_context_label = self._make_state_label()
         self.paper_account_context_label.setObjectName("paperAccountContextLabel")
@@ -610,21 +655,63 @@ class UnifiedDecisionWorkbenchView(QWidget):
         advice_panel.layout.addWidget(self.paper_account_context_label)
         advice_panel.layout.addWidget(self.paper_account_context_table)
         advice_panel.layout.addWidget(self.advice_recommendation_table)
-        self.advice_candidate_label = QLabel("Professional 研究候選（不屬於正式 Advice）")
+        self.advice_candidate_label = QLabel("策略 Advice（人工判斷與採納）")
+        self.advice_candidate_hint = QLabel(
+            "每檔以獨立研究卡呈現。卡面編號列出主要理由；點卡片可展開同一筆完整判讀與研究紀錄，不會自動下單。"
+        )
+        self.advice_candidate_hint.setObjectName("adviceCandidateHint")
+        self.advice_candidate_hint.setWordWrap(True)
+        self.advice_candidate_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.advice_candidate_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 2px 4px;"
+        )
+        self.advice_candidate_hint.setVisible(False)
+        self.advice_candidate_cards = QWidget(self)
+        self.advice_candidate_cards.setObjectName("adviceCandidateCards")
+        self.advice_candidate_cards_layout = QHBoxLayout(self.advice_candidate_cards)
+        self.advice_candidate_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.advice_candidate_cards_layout.setSpacing(12)
+        self._advice_candidate_card_columns = 0
+        self._advice_candidate_card_column_widgets: list[QWidget] = []
+        self._advice_candidate_card_column_layouts: list[QVBoxLayout] = []
+        for column_index in range(2):
+            column = QWidget(self.advice_candidate_cards)
+            column.setObjectName(f"adviceCandidateColumn{column_index + 1}")
+            column_layout = QVBoxLayout(column)
+            column_layout.setContentsMargins(0, 0, 0, 0)
+            column_layout.setSpacing(8)
+            self.advice_candidate_cards_layout.addWidget(column, 1)
+            self._advice_candidate_card_column_widgets.append(column)
+            self._advice_candidate_card_column_layouts.append(column_layout)
+        self._advice_candidate_card_frames: list[QFrame] = []
+        self._advice_candidate_card_buttons: list[QPushButton] = []
+        self._advice_candidate_detail_hosts: list[QWidget] = []
+        self._expanded_advice_candidate_row: int | None = None
+        self._advice_selection_detail_host_row: int | None = None
+        self.advice_candidate_cards.setVisible(False)
+        self.advice_candidate_table.hide()
         advice_panel.layout.addWidget(self.advice_candidate_label)
+        advice_panel.layout.addWidget(self.advice_candidate_hint)
+        advice_panel.layout.addWidget(self.advice_candidate_cards)
         advice_panel.layout.addWidget(self.advice_candidate_table)
         self.advice_portfolio_label = QLabel("可選配置研究（手動紀錄脈絡）")
         self.advice_portfolio_label.setObjectName("adviceOptionalPortfolioLabel")
         self.advice_portfolio_label.hide()
         advice_panel.layout.addWidget(self.advice_portfolio_label)
         advice_panel.layout.addWidget(self.advice_portfolio_table)
+        self.advice_selection_detail_panel = QWidget(advice_panel)
+        self.advice_selection_detail_layout = QVBoxLayout(
+            self.advice_selection_detail_panel
+        )
+        self.advice_selection_detail_layout.setContentsMargins(0, 0, 0, 0)
+        self.advice_selection_detail_layout.setSpacing(6)
         self.advice_selection_card = self._make_state_label()
         self.advice_selection_card.setObjectName("adviceSelectionCard")
         self.advice_selection_card.setTextFormat(Qt.PlainText)
-        self.advice_selection_card.setMaximumHeight(240)
-        self.advice_selection_card.setText("所選建議判讀：選取 Advice 或研究候選列後顯示。")
+        self.advice_selection_card.setMaximumHeight(160)
+        self.advice_selection_card.setText("所選 Advice 判讀：選取建議列後顯示。")
         self.advice_selection_card.setVisible(False)
-        advice_panel.layout.addWidget(self.advice_selection_card)
+        self.advice_selection_detail_layout.addWidget(self.advice_selection_card)
         self.advice_source_result_button = QPushButton("回查這筆保存推薦結果")
         self.advice_source_result_button.setObjectName("adviceSourceResultButton")
         self.advice_source_result_button.setProperty("variant", "secondary")
@@ -636,24 +723,24 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._open_selected_advice_source_result
         )
         self.advice_source_result_button.hide()
-        advice_panel.layout.addWidget(self.advice_source_result_button)
-        self.advice_contract_backtest_button = QPushButton("前往策略回測建立新版本")
+        self.advice_selection_detail_layout.addWidget(self.advice_source_result_button)
+        self.advice_contract_backtest_button = QPushButton("選填補充策略版本說明")
         self.advice_contract_backtest_button.setObjectName("adviceContractBacktestButton")
         self.advice_contract_backtest_button.setProperty("variant", "secondary")
         self.advice_contract_backtest_button.setToolTip(
-            "策略作者契約欄位只能在新的合格回測結果升版時建立；既有策略版本不能事後補綁。"
-            "此按鈕只開啟策略回測，不會自動執行回測或升版。"
+            "進場論點、失效條件、持有期間與檢視頻率是策略版本的選填說明，不阻擋系統提供 Advice。"
+            "若要保存，需從新的回測結果建立新版本；此按鈕不會自動執行回測或升版。"
         )
         self.advice_contract_backtest_button.hide()
         self.advice_contract_backtest_button.clicked.connect(
             self._open_backtest_for_advice_contract
         )
-        advice_panel.layout.addWidget(self.advice_contract_backtest_button)
+        self.advice_selection_detail_layout.addWidget(self.advice_contract_backtest_button)
         self.advice_research_decision_status = self._make_state_label()
         self.advice_research_decision_status.setObjectName("adviceResearchDecisionStatus")
         self.advice_research_decision_status.setTextFormat(Qt.PlainText)
         self.advice_research_decision_status.hide()
-        advice_panel.layout.addWidget(self.advice_research_decision_status)
+        self.advice_selection_detail_layout.addWidget(self.advice_research_decision_status)
         decision_actions = QGridLayout()
         self.advice_accept_decision_button = QPushButton("記錄已納入研究")
         self.advice_skip_decision_button = QPushButton("記錄略過")
@@ -695,12 +782,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_schedule_review_button.clicked.connect(
             self._schedule_selected_advice_review
         )
-        advice_panel.layout.addLayout(decision_actions)
-        advice_panel.layout.addWidget(self.advice_schedule_review_button)
+        self.advice_selection_detail_layout.addLayout(decision_actions)
+        self.advice_selection_detail_layout.addWidget(self.advice_schedule_review_button)
         self.advice_presentation_detail = self._make_state_label()
         self.advice_presentation_detail.setObjectName("advicePresentationDetail")
         self.advice_presentation_detail.setText(
-            "共用證據詳情：選取 Advice 或研究候選列後顯示；"
+            "共用證據詳情：選取 Advice 列後顯示；"
             "排名分數、校準機率與成本後獲利機率不互相代換。"
         )
         self.advice_lineage_button = QPushButton("查看機率依據")
@@ -712,10 +799,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "展開目前選取列的完整模型／資料集／來源追溯與 hash；唯讀，不會修改 Advice。"
         )
         self.advice_lineage_button.toggled.connect(self._toggle_advice_lineage)
-        advice_panel.layout.addWidget(self.advice_lineage_button)
-        advice_panel.layout.addWidget(self.advice_presentation_detail)
+        self.advice_selection_detail_layout.addWidget(self.advice_lineage_button)
+        self.advice_selection_detail_layout.addWidget(self.advice_presentation_detail)
+        self.advice_selection_detail_panel.setVisible(False)
+        advice_panel.layout.addWidget(self.advice_selection_detail_panel)
 
-        # 建立三態空狀態 Widget 及其唯讀導引
+        # 建立 Advice 狀態訊息、可展開診斷及唯讀導引
         self.advice_empty_widget = QWidget()
         self.advice_empty_layout = QVBoxLayout(self.advice_empty_widget)
         self.advice_empty_layout.setContentsMargins(0, 0, 0, 0)
@@ -724,6 +813,30 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_empty_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.advice_empty_label.setStyleSheet("padding: 10px; background-color: #1e293b; color: #cbd5e1; border-radius: 6px; border: 1px solid #334155;")
         self.advice_empty_layout.addWidget(self.advice_empty_label)
+
+        self.advice_technical_diagnostics_button = QPushButton("查看技術診斷")
+        self.advice_technical_diagnostics_button.setProperty("variant", "secondary")
+        self.advice_technical_diagnostics_button.setCheckable(True)
+        self.advice_technical_diagnostics_button.setAccessibleName("查看 Advice 技術診斷")
+        self.advice_technical_diagnostics_button.setAccessibleDescription(
+            "展開或收合本次 Advice 載入狀態的原始代碼與診斷文字。"
+        )
+        self.advice_technical_diagnostics_button.toggled.connect(
+            self._toggle_advice_technical_diagnostics
+        )
+        self.advice_empty_layout.addWidget(self.advice_technical_diagnostics_button)
+
+        self.advice_technical_diagnostics_text = QPlainTextEdit()
+        self.advice_technical_diagnostics_text.setObjectName("adviceTechnicalDiagnostics")
+        self.advice_technical_diagnostics_text.setReadOnly(True)
+        self.advice_technical_diagnostics_text.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.advice_technical_diagnostics_text.setMaximumHeight(160)
+        self.advice_technical_diagnostics_text.setAccessibleName("Advice 原始狀態與技術診斷")
+        self.advice_technical_diagnostics_text.setAccessibleDescription(
+            "可選取並複製原始狀態代碼及載入診斷，供維護者查核。"
+        )
+        self.advice_technical_diagnostics_text.setVisible(False)
+        self.advice_empty_layout.addWidget(self.advice_technical_diagnostics_text)
 
         # 唯讀導引按鈕列
         nav_buttons_row = QHBoxLayout()
@@ -746,17 +859,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
         content_layout.addWidget(advice_panel)
 
         manual_research_panel, self.manual_research_section_title = self._panel_with_title(
-            "所選保存結果（研究專用）"
+            "所選保存結果 Advice"
         )
         self.manual_research_panel = manual_research_panel
         self.manual_research_status = QLabel(
-            "尚未明選保存結果。到「推薦分析」選取已核驗結果後，可送來此處作研究判讀。"
+            "尚未明選保存結果。到「推薦分析」選取已核驗結果後，可送來此處產生指定結果的 Advice。"
         )
         self.manual_research_status.setObjectName("manualSavedResearchStatus")
         self.manual_research_status.setWordWrap(True)
         self.manual_research_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         manual_research_panel.layout.addWidget(self.manual_research_status)
-        self.manual_research_clear_button = QPushButton("清除此研究結果")
+        self.manual_research_clear_button = QPushButton("清除此保存結果")
         self.manual_research_clear_button.setProperty("variant", "secondary")
         self.manual_research_clear_button.clicked.connect(
             lambda: self.set_manual_saved_research_lane(None)
@@ -1988,7 +2101,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         """依可用寬度重排既有 Workbench 元件，不改變 DTO 或導覽契約。"""
         if not hasattr(self, "primary_layout"):
             return
+        self._apply_advice_table_width_mode()
         narrow = self.width() < 820
+        if hasattr(self, "_advice_candidate_card_frames"):
+            self._layout_advice_candidate_cards(1 if narrow else 2)
         if not force and narrow == self._workbench_narrow:
             return
         self._workbench_narrow = narrow
@@ -2026,6 +2142,25 @@ class UnifiedDecisionWorkbenchView(QWidget):
         cards_layout.setColumnStretch(0, 1)
         cards_layout.setColumnStretch(1, 0 if narrow else 1)
         self._resize_tables()
+
+    def _apply_advice_table_width_mode(self) -> None:
+        """窄版收合次要欄，將首屏寬度留給理由摘要。"""
+        if not hasattr(self, "advice_candidate_table"):
+            return
+        compact = self.width() < 1100
+        if self._workbench_advice_compact == compact:
+            return
+        self._workbench_advice_compact = compact
+        for table in (
+            self.advice_recommendation_table,
+            self.advice_candidate_table,
+            self.advice_portfolio_table,
+        ):
+            model = table.model()
+            if not isinstance(model, AdviceRecommendationTableModel):
+                continue
+            for field_name in ("primary_risk", "evidence_status"):
+                table.setColumnHidden(model.column_index(field_name), compact)
 
     def _format_workbench_source_meta(self, dashboard: WorkbenchDashboardDTO) -> str:
         """顯示來源契約可確認的日期與未知欄位，不由 UI 猜測 freshness。"""
@@ -3595,7 +3730,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         advice = lane.advice_dashboard
         lines = [
-            "明確選取的保存結果｜Professional 研究候選",
+            "明確選取的保存結果｜策略 Advice",
             f"result_id：{lane.result_id}",
             f"保存內容 SHA-256：{lane.payload_sha256}",
             f"原決策日：{lane.decision_date}｜原資料截止日：{lane.data_as_of_date}",
@@ -3780,18 +3915,47 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_recommendation_model.set_rows(())
         self.advice_candidate_model.set_rows(())
         self.advice_portfolio_model.set_rows(())
+        self._clear_advice_candidate_cards()
+        self._expanded_advice_candidate_row = None
         self.advice_selection_card.setText("所選建議判讀：尚未選取；欄位未提供。")
         self.advice_selection_card.setVisible(False)
         self.advice_warning_status.setText("")
         self.advice_recommendation_table.setVisible(False)
+        self.advice_summary_metrics.setVisible(False)
         self.advice_candidate_label.setVisible(False)
+        self.advice_candidate_hint.setVisible(False)
+        self.advice_candidate_cards.setVisible(False)
         self.advice_candidate_table.setVisible(False)
+        self.advice_summary_hint.setVisible(False)
         self.advice_portfolio_table.setVisible(False)
         self.advice_portfolio_label.setVisible(False)
+        self.advice_technical_diagnostics_button.blockSignals(True)
+        self.advice_technical_diagnostics_button.setChecked(False)
+        self.advice_technical_diagnostics_button.blockSignals(False)
+        self.advice_technical_diagnostics_button.setText("查看技術診斷")
+        self.advice_technical_diagnostics_button.setAccessibleName("查看 Advice 技術診斷")
+        self.advice_technical_diagnostics_button.setAccessibleDescription(
+            "展開本次 Advice 載入狀態的原始代碼與診斷文字。"
+        )
+        show_technical_diagnostics = state in {
+            "WAITING_FOR_ADVICE_DTO",
+            "NO_ELIGIBLE_ADVICE",
+            "ADVICE_DTO_ERROR",
+        }
+        self.advice_technical_diagnostics_button.setVisible(show_technical_diagnostics)
+        self.advice_technical_diagnostics_text.setPlainText(
+            f"狀態代碼：{state}\n"
+            f"原始診斷：{extra_msg if extra_msg else '來源未提供。'}"
+        )
+        self.advice_technical_diagnostics_text.setVisible(False)
         if state == "WAITING_FOR_ADVICE_DTO":
             self.advice_empty_label.setText(
-                "<b>【狀態：WAITING_FOR_ADVICE_DTO】</b><br/>"
-                "尚未載入 Advice DTO。請先完成資料更新，並至「推薦分析」頁執行策略篩選與保存，或使用下方導引按鈕。"
+                "<b>【尚未載入今日策略建議】</b><br/>"
+                "可按右上角「重新整理狀態」讀取目前可用的建議。若尚未保存推薦結果，請前往「推薦分析工作區」執行策略篩選並保存，再回來重新整理。"
+            )
+            self.advice_empty_label.setAccessibleName("尚未載入今日策略建議")
+            self.advice_empty_label.setAccessibleDescription(
+                "重新整理工作台可讀取目前可用的建議；尚未保存推薦結果時，請先到推薦分析工作區執行並保存。"
             )
             self.advice_empty_widget.setVisible(True)
             self.advice_recommendation_table.setVisible(False)
@@ -3800,10 +3964,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_portfolio_table.setVisible(False)
             self.advice_portfolio_label.setVisible(False)
             self.advice_portfolio_label.setVisible(False)
-            self.advice_summary.setText("等待 AdviceDashboardDTO；UI 不執行 Policy 或核心計算。")
+            self.advice_summary.setText("尚未載入策略建議；可重新整理以讀取目前來源。")
             self.advice_warning_status.setText("警告狀態：尚未載入。")
             self.advice_presentation_detail.setText(
-                "共用證據詳情：等待 AdviceDashboardDTO；沒有資料不等於沒有風險。"
+                "目前尚無已載入的建議；這不表示沒有建議、風險或警示。"
             )
 
         elif state == "NO_ELIGIBLE_ADVICE":
@@ -3819,33 +3983,36 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     else ""
                 )
                 empty_state_text = (
-                    "本次沒有可呈現的 Advice；DTO 同時回報以下警告，請先依警告判讀資料或資格問題。<br/>"
+                    "本次沒有可顯示的建議。資料來源同時回報以下警告，請先按警告檢查資料或資格問題。<br/>"
                     f"{warning_lines}{remaining_note}<br/>"
-                    "這些警告不會自動補齊資料或取得正式資格。"
+                    "這些警告不會自動補齊缺失資料；請依來源與資料品質限制判斷 Advice。"
                 )
             else:
                 empty_state_text = (
-                    "本次 DTO 未回傳符合條件的 Advice、研究候選或配置列，也沒有提供空結果原因。<br/>"
+                    "本次來源沒有提供符合條件的建議、研究候選或配置列，也沒有說明原因。<br/>"
                     "不能僅由空結果推斷資料完整或風險已解除。"
                 )
-            extra_note = f"<br/>診斷：{escape(extra_msg)}" if extra_msg else ""
             self.advice_empty_label.setText(
-                "<b>【狀態：NO_ELIGIBLE_ADVICE】</b><br/>"
-                f"{empty_state_text}{extra_note}"
+                "<b>【本次沒有可顯示的建議】</b><br/>"
+                f"{empty_state_text}"
+            )
+            self.advice_empty_label.setAccessibleName("本次沒有可顯示的建議")
+            self.advice_empty_label.setAccessibleDescription(
+                "可先依來源警告或技術診斷核對資料，再重新整理；空結果不能證明資料完整或風險已解除。"
             )
             self.advice_empty_widget.setVisible(True)
             self.advice_recommendation_table.setVisible(False)
             self.advice_candidate_label.setVisible(False)
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
-            self.advice_summary.setText("無可用建議；UI 不執行 Policy。")
+            self.advice_summary.setText("本次沒有可顯示的建議；請查看來源警告與原因。")
             self.advice_warning_status.setText(
                 "原警告：\n" + "\n".join(f"• {warning}" for warning in warnings)
                 if warnings
                 else "原警告：無原警告回報；這不代表沒有風險。"
             )
             self.advice_presentation_detail.setText(
-                "共用證據詳情：目前沒有合格 Advice；不補排名、機率或成本後結果。"
+                "本次沒有符合條件的建議；畫面不會自行填入排名、機率或成本後結果。"
             )
 
         elif state == "NO_NEW_POSITION":
@@ -3864,6 +4031,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 f"拒絕原因：{reason_text}{warning_note}<br/>"
                 "這不是賣出或清倉指令；現有持倉需依其獨立證據判讀。"
             )
+            self.advice_empty_label.setAccessibleName("本次結論：暫不新增部位")
+            self.advice_empty_label.setAccessibleDescription(
+                "目前證據不足以支持新增候選；這不是賣出或清倉指令。"
+            )
             self.advice_empty_widget.setVisible(True)
             self.advice_summary.setText("暫不新增部位｜目前證據不足以支持新增候選。")
             self.advice_warning_status.setText(
@@ -3877,23 +4048,41 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         elif state == "ADVICE_DTO_ERROR":
             self.advice_empty_label.setText(
-                "<b>【狀態：ADVICE_DTO_ERROR】</b><br/>"
-                f"載入 Advice DTO 發生錯誤或安全診斷攔截（{extra_msg or 'DTO 載入降級'}）。<br/>"
-                "請點擊下方『重新載入』或檢查底層服務日誌；不可保留可能過期的舊表格而不標示 stale。"
+                "<b>【無法載入策略建議】</b><br/>"
+                "工作台未能讀取目前的建議，先前內容已清除。若右上角「重新整理狀態」按鈕可用，可按它重試；若仍失敗，展開技術診斷並將內容交給維護者。"
+            )
+            self.advice_empty_label.setAccessibleName("無法載入策略建議")
+            self.advice_empty_label.setAccessibleDescription(
+                "先前建議已清除。請重新整理；若持續失敗，展開技術診斷並提供給維護者。"
             )
             self.advice_empty_widget.setVisible(True)
             self.advice_recommendation_table.setVisible(False)
             self.advice_candidate_label.setVisible(False)
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
-            self.advice_summary.setText("Advice 載入錯誤或降級。")
+            self.advice_summary.setText("讀取失敗；舊建議已清除，請重試。")
             self.advice_warning_status.setText("警告狀態：載入失敗，舊警告已清除。")
             self.advice_presentation_detail.setText(
-                "共用證據詳情：Advice DTO 狀態未知；請重新載入來源，不保留舊結論。"
+                "目前建議狀態未知；畫面不保留先前結論。"
             )
 
         elif state == "READY":
             self.advice_empty_widget.setVisible(False)
+            self.advice_summary_hint.setVisible(True)
+
+    def _toggle_advice_technical_diagnostics(self, expanded: bool) -> None:
+        self.advice_technical_diagnostics_text.setVisible(expanded)
+        self.advice_technical_diagnostics_button.setText(
+            "隱藏技術診斷" if expanded else "查看技術診斷"
+        )
+        self.advice_technical_diagnostics_button.setAccessibleName(
+            "隱藏 Advice 技術診斷" if expanded else "查看 Advice 技術診斷"
+        )
+        self.advice_technical_diagnostics_button.setAccessibleDescription(
+            "收合本次 Advice 狀態的原始代碼與診斷文字。"
+            if expanded
+            else "展開本次 Advice 載入狀態的原始代碼與診斷文字。"
+        )
 
     def _render_paper_account_context(self, dashboard: WorkbenchDashboardDTO) -> None:
         context = dashboard.paper_account_context
@@ -3988,23 +4177,29 @@ class UnifiedDecisionWorkbenchView(QWidget):
             return
 
         self._set_advice_state("READY")
+        self.advice_metric_cards["formal"].value_label.setText(str(len(visible_formal_rows) + len(candidate_rows)))
+        self.advice_metric_cards["research"].value_label.setText(str(len(candidate_rows)))
+        self.advice_metric_cards["allocation"].value_label.setText(str(len(portfolio_rows)))
+        self.advice_summary_metrics.setVisible(True)
         self.advice_summary.setText(
-            "唯讀呈現已注入 DTO｜"
-            f"模式：{_advice_mode_label(advice.mode.value)}｜"
-            f"決策日：{advice.decision_date or '未知'}｜資料日：{advice.data_as_of_date or '未知'}\n"
-            f"正式 Advice：{len(formal_rows)} 列｜Professional 研究候選：{len(candidate_rows)} 列｜配置：{len(portfolio_rows)} 列"
+            f"唯讀摘要｜模式：{_advice_mode_label(advice.mode.value)}｜"
+            f"決策日：{advice.decision_date or '未知'}｜資料日：{advice.data_as_of_date or '未知'}"
         )
+        self.advice_summary_hint.setVisible(True)
         self.advice_warning_status.setText(
-            "原警告：\n" + "\n".join(f"• {warning}" for warning in advice.warnings)
+            "來源警告：\n" + "\n".join(f"• {warning}" for warning in advice.warnings)
             if advice.warnings
-            else "原警告：無原警告回報；這不代表沒有風險。"
+            else "來源警告：未回報警告；不能因此推定沒有風險。"
         )
         self.advice_recommendation_model.set_rows(visible_formal_rows)
         self.advice_candidate_model.set_rows(candidate_rows)
         self.advice_portfolio_model.set_rows(portfolio_rows)
         self.advice_recommendation_table.setVisible(bool(visible_formal_rows))
         self.advice_candidate_label.setVisible(bool(candidate_rows))
-        self.advice_candidate_table.setVisible(bool(candidate_rows))
+        self.advice_candidate_hint.setVisible(bool(candidate_rows))
+        self._render_advice_candidate_cards(candidate_rows)
+        self.advice_candidate_cards.setVisible(bool(candidate_rows))
+        self.advice_candidate_table.setVisible(False)
         self.advice_portfolio_table.setVisible(bool(portfolio_rows))
         self.advice_portfolio_label.setVisible(bool(portfolio_rows))
         for table in (
@@ -4014,12 +4209,445 @@ class UnifiedDecisionWorkbenchView(QWidget):
         ):
             self._fit_advice_table_height(table)
         self.advice_presentation_detail.setText(
-            "共用證據詳情：選取 Advice 或研究候選列後顯示；"
+            "共用證據詳情：選取 Advice 列後顯示；"
             "缺少校準／成本後機率時維持不可用，不從排名分數推導。"
         )
-        self.advice_selection_card.setText("所選建議判讀：選取 Advice 或研究候選列後顯示。")
+        self.advice_selection_card.setText("所選 Advice 判讀：選取建議列後顯示。")
+
+    def _clear_advice_candidate_cards(self) -> None:
+        for column_layout in self._advice_candidate_card_column_layouts:
+            while column_layout.count():
+                item = column_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+        self._advice_candidate_card_frames.clear()
+        self._advice_candidate_card_buttons.clear()
+        self._advice_candidate_detail_hosts.clear()
+        self._advice_candidate_card_columns = 0
+
+    def _render_advice_candidate_cards(self, rows: tuple[object, ...]) -> None:
+        """將未升格策略 Advice 投影為可在原地展開的唯讀卡片。"""
+
+        self._clear_advice_candidate_cards()
+        self._expanded_advice_candidate_row = None
+        for row_index, _row in enumerate(rows):
+            card = QFrame(self.advice_candidate_cards)
+            card.setObjectName("adviceCandidateCard")
+            card.setProperty("advice_candidate_row", row_index)
+            card.setAccessibleDescription(
+                "點擊卡片查看此候選的完整判讀；展開後可在卡內記錄研究決定。"
+            )
+            card.setToolTip("點擊卡片查看此候選詳情。")
+            card.setCursor(Qt.PointingHandCursor)
+            card.installEventFilter(self)
+            card.setProperty("expanded", False)
+            card.setStyleSheet(
+                f"#adviceCandidateCard {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; }}"
+                f"#adviceCandidateCard[expanded=\"true\"] {{ "
+                f"border: 1px solid {MIDNIGHT_ANALYST.accent}; }}"
+            )
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(10, 8, 10, 8)
+            card_layout.setSpacing(6)
+
+            header = QWidget(card)
+            header.setObjectName("adviceCandidateHeader")
+            header.setProperty("advice_candidate_row", row_index)
+            header.setAccessibleName("未升格策略 Advice；點擊展開詳情")
+            header.setToolTip("點擊候選卡可展開或收合完整判讀。")
+            header.setCursor(Qt.PointingHandCursor)
+            header.installEventFilter(self)
+            header_layout = QVBoxLayout(header)
+            header_layout.setContentsMargins(0, 0, 0, 0)
+            header_layout.setSpacing(4)
+            title_row = QWidget(header)
+            title_row.setProperty("advice_candidate_row", row_index)
+            title_row.setCursor(Qt.PointingHandCursor)
+            title_row.installEventFilter(self)
+            title_layout = QHBoxLayout(title_row)
+            title_layout.setContentsMargins(0, 0, 0, 0)
+            title_layout.setSpacing(8)
+            title = str(
+                self.advice_candidate_model.data(
+                    self.advice_candidate_model.index(
+                        row_index,
+                        self.advice_candidate_model.column_index("stock_code"),
+                    ),
+                    Qt.DisplayRole,
+                )
+                or "未提供標的"
+            )
+            header.setAccessibleName(f"未升格策略 Advice {title}；點擊展開詳情")
+            action = str(
+                self.advice_candidate_model.data(
+                    self.advice_candidate_model.index(
+                        row_index,
+                        self.advice_candidate_model.column_index("advice_action"),
+                    ),
+                    Qt.DisplayRole,
+                )
+                or "未提供"
+            )
+            confidence = str(
+                self.advice_candidate_model.data(
+                    self.advice_candidate_model.index(
+                        row_index,
+                        self.advice_candidate_model.column_index("confidence_tier"),
+                    ),
+                    Qt.DisplayRole,
+                )
+                or "未提供"
+            )
+            title_label = QLabel(title, title_row)
+            title_label.setProperty("advice_candidate_row", row_index)
+            title_label.setCursor(Qt.PointingHandCursor)
+            title_label.installEventFilter(self)
+            title_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 11pt; font-weight: 700;"
+            )
+            title_label.setToolTip(
+                str(
+                    self.advice_candidate_model.data(
+                        self.advice_candidate_model.index(
+                            row_index,
+                            self.advice_candidate_model.column_index("stock_code"),
+                        ),
+                        Qt.ToolTipRole,
+                    )
+                    or ""
+                )
+            )
+            title_layout.addWidget(title_label, 1)
+            expand_button = QPushButton("詳情", title_row)
+            expand_button.setProperty("variant", "secondary")
+            expand_button.setCheckable(True)
+            expand_button.setMinimumHeight(36)
+            expand_button.setAccessibleName(f"展開 {title} 詳情")
+            expand_button.setAccessibleDescription(
+                "顯示或收合完整判讀；展開內容沿用同筆候選的來源理由、風險與證據。"
+            )
+            expand_button.toggled.connect(
+                lambda expanded, index=row_index: self._toggle_advice_candidate_card(
+                    index, expanded
+                )
+            )
+            title_layout.addWidget(expand_button)
+
+            meta_row = QWidget(header)
+            meta_row.setProperty("advice_candidate_row", row_index)
+            meta_row.setCursor(Qt.PointingHandCursor)
+            meta_row.installEventFilter(self)
+            meta_layout = QHBoxLayout(meta_row)
+            meta_layout.setContentsMargins(0, 0, 0, 0)
+            meta_layout.setSpacing(6)
+            badge = StatusBadge("未升格 Advice", "candidate")
+            badge.setProperty("advice_candidate_row", row_index)
+            badge.setCursor(Qt.PointingHandCursor)
+            badge.installEventFilter(self)
+            meta_layout.addWidget(badge)
+            confidence_label = QLabel(f"動作：{action}｜信心：{confidence}", meta_row)
+            confidence_label.setProperty("advice_candidate_row", row_index)
+            confidence_label.setCursor(Qt.PointingHandCursor)
+            confidence_label.installEventFilter(self)
+            confidence_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;"
+            )
+            meta_layout.addWidget(confidence_label, 1)
+            header_layout.addWidget(title_row)
+            header_layout.addWidget(meta_row)
+            card_layout.addWidget(header)
+
+            reasons, extra_reasons, restrictions, extra_restrictions = (
+                self.advice_candidate_model.candidate_card_reasons(row_index)
+            )
+            for reason_number, reason in enumerate(reasons, start=1):
+                self._add_advice_candidate_card_note(
+                    card_layout,
+                    card,
+                    row_index,
+                    f"{reason_number:02d}",
+                    reason,
+                    tone="reason",
+                )
+            if not reasons:
+                self._add_advice_candidate_card_note(
+                    card_layout,
+                    card,
+                    row_index,
+                    "—",
+                    "理由未提供",
+                    tone="muted",
+                )
+            if extra_reasons:
+                self._add_advice_candidate_card_note(
+                    card_layout,
+                    card,
+                    row_index,
+                    f"+{extra_reasons}",
+                    "更多理由，點卡片查看",
+                    tone="muted",
+                )
+            if restrictions:
+                self._add_advice_candidate_card_note(
+                    card_layout,
+                    card,
+                    row_index,
+                    "限制",
+                    restrictions[0],
+                    tone="warning",
+                )
+            else:
+                self._add_advice_candidate_card_note(
+                    card_layout,
+                    card,
+                    row_index,
+                    "限制",
+                    "未提供",
+                    tone="muted",
+                )
+            if extra_restrictions:
+                self._add_advice_candidate_card_note(
+                    card_layout,
+                    card,
+                    row_index,
+                    f"+{extra_restrictions}",
+                    "更多限制，點卡片查看",
+                    tone="warning",
+                )
+
+            risk = str(
+                self.advice_candidate_model.data(
+                    self.advice_candidate_model.index(
+                        row_index,
+                        self.advice_candidate_model.column_index("primary_risk"),
+                    ),
+                    Qt.DisplayRole,
+                )
+                or "未提供風險判讀"
+            )
+            quality = str(
+                self.advice_candidate_model.data(
+                    self.advice_candidate_model.index(
+                        row_index,
+                        self.advice_candidate_model.column_index("data_quality"),
+                    ),
+                    Qt.DisplayRole,
+                )
+                or "未知品質"
+            )
+            feasibility = str(
+                self.advice_candidate_model.data(
+                    self.advice_candidate_model.index(
+                        row_index,
+                        self.advice_candidate_model.column_index("execution_feasibility"),
+                    ),
+                    Qt.DisplayRole,
+                )
+                or "未知可成交性"
+            )
+            status_label = QLabel(
+                f"風險：{risk}　｜　資料品質：{quality}　｜　可成交性：{feasibility}",
+                card,
+            )
+            status_label.setProperty("advice_candidate_row", row_index)
+            status_label.setObjectName("adviceCandidateStatus")
+            status_label.setCursor(Qt.PointingHandCursor)
+            status_label.installEventFilter(self)
+            status_label.setWordWrap(True)
+            status_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 8.5pt;"
+            )
+            card_layout.addWidget(status_label)
+
+            detail_host = QWidget(card)
+            detail_host.setObjectName("adviceCandidateInlineDetail")
+            detail_host_layout = QVBoxLayout(detail_host)
+            detail_host_layout.setContentsMargins(8, 8, 8, 4)
+            detail_host_layout.setSpacing(6)
+            detail_host.setStyleSheet(
+                f"background: {MIDNIGHT_ANALYST.surface_1}; "
+                f"border-top: 1px solid {MIDNIGHT_ANALYST.border};"
+            )
+            detail_host.setVisible(False)
+            card_layout.addWidget(detail_host)
+
+            self._advice_candidate_card_frames.append(card)
+            self._advice_candidate_card_buttons.append(expand_button)
+            self._advice_candidate_detail_hosts.append(detail_host)
+        self._layout_advice_candidate_cards(1 if self.width() < 820 else 2)
+
+    def _add_advice_candidate_card_note(
+        self,
+        card_layout: QVBoxLayout,
+        card: QFrame,
+        row: int,
+        marker: str,
+        text: str,
+        *,
+        tone: str,
+    ) -> None:
+        note = QWidget(card)
+        note.setProperty("advice_candidate_row", row)
+        note.setCursor(Qt.PointingHandCursor)
+        note.installEventFilter(self)
+        layout = QHBoxLayout(note)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        marker_label = QLabel(marker, note)
+        marker_label.setMinimumWidth(34)
+        marker_label.setAlignment(Qt.AlignCenter)
+        marker_label.setProperty("advice_candidate_row", row)
+        marker_label.setCursor(Qt.PointingHandCursor)
+        marker_label.installEventFilter(self)
+        if tone == "reason":
+            foreground, background = MIDNIGHT_ANALYST.status_info, "#0b1c27"
+        elif tone == "warning":
+            foreground, background = MIDNIGHT_ANALYST.status_warning, "#221a10"
+        else:
+            foreground, background = MIDNIGHT_ANALYST.text_muted, "transparent"
+        marker_label.setStyleSheet(
+            f"color: {foreground}; background: {background}; font-size: 8pt; "
+            "font-weight: 700; border-radius: 4px; padding: 2px;"
+        )
+        reason_label = QLabel(text, note)
+        reason_label.setObjectName("adviceCandidateReasonText")
+        reason_label.setProperty("advice_candidate_row", row)
+        reason_label.setCursor(Qt.PointingHandCursor)
+        reason_label.installEventFilter(self)
+        reason_label.setWordWrap(True)
+        reason_label.setStyleSheet(
+            f"color: {foreground if tone == 'warning' else MIDNIGHT_ANALYST.text_secondary}; "
+            "font-size: 9pt;"
+        )
+        layout.addWidget(marker_label, 0, Qt.AlignTop)
+        layout.addWidget(reason_label, 1)
+        card_layout.addWidget(note)
+
+    def _layout_advice_candidate_cards(self, columns: int) -> None:
+        if not hasattr(self, "advice_candidate_cards_layout"):
+            return
+        columns = 1 if columns <= 1 else 2
+        if columns == self._advice_candidate_card_columns:
+            return
+        for column_layout in self._advice_candidate_card_column_layouts:
+            while column_layout.count():
+                column_layout.takeAt(0)
+        self._advice_candidate_card_columns = columns
+        for index, card in enumerate(self._advice_candidate_card_frames):
+            self._advice_candidate_card_column_layouts[index % columns].addWidget(card)
+        for column_index, (column, column_layout) in enumerate(
+            zip(
+                self._advice_candidate_card_column_widgets,
+                self._advice_candidate_card_column_layouts,
+                strict=True,
+            )
+        ):
+            column_layout.addStretch(1)
+            column.setVisible(column_index < columns)
+            self.advice_candidate_cards_layout.setStretch(
+                column_index, 1 if column_index < columns else 0
+            )
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """允許點候選卡面展開詳情，內層研究操作保留各自按鈕行為。"""
+
+        if isinstance(event, QMouseEvent) and event.type() == QEvent.MouseButtonRelease:
+            row = watched.property("advice_candidate_row")
+            if event.button() == Qt.LeftButton and isinstance(row, int):
+                if 0 <= row < len(self._advice_candidate_card_buttons):
+                    self._advice_candidate_card_buttons[row].click()
+                    return True
+        return super().eventFilter(watched, event)
+
+    def _toggle_advice_candidate_card(self, row: int, expanded: bool) -> None:
+        if not (0 <= row < len(self._advice_candidate_card_buttons)):
+            return
+        self._set_advice_candidate_card_expanded_state(row if expanded else None)
+        selection = self.advice_candidate_table.selectionModel()
+        if expanded:
+            index = self.advice_candidate_model.index(row, 0)
+            previous_row = selection.currentIndex().row()
+            selection.setCurrentIndex(
+                index,
+                QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows,
+            )
+            if previous_row == row and selection.currentIndex().row() == row:
+                self._show_advice_row_presentation(self.advice_candidate_model, row)
+        else:
+            selection.setCurrentIndex(QModelIndex(), QItemSelectionModel.Clear)
+
+    def _set_advice_candidate_card_expanded_state(self, expanded_row: int | None) -> None:
+        self._expanded_advice_candidate_row = expanded_row
+        for index, (frame, button, detail_host) in enumerate(
+            zip(
+                self._advice_candidate_card_frames,
+                self._advice_candidate_card_buttons,
+                self._advice_candidate_detail_hosts,
+                strict=True,
+            )
+        ):
+            is_expanded = index == self._expanded_advice_candidate_row
+            button.blockSignals(True)
+            button.setChecked(is_expanded)
+            button.setText("收合詳情" if is_expanded else "展開詳情")
+            candidate_index = self.advice_candidate_model.index(
+                index,
+                self.advice_candidate_model.column_index("stock_code"),
+            )
+            candidate_title = str(
+                self.advice_candidate_model.data(candidate_index, Qt.DisplayRole)
+                or "候選"
+            )
+            button.setAccessibleName(
+                f"{'收合' if is_expanded else '展開'} {candidate_title} 詳情"
+            )
+            button.blockSignals(False)
+            detail_host.setVisible(is_expanded)
+            frame.setProperty("expanded", is_expanded)
+            frame.style().unpolish(frame)
+            frame.style().polish(frame)
+
+    def _place_advice_selection_detail_panel(self, candidate_row: int | None) -> None:
+        """研究卡展開時將同一組判讀與操作移入卡片，收合時放回清單下方。"""
+
+        if candidate_row is not None and 0 <= candidate_row < len(
+            self._advice_candidate_detail_hosts
+        ):
+            if self._advice_selection_detail_host_row is not None:
+                previous_host = self._advice_candidate_detail_hosts[
+                    self._advice_selection_detail_host_row
+                ]
+                previous_host.layout().removeWidget(self.advice_selection_detail_panel)
+            else:
+                self.advice_panel.layout.removeWidget(self.advice_selection_detail_panel)
+            host = self._advice_candidate_detail_hosts[candidate_row]
+            host.layout().addWidget(self.advice_selection_detail_panel)
+            self._advice_selection_detail_host_row = candidate_row
+            return
+
+        if self._advice_selection_detail_host_row is not None:
+            previous_host = self._advice_candidate_detail_hosts[
+                self._advice_selection_detail_host_row
+            ]
+            previous_host.layout().removeWidget(self.advice_selection_detail_panel)
+        else:
+            self.advice_panel.layout.removeWidget(self.advice_selection_detail_panel)
+        self.advice_selection_detail_panel.setParent(self.advice_panel)
+        portfolio_index = self.advice_panel.layout.indexOf(self.advice_portfolio_table)
+        self.advice_panel.layout.insertWidget(
+            max(0, portfolio_index + 1),
+            self.advice_selection_detail_panel,
+        )
+        self._advice_selection_detail_host_row = None
 
     def _clear_advice_presentation_selection(self) -> None:
+        self._place_advice_selection_detail_panel(None)
+        self.advice_selection_detail_panel.setVisible(False)
+        self._expanded_advice_candidate_row = None
+        self._set_advice_candidate_card_expanded_state(None)
         self._selected_advice_presentation = None
         self._selected_advice_row = None
         self._selected_advice_original_reasons = ()
@@ -4038,6 +4666,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if hasattr(self, "advice_selection_card"):
             self.advice_selection_card.setText("所選建議判讀：尚未選取；欄位未提供。")
             self.advice_selection_card.setVisible(False)
+        if hasattr(self, "advice_presentation_detail"):
+            self.advice_presentation_detail.setVisible(False)
         if hasattr(self, "advice_lineage_button"):
             self.advice_lineage_button.blockSignals(True)
             self.advice_lineage_button.setChecked(False)
@@ -4081,6 +4711,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._selected_advice_presentation = presentation
         self._selected_advice_row = item
         is_candidate = getattr(getattr(item, "classification", None), "value", "") == "PROFESSIONAL_CANDIDATE"
+        if is_candidate:
+            self._set_advice_candidate_card_expanded_state(row)
         is_portfolio_row = model is self.advice_portfolio_model
         action_raw = getattr(getattr(item, "advice_action", None), "value", "") or ""
         action_label = {
@@ -4116,7 +4748,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         card_text = (
             "所選建議判讀\n"
-            f"層級：{'Professional 研究候選（不屬於正式 Advice）' if is_candidate else '配置列' if is_portfolio_row else '正式 Advice'}｜"
+            f"層級：{'策略 Advice（人工判斷與採納）' if is_candidate else '配置研究列' if is_portfolio_row else '策略 Advice（人工判斷與採納）'}｜"
             f"動作：{action_label}（原碼：{action_raw or '未提供'}）\n"
             f"{contract_completeness}\n"
             f"Advice 原始理由（含資格限制）：{compact_reasons_text}\n"
@@ -4166,6 +4798,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._update_advice_research_decision_action(item, model)
         self.advice_lineage_button.setEnabled(True)
         self._render_advice_presentation_detail()
+        if is_candidate:
+            self._place_advice_selection_detail_panel(row)
+        else:
+            self._place_advice_selection_detail_panel(None)
+            self._set_advice_candidate_card_expanded_state(None)
+        self.advice_presentation_detail.setVisible(True)
+        self.advice_selection_detail_panel.setVisible(True)
 
     def _update_advice_contract_backtest_action(self, item: object, model: object) -> None:
         _, author_only_missing = _missing_advice_contract_fields(item)
@@ -5697,11 +6336,14 @@ def _advice_warning_text(value: object) -> str:
     raw = str(value or "").strip()
     known = {
         "evidence_quality_missing": "缺少合格證據，不能產生 Advice。",
-        "guided_mode_strategy_not_promoted": "Guided 策略尚未正式採用，不能產生正式 Advice。",
+        "guided_mode_strategy_not_promoted": "策略尚未通過升格核驗；Advice 仍供你判斷。",
         "guided_mode_strategy_advice_contract_missing_or_unverified": (
-            "此策略版本缺少已核驗的 Advice 契約，不能提供 Guided 新增候選；"
-            "請以新的合格回測升版並填妥契約，再選用該新版本執行。"
+            "此策略版本的作者說明缺少或未核驗；仍提供 Advice，請將此限制納入判斷。"
         ),
+        "strategy_lifecycle_not_qualified": "策略生命週期尚未通過核驗；Advice 仍供你判斷。",
+        "strategy_parameters_not_locked": "策略參數尚未鎖定；請將此限制納入判斷。",
+        "strategy_disclosure_incomplete": "策略揭露尚未完整；請將此限制納入判斷。",
+        "strategy_advice_contract_missing_or_unverified": "策略版本說明未提供或未核驗；不阻擋 Advice。",
         "risk_budget_unavailable": "缺少已核驗的風險預算，不能提供配置。",
         "execution_feasibility_not_confirmed": "可成交性尚未核實。",
         "promoted_strategy_acceptance_evidence_missing": (
@@ -5714,39 +6356,35 @@ def _advice_warning_text(value: object) -> str:
 
 
 def _advice_contract_completeness(item: object) -> str:
-    """把 Advice 契約的空欄位列成缺件，絕不以顯示提示代填資料。"""
+    """區分 Advice 證據缺件與不阻擋輸出的選填策略作者說明。"""
 
     source_missing, author_only_missing = _missing_advice_contract_fields(item)
-    if not source_missing and not author_only_missing:
-        return "Advice 必要欄位：目前均有可判讀值與來源追溯；仍須依來源、品質與 Gate 判讀。"
-    lines = [
-        "Advice 必要欄位待補："
-        + "、".join((*source_missing, *author_only_missing))
-        + "。"
-    ]
+    lines: list[str] = []
     if source_missing:
+        lines.append("Advice 證據欄位待核對：" + "、".join(source_missing) + "。")
         lines.append(
             "同筆保存結果／來源欄位待核對："
             + "、".join(source_missing)
             + "；若本列顯示「回查這筆保存推薦結果」入口，請核對同一原件；"
             "沒有精確回查入口或原件未提供時仍保留未知，不另選其他結果。"
         )
+    else:
+        lines.append("Advice 核心欄位與來源追溯可判讀；仍須依資料品質與列示限制判斷。")
     if author_only_missing:
         lines.append(
-            "策略作者契約欄位："
+            "策略版本選填說明未提供："
             + "、".join(author_only_missing)
-            + "；需完成新的合格回測並建立新策略版本時由策略作者明確填寫。既有版本不可事後補綁。"
+            + "。這些欄位不阻擋 Advice；系統不會偽稱它們是作者聲明。若要保存，請以新版本補充。"
         )
-    lines.append(
-        "不得由排名分數、其他股票或空白欄位推定；UNKNOWN／UNAVAILABLE 不算完成。"
-    )
+    if source_missing:
+        lines.append("未知或缺少來源的證據不會由排名分數、其他股票或空白欄位代填。")
     return "\n".join(lines)
 
 
 def _missing_advice_contract_fields(
     item: object,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """分開需回查的同筆證據欄位與只能由策略作者聲明的契約欄位。"""
+    """分開需回查的 Advice 證據與選填的策略作者說明。"""
 
     source_fields = (
         ("why_reasons", "成立理由"),

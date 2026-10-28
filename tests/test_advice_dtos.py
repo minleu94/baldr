@@ -75,7 +75,7 @@ def test_advice_dashboard_round_trip_preserves_nested_json_contract() -> None:
     assert AdviceDashboardDTO.from_dict(payload) == dashboard
 
 
-def test_professional_candidate_round_trip_and_action_guard() -> None:
+def test_professional_candidate_round_trip_remains_advice_compatible() -> None:
     row = RecommendationAdviceDTO(
         stock_code="2330",
         advice_action=AdviceAction.RESEARCH,
@@ -83,12 +83,12 @@ def test_professional_candidate_round_trip_and_action_guard() -> None:
     )
 
     assert RecommendationAdviceDTO.from_dict(row.to_dict()) == row
-    with pytest.raises(ValueError, match="RESEARCH"):
-        RecommendationAdviceDTO(
-            stock_code="2330",
-            advice_action=AdviceAction.ADD_CANDIDATE,
-            classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
-        )
+    advice_row = RecommendationAdviceDTO(
+        stock_code="2330",
+        advice_action=AdviceAction.ADD_CANDIDATE,
+        classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+    )
+    assert advice_row.advice_action is AdviceAction.ADD_CANDIDATE
 
 
 @pytest.mark.parametrize(

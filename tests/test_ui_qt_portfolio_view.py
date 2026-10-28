@@ -16,7 +16,7 @@ import shiboken6
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QEvent, QModelIndex, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QModelIndex, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -294,6 +294,26 @@ class _SequencedAsyncPortfolioService(FakePortfolioService):
 
     def list_positions(self):
         raise AssertionError("background refresh must reuse the returned PortfolioDTO")
+
+
+class _SequencedTradeHistoryPortfolioService(FakePortfolioService):
+    """Hold the first history read to verify responsive UI and filter generations."""
+
+    def __init__(self, config: FakeConfig):
+        super().__init__(config)
+        self.history_started = threading.Event()
+        self.release_first_history = threading.Event()
+        self.history_calls = 0
+        self.history_thread_ids: list[int] = []
+
+    def list_trades(self):
+        self.history_calls += 1
+        call = self.history_calls
+        self.history_thread_ids.append(threading.get_ident())
+        if call == 1:
+            self.history_started.set()
+            self.release_first_history.wait(timeout=5)
+        return super().list_trades()
 
 
 class FakeJournalService:
@@ -1723,6 +1743,50 @@ def test_portfolio_async_refresh_cancels_older_generation_and_uses_one_dto(tmp_p
     assert view.positions_model.rowCount() == len(view._last_portfolio_dto.positions)
     assert "同一份資料" in view.portfolio_refresh_status_label.text()
     assert view.btn_refresh.isEnabled()
+
+
+def test_portfolio_trade_history_is_async_and_discards_old_filter_response(tmp_path):
+    app()
+    service = _SequencedTradeHistoryPortfolioService(FakeConfig(tmp_path))
+    view = PortfolioView(
+        portfolio_service=service,
+        journal_service=FakeJournalService(),
+        condition_monitor=FakeConditionMonitor(),
+        async_refresh=True,
+    )
+    gui_thread = threading.get_ident()
+
+    assert _wait_until(service.history_started.is_set)
+    assert "交易歷史載入中" in view.trade_filter_status_label.text()
+    assert not view.trades_table.isEnabled()
+    ui_timer_fired = []
+    QTimer.singleShot(0, lambda: ui_timer_fired.append(True))
+    assert _wait_until(lambda: bool(ui_timer_fired))
+
+    view.selected_stock_code = "2317"
+    view._load_trades_history()
+    assert _wait_until(
+        lambda: service.history_calls >= 2
+        and view._trade_history_worker is None
+        and "目前只顯示：2317" in view.trade_filter_status_label.text()
+    )
+    assert service.history_thread_ids
+    assert all(thread_id != gui_thread for thread_id in service.history_thread_ids)
+    assert view.trades_table.isEnabled()
+    assert view.trades_model is not None
+    assert view.trades_model.rowCount() == 1
+    assert view.trades_model.getDataFrame().iloc[0]["證券代號"] == "2317"
+
+    service.release_first_history.set()
+    assert _wait_until(
+        lambda: view._trade_history_worker is None
+        and not view._retired_trade_history_workers
+    )
+    assert view.trades_model is not None
+    assert view.trades_model.rowCount() == 1
+    assert view.trades_model.getDataFrame().iloc[0]["證券代號"] == "2317"
+    assert "目前只顯示：2317" in view.trade_filter_status_label.text()
+    view.deleteLater()
 
 
 def test_portfolio_stale_worker_callback_cannot_replace_new_generation(tmp_path):

@@ -1373,6 +1373,58 @@ class AddJournalDialog(QDialog):
         }
 
 
+_TRADE_HISTORY_COLUMNS = [
+    "交易日期",
+    "證券代號",
+    "證券名稱",
+    "買賣",
+    "交易股數",
+    "單價",
+    "手續費",
+    "稅金",
+    "策略來源",
+    "備註",
+    "_trade_id",
+]
+
+
+def _load_trade_history_frame(
+    portfolio_service: PortfolioService,
+    stock_code: str,
+    cancel_callback=None,
+) -> pd.DataFrame:
+    """在背景讀取及投影交易歷史；不建立 Qt model 或操作 widget。"""
+
+    if callable(cancel_callback) and cancel_callback():
+        return pd.DataFrame(columns=_TRADE_HISTORY_COLUMNS)
+
+    trades = portfolio_service.list_trades()
+    if callable(cancel_callback) and cancel_callback():
+        return pd.DataFrame(columns=_TRADE_HISTORY_COLUMNS)
+    if stock_code:
+        trades = [trade for trade in trades if trade.stock_code == stock_code]
+    if not trades:
+        return pd.DataFrame(columns=_TRADE_HISTORY_COLUMNS)
+
+    rows = [
+        {
+            "交易日期": trade.trade_date,
+            "證券代號": trade.stock_code,
+            "證券名稱": trade.stock_name,
+            "買賣": "買入" if trade.side.lower() == "buy" else "賣出",
+            "交易股數": trade.quantity,
+            "單價": trade.price,
+            "手續費": trade.fees,
+            "稅金": trade.taxes,
+            "策略來源": trade.source_id or "手動",
+            "備註": trade.notes,
+            "_trade_id": trade.trade_id,
+        }
+        for trade in trades
+    ]
+    return pd.DataFrame(rows, columns=_TRADE_HISTORY_COLUMNS)
+
+
 class PortfolioView(QWidget):
     """持倉管理與交易日誌主 UI 視圖"""
 
@@ -1526,6 +1578,11 @@ class PortfolioView(QWidget):
         self._worker_generation = 0
         self._refresh_worker: TaskWorker | None = None
         self._refresh_pending = False
+        self._trade_history_generation = 0
+        self._trade_history_worker: TaskWorker | None = None
+        self._retired_trade_history_workers: list[TaskWorker] = []
+        self._trade_history_worker_context: dict[TaskWorker, tuple[int, str]] = {}
+        self._trade_history_applied_filter: str | None = None
         self._pending_position_health_focus: _PendingPositionHealthFocus | None = None
         self._closing = False
         self._portfolio_narrow = False
@@ -3906,6 +3963,7 @@ class PortfolioView(QWidget):
 
         self._closing = True
         self._pending_position_health_focus = None
+        self._cancel_trade_history_requests()
         scenario_panel = getattr(self, "portfolio_research_scenario_widget", None)
         if scenario_panel is not None:
             scenario_panel.begin_shutdown()
@@ -3931,6 +3989,7 @@ class PortfolioView(QWidget):
 
         self._closing = True
         self._pending_position_health_focus = None
+        self._cancel_trade_history_requests()
         scenario_panel = getattr(self, "portfolio_research_scenario_widget", None)
         if scenario_panel is not None:
             scenario_panel.begin_shutdown()
@@ -3947,6 +4006,15 @@ class PortfolioView(QWidget):
             worker.cancel(cooperative=True, wait=False)
             self.portfolio_refresh_status_label.setText(
                 "已請求取消持倉背景刷新；工作安全結束後再關閉。"
+            )
+            event.ignore()
+            return
+        if any(
+            history_worker.isRunning()
+            for history_worker in self._retired_trade_history_workers
+        ):
+            self.trade_filter_status_label.setText(
+                "已請求取消交易歷史讀取；工作安全結束後再關閉。"
             )
             event.ignore()
             return
@@ -5729,50 +5797,246 @@ class PortfolioView(QWidget):
         )
 
     def _load_trades_history(self):
-        """加載交易明細，若有選定股票，則進行篩選"""
+        """讀取交易明細；正式 MainWindow 模式在背景讀取及建立資料投影。"""
+
+        if self._closing:
+            return
+        stock_code = self.selected_stock_code
+        if self.async_refresh:
+            self._start_trade_history_worker(stock_code)
+            return
+
         try:
-            self.selected_trade_id = ""
-            trades = self.portfolio_service.list_trades()
-            if self.selected_stock_code:
-                trades = [t for t in trades if t.stock_code == self.selected_stock_code]
-
-            if not trades:
-                df = pd.DataFrame(columns=["交易日期", "證券代號", "證券名稱", "買賣", "交易股數", "單價", "手續費", "稅金", "策略來源", "備註", "_trade_id"])
-            else:
-                data = []
-                for t in trades:
-                    data.append({
-                        "交易日期": t.trade_date,
-                        "證券代號": t.stock_code,
-                        "證券名稱": t.stock_name,
-                        "買賣": "買入" if t.side.lower() == "buy" else "賣出",
-                        "交易股數": t.quantity,
-                        "單價": t.price,
-                        "手續費": t.fees,
-                        "稅金": t.taxes,
-                        "策略來源": t.source_id or "手動",
-                        "備註": t.notes,
-                        "_trade_id": t.trade_id
-                    })
-                df = pd.DataFrame(data)
-
-            self.trades_model = PandasTableModel(df)
-            if "_trade_id" in df.columns:
-                self.trades_model.setVisibleColumns([col for col in df.columns if col != "_trade_id"])
-            self.trades_table.setModel(self.trades_model)
-            self.trades_table.resizeColumnsToContents()
-            selection_model = self.trades_table.selectionModel()
-            if selection_model is not None:
-                selection_model.selectionChanged.connect(self._sync_selected_trade_action)
-            self._sync_selected_trade_action()
-            if self.selected_stock_code:
-                self.trade_filter_status_label.setText(f"目前只顯示：{self.selected_stock_code}")
-                self.clear_trade_filter_button.setEnabled(True)
-            else:
-                self.trade_filter_status_label.setText("顯示全部交易歷史")
-                self.clear_trade_filter_button.setEnabled(False)
+            frame = _load_trade_history_frame(self.portfolio_service, stock_code)
         except Exception as e:
             logger.error("Failed to load trades history: %s", e)
+            self.trades_table.setEnabled(True)
+            self.trade_filter_status_label.setText(
+                f"交易歷史載入失敗｜{self._trade_history_scope_label(stock_code)}｜{_first_error_line(str(e))}"
+            )
+            self._sync_selected_trade_action()
+            return
+        self._apply_trade_history_frame(frame, stock_code)
+
+    @staticmethod
+    def _trade_history_scope_label(stock_code: str) -> str:
+        return f"目前只顯示：{stock_code}" if stock_code else "顯示全部交易歷史"
+
+    @staticmethod
+    def _empty_trade_history_frame() -> pd.DataFrame:
+        return pd.DataFrame(columns=_TRADE_HISTORY_COLUMNS)
+
+    def _set_empty_trade_history_model(self) -> None:
+        self.trades_model = PandasTableModel(self._empty_trade_history_frame())
+        self.trades_model.setVisibleColumns(
+            [column for column in _TRADE_HISTORY_COLUMNS if column != "_trade_id"]
+        )
+        self.trades_table.setModel(self.trades_model)
+        self._sync_selected_trade_action()
+
+    def _start_trade_history_worker(self, stock_code: str) -> None:
+        if self._closing:
+            return
+        self._trade_history_generation += 1
+        generation = self._trade_history_generation
+        previous_worker = self._trade_history_worker
+        self._trade_history_worker = None
+        if previous_worker is not None:
+            if previous_worker not in self._retired_trade_history_workers:
+                self._retired_trade_history_workers.append(previous_worker)
+            try:
+                previous_worker.cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                self._retired_trade_history_workers.remove(previous_worker)
+
+        preserve_previous = (
+            self.trades_model is not None
+            and self._trade_history_applied_filter == stock_code
+        )
+        if not preserve_previous:
+            self._trade_history_applied_filter = None
+            self._set_empty_trade_history_model()
+
+        previous_count = self.trades_model.rowCount() if preserve_previous else 0
+        scope = self._trade_history_scope_label(stock_code)
+        if previous_count:
+            self.trade_filter_status_label.setText(
+                f"交易歷史更新中；暫留前次 {previous_count} 筆｜{scope}"
+            )
+        else:
+            self.trade_filter_status_label.setText(f"交易歷史載入中｜{scope}")
+        self.clear_trade_filter_button.setEnabled(bool(stock_code))
+        self.trades_table.setEnabled(False)
+        self.delete_selected_trade_button.setEnabled(False)
+
+        worker = TaskWorker(
+            _load_trade_history_frame,
+            self.portfolio_service,
+            stock_code,
+        )
+        self._trade_history_worker = worker
+        self._trade_history_worker_context[worker] = (generation, stock_code)
+        worker.finished.connect(self._on_trade_history_worker_finished)
+        worker.error.connect(self._on_trade_history_worker_error)
+        worker.cancelled.connect(self._on_trade_history_worker_cancelled)
+        worker.native_thread_finished.connect(self._on_trade_history_worker_native_finished)
+        try:
+            worker.start()
+        except Exception as exc:  # noqa: BLE001 - thread startup is a UI boundary
+            self._handle_trade_history_error(
+                generation,
+                stock_code,
+                worker,
+                f"{type(exc).__name__}: {exc}",
+            )
+            self._release_trade_history_worker(worker)
+
+    def _trade_history_request_is_current(
+        self,
+        generation: int,
+        stock_code: str,
+        worker: TaskWorker,
+    ) -> bool:
+        return (
+            not self._closing
+            and generation == self._trade_history_generation
+            and stock_code == self.selected_stock_code
+            and worker is self._trade_history_worker
+        )
+
+    def _trade_history_worker_signal_context(
+        self,
+    ) -> tuple[TaskWorker, int, str] | None:
+        worker = self.sender()
+        if not isinstance(worker, TaskWorker):
+            return None
+        context = self._trade_history_worker_context.get(worker)
+        if context is None:
+            return None
+        generation, stock_code = context
+        return worker, generation, stock_code
+
+    def _on_trade_history_worker_finished(self, frame: object) -> None:
+        context = self._trade_history_worker_signal_context()
+        if context is None:
+            return
+        worker, generation, stock_code = context
+        if not self._trade_history_request_is_current(generation, stock_code, worker):
+            return
+        if not isinstance(frame, pd.DataFrame):
+            self._handle_trade_history_error(
+                generation,
+                stock_code,
+                worker,
+                "交易歷史 worker 未回傳 DataFrame",
+            )
+            return
+        try:
+            self._apply_trade_history_frame(frame, stock_code)
+        except Exception as exc:  # noqa: BLE001 - rendering remains a UI boundary
+            self._handle_trade_history_error(
+                generation,
+                stock_code,
+                worker,
+                f"{type(exc).__name__}: {exc}",
+            )
+
+    def _on_trade_history_worker_error(self, message: str) -> None:
+        context = self._trade_history_worker_signal_context()
+        if context is None:
+            return
+        worker, generation, stock_code = context
+        self._handle_trade_history_error(generation, stock_code, worker, message)
+
+    def _on_trade_history_worker_cancelled(self) -> None:
+        context = self._trade_history_worker_signal_context()
+        if context is None:
+            return
+        worker, generation, stock_code = context
+        if not self._trade_history_request_is_current(generation, stock_code, worker):
+            return
+        self.trades_table.setEnabled(True)
+        self.trade_filter_status_label.setText(
+            f"交易歷史讀取已取消｜{self._trade_history_scope_label(stock_code)}"
+        )
+        self._sync_selected_trade_action()
+
+    def _handle_trade_history_error(
+        self,
+        generation: int,
+        stock_code: str,
+        worker: TaskWorker,
+        message: str,
+    ) -> None:
+        if not self._trade_history_request_is_current(generation, stock_code, worker):
+            return
+        error_line = _first_error_line(message)
+        logger.error("Failed to load trades history: %s", error_line)
+        self.trades_table.setEnabled(True)
+        previous_count = (
+            self.trades_model.rowCount()
+            if self._trade_history_applied_filter == stock_code and self.trades_model is not None
+            else 0
+        )
+        if previous_count:
+            self.trade_filter_status_label.setText(
+                f"交易歷史更新失敗；暫留前次 {previous_count} 筆｜"
+                f"{self._trade_history_scope_label(stock_code)}｜{error_line}"
+            )
+        else:
+            self.trade_filter_status_label.setText(
+                f"交易歷史載入失敗；尚無結果｜"
+                f"{self._trade_history_scope_label(stock_code)}｜{error_line}"
+            )
+        self.clear_trade_filter_button.setEnabled(bool(stock_code))
+        self._sync_selected_trade_action()
+
+    def _apply_trade_history_frame(self, frame: pd.DataFrame, stock_code: str) -> None:
+        self.selected_trade_id = ""
+        self.trades_model = PandasTableModel(frame)
+        self.trades_model.setVisibleColumns(
+            [column for column in frame.columns if column != "_trade_id"]
+        )
+        self.trades_table.setModel(self.trades_model)
+        self.trades_table.resizeColumnsToContents()
+        self.trades_table.setEnabled(True)
+        selection_model = self.trades_table.selectionModel()
+        if selection_model is not None:
+            selection_model.selectionChanged.connect(self._sync_selected_trade_action)
+        self._trade_history_applied_filter = stock_code
+        count = len(frame)
+        self.trade_filter_status_label.setText(
+            f"{self._trade_history_scope_label(stock_code)}｜{count} 筆"
+        )
+        self.clear_trade_filter_button.setEnabled(bool(stock_code))
+        self._sync_selected_trade_action()
+
+    def _release_trade_history_worker(self, worker: TaskWorker) -> None:
+        if self._trade_history_worker is worker:
+            self._trade_history_worker = None
+        self._trade_history_worker_context.pop(worker, None)
+        if worker in self._retired_trade_history_workers:
+            self._retired_trade_history_workers.remove(worker)
+        worker.deleteLater()
+
+    def _on_trade_history_worker_native_finished(self) -> None:
+        context = self._trade_history_worker_signal_context()
+        if context is not None:
+            worker, _, _ = context
+            self._release_trade_history_worker(worker)
+
+    def _cancel_trade_history_requests(self) -> None:
+        self._trade_history_generation += 1
+        worker = self._trade_history_worker
+        self._trade_history_worker = None
+        if worker is None:
+            return
+        if worker not in self._retired_trade_history_workers:
+            self._retired_trade_history_workers.append(worker)
+        try:
+            worker.cancel(cooperative=True, wait=False)
+        except RuntimeError:
+            self._retired_trade_history_workers.remove(worker)
 
     def _selected_trade_record(self) -> Optional[Dict[str, Any]]:
         """取得目前表格中選取的原始交易，避免將衍生持倉列當作可刪除紀錄。"""
@@ -6354,8 +6618,9 @@ class PortfolioView(QWidget):
                 self.refresh_all()
                 return
             if self.selected_stock_code == record["stock_code"]:
-                remaining_trades = self.portfolio_service.list_trades()
-                if not any(trade.stock_code == record["stock_code"] for trade in remaining_trades):
+                # 目前表格已按此股票過濾；排除剛刪除的列後沒有其他列，就回到全部歷史。
+                # 不在 GUI thread 為了這個判斷再同步掃描整份交易帳本。
+                if self.trades_model is None or self.trades_model.rowCount() <= 1:
                     self.selected_stock_code = ""
             QMessageBox.information(self, "已刪除", "交易紀錄已移除，持倉與平均成本已依剩餘交易重新計算。")
             self.refresh_all()

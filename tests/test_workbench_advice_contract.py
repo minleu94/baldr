@@ -242,6 +242,13 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
             classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
             why_reasons=("retest_observed",),
         ),
+        RecommendationAdviceDTO(
+            stock_code="2454",
+            stock_name="聯發科",
+            advice_action=AdviceAction.RESEARCH,
+            classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+            why_reasons=("volume_confirmation",),
+        ),
     )
     advice = AdviceDashboardDTO(
         decision_date="2026-07-12",
@@ -256,19 +263,29 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     )
 
     assert view.advice_candidate_table.isHidden()
-    assert len(view._advice_candidate_card_buttons) == 2
-    view._layout_advice_candidate_cards(2)
-    assert view._advice_candidate_card_column_layouts[0].itemAt(0).widget() == (
+    assert len(view._advice_candidate_card_buttons) == 3
+    view._layout_advice_candidate_cards(3)
+    assert view.advice_candidate_cards_layout.itemAtPosition(0, 0).widget() == (
         view._advice_candidate_card_frames[0]
     )
-    assert view._advice_candidate_card_column_layouts[1].itemAt(0).widget() == (
+    assert view.advice_candidate_cards_layout.itemAtPosition(0, 1).widget() == (
         view._advice_candidate_card_frames[1]
     )
-    view._layout_advice_candidate_cards(1)
-    assert view._advice_candidate_card_column_layouts[0].itemAt(1).widget() == (
-        view._advice_candidate_card_frames[1]
+    assert view.advice_candidate_cards_layout.itemAtPosition(0, 2).widget() == (
+        view._advice_candidate_card_frames[2]
     )
     view._layout_advice_candidate_cards(2)
+    assert view.advice_candidate_cards_layout.itemAtPosition(1, 0).widget() == (
+        view._advice_candidate_card_frames[2]
+    )
+    view._layout_advice_candidate_cards(1)
+    assert view.advice_candidate_cards_layout.itemAtPosition(1, 0).widget() == (
+        view._advice_candidate_card_frames[1]
+    )
+    assert view.advice_candidate_cards_layout.itemAtPosition(2, 0).widget() == (
+        view._advice_candidate_card_frames[2]
+    )
+    view._layout_advice_candidate_cards(3)
     first = view._advice_candidate_card_buttons[0]
     first.click()
 
@@ -286,6 +303,8 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     assert "符合研究條件" in summary_texts
     assert "缺少當日價格" in summary_texts
     assert "01" in summary_texts
+    assert "研究" in summary_texts
+    assert "信心 未提供" in summary_texts
     assert not any(text.startswith("支持理由：") for text in summary_texts)
     assert "同筆來源證據 Alpha" in view.advice_selection_card.toolTip()
     assert not view.advice_selection_card.isHidden()

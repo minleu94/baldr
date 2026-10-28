@@ -657,7 +657,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         advice_panel.layout.addWidget(self.advice_recommendation_table)
         self.advice_candidate_label = QLabel("策略 Advice（人工判斷與採納）")
         self.advice_candidate_hint = QLabel(
-            "每檔以獨立研究卡呈現。卡面編號列出主要理由；點卡片可展開同一筆完整判讀與研究紀錄，不會自動下單。"
+            "每檔以獨立小卡呈現。卡面列出主要理由與限制；點卡片可展開同一筆完整判讀與研究紀錄，不會自動下單。"
         )
         self.advice_candidate_hint.setObjectName("adviceCandidateHint")
         self.advice_candidate_hint.setWordWrap(True)
@@ -668,21 +668,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_candidate_hint.setVisible(False)
         self.advice_candidate_cards = QWidget(self)
         self.advice_candidate_cards.setObjectName("adviceCandidateCards")
-        self.advice_candidate_cards_layout = QHBoxLayout(self.advice_candidate_cards)
+        self.advice_candidate_cards_layout = QGridLayout(self.advice_candidate_cards)
         self.advice_candidate_cards_layout.setContentsMargins(0, 0, 0, 0)
         self.advice_candidate_cards_layout.setSpacing(12)
         self._advice_candidate_card_columns = 0
-        self._advice_candidate_card_column_widgets: list[QWidget] = []
-        self._advice_candidate_card_column_layouts: list[QVBoxLayout] = []
-        for column_index in range(2):
-            column = QWidget(self.advice_candidate_cards)
-            column.setObjectName(f"adviceCandidateColumn{column_index + 1}")
-            column_layout = QVBoxLayout(column)
-            column_layout.setContentsMargins(0, 0, 0, 0)
-            column_layout.setSpacing(8)
-            self.advice_candidate_cards_layout.addWidget(column, 1)
-            self._advice_candidate_card_column_widgets.append(column)
-            self._advice_candidate_card_column_layouts.append(column_layout)
         self._advice_candidate_card_frames: list[QFrame] = []
         self._advice_candidate_card_buttons: list[QPushButton] = []
         self._advice_candidate_detail_hosts: list[QWidget] = []
@@ -2104,7 +2093,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._apply_advice_table_width_mode()
         narrow = self.width() < 820
         if hasattr(self, "_advice_candidate_card_frames"):
-            self._layout_advice_candidate_cards(1 if narrow else 2)
+            self._layout_advice_candidate_cards(
+                1 if narrow else 2 if self.width() < 1000 else 3
+            )
         if not force and narrow == self._workbench_narrow:
             return
         self._workbench_narrow = narrow
@@ -4215,12 +4206,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_card.setText("所選 Advice 判讀：選取建議列後顯示。")
 
     def _clear_advice_candidate_cards(self) -> None:
-        for column_layout in self._advice_candidate_card_column_layouts:
-            while column_layout.count():
-                item = column_layout.takeAt(0)
-                widget = item.widget()
-                if widget is not None:
-                    widget.deleteLater()
+        while self.advice_candidate_cards_layout.count():
+            item = self.advice_candidate_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
         self._advice_candidate_card_frames.clear()
         self._advice_candidate_card_buttons.clear()
         self._advice_candidate_detail_hosts.clear()
@@ -4321,10 +4311,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 )
             )
             title_layout.addWidget(title_label, 1)
-            expand_button = QPushButton("詳情", title_row)
+            expand_button = QPushButton("⌄", title_row)
             expand_button.setProperty("variant", "secondary")
             expand_button.setCheckable(True)
-            expand_button.setMinimumHeight(36)
+            expand_button.setFixedSize(28, 28)
+            expand_button.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+                f"background: {MIDNIGHT_ANALYST.surface_1}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 8px; "
+                "font-size: 12pt; font-weight: 700; padding: 0;"
+            )
             expand_button.setAccessibleName(f"展開 {title} 詳情")
             expand_button.setAccessibleDescription(
                 "顯示或收合完整判讀；展開內容沿用同筆候選的來源理由、風險與證據。"
@@ -4343,17 +4339,27 @@ class UnifiedDecisionWorkbenchView(QWidget):
             meta_layout = QHBoxLayout(meta_row)
             meta_layout.setContentsMargins(0, 0, 0, 0)
             meta_layout.setSpacing(6)
-            badge = StatusBadge("未升格 Advice", "candidate")
+            badge = QLabel(action, meta_row)
+            badge.setObjectName("adviceCandidateActionBadge")
             badge.setProperty("advice_candidate_row", row_index)
             badge.setCursor(Qt.PointingHandCursor)
             badge.installEventFilter(self)
+            badge.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.status_info}; background: #0b1c27; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 9px; "
+                "padding: 2px 8px; font-size: 8.5pt; font-weight: 700;"
+            )
             meta_layout.addWidget(badge)
-            confidence_label = QLabel(f"動作：{action}｜信心：{confidence}", meta_row)
+            confidence_label = QLabel(f"信心 {confidence}", meta_row)
+            confidence_label.setObjectName("adviceCandidateConfidenceBadge")
             confidence_label.setProperty("advice_candidate_row", row_index)
             confidence_label.setCursor(Qt.PointingHandCursor)
             confidence_label.installEventFilter(self)
             confidence_label.setStyleSheet(
-                f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;"
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+                f"background: {MIDNIGHT_ANALYST.surface_1}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 9px; "
+                "padding: 2px 8px; font-size: 8.5pt;"
             )
             meta_layout.addWidget(confidence_label, 1)
             header_layout.addWidget(title_row)
@@ -4399,15 +4405,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     restrictions[0],
                     tone="warning",
                 )
-            else:
-                self._add_advice_candidate_card_note(
-                    card_layout,
-                    card,
-                    row_index,
-                    "限制",
-                    "未提供",
-                    tone="muted",
-                )
             if extra_restrictions:
                 self._add_advice_candidate_card_note(
                     card_layout,
@@ -4449,8 +4446,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 or "未知可成交性"
             )
             status_label = QLabel(
-                f"風險：{risk}　｜　資料品質：{quality}　｜　可成交性：{feasibility}",
-                card,
+                f"風險 {risk}  ·  品質 {quality}  ·  成交 {feasibility}", card
             )
             status_label.setProperty("advice_candidate_row", row_index)
             status_label.setObjectName("adviceCandidateStatus")
@@ -4477,7 +4473,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._advice_candidate_card_frames.append(card)
             self._advice_candidate_card_buttons.append(expand_button)
             self._advice_candidate_detail_hosts.append(detail_host)
-        self._layout_advice_candidate_cards(1 if self.width() < 820 else 2)
+        self._layout_advice_candidate_cards(
+            1 if self.width() < 820 else 2 if self.width() < 1000 else 3
+        )
 
     def _add_advice_candidate_card_note(
         self,
@@ -4489,28 +4487,36 @@ class UnifiedDecisionWorkbenchView(QWidget):
         *,
         tone: str,
     ) -> None:
-        note = QWidget(card)
+        note = QFrame(card)
+        note.setObjectName("adviceCandidateReasonPill")
         note.setProperty("advice_candidate_row", row)
         note.setCursor(Qt.PointingHandCursor)
         note.installEventFilter(self)
         layout = QHBoxLayout(note)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(5, 3, 7, 3)
         layout.setSpacing(6)
         marker_label = QLabel(marker, note)
-        marker_label.setMinimumWidth(34)
+        marker_label.setMinimumWidth(27)
         marker_label.setAlignment(Qt.AlignCenter)
         marker_label.setProperty("advice_candidate_row", row)
         marker_label.setCursor(Qt.PointingHandCursor)
         marker_label.installEventFilter(self)
         if tone == "reason":
             foreground, background = MIDNIGHT_ANALYST.status_info, "#0b1c27"
+            border_color = MIDNIGHT_ANALYST.border
         elif tone == "warning":
             foreground, background = MIDNIGHT_ANALYST.status_warning, "#221a10"
+            border_color = MIDNIGHT_ANALYST.status_warning
         else:
-            foreground, background = MIDNIGHT_ANALYST.text_muted, "transparent"
+            foreground, background = MIDNIGHT_ANALYST.text_muted, MIDNIGHT_ANALYST.surface_1
+            border_color = MIDNIGHT_ANALYST.border
+        note.setStyleSheet(
+            f"QFrame#adviceCandidateReasonPill {{ background: {background}; "
+            f"border: 1px solid {border_color}; border-radius: 8px; }}"
+        )
         marker_label.setStyleSheet(
-            f"color: {foreground}; background: {background}; font-size: 8pt; "
-            "font-weight: 700; border-radius: 4px; padding: 2px;"
+            f"color: {foreground}; background: transparent; font-size: 8pt; "
+            "font-weight: 700; padding: 1px;"
         )
         reason_label = QLabel(text, note)
         reason_label.setObjectName("adviceCandidateReasonText")
@@ -4529,25 +4535,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _layout_advice_candidate_cards(self, columns: int) -> None:
         if not hasattr(self, "advice_candidate_cards_layout"):
             return
-        columns = 1 if columns <= 1 else 2
+        columns = min(3, max(1, int(columns)))
         if columns == self._advice_candidate_card_columns:
             return
-        for column_layout in self._advice_candidate_card_column_layouts:
-            while column_layout.count():
-                column_layout.takeAt(0)
+        while self.advice_candidate_cards_layout.count():
+            self.advice_candidate_cards_layout.takeAt(0)
         self._advice_candidate_card_columns = columns
         for index, card in enumerate(self._advice_candidate_card_frames):
-            self._advice_candidate_card_column_layouts[index % columns].addWidget(card)
-        for column_index, (column, column_layout) in enumerate(
-            zip(
-                self._advice_candidate_card_column_widgets,
-                self._advice_candidate_card_column_layouts,
-                strict=True,
+            self.advice_candidate_cards_layout.addWidget(
+                card, index // columns, index % columns
             )
-        ):
-            column_layout.addStretch(1)
-            column.setVisible(column_index < columns)
-            self.advice_candidate_cards_layout.setStretch(
+        for column_index in range(3):
+            self.advice_candidate_cards_layout.setColumnStretch(
                 column_index, 1 if column_index < columns else 0
             )
 
@@ -4592,7 +4591,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             is_expanded = index == self._expanded_advice_candidate_row
             button.blockSignals(True)
             button.setChecked(is_expanded)
-            button.setText("收合詳情" if is_expanded else "展開詳情")
+            button.setText("⌃" if is_expanded else "⌄")
             candidate_index = self.advice_candidate_model.index(
                 index,
                 self.advice_candidate_model.column_index("stock_code"),

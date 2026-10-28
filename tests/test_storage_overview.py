@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import stat
+from types import SimpleNamespace
 
 import pytest
 
@@ -170,6 +172,21 @@ def test_inner_symlink_is_not_followed(tmp_path: Path) -> None:
     assert result.artifacts[0].measured_bytes == 0
     assert not result.artifacts[0].complete
     assert "未跟隨" in result.artifacts[0].status
+
+
+@pytest.mark.parametrize(
+    ("mode", "attributes", "expected"),
+    (
+        (stat.S_IFLNK, 0, True),
+        (stat.S_IFDIR, 0x400, True),
+        (stat.S_IFREG, 0, False),
+    ),
+)
+def test_reparse_classification_uses_existing_metadata(
+    tmp_path: Path, mode: int, attributes: int, expected: bool
+) -> None:
+    metadata = SimpleNamespace(st_mode=mode, st_file_attributes=attributes)
+    assert storage_overview._is_reparse(tmp_path / "unobserved", metadata) is expected
 
 
 def test_storage_cancellation_stops_before_disk_read(tmp_path: Path) -> None:

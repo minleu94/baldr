@@ -35,10 +35,11 @@ class StorageOverview:
     inventory_available: bool = False
 
 
-def _is_reparse(path: Path, metadata: os.stat_result) -> bool:
-    return path.is_symlink() or bool(
+def _is_reparse(_path: Path, metadata: os.stat_result) -> bool:
+    reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return stat.S_ISLNK(metadata.st_mode) or bool(
         getattr(metadata, "st_file_attributes", 0)
-        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        & reparse_attribute
     )
 
 

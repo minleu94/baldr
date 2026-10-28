@@ -142,6 +142,17 @@ owner核准新設定後，讓GUI使用新 `OUTPUT_ROOT` 與同一已核 `TECHNIC
 4. 先暫停舊機所有要移交的 writer；留下停止時間和可核對證據。唯讀 heartbeat、唯讀稽核及使用者 GUI 需依 owner 的來源寫入契約判斷是否屬 writer。`old_machine_writer_stopped` 是布林欄位；為 false 或缺少停止證據時都停止移機啟用階段，不把未知硬填 true。
 5. 保留舊機可回滾材料與本機資料，不先刪除舊根或重建資料庫。備份成功不等於資料可直接搬入新機。
 
+### A2. 舊機資料按需打包清冊（取代常駐 `BaldrTransfer\FA_Data.zip`）
+
+平時不需在磁碟常駐 `F:\BaldrTransfer\FA_Data.zip`（1.56 GB）。需要移機或在另一台電腦使用 baldr 時，先確認無寫入程序且 `sqlite/twstock.db-wal` 已為 0 bytes（或完成唯讀快照核對），再請 Agent 按下列分級清單從 `DATA_ROOT`（預設 `F:\Min\Python\Project\FA_Data`）打包，並記錄每檔未壓縮／壓縮後大小與 SHA-256 清冊：
+
+| 等級與用途 | 包含之 `DATA_ROOT` 相對路徑 | 預估容量（未壓縮／ZIP） | 打包與核驗注意事項 |
+|---|---|---|---|
+| **Tier A：最小核心行情與主資料庫包**（等同原 `BaldrTransfer\FA_Data.zip`） | `sqlite/twstock.db`<br>`daily_price/*.csv`（TWSE 上市日行情）<br>`daily_price_tpex/*.csv`（TPEx 上櫃日行情） | 約 4.39 GB ／ **約 1.56 GB** | 打包前確認 writer 停止且無活動 `.db-wal`／`.db-journal`；**排除** `sqlite/backups/`（23.51 GB）與 `twstock.db.bak*`（1.42 GB） |
+| **Tier B：完整日常研究與選股核心包**（含分點籌碼、財報、技指與必要 metadata） | Tier A 全部項目，另加：<br>`broker_flow/`（約 218 MB）<br>`financial_data/`（約 132 MB）<br>`technical_analysis/`（約 2.25 GB）<br>`meta_data/` 現役檔案（`all_stocks_data.csv`、`stock_data_whole.csv*`、`companies*.csv`、`Date_table.csv`、`market_index.csv`、`industry_*.csv`、`monthly_revenue_availability.csv`、`broker_branch_registry.csv`、`official_market_daily_sources/`、`industry_chain_snapshots/`）<br>選配：`industry_analysis/`、`industry_correlation/`、`KY__buy_sell/`、`TS_daily/`、`features/`、`backup_daily_etf/` | 約 9.95 GB ／ **約 3.2–3.8 GB** | **嚴格排除** `meta_data/backup/`（17.20 GB 歷史備份）與 `.lock` 鎖定檔 |
+| **Tier C：已保存研究、收藏與個人設定**（依移機範圍選配） | `personal/`（如 H20 校準設定，約 3.2 MB；需含 manifest／lineage）<br>`models/`（約 5.5 MB）<br>已保存研究與收藏：優先使用上方 `scripts/copy_research_output.py`、`scripts/copy_technical_source.py`、`scripts/copy_price_bookmarks.py` 匯出並保存對應 receipt SHA | 約 30–150 MB | 含路徑綁定之 SQLite／JSON store 須透過上述專用複製工具重綁新機 `OUTPUT_ROOT`，不可只裸拷目錄充當已驗證遷移 |
+| **明確排除項目**（不納入移機資料包） | `sqlite/backups/`（23.51 GB）、`sqlite/twstock.db.bak*`（1.42 GB）<br>`meta_data/backup/`（17.20 GB）<br>`output/release_v4/`（444.61 GB ML 歷史訓練與 PIT 分塊）<br>`output/scheduled/`（74.54 GB 歷史修復與排程收據）<br>`output/research_only/`（10.55 GB）、`output/evidence_working_copies/`（3.08 GB）、`output/current-mops-statements-*`（3.77 GB）<br>`BaldrStorage/`（`pytest-temp`、`repo-dist`、`repo-output` 共 183.47 GB）與 `FA_ML_Research/`（103.06 GB） | 排除合計 **> 870 GB** | 這些屬於本機歷史備份、暫存測試、打包 candidate 或大型 ML 實驗產物，移機時不打包 |
+
 ### B. 新機設定與資產核驗
 
 1. 先選 `source` 或 `portable-gui`，安裝到新機自己的路徑；依[安裝指南](INSTALL_GUIDE.md)或[可攜版指南](PORTABLE_WINDOWS.md)設定 runtime。`source_scheduler_runtime_verified` 只在具名核對新機 Windows 排程實際使用的 Python/source runtime 與 wrapper 後才設 true；portable GUI 啟動成功不能代替這項驗證。正式排程的 wrapper 仍依既有契約逐項核對。

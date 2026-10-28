@@ -1340,7 +1340,9 @@ class WatchlistService:
 
     def query_stock_names(self, stock_codes: List[str]) -> Dict[str, str]:
         """只讀目前行情／名冊的顯示名稱，不變更收藏身份或資料用途。"""
-        codes = [str(code).strip() for code in stock_codes if str(code).strip()]
+        codes = list(dict.fromkeys(
+            str(code).strip() for code in stock_codes if str(code).strip()
+        ))
         if not codes:
             return {}
         names: Dict[str, str] = {}
@@ -1349,8 +1351,46 @@ class WatchlistService:
             try:
                 with closing(sqlite3.connect(f"{Path(db_path).resolve().as_uri()}?mode=ro", uri=True)) as conn:
                     conn.execute("PRAGMA query_only=ON")
-                    placeholders = ",".join("?" for _ in codes)
-                    rows = conn.execute(f"SELECT 證券代號, 證券名稱 FROM daily_prices WHERE 證券代號 IN ({placeholders}) ORDER BY 日期", tuple(codes)).fetchall()
+                    if self._has_daily_prices_stock_date_index(conn):
+                        requested_codes = ",".join("(?)" for _ in codes)
+                        python_strip_chars = (
+                            "char(9,10,11,12,13,28,29,30,31,32,133,160,5760,"
+                            "8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,"
+                            "8202,8232,8233,8239,8287,12288)"
+                        )
+                        rows = conn.execute(
+                            f"""
+                            WITH requested_codes(證券代號) AS (
+                                VALUES {requested_codes}
+                            ), latest_names AS (
+                                SELECT requested_codes.證券代號,
+                                       (
+                                           SELECT daily_prices.證券名稱
+                                           FROM daily_prices
+                                           WHERE daily_prices.證券代號 = requested_codes.證券代號
+                                             AND daily_prices.證券名稱 IS NOT NULL
+                                             AND TRIM(
+                                                 CAST(daily_prices.證券名稱 AS TEXT),
+                                                 {python_strip_chars}
+                                             ) <> ''
+                                           ORDER BY daily_prices.日期 DESC
+                                           LIMIT 1
+                                       ) AS 證券名稱
+                                FROM requested_codes
+                            )
+                            SELECT 證券代號, 證券名稱
+                            FROM latest_names
+                            WHERE 證券名稱 IS NOT NULL
+                            """,
+                            tuple(codes),
+                        ).fetchall()
+                    else:
+                        placeholders = ",".join("?" for _ in codes)
+                        rows = conn.execute(
+                            f"SELECT 證券代號, 證券名稱 FROM daily_prices "
+                            f"WHERE 證券代號 IN ({placeholders}) ORDER BY 日期",
+                            tuple(codes),
+                        ).fetchall()
                     names.update({str(code): str(name) for code, name in rows if name and str(name).strip()})
             except sqlite3.Error:
                 pass
@@ -1376,6 +1416,48 @@ class WatchlistService:
             except (OSError, UnicodeError, csv.Error):
                 logging.getLogger(__name__).warning("顯示名稱名冊無法讀取；保留已知名稱，不補造。")
         return names
+
+    @staticmethod
+    def _has_daily_prices_stock_date_index(connection: sqlite3.Connection) -> bool:
+        """只在代號、日期可供索引查詢時縮減名稱讀取列數。"""
+
+        expected_columns = ("證券代號", "日期")
+        table_columns = connection.execute(
+            'PRAGMA table_info("daily_prices")'
+        ).fetchall()
+        column_types = {
+            str(row[1]): str(row[2]).upper() for row in table_columns
+        }
+        name_type = column_types.get("證券名稱", "")
+        if not any(affinity in name_type for affinity in ("CHAR", "CLOB", "TEXT")):
+            return False
+        primary_key = tuple(
+            str(row[1])
+            for row in sorted(
+                (row for row in table_columns if int(row[5]) > 0),
+                key=lambda row: int(row[5]),
+            )
+        )
+        if primary_key == expected_columns:
+            return True
+
+        for index in connection.execute('PRAGMA index_list("daily_prices")').fetchall():
+            # 部分索引不涵蓋所有歷史名稱列。
+            if len(index) > 4 and bool(index[4]):
+                continue
+            # 兩欄必須共同唯一，才能確保每個代號／日期只有一筆名稱資料。
+            if not bool(index[2]):
+                continue
+            index_name = str(index[1]).replace('"', '""')
+            index_columns = connection.execute(
+                f'PRAGMA index_info("{index_name}")'
+            ).fetchall()
+            leading_columns = tuple(
+                str(row[2]) for row in index_columns[:2] if row[2] is not None
+            )
+            if leading_columns == expected_columns and len(index_columns) == 2:
+                return True
+        return False
 
     def get_default_watchlist(self) -> Optional[Watchlist]:
         """取得預設觀察清單"""

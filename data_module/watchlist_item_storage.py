@@ -820,7 +820,7 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
         "SELECT revision_id,watchlist_id,revision,operation,payload_hash,source_hash,identity_status,"
         "continuity_event_id,revision_of,created_at,is_deleted,header_json,delta_hash,chain_hash "
         "FROM watchlist_revisions_v3 ORDER BY watchlist_id,revision"
-    ).fetchall()
+    )
     state_by_watchlist: dict[str, tuple[dict[str, str], list[str]]] = {}
     previous_by_watchlist: dict[str, tuple[int, str, str]] = {}
     revisions: list[dict[str, Any]] = []

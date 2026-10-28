@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QHeaderView, QMenu, QAbstractItemView,
     QGroupBox, QSplitter, QSizePolicy, QInputDialog, QProgressBar
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QFont, QAction
 import pandas as pd
 import logging
@@ -166,6 +166,7 @@ class WatchlistView(QWidget):
         config=None,
         parent=None,
         presentation_service: DecisionPresentationService | None = None,
+        async_initial_load: bool = False,
     ):
         """初始化觀察清單視圖
         
@@ -184,6 +185,9 @@ class WatchlistView(QWidget):
         self.analysis_service = WatchlistAnalysisService(config) if config and hasattr(config, "output_root") else None
         self._analysis_request_id = 0
         self._analysis_worker: TaskWorker | None = None
+        self._watchlist_load_generation = 0
+        self._watchlist_load_worker: TaskWorker | None = None
+        self._watchlist_load_workers: set[TaskWorker] = set()
         self._shutdown_started = False
         self.personal_h20_bookmark_controls: PersonalH20BookmarkControls | None = None
         self._research_bookmark_restore_tokens: list[object] = []
@@ -210,27 +214,31 @@ class WatchlistView(QWidget):
         self._setup_ui()
         logger.info("[WatchlistView] UI 設置完成")
         
-        # 延遲載入觀察清單，避免初始化時出錯導致整個程式崩潰
+        # 初始化觀察清單；MainWindow 使用背景讀取，直接建構的舊呼叫維持同步。
         logger.info("[WatchlistView] 開始載入觀察清單...")
-        try:
-            self._load_watchlist()
-            logger.info("[WatchlistView] 觀察清單載入成功")
-        except Exception as e:
-            self._watchlist_load_succeeded = False
-            import traceback
-            logger.error(f"[WatchlistView] 錯誤：初始化時載入觀察清單失敗")
-            logger.error(f"[WatchlistView] 錯誤類型: {type(e).__name__}")
-            logger.error(f"[WatchlistView] 錯誤訊息: {str(e)}")
-            logger.error(f"[WatchlistView] 詳細堆疊追蹤:\n{traceback.format_exc()}")
-            # 顯示空表格，不阻止程式啟動
+        if async_initial_load:
+            self._start_watchlist_async_load()
+        else:
             try:
-                self.stocks_model = PandasTableModel(self._empty_frame())
-                self.stocks_table.setModel(self.stocks_model)
-                self.stats_label.setText("候選列／不同代號數未知（載入失敗）")
-                self._set_status_label("載入失敗，請檢查數據文件", level="error")
-                logger.error("[WatchlistView] 已顯示錯誤提示")
-            except Exception as e2:
-                logger.error(f"[WatchlistView] 顯示錯誤提示時也失敗: {e2}")
+                self._load_watchlist()
+                logger.info("[WatchlistView] 觀察清單載入成功")
+            except Exception as e:
+                self._watchlist_load_succeeded = False
+                import traceback
+                logger.error("[WatchlistView] 錯誤：初始化時載入觀察清單失敗")
+                logger.error(f"[WatchlistView] 錯誤類型: {type(e).__name__}")
+                logger.error(f"[WatchlistView] 錯誤訊息: {str(e)}")
+                logger.error(f"[WatchlistView] 詳細堆疊追蹤:\n{traceback.format_exc()}")
+                # 顯示空表格，不阻止程式啟動
+                try:
+                    self.stocks_model = PandasTableModel(self._empty_frame())
+                    self.stocks_table.setModel(self.stocks_model)
+                    self.stats_label.setText("候選列／不同代號數未知（載入失敗）")
+                    self._set_status_label("載入失敗，請檢查數據文件", level="error")
+                    self._apply_candidate_search()
+                    logger.error("[WatchlistView] 已顯示錯誤提示")
+                except Exception as e2:
+                    logger.error(f"[WatchlistView] 顯示錯誤提示時也失敗: {e2}")
         
         logger.info("[WatchlistView] 初始化完成")
     
@@ -367,6 +375,30 @@ class WatchlistView(QWidget):
         watchlist_ops_layout.addWidget(self.clear_btn)
         watchlist_ops_layout.addStretch()
         candidate_layout.addWidget(watchlist_ops_group)
+
+        candidate_search_layout = QHBoxLayout()
+        candidate_search_label = QLabel("搜尋候選池：")
+        candidate_search_label.setProperty("role", "muted")
+        candidate_search_layout.addWidget(candidate_search_label)
+        self.candidate_search_input = QLineEdit()
+        self.candidate_search_input.setObjectName("watchlistCandidateSearch")
+        self.candidate_search_input.setAccessibleName("候選池目前清單搜尋")
+        self.candidate_search_input.setAccessibleDescription(
+            "只搜尋目前已載入候選列的股票代號與名稱；不重讀或擴大來源。"
+        )
+        self.candidate_search_input.setPlaceholderText("股票代號或名稱")
+        self.candidate_search_input.setClearButtonEnabled(True)
+        self.candidate_search_input.textChanged.connect(
+            self._apply_candidate_search
+        )
+        candidate_search_layout.addWidget(self.candidate_search_input, stretch=1)
+        candidate_layout.addLayout(candidate_search_layout)
+        self.candidate_search_summary = QLabel("尚未載入；符合筆數未知。")
+        self.candidate_search_summary.setObjectName("watchlistCandidateSearchSummary")
+        self.candidate_search_summary.setProperty("role", "status")
+        self.candidate_search_summary.setAccessibleName("候選池搜尋結果")
+        self.candidate_search_summary.setWordWrap(True)
+        candidate_layout.addWidget(self.candidate_search_summary)
 
         # 表格是候選池的主內容，讓它取得左側大部分可用高度。
         self.stocks_table = QTableView()
@@ -877,6 +909,54 @@ class WatchlistView(QWidget):
             style.polish(self.status_label)
         self.status_label.setText(text)
 
+    def _apply_candidate_search(self, *_args) -> None:
+        """只隱藏不符合搜尋的表格列，保留來源模型及列身份。"""
+        model = self.stocks_model
+        if model is None or not self._watchlist_load_succeeded:
+            status = self.status_label.text() if hasattr(self, "status_label") else ""
+            if "載入中" in status:
+                message = "候選池載入中；符合筆數未知，載入完成後顯示。"
+            elif "尚未載入" in status:
+                message = "尚未載入候選池；符合筆數未知。"
+            else:
+                message = "候選池不可用；符合筆數未知。"
+            self.candidate_search_summary.setText(message)
+            return
+
+        frame = model.getDataFrame()
+        query = self.candidate_search_input.text().strip().casefold()
+        matching_count = 0
+        for row_index, (_, row) in enumerate(frame.iterrows()):
+            values = []
+            for column in ("證券代號", "證券名稱"):
+                value = row.get(column, "")
+                values.append(
+                    "" if value is None or pd.isna(value)
+                    else str(value).strip().casefold()
+                )
+            matches = not query or any(query in value for value in values)
+            self.stocks_table.setRowHidden(row_index, not matches)
+            if matches:
+                matching_count += 1
+
+        selection = self.stocks_table.selectionModel()
+        selected_rows = selection.selectedRows() if selection else []
+        if any(self.stocks_table.isRowHidden(index.row()) for index in selected_rows):
+            self.stocks_table.clearSelection()
+
+        total_count = len(frame)
+        if query:
+            empty_note = "（已載入空清單）" if total_count == 0 else ""
+            self.candidate_search_summary.setText(
+                f"目前搜尋「{self.candidate_search_input.text().strip()}」｜"
+                f"符合 {matching_count}／{total_count} 筆候選列{empty_note}"
+            )
+        else:
+            empty_note = "（已載入空清單）" if total_count == 0 else ""
+            self.candidate_search_summary.setText(
+                f"未套用搜尋｜顯示全部 {total_count} 筆候選列{empty_note}"
+            )
+
     def _set_review_distribution_message(self, message: str) -> None:
         """清空舊分布，只留下本次載入狀態。"""
         self.review_distribution_status.setText(message)
@@ -1161,11 +1241,10 @@ class WatchlistView(QWidget):
         self._set_status_label(message, level="warning")
         QMessageBox.warning(self, "觀察清單儲存升級未完成", message)
 
-    def _load_watchlist(self):
+    def _prepare_watchlist_load(self) -> None:
         self._review_snapshot = None
         self._set_review_distribution_message("查看狀態載入中…")
         self._render_observation(None)
-        """載入觀察清單"""
         self._watchlist_load_succeeded = False
         self._analysis_request_id += 1
         self.stock_analysis_btn.setEnabled(False)
@@ -1177,35 +1256,166 @@ class WatchlistView(QWidget):
         )
         logger.info("[WatchlistView._load_watchlist] 開始載入...")
         self._set_status_label("載入中…", level="info")
+        self._apply_candidate_search()
+
+    def _read_watchlist_source(self) -> dict[str, object]:
+        """只讀候選快照及顯示名稱；可由背景執行緒呼叫，不碰 Qt widget。"""
+
+        snapshot_method_available = any(
+            "get_review_snapshot" in base.__dict__
+            for base in type(self.watchlist_service).__mro__
+        )
+        service_attributes = getattr(self.watchlist_service, "__dict__", {})
+        snapshot_method_available = snapshot_method_available or (
+            isinstance(service_attributes, dict)
+            and "get_review_snapshot" in service_attributes
+        )
+        snapshot_reader = (
+            getattr(self.watchlist_service, "get_review_snapshot", None)
+            if snapshot_method_available else None
+        )
+        display_names: Mapping[str, str] = {}
+        stocks: list[dict[str, object]] = []
+        if snapshot_method_available:
+            review_snapshot = None
+            if callable(snapshot_reader):
+                try:
+                    candidate_snapshot = snapshot_reader()
+                    if type(candidate_snapshot) is WatchlistReviewSnapshot:
+                        review_snapshot = candidate_snapshot
+                except Exception as exc:
+                    logger.warning(
+                        "查看狀態快照不可用：%s",
+                        type(exc).__name__,
+                    )
+            if review_snapshot is None:
+                return {
+                    "snapshot_method_available": True,
+                    "review_snapshot": None,
+                    "stocks": [],
+                    "display_names": display_names,
+                }
+            stock_codes = [
+                row.stock_code
+                for row in review_snapshot.rows
+                if type(row) is WatchlistReviewSnapshotRow
+            ] if review_snapshot.status == "loaded" and type(review_snapshot.rows) is tuple else []
+        else:
+            logger.info(
+                "[WatchlistView._load_watchlist] 使用相容 get_stocks() 載入；"
+                "查看狀態分布不可用。"
+            )
+            review_snapshot = None
+            stocks = self.watchlist_service.get_stocks()
+            stock_codes = [
+                str(row.get("stock_code", "")).strip()
+                for row in (stocks or [])
+                if isinstance(row, Mapping)
+            ]
+
+        name_reader = getattr(self.watchlist_service, "query_stock_names", None)
         try:
-            snapshot_status = "fallback"
-            service_type = type(self.watchlist_service)
-            snapshot_method_available = any(
-                "get_review_snapshot" in base.__dict__
-                for base in service_type.__mro__
+            display_names = (
+                name_reader(stock_codes) if callable(name_reader) else {}
             )
-            service_attributes = getattr(self.watchlist_service, "__dict__", {})
-            snapshot_method_available = snapshot_method_available or (
-                isinstance(service_attributes, dict)
-                and "get_review_snapshot" in service_attributes
+        except Exception as exc:
+            logger.warning("顯示名稱暫不可讀；原收藏仍可核驗：%s", exc)
+            display_names = {}
+        if not isinstance(display_names, Mapping):
+            display_names = {}
+        return {
+            "snapshot_method_available": snapshot_method_available,
+            "review_snapshot": review_snapshot,
+            "stocks": stocks if not snapshot_method_available else [],
+            "display_names": display_names,
+        }
+
+    def _start_watchlist_async_load(self) -> None:
+        previous = self._watchlist_load_worker
+        if previous is not None and previous.isRunning():
+            previous.cancel(cooperative=True, wait=False)
+        self._watchlist_load_generation += 1
+        generation = self._watchlist_load_generation
+        self._prepare_watchlist_load()
+
+        def read_source() -> tuple[int, bool, object]:
+            try:
+                return generation, True, self._read_watchlist_source()
+            except Exception as exc:
+                return generation, False, exc
+
+        worker = TaskWorker(read_source)
+        self._watchlist_load_worker = worker
+        self._watchlist_load_workers.add(worker)
+        worker.finished.connect(self._on_watchlist_async_load_finished)
+        worker.native_thread_finished.connect(
+            self._on_watchlist_async_load_worker_finished
+        )
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    @Slot(object)
+    def _on_watchlist_async_load_finished(self, result: object) -> None:
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 3
+            or type(result[0]) is not int
+        ):
+            return
+        generation, succeeded, value = result
+        if self._shutdown_started or generation != self._watchlist_load_generation:
+            return
+        self._load_watchlist(
+            _read_result=value if succeeded else RuntimeError(str(value)),
+            _request_generation=generation,
+        )
+
+    @Slot()
+    def _on_watchlist_async_load_worker_finished(self) -> None:
+        worker = self.sender()
+        if worker in self._watchlist_load_workers:
+            self._watchlist_load_workers.discard(worker)
+        if self._watchlist_load_worker is worker:
+            self._watchlist_load_worker = None
+
+    def _load_watchlist(
+        self,
+        *,
+        _read_result: object | None = None,
+        _request_generation: int | None = None,
+    ) -> None:
+        """同步相容載入；所有既有寫後讀回呼叫仍在主執行緒完成。"""
+
+        if _request_generation is None:
+            self._watchlist_load_generation += 1
+            previous = self._watchlist_load_worker
+            if previous is not None and previous.isRunning():
+                previous.cancel(cooperative=True, wait=False)
+        elif (
+            self._shutdown_started
+            or _request_generation != self._watchlist_load_generation
+        ):
+            return
+
+        self._prepare_watchlist_load()
+        try:
+            if isinstance(_read_result, BaseException):
+                raise _read_result
+            read_result = (
+                _read_result
+                if isinstance(_read_result, dict)
+                else self._read_watchlist_source()
             )
-            snapshot_reader = (
-                getattr(self.watchlist_service, "get_review_snapshot", None)
-                if snapshot_method_available else None
+            snapshot_method_available = bool(
+                read_result.get("snapshot_method_available", False)
             )
+            review_snapshot = read_result.get("review_snapshot")
+            display_names = read_result.get("display_names", {})
+            stocks = read_result.get("stocks", [])
+            if not isinstance(display_names, Mapping):
+                display_names = {}
             if snapshot_method_available:
-                review_snapshot = None
-                if callable(snapshot_reader):
-                    try:
-                        candidate_snapshot = snapshot_reader()
-                        if type(candidate_snapshot) is WatchlistReviewSnapshot:
-                            review_snapshot = candidate_snapshot
-                    except Exception as exc:
-                        logger.warning(
-                            "查看狀態快照不可用：%s",
-                            type(exc).__name__,
-                        )
-                if review_snapshot is None:
+                if type(review_snapshot) is not WatchlistReviewSnapshot:
                     self._review_snapshot = None
                     self._set_review_distribution_message(
                         "查看狀態快照不可用；沒有沿用先前分布。"
@@ -1235,14 +1445,10 @@ class WatchlistView(QWidget):
                     stocks = []
                     snapshot_status = "unavailable"
             else:
-                logger.info(
-                    "[WatchlistView._load_watchlist] 使用相容 get_stocks() 載入；"
-                    "查看狀態分布不可用。"
-                )
                 self._set_review_distribution_message(
                     "此服務未提供同版查看狀態快照；分布未知。"
                 )
-                stocks = self.watchlist_service.get_stocks()
+                snapshot_status = "fallback"
 
             logger.info(f"[WatchlistView._load_watchlist] 獲取到 {len(stocks) if stocks else 0} 筆候選列")
             
@@ -1261,14 +1467,6 @@ class WatchlistView(QWidget):
                     'notes': '備註'
                 })
                 # 名稱是目前名冊的展示補充；typed 收藏及其原始身份保持不變。
-                name_reader = getattr(self.watchlist_service, "query_stock_names", None)
-                try:
-                    display_names = name_reader([str(value).strip() for value in df["證券代號"]]) if callable(name_reader) else {}
-                except Exception as exc:
-                    logger.warning("顯示名稱暫不可讀；原收藏仍可核驗：%s", exc)
-                    display_names = {}
-                if not isinstance(display_names, Mapping):
-                    display_names = {}
                 df["證券名稱"] = [
                     display_names.get(str(code).strip(), str(name).strip() if str(name).strip() != str(code).strip() else "名稱未提供")
                     for code, name in zip(df["證券代號"], df["證券名稱"])
@@ -1333,6 +1531,8 @@ class WatchlistView(QWidget):
             logger.info("[WatchlistView._load_watchlist] 設置表格模型...")
             try:
                 self.stocks_table.setModel(self.stocks_model)
+                self.stocks_model.layoutChanged.connect(self._apply_candidate_search)
+                self.stocks_model.modelReset.connect(self._apply_candidate_search)
                 self._analysis_request_id += 1
                 self.analysis_text.clear()
                 self.stocks_table.selectionModel().selectionChanged.connect(self._load_selected_analysis)
@@ -1390,6 +1590,7 @@ class WatchlistView(QWidget):
                 self._set_watchlist_focus_summary(count=len(stocks) if stocks else 0)
                 self._update_research_lab_button_state(len(stocks))
                 self._set_candidate_data_actions_enabled(bool(stocks))
+            self._apply_candidate_search()
             self._refresh_storage_status()
             self._refresh_technical_bookmark_controls()
             logger.info("[WatchlistView._load_watchlist] 載入完成")
@@ -1408,10 +1609,11 @@ class WatchlistView(QWidget):
             logger.error(f"[WatchlistView._load_watchlist] 詳細堆疊追蹤:\n{traceback.format_exc()}")
             
             error_msg = f"載入觀察清單失敗：\n{str(e)}\n\n{traceback.format_exc()}"
-            try:
-                QMessageBox.critical(self, "錯誤", error_msg)
-            except:
-                logger.error("[WatchlistView._load_watchlist] 無法顯示錯誤對話框")
+            if _request_generation is None:
+                try:
+                    QMessageBox.critical(self, "錯誤", error_msg)
+                except Exception:
+                    logger.error("[WatchlistView._load_watchlist] 無法顯示錯誤對話框")
             
             # 顯示空表格，避免界面崩潰
             try:
@@ -1422,6 +1624,7 @@ class WatchlistView(QWidget):
                     f"載入失敗：{str(e).splitlines()[0] or type(e).__name__}",
                     level="error",
                 )
+                self._apply_candidate_search()
                 self._set_watchlist_focus_summary(
                     count=None,
                     message=f"載入失敗：{str(e).splitlines()[0] or type(e).__name__}",
@@ -3073,11 +3276,15 @@ class WatchlistView(QWidget):
         super().closeEvent(event)
 
     def begin_shutdown(self) -> bool:
-        """使舊分析結果失效並取消收藏控制項，不更動分析 worker 的既有流程。"""
+        """使載入／分析結果失效，並合作取消背景工作及收藏控制項。"""
 
         if not self._shutdown_started:
             self._shutdown_started = True
             self._analysis_request_id += 1
+            self._watchlist_load_generation += 1
+            for worker in tuple(self._watchlist_load_workers):
+                if worker.isRunning():
+                    worker.cancel(cooperative=True, wait=False)
         technical_finished = self.technical_bookmark_controls.begin_shutdown()
         price_finished = self.price_bookmark_controls.begin_shutdown()
         controls = self.personal_h20_bookmark_controls

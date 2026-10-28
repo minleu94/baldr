@@ -211,7 +211,7 @@ def _execution(*, result_id: str = RESULT_ID, as_of_date: date | None = AS_OF_DA
     )
 
 
-def test_manual_saved_research_handoff_uses_exact_canonical_result_and_forces_research_only(
+def test_manual_saved_result_handoff_uses_exact_canonical_result_as_advice(
     tmp_path: Path,
 ) -> None:
     config, queries, artifact_path = _stack(tmp_path)
@@ -228,10 +228,11 @@ def test_manual_saved_research_handoff_uses_exact_canonical_result_and_forces_re
     assert lane.payload_sha256.startswith("sha256:")
     assert lane.advice_dashboard.mode is AdviceMode.PROFESSIONAL
     assert lane.advice_dashboard.recommendations[0].advice_action is AdviceAction.RESEARCH
-    assert lane.advice_dashboard.recommendations[0].classification.value == "PROFESSIONAL_CANDIDATE"
+    assert lane.advice_dashboard.recommendations[0].classification.value == "FORMAL_ADVICE"
     assert lane.advice_dashboard.recommendations[0].source_result_id == RESULT_ID
     assert lane.advice_dashboard.recommendations[0].source_payload_sha256 == lane.payload_sha256
     assert any("不是今日排程候選" in warning for warning in lane.advice_dashboard.warnings)
+    assert any("不代表來源已接受" in warning for warning in lane.advice_dashboard.warnings)
     assert lane.advice_dashboard.portfolio_rows == ()
     assert artifact_path.read_bytes() == before_artifact
     assert (Path(config.output_root) / "recommendation" / "runs" / "recommendation_runs.db").read_bytes() == before_index

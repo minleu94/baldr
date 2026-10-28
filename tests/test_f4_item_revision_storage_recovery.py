@@ -689,3 +689,102 @@ def test_unknown_schema_object_hash_and_references_are_refused(
     with pytest.raises(WatchlistStorageIntegrityError) as current_refusal:
         reader.get_current("default")
     assert current_refusal.value.code == expected_code
+
+
+def test_inventory_revision_cursor_preserves_watchlist_revision_and_event_order(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "ordered-inventory" / "watchlists.db"
+    repository = _new_repository(database)
+    zeta_first = _item("2603", "manual", "zeta-first")
+    alpha_first = _item("2330", "manual", "alpha-first")
+
+    repository.save(
+        "zeta",
+        _payload([zeta_first]),
+        expected_revision=None,
+        revision_id="zeta-r1",
+    )
+    repository.save(
+        "alpha",
+        _payload([alpha_first]),
+        expected_revision=None,
+        revision_id="alpha-r1",
+    )
+    repository.save(
+        "zeta",
+        _payload([zeta_first, _item("2317", "manual", "zeta-second")]),
+        expected_revision=1,
+        revision_id="zeta-r2",
+    )
+    alpha_updated = deepcopy(alpha_first)
+    alpha_updated["notes"] = "revision two"
+    repository.save(
+        "alpha",
+        _payload([alpha_updated]),
+        expected_revision=1,
+        revision_id="alpha-r2",
+    )
+
+    inventory = repository.get_item_storage_inventory()
+    with sqlite3.connect(database) as connection:
+        expected_revisions = connection.execute(
+            "SELECT revision_id,watchlist_id,revision "
+            "FROM watchlist_revisions_v3 ORDER BY watchlist_id,revision"
+        ).fetchall()
+        expected_events = connection.execute(
+            "SELECT event_id,watchlist_id,revision "
+            "FROM watchlist_revision_events "
+            "ORDER BY watchlist_id,revision,rowid"
+        ).fetchall()
+
+    assert inventory["complete"] is True
+    assert [
+        (row["revision_id"], row["watchlist_id"], row["revision"])
+        for row in inventory["revisions"]
+    ] == expected_revisions
+    assert [
+        (row["event_id"], row["watchlist_id"], row["revision"])
+        for row in inventory["events"]
+    ] == expected_events
+
+
+def test_get_current_refuses_corruption_in_another_watchlist(tmp_path: Path) -> None:
+    database = tmp_path / "other-watchlist-corruption" / "watchlists.db"
+    repository = _new_repository(database)
+    repository.save(
+        "default",
+        _payload([_item("2330", "manual", "default-item")]),
+        expected_revision=None,
+        revision_id="default-r1",
+    )
+    repository.save(
+        "other",
+        _payload([_item("2317", "manual", "other-item")]),
+        expected_revision=None,
+        revision_id="other-r1",
+    )
+    inventory = repository.get_item_storage_inventory()
+    other_object = next(
+        row
+        for row in inventory["objects"]
+        if row["item"]["source_id"] == "other-item"
+    )
+    corrupted_item = deepcopy(other_object["item"])
+    corrupted_item["notes"] = "object no longer matches its hash"
+    corrupted_json = _canonical_json(corrupted_item)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE watchlist_item_objects SET item_json=?,payload_bytes=? "
+            "WHERE object_hash=?",
+            (
+                corrupted_json,
+                len(corrupted_json.encode("utf-8")),
+                other_object["object_hash"],
+            ),
+        )
+
+    reader = WatchlistRepository(database)
+    with pytest.raises(WatchlistStorageIntegrityError) as refusal:
+        reader.get_current("default")
+    assert refusal.value.code == "object_hash_mismatch"

@@ -2590,6 +2590,7 @@ class MainWindow(QMainWindow):
                         watchlist_service=self.watchlist_service,
                         config=self.config,
                         parent=self,
+                        async_initial_load=True,
                     )
                     if hasattr(watchlist, "sendToBacktestRequested"):
                         watchlist.sendToBacktestRequested.connect(

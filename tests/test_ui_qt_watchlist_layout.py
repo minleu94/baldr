@@ -1,12 +1,13 @@
 import os
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEventLoop, QTimer, Qt
 from PySide6.QtWidgets import (
     QApplication, QGroupBox, QLabel, QMessageBox, QProgressBar,
 )
@@ -68,6 +69,39 @@ class _ReviewSnapshotService(MagicMock):
         if isinstance(self.snapshot_value, BaseException):
             raise self.snapshot_value
         return self.snapshot_value
+
+
+class _ManualSignal:
+    def __init__(self) -> None:
+        self.callbacks = []
+
+    def connect(self, callback) -> None:
+        self.callbacks.append(callback)
+
+    def emit(self, *args) -> None:
+        for callback in tuple(self.callbacks):
+            callback(*args)
+
+
+class _ManualTaskWorker:
+    def __init__(self, task) -> None:
+        self.task = task
+        self.finished = _ManualSignal()
+        self.native_thread_finished = _ManualSignal()
+        self.running = False
+        self.cancel_calls = []
+
+    def start(self) -> None:
+        self.running = True
+
+    def isRunning(self) -> bool:
+        return self.running
+
+    def cancel(self, *, cooperative: bool, wait: bool) -> None:
+        self.cancel_calls.append((cooperative, wait))
+
+    def deleteLater(self) -> None:
+        return None
 
 
 def test_watchlist_desktop_layout_keeps_both_universe_lists_visible(monkeypatch, tmp_path: Path):
@@ -393,6 +427,360 @@ def test_declared_review_snapshot_failure_never_falls_back_to_get_stocks(
         assert "快照不可用" in view.review_distribution_status.text()
         assert all(bar.isHidden() for bar in view.review_distribution_bars.values())
         view.close()
+
+
+def test_candidate_search_filters_loaded_rows_without_changing_source_identity(
+    monkeypatch, tmp_path: Path,
+):
+    _app()
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.UniverseService",
+        lambda _config: SimpleNamespace(list_watchlists=lambda: []),
+    )
+    snapshot = WatchlistReviewSnapshot(
+        status="loaded",
+        revision=42,
+        rows=(
+            _review_snapshot_row(0, "2330", "result-a", "pending", "f"),
+            _review_snapshot_row(1, "2317", "result-c", "confirmed", "g"),
+            _review_snapshot_row(2, "2330", "result-b", "deferred", "h"),
+            _review_snapshot_row(3, "2603", "result-d", "unknown", "i"),
+        ),
+    )
+    service = _ReviewSnapshotService(snapshot)
+    service.query_stock_names.return_value = {
+        "2330": "台積電",
+        "2317": "鴻海",
+        "2603": "長榮",
+    }
+    service.get_stocks.side_effect = AssertionError(
+        "local candidate search must not perform another Watchlist read"
+    )
+    view = WatchlistView(service, config=SimpleNamespace(output_root=tmp_path))
+
+    assert view.stocks_model is not None
+    assert view.stocks_model.rowCount() == 4
+    assert view.stats_label.text() == "4 筆候選列／3 檔不同代號"
+    assert "顯示全部 4 筆候選列" in view.candidate_search_summary.text()
+    assert all(not view.stocks_table.isRowHidden(index) for index in range(4))
+    assert service.review_snapshot_calls == 1
+    service.query_stock_names.assert_called_once_with(["2330", "2317", "2330", "2603"])
+    service.get_stocks.assert_not_called()
+
+    view.candidate_search_input.setText("2330")
+    frame = view.stocks_model.getDataFrame()
+    visible_sources = {
+        str(frame.iloc[index]["source_id"])
+        for index in range(len(frame))
+        if not view.stocks_table.isRowHidden(index)
+    }
+    assert visible_sources == {"result-a", "result-b"}
+    assert "目前搜尋「2330」｜符合 2／4 筆候選列" in (
+        view.candidate_search_summary.text()
+    )
+
+    second_source_index = int(
+        frame.index[frame["source_id"] == "result-b"][0]
+    )
+    view.stocks_table.selectRow(second_source_index)
+    selected = view._selected_watchlist_row()
+    assert selected is not None
+    assert selected[0]["source_id"] == "result-b"
+
+    view.candidate_search_input.setText("鴻海")
+    frame = view.stocks_model.getDataFrame()
+    assert [
+        str(frame.iloc[index]["證券代號"])
+        for index in range(len(frame))
+        if not view.stocks_table.isRowHidden(index)
+    ] == ["2317"]
+    assert "符合 1／4 筆候選列" in view.candidate_search_summary.text()
+    assert view._selected_watchlist_row() is None
+
+    view.candidate_search_input.setText("不存在")
+    assert all(view.stocks_table.isRowHidden(index) for index in range(4))
+    assert "符合 0／4 筆候選列" in view.candidate_search_summary.text()
+
+    view.candidate_search_input.setText("2330")
+    view.stocks_model.sort(0, Qt.DescendingOrder)
+    frame = view.stocks_model.getDataFrame()
+    visible_rows = [
+        frame.iloc[index]
+        for index in range(len(frame))
+        if not view.stocks_table.isRowHidden(index)
+    ]
+    assert len(visible_rows) == 2
+    assert {str(row["證券代號"]) for row in visible_rows} == {"2330"}
+    assert {str(row["source_id"]) for row in visible_rows} == {
+        "result-a", "result-b",
+    }
+
+    view.candidate_search_input.clear()
+    assert all(not view.stocks_table.isRowHidden(index) for index in range(4))
+    assert "顯示全部 4 筆候選列" in view.candidate_search_summary.text()
+    assert view.stats_label.text() == "4 筆候選列／3 檔不同代號"
+    assert service.review_snapshot_calls == 1
+    service.query_stock_names.assert_called_once()
+    service.get_stocks.assert_not_called()
+    view.close()
+
+
+def test_candidate_search_count_stays_unknown_until_watchlist_load_finishes(
+    monkeypatch, tmp_path: Path,
+):
+    _app()
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.UniverseService",
+        lambda _config: SimpleNamespace(list_watchlists=lambda: []),
+    )
+    service = _ReviewSnapshotService(
+        WatchlistReviewSnapshot(status="loaded", revision=43, rows=())
+    )
+    workers = []
+
+    def worker_factory(task):
+        worker = _ManualTaskWorker(task)
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr("ui_qt.views.watchlist_view.TaskWorker", worker_factory)
+    view = WatchlistView(
+        service,
+        config=SimpleNamespace(output_root=tmp_path),
+        async_initial_load=True,
+    )
+
+    assert "載入中" in view.candidate_search_summary.text()
+    view.candidate_search_input.setText("2330")
+    assert "載入中" in view.candidate_search_summary.text()
+    assert "未知" in view.candidate_search_summary.text()
+
+    result = workers[0].task()
+    workers[0].finished.emit(result)
+    assert view.candidate_search_summary.text() == (
+        "目前搜尋「2330」｜符合 0／0 筆候選列（已載入空清單）"
+    )
+    assert view.stats_label.text() == "0 筆候選列／0 檔不同代號（目前沒有候選）"
+
+    service.snapshot_value = WatchlistReviewSnapshot(
+        status="missing", revision=None,
+    )
+    view._load_watchlist()
+    assert "未知" in view.candidate_search_summary.text()
+    assert "符合 0／0" not in view.candidate_search_summary.text()
+
+    service.snapshot_value = WatchlistReviewSnapshot(
+        status="unavailable", revision=None, error_code="OSError",
+    )
+    view._load_watchlist()
+    assert "未知" in view.candidate_search_summary.text()
+    assert "符合 0／0" not in view.candidate_search_summary.text()
+
+    workers[0].running = False
+    workers[0].native_thread_finished.emit()
+    view.close()
+
+
+def test_async_initial_watchlist_load_returns_before_read_and_applies_on_completion(
+    monkeypatch, tmp_path: Path,
+):
+    _app()
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.UniverseService",
+        lambda _config: SimpleNamespace(list_watchlists=lambda: []),
+    )
+    snapshot = WatchlistReviewSnapshot(
+        status="loaded",
+        revision=17,
+        rows=(_review_snapshot_row(0, "2330", "async-result", "pending", "a"),),
+    )
+    service = _ReviewSnapshotService(snapshot)
+    service.query_stock_names.side_effect = RuntimeError("name source unavailable")
+    service.get_stocks.side_effect = AssertionError(
+        "typed snapshot path must not perform another Watchlist read"
+    )
+    workers = []
+
+    def worker_factory(task):
+        worker = _ManualTaskWorker(task)
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr("ui_qt.views.watchlist_view.TaskWorker", worker_factory)
+    view = WatchlistView(
+        service,
+        config=SimpleNamespace(output_root=tmp_path),
+        async_initial_load=True,
+    )
+
+    assert service.review_snapshot_calls == 0
+    assert workers and workers[0].running
+    assert view.stocks_model is None
+    assert "載入中" in view.status_label.text()
+
+    result = workers[0].task()
+    assert service.review_snapshot_calls == 1
+    assert view.stocks_model is None
+    workers[0].finished.emit(result)
+
+    assert view.stocks_model is not None
+    assert view.stocks_model.rowCount() == 1
+    assert view.stocks_model.getDataFrame().iloc[0]["證券名稱"] == "測試 2330"
+    assert view.review_distribution_status.text() == (
+        "同一讀取 revision 17；依 1 筆候選列統計。"
+    )
+    assert "已更新：1 筆" in view.status_label.text()
+    workers[0].running = False
+    workers[0].native_thread_finished.emit()
+    view.close()
+
+
+def test_async_initial_watchlist_failure_is_fail_closed_and_old_generation_is_ignored(
+    monkeypatch, tmp_path: Path,
+):
+    _app()
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.UniverseService",
+        lambda _config: SimpleNamespace(list_watchlists=lambda: []),
+    )
+    critical_calls = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "critical",
+        lambda *args, **kwargs: critical_calls.append((args, kwargs)),
+    )
+    old_snapshot = WatchlistReviewSnapshot(
+        status="loaded",
+        revision=1,
+        rows=(_review_snapshot_row(0, "2330", "old-result", "pending", "b"),),
+    )
+    new_snapshot = WatchlistReviewSnapshot(
+        status="loaded",
+        revision=2,
+        rows=(_review_snapshot_row(0, "2317", "new-result", "confirmed", "c"),),
+    )
+    service = _ReviewSnapshotService(old_snapshot)
+    workers = []
+
+    def worker_factory(task):
+        worker = _ManualTaskWorker(task)
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr("ui_qt.views.watchlist_view.TaskWorker", worker_factory)
+    view = WatchlistView(
+        service,
+        config=SimpleNamespace(output_root=tmp_path),
+        async_initial_load=True,
+    )
+    old_result = workers[0].task()
+
+    service.snapshot_value = new_snapshot
+    view._load_watchlist()
+    assert view.stocks_model.getDataFrame().iloc[0]["證券代號"] == "2317"
+    assert workers[0].cancel_calls == [(True, False)]
+
+    workers[0].finished.emit(old_result)
+    assert view.stocks_model.getDataFrame().iloc[0]["證券代號"] == "2317"
+
+    class FailingFallbackService:
+        def get_stocks(self):
+            raise RuntimeError("read failed")
+
+    failed_service = FailingFallbackService()
+    failed_view = WatchlistView(
+        failed_service,
+        config=SimpleNamespace(output_root=tmp_path),
+        async_initial_load=True,
+    )
+    failed_worker = workers[-1]
+    assert failed_view.stocks_model is None
+
+    failure_result = failed_worker.task()
+    failed_worker.finished.emit(failure_result)
+    assert failed_view.stocks_model is not None
+    assert failed_view.stocks_model.rowCount() == 0
+    assert "載入失敗" in failed_view.status_label.text()
+    assert "未知（載入失敗）" in failed_view.stats_label.text()
+    assert critical_calls == []
+
+    synchronous_failure_view = WatchlistView(
+        FailingFallbackService(),
+        config=SimpleNamespace(output_root=tmp_path),
+    )
+    assert critical_calls
+    assert "載入失敗" in synchronous_failure_view.status_label.text()
+
+    view.close()
+    assert workers[0].cancel_calls[-1] == (True, False)
+    workers[0].running = False
+    workers[0].native_thread_finished.emit()
+    failed_view.close()
+    assert failed_worker.cancel_calls[-1] == (True, False)
+    failed_worker.running = False
+    failed_worker.native_thread_finished.emit()
+    synchronous_failure_view.close()
+
+
+def test_async_initial_watchlist_read_runs_off_gui_thread_and_applies_via_qt_signal(
+    tmp_path: Path,
+):
+    _app()
+    gui_thread_id = threading.get_ident()
+    read_started = threading.Event()
+    release_read = threading.Event()
+    service_thread_ids = []
+    snapshot = WatchlistReviewSnapshot(
+        status="loaded",
+        revision=23,
+        rows=(_review_snapshot_row(0, "2603", "thread-result", "pending", "d"),),
+    )
+
+    class ThreadRecordingService:
+        def get_review_snapshot(self):
+            service_thread_ids.append(threading.get_ident())
+            read_started.set()
+            if not release_read.wait(timeout=5):
+                raise TimeoutError("test did not release the background read")
+            return snapshot
+
+        def query_stock_names(self, stock_codes):
+            service_thread_ids.append(threading.get_ident())
+            return {}
+
+    view = WatchlistView(
+        ThreadRecordingService(),
+        async_initial_load=True,
+    )
+    worker = view._watchlist_load_worker
+    assert worker is not None
+    assert read_started.wait(timeout=2)
+    assert view.stocks_model is None
+
+    loop = QEventLoop()
+    applied_thread_ids = []
+
+    def on_loaded():
+        applied_thread_ids.append(threading.get_ident())
+        loop.quit()
+
+    view.watchlistLoaded.connect(on_loaded)
+    timeout = QTimer()
+    timeout.setSingleShot(True)
+    timeout.timeout.connect(loop.quit)
+    timeout.start(5000)
+    release_read.set()
+    loop.exec()
+    timeout.stop()
+
+    assert service_thread_ids
+    assert all(thread_id != gui_thread_id for thread_id in service_thread_ids)
+    assert applied_thread_ids == [gui_thread_id]
+    assert view.stocks_model is not None
+    assert view.stocks_model.rowCount() == 1
+    assert worker.wait(2000)
+    _app().processEvents()
+    view.close()
 
 
 def test_selected_review_revision_mismatch_blocks_save_and_legacy_is_annotated(

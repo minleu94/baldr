@@ -50,6 +50,7 @@ class _SavedExecutionRecommendationRow:
     regime_match: bool | None
     score_percentile_bp: int | None
     eligible_universe_size: int | None
+    eligible_universe_date: str | None
     ranking_method: str | None
     threshold_mode: str | None
 
@@ -344,12 +345,10 @@ class AdviceComposer:
             + tuple(calibration_fields.pop("_source_trace", ()))
         )
         risk_reasons = self._recommendation_risk_reasons(
-            decision_reasons=decision.reasons,
             evidence_quality=evidence_quality,
             execution_feasible=self._bool_or_none(execution_feasible),
             risk_budget_available=self._bool_or_none(risk_budget_available),
             portfolio_sizing_requested=portfolio_sizing_requested,
-            warnings=warnings,
         )
         contract = (
             advice_contract_snapshot.contract
@@ -395,6 +394,25 @@ class AdviceComposer:
             source_result_id=self._safe_source_result_id(result_id),
             source_payload_sha256=source_payload_sha256,
             refusal_reasons=decision.reasons,
+            total_score=self._source_numeric_text(
+                getattr(recommendation, "total_score", None)
+            ),
+            score_percentile_bp=getattr(recommendation, "score_percentile_bp", None),
+            eligible_universe_size=getattr(
+                recommendation, "eligible_universe_size", None
+            ),
+            eligible_universe_date=self._source_date_text(
+                getattr(recommendation, "eligible_universe_date", None)
+            ),
+            industry=(
+                str(getattr(recommendation, "industry", "") or "").strip() or None
+            ),
+            close_price=self._source_numeric_text(
+                getattr(recommendation, "close_price", None)
+            ),
+            price_change=self._source_numeric_text(
+                getattr(recommendation, "price_change", None)
+            ),
             **calibration_fields,
         )
 
@@ -1005,6 +1023,9 @@ class AdviceComposer:
                     regime_match=item.regime_match,
                     score_percentile_bp=item.score_percentile_bp,
                     eligible_universe_size=item.eligible_universe_size,
+                    eligible_universe_date=AdviceComposer._source_date_text(
+                        getattr(item, "eligible_universe_date", None)
+                    ),
                     ranking_method=item.ranking_method,
                     threshold_mode=item.threshold_mode,
                 )
@@ -1132,14 +1153,12 @@ class AdviceComposer:
     @staticmethod
     def _recommendation_risk_reasons(
         *,
-        decision_reasons: tuple[str, ...],
         evidence_quality: str | None,
         execution_feasible: bool | None,
         risk_budget_available: bool | None,
         portfolio_sizing_requested: bool,
-        warnings: tuple[str, ...],
     ) -> tuple[str, ...]:
-        reasons: list[str] = list(warnings)
+        reasons: list[str] = []
         if evidence_quality != "OBSERVED":
             reasons.append(
                 "data_quality_missing"
@@ -1150,22 +1169,29 @@ class AdviceComposer:
             reasons.append("execution_feasibility_not_confirmed")
         if portfolio_sizing_requested and risk_budget_available is not True:
             reasons.append("risk_budget_not_confirmed")
-        risk_tokens = (
-            "risk",
-            "cash",
-            "position",
-            "weight",
-            "execution",
-            "quality",
-            "strategy",
-            "disclosure",
-        )
-        reasons.extend(
-            reason
-            for reason in decision_reasons
-            if any(token in reason.lower() for token in risk_tokens)
-        )
         return tuple(dict.fromkeys(reasons))
+
+    @staticmethod
+    def _source_numeric_text(value: object) -> str | None:
+        """保留保存數值的精確文字，不轉換精度或補入推導值。"""
+
+        if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+            return None
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return None
+        return str(value) if parsed.is_finite() else None
+
+    @staticmethod
+    def _source_date_text(value: object) -> str | None:
+        """只沿用保存的 ISO 日期，不以 Advice 顯示日代填。"""
+
+        if type(value) is date:
+            return value.isoformat()
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
 
     @staticmethod
     def _feasibility_text(value: object) -> str:

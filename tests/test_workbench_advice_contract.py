@@ -221,6 +221,74 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
 
 
+def test_advice_cards_show_saved_comparison_fields_and_centralize_shared_notices() -> None:
+    _app()
+    dashboard = _dashboard_with_advice()
+    candidates = (
+        RecommendationAdviceDTO(
+            stock_code="2330",
+            stock_name="台積電",
+            advice_action=AdviceAction.RESEARCH,
+            classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+            why_reasons=("成交量高於均值",),
+            why_not_reasons=("strategy_advice_contract_missing_or_unverified",),
+            risk_reasons=("low_liquidity_review",),
+            source_evidence=("Why Not：階段=final_selection；結果=未通過",),
+            data_as_of_date="2026-07-11",
+            total_score="92.50",
+            score_percentile_bp=8_200,
+            eligible_universe_size=125,
+            eligible_universe_date="2026-07-11",
+            industry="半導體",
+            close_price="1000.00",
+            price_change="1.2",
+        ),
+        RecommendationAdviceDTO(
+            stock_code="2603",
+            stock_name="長榮",
+            advice_action=AdviceAction.RESEARCH,
+            classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+            why_reasons=("突破保存條件",),
+            why_not_reasons=("strategy_advice_contract_missing_or_unverified",),
+        ),
+    )
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        mode=AdviceMode.PROFESSIONAL,
+        policy=AdvicePolicyConfig(mode=AdviceMode.PROFESSIONAL),
+        recommendations=candidates,
+        warnings=("market_snapshot_degraded",),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(dashboard, advice_dashboard=advice), auto_refresh=False
+    )
+
+    assert "market_snapshot_degraded" in view.advice_warning_status.text()
+    assert "共用策略／資格限制" in view.advice_warning_status.text()
+    first_labels = view._advice_candidate_card_frames[0].findChildren(QLabel)
+    first_card_text = "\n".join(label.text() for label in first_labels)
+    second_card_text = "\n".join(
+        label.text() for label in view._advice_candidate_card_frames[1].findChildren(QLabel)
+    )
+    assert "規則分數：92.50" in first_card_text
+    assert "規則分數百分位：82.00%（eligible universe；日期=2026-07-11；N=125）" in first_card_text
+    assert "產業：半導體" in first_card_text
+    assert "收盤價：1000.00" in first_card_text
+    assert "漲跌幅：1.2%" in first_card_text
+    assert "信心 92.50" not in first_card_text
+    assert "前 82%" not in first_card_text
+    assert "Why Not：階段=final_selection；結果=未通過" in first_card_text
+    assert "需覆核流動性" in first_card_text
+    assert "資料日 2026-07-11" in first_card_text
+    assert "market_snapshot_degraded" not in first_card_text
+    assert "未提供額外逐股風險資料" in second_card_text
+    assert "strategy_advice_contract_missing_or_unverified" not in first_card_text
+    assert view.advice_candidate_model.row_at(0).why_not_reasons == (
+        "strategy_advice_contract_missing_or_unverified",
+    )
+
+
 def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_card() -> None:
     _app()
     dashboard = _dashboard_with_advice()

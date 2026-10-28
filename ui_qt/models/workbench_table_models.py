@@ -231,10 +231,65 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
     def set_rows(self, rows: Sequence[RecommendationAdviceDTO]) -> None:
         next_rows = tuple(rows)
         next_quick_read_cache = self._build_quick_read_cache(next_rows)
+        restriction_counts: dict[str, int] = {}
+        for row in next_rows:
+            for reason in set(str(item).strip() for item in row.why_not_reasons if str(item).strip()):
+                restriction_counts[reason] = restriction_counts.get(reason, 0) + 1
+        self._common_restrictions = tuple(
+            reason for reason, count in restriction_counts.items() if count > 1
+        )
         self.beginResetModel()
         self._rows = next_rows
         self._quick_read_cache = next_quick_read_cache
         self.endResetModel()
+
+    @property
+    def common_restrictions(self) -> tuple[str, ...]:
+        """多筆 Advice 重複出現的原始限制；交由區塊摘要集中呈現。"""
+
+        return getattr(self, "_common_restrictions", ())
+
+    def candidate_card_comparison(self, row_index: int) -> str:
+        """呈現同一保存推薦列的比較欄位，未提供值維持未知。"""
+
+        row = self.row_at(row_index)
+        if row is None:
+            return "規則分數：未提供｜分數百分位：未提供｜產業：未提供｜收盤價：未提供｜漲跌幅：未提供"
+        percentile = (
+            f"{row.score_percentile_bp // 100}.{row.score_percentile_bp % 100:02d}%"
+            if row.score_percentile_bp is not None
+            else "未提供"
+        )
+        universe_parts = ["eligible universe"]
+        if row.eligible_universe_date:
+            universe_parts.append(f"日期={row.eligible_universe_date}")
+        else:
+            universe_parts.append("日期未提供")
+        if row.eligible_universe_size is not None:
+            universe_parts.append(f"N={row.eligible_universe_size}")
+        else:
+            universe_parts.append("母體大小未提供")
+        universe = f"（{'；'.join(universe_parts)}）"
+        price_change = row.price_change or "未提供"
+        if price_change != "未提供" and not price_change.endswith("%"):
+            price_change += "%"
+        return "｜".join(
+            (
+                f"規則分數：{row.total_score or '未提供'}",
+                f"規則分數百分位：{percentile}{universe}",
+                f"產業：{row.industry or '未提供'}",
+                f"收盤價：{row.close_price or '未提供'}",
+                f"漲跌幅：{price_change}",
+            )
+        )
+
+    def candidate_card_source_evidence(self, row_index: int) -> tuple[str, ...]:
+        """保留保存結果的逐股篩選與 Why Not 證據原文。"""
+
+        row = self.row_at(row_index)
+        if row is None:
+            return ()
+        return tuple(str(item) for item in row.source_evidence if str(item).strip())
 
     def candidate_card_summary(self, row_index: int) -> tuple[str, str]:
         """回傳卡片首屏的支持／限制短句，沿用既有公開理由清理規則。"""
@@ -250,7 +305,7 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
         restrictions = tuple(
             _public_advice_reason(item)
             for item in row.why_not_reasons
-            if str(item).strip()
+            if str(item).strip() and str(item).strip() not in self.common_restrictions
         )
         return (
             _compact_advice_text(_first_reason(support), limit=56),
@@ -273,7 +328,7 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
         restrictions = tuple(
             _compact_advice_text(_public_advice_reason(item), limit=42)
             for item in row.why_not_reasons
-            if str(item).strip()
+            if str(item).strip() and str(item).strip() not in self.common_restrictions
         )
         visible_support = support[:2]
         visible_restrictions = restrictions[:1]
@@ -423,8 +478,8 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
 
     if field_name == "primary_risk":
         risks = tuple(_public_advice_reason(item) for item in row.risk_reasons if str(item).strip())
-        display = _compact_advice_text(risks[0]) if risks else "未提供風險判讀"
-        detail = "風險判讀：" + ("；".join(risks) if risks else "未提供；不能據此推定沒有風險")
+        display = _compact_advice_text(risks[0]) if risks else "未提供額外逐股風險資料"
+        detail = "逐股風險判讀：" + ("；".join(risks) if risks else "未提供額外逐股風險資料；不能據此推定沒有風險")
         if len(risks) > 1:
             display += f"（另 {len(risks) - 1} 項）"
         return display, detail

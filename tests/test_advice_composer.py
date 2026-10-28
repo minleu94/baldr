@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+import json
 from types import SimpleNamespace
 
 import pytest
 
-from app_module.advice_dtos import AdviceAction, AdviceClassification, AdviceMode, AdvicePolicyConfig
+from app_module.advice_dtos import (
+    AdviceAction,
+    AdviceClassification,
+    AdviceDashboardDTO,
+    AdviceMode,
+    AdvicePolicyConfig,
+)
 from app_module.advice_policy import AdvicePolicy
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.portfolio_construction_dtos import (
@@ -167,10 +174,7 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     assert recommendation.why_not_reasons == (
         "strategy_advice_contract_missing_or_unverified",
     )
-    assert recommendation.risk_reasons == (
-        "evidence_freshness_review_required",
-        "strategy_advice_contract_missing_or_unverified",
-    )
+    assert recommendation.risk_reasons == ()
     assert portfolio.target_weight_bp == 1500
     assert portfolio.current_weight_bp == 500
     assert portfolio.weight_gap_bp == 1000
@@ -298,6 +302,58 @@ def test_advice_source_evidence_round_trips_and_missing_stays_explicit() -> None
     restored = RecommendationAdviceDTO.from_dict(advice.to_dict())
     assert restored.source_evidence == advice.source_evidence
     assert restored.stock_name == "台積電"
+
+
+def test_advice_comparison_fields_round_trip_and_legacy_payload_defaults() -> None:
+    from app_module.advice_composer import AdviceComposer
+    from app_module.advice_dtos import RecommendationAdviceDTO
+
+    source = _recommendation_result()
+    recommendation = source.recommendations[0]
+    recommendation.score_percentile_bp = 8_200
+    recommendation.eligible_universe_size = 125
+    recommendation.eligible_universe_date = "2026-07-11"
+    composed = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=source,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date=date(2026, 7, 12),
+        data_as_of_date=date(2026, 7, 11),
+        mode=AdviceMode.GUIDED,
+    )
+    advice = composed.recommendations[0]
+
+    assert (advice.total_score, advice.score_percentile_bp) == ("90", 8_200)
+    assert advice.eligible_universe_size == 125
+    assert advice.eligible_universe_date == "2026-07-11"
+    assert advice.industry == "半導體"
+    assert (advice.close_price, advice.price_change) == ("1000", "1.2")
+    wire = advice.to_dict()
+    assert json.loads(json.dumps(wire))["total_score"] == "90"
+    assert RecommendationAdviceDTO.from_dict(wire) == advice
+    dashboard_wire = json.loads(json.dumps(composed.to_dict()))
+    assert AdviceDashboardDTO.from_dict(dashboard_wire).recommendations[0] == advice
+
+    for field_name in (
+        "total_score",
+        "score_percentile_bp",
+        "eligible_universe_size",
+        "eligible_universe_date",
+        "industry",
+        "close_price",
+        "price_change",
+    ):
+        wire.pop(field_name)
+    legacy = RecommendationAdviceDTO.from_dict(wire)
+    assert legacy.total_score is None
+    assert legacy.score_percentile_bp is None
+    assert legacy.eligible_universe_size is None
+    assert legacy.eligible_universe_date is None
+    assert legacy.industry is None
+    assert legacy.close_price is None
+    assert legacy.price_change is None
+    dashboard_wire["recommendations"] = [wire]
+    assert AdviceDashboardDTO.from_dict(dashboard_wire).recommendations[0] == legacy
 
 
 def test_composer_reads_canonical_typed_evidence_for_exact_recommended_stock() -> None:

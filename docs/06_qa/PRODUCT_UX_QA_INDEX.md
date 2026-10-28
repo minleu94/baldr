@@ -1,5 +1,7 @@
 # 產品與個股研究 QA 索引
 
+[Workbench Advice 逐股比較資訊](BALDR_WORKBENCH_ADVICE_COMPARISON_FIELDS_20261028.md)記錄保存推薦的規則分數、百分位母體、產業及行情投影、共用警告集中與逐股證據保留。Advice／Workbench source／Recommendation codec focused tests 139 passed，必要 Workbench UI 97 passed，Update validator 25／0／4；targeted mypy、repo-wide mypy 與原生 GUI 狀態見該報告。
+
 [可比產業超額圖卡清晰度](BALDR_INDUSTRY_STRENGTH_CARDS_20261028.md)記錄 3／2／1 欄產業小卡、明示相對基準方向、成分資料覆蓋率、期別 hover 與卡內詳情。Decision Desk／必要 Workbench UI 152 passed、Update validator 25 passed／0 failed／4 skipped、定向 mypy、py_compile、原生主程式畫面確認通過；repo-wide mypy 仍被未修改 T164 bridge 第 411 行語法錯誤阻擋。原生視窗載入快照品質降級；固定舊 EXE 與 Owner UAT 未驗。
 
 [Gate 1 Advice 解鎖](BALDR_GATE1_ADVICE_UNLOCK_20261027.md)：策略升格、參數鎖定、揭露與作者契約不再作 Advice 輸出 Gate；未升格 Advice 保留限制提示。聚焦 suite 253 passed，1 項既有 MainWindow ML registry 初始化測試失敗／排除；必要 Workbench UI 97 passed、Update validator 25 passed／0 failed／4 skipped、py_compile 通過。全域 mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋；未驗正式資料端到端與原生 GUI／Owner UAT。

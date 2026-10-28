@@ -4184,13 +4184,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"決策日：{advice.decision_date or '未知'}｜資料日：{advice.data_as_of_date or '未知'}"
         )
         self.advice_summary_hint.setVisible(True)
-        self.advice_warning_status.setText(
-            "來源警告：\n" + "\n".join(f"• {warning}" for warning in advice.warnings)
-            if advice.warnings
-            else "來源警告：未回報警告；不能因此推定沒有風險。"
-        )
         self.advice_recommendation_model.set_rows(formal_rows)
         self.advice_candidate_model.set_rows(advice_rows)
+        advice_notices = [f"來源警告：{warning}" for warning in advice.warnings]
+        advice_notices.extend(
+            f"共用策略／資格限制：{_advice_warning_text(reason)}"
+            for reason in self.advice_candidate_model.common_restrictions
+        )
+        self.advice_warning_status.setText(
+            "\n".join(f"• {notice}" for notice in advice_notices)
+            if advice_notices
+            else "來源警告：未回報警告；不能因此推定沒有風險。"
+        )
         self.advice_portfolio_model.set_rows(portfolio_rows)
         self.advice_recommendation_table.setVisible(False)
         self.advice_candidate_label.setVisible(bool(advice_rows))
@@ -4373,6 +4378,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
             header_layout.addWidget(meta_row)
             card_layout.addWidget(header)
 
+            comparison = QLabel(
+                self.advice_candidate_model.candidate_card_comparison(row_index), card
+            )
+            comparison.setObjectName("adviceCandidateComparison")
+            comparison.setProperty("advice_candidate_row", row_index)
+            comparison.setWordWrap(True)
+            comparison.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 8.5pt;"
+            )
+            card_layout.addWidget(comparison)
+
             reasons, extra_reasons, restrictions, extra_restrictions = (
                 self.advice_candidate_model.candidate_card_reasons(row_index)
             )
@@ -4403,6 +4419,20 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     "更多理由，點卡片查看",
                     tone="muted",
                 )
+
+            source_evidence = self.advice_candidate_model.candidate_card_source_evidence(
+                row_index
+            )
+            if source_evidence:
+                self._add_advice_candidate_card_note(
+                    card_layout,
+                    card,
+                    row_index,
+                    "逐股證據",
+                    _compact_advice_text(source_evidence[0], max_length=100)
+                    + (f"（另 {len(source_evidence) - 1} 項，展開查看）" if len(source_evidence) > 1 else ""),
+                    tone="muted",
+                )
             if restrictions:
                 self._add_advice_candidate_card_note(
                     card_layout,
@@ -4430,7 +4460,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     ),
                     Qt.DisplayRole,
                 )
-                or "未提供風險判讀"
+                    or "未提供額外逐股風險資料"
             )
             quality = str(
                 self.advice_candidate_model.data(
@@ -4452,8 +4482,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 )
                 or "未知可成交性"
             )
+            data_date = str(getattr(self.advice_candidate_model.row_at(row_index), "data_as_of_date", "") or "未知")
             status_label = QLabel(
-                f"風險 {risk}  ·  品質 {quality}  ·  成交 {feasibility}", card
+                f"風險 {risk}  ·  資料日 {data_date}  ·  品質 {quality}  ·  成交 {feasibility}", card
             )
             status_label.setProperty("advice_candidate_row", row_index)
             status_label.setObjectName("adviceCandidateStatus")
@@ -4785,11 +4816,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}｜"
             f"證據成熟度：{evidence_tier_label}（原始值：{evidence_tier_raw or '未提供'}）｜"
             f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）｜"
-            f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供'}\n"
+            f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供額外逐股風險資料'}\n"
             f"失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}"
             f"\n保存來源逐股證據：{_compact_advice_text(source_evidence_text)}"
         )
-        full_risks_text = "；".join(presentation.risks) if presentation.risks else "未提供"
+        full_risks_text = (
+            "；".join(presentation.risks)
+            if presentation.risks
+            else "未提供額外逐股風險資料；不能據此推定沒有風險"
+        )
         full_invalidation_text = (
             "；".join(presentation.invalidation_conditions)
             if presentation.invalidation_conditions

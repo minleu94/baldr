@@ -1453,7 +1453,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     risk_index = view.advice_recommendation_model.index(
         0, view.advice_recommendation_model.column_index("primary_risk")
     )
-    assert view.advice_recommendation_model.data(risk_index) == "未提供風險判讀"
+    assert view.advice_recommendation_model.data(risk_index) == "未提供額外逐股風險資料"
     assert "不能據此推定沒有風險" in view.advice_recommendation_model.data(
         risk_index, Qt.ToolTipRole
     )

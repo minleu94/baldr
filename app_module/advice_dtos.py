@@ -134,9 +134,18 @@ class RecommendationAdviceDTO:
     calibration_provenance: Mapping[str, Any] = field(default_factory=dict)
     # 只沿用同一推薦列名稱；Workbench 僅在保存結果身分對齊後展示。
     stock_name: str = ""
+    # 以下為同一保存推薦列的唯讀比較欄位；數值使用原始十進位文字，避免 UI 重算或 JSON 精度損失。
+    total_score: str | None = None
+    score_percentile_bp: int | None = None
+    eligible_universe_size: int | None = None
+    eligible_universe_date: str | None = None
+    industry: str | None = None
+    close_price: str | None = None
+    price_change: str | None = None
 
     def __post_init__(self) -> None:
         _validate_optional_bp("ranking_percentile_bp", self.ranking_percentile_bp)
+        _validate_optional_bp("score_percentile_bp", self.score_percentile_bp)
         _validate_optional_bp("calibrated_probability_bp", self.calibrated_probability_bp)
         _validate_optional_bp("after_cost_profit_probability_bp", self.after_cost_profit_probability_bp)
         _validate_optional_bp("cost_basis_bp", self.cost_basis_bp)
@@ -153,6 +162,10 @@ class RecommendationAdviceDTO:
             raise ValueError("ranking_score_bp must be an integer basis-point value")
         if self.sample_size is not None and (isinstance(self.sample_size, bool) or self.sample_size < 0):
             raise ValueError("sample_size must be a non-negative integer")
+        if self.eligible_universe_size is not None and (
+            type(self.eligible_universe_size) is not int or self.eligible_universe_size < 0
+        ):
+            raise ValueError("eligible_universe_size must be a non-negative integer")
         if self.source_result_id is not None and (
             type(self.source_result_id) is not str
             or not self.source_result_id
@@ -219,6 +232,13 @@ class RecommendationAdviceDTO:
             "calibration_raw_after_cost_probability_bp": self.calibration_raw_after_cost_probability_bp,
             "calibration_provenance": dict(self.calibration_provenance),
             "stock_name": self.stock_name,
+            "total_score": self.total_score,
+            "score_percentile_bp": self.score_percentile_bp,
+            "eligible_universe_size": self.eligible_universe_size,
+            "eligible_universe_date": self.eligible_universe_date,
+            "industry": self.industry,
+            "close_price": self.close_price,
+            "price_change": self.price_change,
         }
 
     @classmethod
@@ -280,6 +300,13 @@ class RecommendationAdviceDTO:
                 else {}
             ),
             stock_name=payload.get("stock_name", ""),
+            total_score=payload.get("total_score"),
+            score_percentile_bp=payload.get("score_percentile_bp"),
+            eligible_universe_size=payload.get("eligible_universe_size"),
+            eligible_universe_date=payload.get("eligible_universe_date"),
+            industry=payload.get("industry"),
+            close_price=payload.get("close_price"),
+            price_change=payload.get("price_change"),
         )
 
 

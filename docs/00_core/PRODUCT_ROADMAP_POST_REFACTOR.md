@@ -55,7 +55,7 @@ Portfolio sizing／風險預算是以手動紀錄為輸入的可選進階分析�
 
 | Gap | 對產品的影響 | 優先處置 | Done Definition |
 |---|---|---|---|
-| Recommendation Advice Contract 不完整 | 無法從分數轉成一致、可稽核建議 | Gate 1 | 每筆 advice 含 action、Why、Why Not、Risk、Evidence、資料日期、失效條件與可成交性 |
+| Advice 證據／作者欄位不完整 | 可提供建議但判讀依據或限制資訊不足 | Gate 1 完整度 | 逐列呈現 action、Why、Why Not、Risk、Evidence、資料日期與可成交性；來源缺件可拒絕／降級，作者論點等缺漏保留未知並提示，不得因此隱藏 Advice |
 | 手動紀錄上的 Portfolio Coach 尚未成立 | 有手動持倉時尚不能提供經 policy 與 evidence 驗證的配置／再平衡輔助 | 可選 Gate 4：配置政策、sizing、成本後 evidence | 以手動紀錄為明確輸入，建立版本化 risk budget、rebalance bands 與 candidate sizing，使用 paper portfolio 做成本後比較；缺少此能力不阻擋核心策略建議 |
 | Evidence operating loop 仍偏 read-only / dry-run | 無法持續驗證與修正 | Gate 2 | 形成 weekly review、action item、append-only evidence、backup/rollback/recovery 的真實節奏 |
 | P0 資料未正式接受 | 回測與持倉可信度受限 | Gate 3 | 每個來源通過 available-date、quality、license、missing 與 shadow acceptance Gate |
@@ -107,17 +107,17 @@ baldr 可以輸出：
 
 ### 6.1 Guided Mode（引導模式／無腦模式）
 
-定位：只使用已通過 Promotion Gate、參數鎖定且 evidence disclosure 完整的正式策略，提供市場／個股策略建議。沒有手動持倉紀錄時仍能呈現策略研究結果；配置或持倉管理屬選用功能。
+定位：讓使用者以較少設定取得市場／個股策略 Advice，並可選用個人手動持倉紀錄。Advice 是供使用者判斷與自行記錄的建議，不會自動下單；策略是否 promoted、參數是否鎖定、揭露是否完整，作為版本生命週期限制顯示，不作為 Advice 輸出的資格門檻。
 
 使用者可選：投資週期、風險容忍度、是否接受小型股及低流動性等策略篩選條件。資金規模、持倉與現金不是策略建議的必要欄位；若啟用 sizing，須由使用者明確提供或手動紀錄。
 
-系統負責：市場狀態、Profile 建議、候選篩選、Why / Why Not / Risk、策略版本、適用條件與失效條件。可選的手動持倉分析另行提供持倉提示；不接券商、不送委託。
+系統負責：市場狀態、Profile 建議、候選篩選、Why / Why Not / Risk、證據、資料日期與來源追溯。可選手動持倉分析另行提供持倉提示；不接券商、不送委託。作者未提供的策略論點、失效條件、持有期間或檢視頻率須明示未知／未提供，不得假稱作者已聲明，也不得以此阻止其他可核驗欄位形成 Advice。
 
-Guided Mode 禁止使用 candidate Profile、未鎖定參數、未通過 forward evidence 的實驗結果或 ML shadow output。
+策略建議可使用已保存且可精確追溯的 candidate Profile；其狀態與證據成熟度須在 Advice 中揭露。尚未通過 forward evidence 的實驗結果或 ML shadow output 不得包裝成已驗證結論；仍可顯示有界 Advice 與明確的不確定性。
 
 ### 6.2 Professional Mode（專業模式）
 
-允許建立 Candidate Profile、調整 factor / threshold / holding horizon / SLTP / sizing，執行 ablation、robustness、walk-forward、execution realism 與 shadow testing。
+允許建立 Candidate Profile、調整 factor / threshold / holding horizon / SLTP / sizing，執行 ablation、robustness、walk-forward、execution realism 與 shadow testing。Professional 是設定與實驗工作流程，不代表其輸出不是 Advice。
 
 實驗 Promotion 流程固定為：
 
@@ -135,7 +135,7 @@ Hypothesis
 → Guided Mode
 ```
 
-兩種模式共用同一 Recommendation、Portfolio、Evidence 與 Advice Policy 核心；差別只在允許的設定面與策略狀態，不得形成兩套漂移引擎。
+兩種模式共用同一 Recommendation、Portfolio、Evidence 與 Advice Policy 核心；每筆可核驗結果都是 Advice。Promotion 僅標示策略生命週期及驗證成熟度，不改變 Advice 的產品身份；差別只在設定面與實驗工具，不得形成兩套漂移引擎。
 
 ## 7. Recommendation Advice Contract
 
@@ -159,7 +159,7 @@ Hypothesis
 | `data_quality` | OBSERVED / ESTIMATED / DEGRADED / MISSING 與 warnings。 |
 | `decision_date` / `data_as_of_date` | 決策與資料截止日。 |
 
-Advice Policy 必須能拒絕輸出。策略／市場證據不足、整體市場風險過高或 execution 資料不可判讀時，輸出 `RESEARCH`、`AVOID` 或 `NO_NEW_POSITION`，不得硬湊候選。Portfolio risk budget 只限制可選的個人化 sizing／配置，不得阻擋帳戶無關的策略研究建議。
+Advice Policy 必須能按逐列資料品質、來源可追溯性、資料時點與可成交性拒絕或降級。缺行情、過期／未來日期、資料降級、來源身份不符或不可成交時，輸出對應限制、`RESEARCH`、`AVOID` 或 `NO_NEW_POSITION`，不得硬湊結論。Promotion、作者契約、參數鎖定及揭露完整度只作為可見的策略限制，不阻擋使用者取得 Advice。Portfolio risk budget 只限制可選的個人化 sizing／配置，不得阻擋帳戶無關的策略 Advice。
 
 ## 8. 可選的手動紀錄 Portfolio Advice Contract
 

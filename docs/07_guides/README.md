@@ -26,6 +26,7 @@
 | V2 四組主導覽、系統管理與來源隔離 | [APPLICATION_MANUAL V2 導航](APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc) |
 | 資料狀態、快速／安全更新與市場探索 | [資料與市場研究](manuals/DATA_AND_MARKET_RESEARCH.md) |
 | Recommendation、個股研究與 Research Lab | [推薦與 Research Lab](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md) |
+| Workbench Advice 載入、空結果與錯誤狀態 | [APPLICATION_MANUAL：決策工作台 Advice 載入狀態](APPLICATION_MANUAL.md#決策工作台-advice-載入狀態) |
 | 已保存策略版本、原規則與來源結果（開發分支） | [保存策略版本與來源研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#已保存策略版本與來源研究後續開發分支) |
 | 布林基礎研究、確認日數與訊號保存（開發分支） | [布林基礎突破研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林基礎突破研究後續開發分支) |
 | W底確認、頸線突破與當次訊號保存（開發分支） | [W底頸線突破研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#w底頸線突破研究後續開發分支) |

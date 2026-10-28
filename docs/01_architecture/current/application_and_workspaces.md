@@ -4,6 +4,8 @@
 
 儲存維護由 Main 明示盤點邊界：原始碼模式使用 repo 的 `dist` 版本容器；封裝模式使用目前 `sys.executable` 所在套件作單一項目，不向父目錄尋找其他版本。`inspect_storage` 只查三個設定位置的磁碟容量及明示盤點根；共用 4096 項／64 版本上限，內層連結不跟隨。回傳另含盤點位置、可用性與診斷，缺失或不可讀不能當成成功空清單；大小完整性與引用／清理資格分開。此後繼原始碼修復不在固定 e369 EXE，驗證範圍見 [V2 驗收紀錄](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
 
+強勢個股由 `StockScreener` 先依各證券實際最新來源列形成排名，再經 `ScreeningService` 保留整體資料框 `effective_date`；強勢排名列另帶該股票的 `行情日`，弱勢舊 schema 不變。UI 分開呈現兩種日期，缺少逐列欄位只顯「未提供」，不從整體日期或刷新時間回填，也不推論無交易／補價。限定來源與 UI 驗證見[強勢個股逐列行情日 QA](../../06_qa/BALDR_STRONG_STOCKS_ROW_MARKET_DATE_20261027.md)。
+
 V2 月營收結果的「開啟一般個股研究」由 view 產生不可變的 `RevenueStockResearchOrigin`，核對原來源、query、page request、page 與 row SHA。Main 只將股票及來源識別映射到原 `ResearchStockContextDTO`，一般報告另讀行情，不攜入月營收 facts 或推定其日期。返回只接受仍在當前已核快照的原頁原列，忙碌或身份改變即拒絕；此短期回返不代替收藏跨程序的磁碟原件核驗。
 
 ## research07操作邊界增量
@@ -86,7 +88,7 @@ Daily Decision Desk 沒有第二個頂層 widget；它位於「市場探索 > �
 
 Source 候選另有首頁明選 Paper 健康列的同版本導覽：Workbench 將既有 `PositionHealthReadModel` 與唯一 `position_id` 交給 Main，持倉頁先排入下一次刷新，再由自己的 reader 核對完整同版本及該部位，才切 Paper 帳與健康列。來源變更、失敗或過期回呼不回退手動帳同股；返回「決策工作台」沿既有工作區保留首頁上下文，不自動刷新。這條路徑不建立帳本、不產製評估，也不取代歷史 exact receipt 重開；驗證界線見[QA108／112](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#首頁-paper-同版本部位導航qa108112)。
 
-Workbench 的策略研究 Advice 以市場資料、保存結果、策略版本與來源證據為輸入，不要求券商／真實帳戶連線或風險預算；持倉與交易由使用者手動記錄。總覽標題後的「今日策略建議」直接呈現既有正式 Advice 與 Professional 研究候選；證據回查仍沿原 Advice DTO／exact source 回呼，其他來源、診斷與技術表格留在預設收合的完整工作台。可選配置列只在有資料時顯示，Paper account context 只在使用者明確傳入 snapshot 後出現。Portfolio「配置研究封存」的 Paper snapshot 可由使用者明確傳至 Main，Workbench Source 只投影為獨立背景 DTO，並核對 Paper identity、決策日與 available-at 時鐘；日期／時間不符時只保留來源身份和診斷並清空金額與持倉。此 DTO 不進 AdviceComposer、portfolio_result 或 risk budget，是可選研究背景而非策略 Advice 前置條件。詳[Advice 首屏 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-25-workbench-首屏顯示今日策略建議)及[Advice 帳戶背景 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-paper-snapshot-明確傳至-workbench-背景顯示)。
+Workbench 的策略研究 Advice 以市場資料、保存結果、策略版本與來源證據為輸入，不要求券商／真實帳戶連線或風險預算；持倉與交易由使用者手動記錄。總覽標題後的「今日策略建議」直接呈現既有正式 Advice 與 Professional 研究候選；證據回查仍沿原 Advice DTO／exact source 回呼，其他來源、診斷與技術表格留在預設收合的完整工作台。尚未載入、無符合條件結果與讀取失敗以不同白話狀態呈現；技術狀態碼與原始診斷由使用者展開查看，讀取失敗時先清除舊建議。這是呈現與排錯引導，不改 Advice 資格判斷。可選配置列只在有資料時顯示，Paper account context 只在使用者明確傳入 snapshot 後出現。Portfolio「配置研究封存」的 Paper snapshot 可由使用者明確傳至 Main，Workbench Source 只投影為獨立背景 DTO，並核對 Paper identity、決策日與 available-at 時鐘；日期／時間不符時只保留來源身份和診斷並清空金額與持倉。此 DTO 不進 AdviceComposer、portfolio_result 或 risk budget，是可選研究背景而非策略 Advice 前置條件。詳[Advice 首屏 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-25-workbench-首屏顯示今日策略建議)、[Advice 帳戶背景 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-paper-snapshot-明確傳至-workbench-背景顯示)及[Advice 狀態呈現 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_STATE_CLARITY_20261027.md)。
 
 AdviceComposer 另從同一保存結果 read model 投影逐股票篩選、Why Not 與流動性列到 Advice DTO；只採完全相同的 `stock_code`，不把排除股票的理由串到另一個建議。Workbench 選列後獨立顯示這些來源證據。沒有同股資料時明示未提供，不代表無反證或無風險；這項展示不參與 Policy、推薦排序或 action 決定，詳[逐股保存證據 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-25-advice-保存結果逐股證據呈現)。
 

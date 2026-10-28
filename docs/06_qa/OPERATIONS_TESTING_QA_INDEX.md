@@ -2,6 +2,16 @@
 
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。
 
+[10/27 Storage Overview metadata reuse](BALDR_STORAGE_OVERVIEW_METADATA_REUSE_20261027.md)：4,000 個合成檔案與 junction 的 40 組交錯 A/B 中，輸出 digest 相同，`Path.is_symlink` 呼叫 4,003→0；p50 90.8447→12.1794 ms、p95 97.8380→14.1697 ms。聚焦測試 14 passed／1 skipped；只代表暫存檔案樹，不外推正式資料或端到端 UI 延遲。
+
+[10/27 Smart Money 範圍切換來源快取](BALDR_SMART_MONEY_SCOPE_CACHE_20261027.md)：139,400 列合成 SQLite 的服務層 A/B 中，Top 50／Bottom 50／全部範圍輸出摘要一致，暖切換 p50 由 1,042–1,075 ms 降至 110–703 ms；來源版本 churn 時淘汰舊輸出快取，9 個 All 版本壓力案例的峰值 RSS 由 1,912 MB 降至 597 MB，正式資料未讀寫，原生 GUI／Owner UAT 未做。
+
+[10/27 FlowSignalEngine 單趟事件掃描](BALDR_FLOW_SIGNAL_SINGLE_PASS_20261027.md)：139,348 筆／1,631 檔的合成 A/B 中，Engine DTO 與完整物化 dashboard snapshot 逐欄一致；引擎 p50 −13.3%，物化來源服務 p50 −5.9%；沒有讀取正式資料。
+
+[10/27 Smart Money 刷新保留快照狀態](BALDR_SMART_MONEY_REFRESH_RETAINED_SNAPSHOT_20261027.md)：刷新狀態明示目前與保留快照的週期／範圍／資料日，子查詢狀態彼此獨立；async／view 回歸 23 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、修改檔 `py_compile` 通過；全指定 mypy 被既有 T164 bridge 語法錯誤中止，原生 GUI／Owner UAT 未做。
+
+[10/27 Smart Money semantic overlap](BALDR_SMART_MONEY_SEMANTIC_OVERLAP_PROFILE_20261027.md)：60 日語意批次在 20 日重疊合成資料上少讀 33.33% 列、p50 −24.94%，逐欄輸出一致；實作回歸 42 passed、三模組 targeted mypy 通過。repo mypy 被既有 T164 bridge 語法錯誤阻斷，正式 DB timing 與原生 GUI／Owner UAT 未做。
+
 ## 近期營運與測試收據
 
 [10/26 Gate 2 隔離 recovery rehearsal 工具](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-26-隔離-gate-2-recovery-rehearsal-工具)：合成 DB／projection 的 scratch 備份、故障注入與還原測試 3 passed；未操作真實 working-copy／Owner projection 或 Task Scheduler，不計 Gate credit。

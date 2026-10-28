@@ -113,6 +113,8 @@ Windows Scheduler 與受控 CLI wrappers 分別執行資料更新、Evidence dry
 
 Research Lab Registry的雙run期間診斷由application exact reader負責metadata／附件／日曆版本核對，Qt controller只固定選取與背景讀回世代，不擁有PnL計算或來源資格；詳[研究與Portfolio邊界](current/decision_research_portfolio.md)。
 
+Research Registry 比較頁的 run 清單由 Qt `TaskWorker` 背景讀取；類型、策略與標籤只投影已載入快照，請求世代拒收刷新或關閉後的過期回覆。讀取狀態屬 UI 呈現，不改 Repository 的完整性篩選、比較服務或 promotion 資格。
+
 Backtest 的單股 Registry 升版由 `PromotionService` 將前置條件檢查導向 `PromotionReconciliationService`，與新版本建立共用 Research Run Registry。reconciliation 在回報成功前讀回 StrategyVersion JSON 及 Registry backlink，核對 source run、strategy、parameters 與 create-only Advice contract；失配時以 `reconciliation_required` 保留待核狀態。這只確保兩個保存端的身份一致，不授予正式來源、PIT、Gate 或 ML 資格。
 
 日曆用途接受可由正常Main明示的外部SHA固定binding注入；配置只固定既有typed錨點，仍由原表單選exact batch，失敗只隔離daily用途。Main設定副本與worker生命週期見[主程式邊界](current/application_and_workspaces.md#研究畫面與保存身份)。

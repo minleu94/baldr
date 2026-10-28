@@ -6,6 +6,10 @@ V2 本機整合候選 `eefd2163ad95` 的啟動設定明選五個 root：隔離 s
 
 刪除不移除或覆寫Journal原件；只追加一筆原journal removed事件，包含完整原投影與current revision parent。decoder先按筆記entity收齊note／removed，再驗整條來源／修訂／tombstone，即使來源標記損壞也拒絕忽略該刪除。Journal writer payload schema與continuity DTO envelope各按原版本處理，完整JSON payload逐欄核對；不省略tags等欄位。已刪家族不列出、不可用舊revision ID復活；沒有自動實體清理或恢復UI。
 
+## Research Timeline Journal 讀取
+
+Research Timeline refresh 在四個正式 lane 共用同一個 `JournalService` 時，透過一次 `load_journal_snapshot()` 取得原始 Journal 歷史及其 token，再由手動投影、價格／題材 revision decoder、報告 note decoder 在記憶體中各自整理。若共用 snapshot 取得失敗，則回退原本的分路讀取；lane 解碼錯誤仍個別隔離。此路徑只重用唯讀 JSONL 歷史，不寫入、快取跨刷新狀態或改變原件契約；測試、digest 與合成延遲邊界見[QA](../../06_qa/BALDR_RESEARCH_TIMELINE_JOURNAL_SNAPSHOT_REUSE_20261027.md)。
+
 本冊描述來源取得、儲存、研究快照與排程觀測的 current 邊界。一般操作看 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 及對應現行 Runbook；目前狀態與資料資格看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 與具名 QA 收據。舊 [Application Manual Supplements](../../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md) 僅供歷史錨點追溯，不是現行操作或授權依據。
 
 ## 資料路徑與來源
@@ -149,6 +153,10 @@ Legacy Journal 唯讀讀取前後以檔案存在狀態、device／inode、mode�
 市場資料表包括 `daily_prices`、`market_indices`、`industry_indices`、`technical_indicators` 與 `broker_flows`。Fundamental tables 透過受治理 provider／Factor service 讀取；UI 與策略核心不直接讀 raw fundamental CSV。表的現存數量與日期覆蓋屬動態資料狀態，需另讀當期 QA，不在架構文件保存計數。
 
 Broker Flow 的買賣榜資料各自保存；缺欄位保留 NULL／品質標記，不以零值補缺。更新前先核對交易日證據；來源 HTTP path 失敗時才使用既有 fallback，更新仍按既有序列流程。
+
+Smart Money dashboard 的唯讀 query service 另保留一份 process-local 範圍無關來源快照，鍵含資料主檔／WAL 檔案身分、明確資料日與期間；不把顯示 scope 或列數限制當作來源篩選。快取只在讀取前後版本一致時建立，存在 rollback journal 或版本在讀取期間改變時停用；主檔或 WAL 變更會使快取失效。取得來源版本後，也會淘汰 dashboard 輸出快取中其他版本的結果，避免版本更新後仍保留不可能命中的大型舊 snapshot。Top／Bottom／All 仍各自重算聚合、範圍排序及摘要；回傳的 mutable event DTO 另行複製，避免下游修改污染快取。此快取不寫入資料庫、不改變來源品質或資料資格。
+
+60 個交易日 Smart Money semantic batch 若收到相同來源版本、資料日與連續交易日身份的乾淨 observed dashboard 快照，會重用其日期重疊事件，只查詢快照未涵蓋的較早日期；來源版本、指紋、日期身份、事件鍵或股票名稱有歧義時，回退原完整 semantic batch（股票名稱衝突只完整重讀該股票）。輸出的 semantic summary 保持原規則與欄位。這條 query 快路徑只讀 SQLite，不保存新快取，也不改來源品質或研究資格；合成 A/B 及守衛測試見[Smart Money semantic overlap QA](../../06_qa/BALDR_SMART_MONEY_SEMANTIC_OVERLAP_PROFILE_20261027.md)。
 
 跨頁研究母體、圖表與 saved query 依固定來源身份共享同一結果投影。完整母體 strict reader 需先核 manifest／receipt pins；單一來源 segment 最多 256 檔是保存分段限制，不是 universe 上限；全域篩選與排序完成後才分頁。bookmark 重開指定來源、query 與選取狀態，不能回退一般最新資料讀取。
 

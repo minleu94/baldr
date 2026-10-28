@@ -1,5 +1,9 @@
 # 決策、研究與 Portfolio
 
+## Broker Flow 訊號計算
+
+`BrokerFlowDashboardQueryService` 先將讀取事件聚合為每檔 `StockFlowAggregation`，再交由 `FlowSignalEngine` 產生訊號。引擎每檔只遍歷一次事件，同時計算每日淨量及目前總淨量方向的分點淨量；連續流向由每日淨量的新到舊序列判斷，sparkline 則重用同一份每日淨量並由舊到新輸出。此為計算路徑優化；事件缺值處理、品質計數、來源日期範圍、整數加總、Decimal 信心折減、分數／標籤／理由及輸出順序保持原契約。合成 A/B 與證據範圍見[FlowSignalEngine 單趟掃描 QA](../../06_qa/BALDR_FLOW_SIGNAL_SINGLE_PASS_20261027.md)。
+
 ## Stress 已保存逐列資料的讀取邊界（M123）
 
 `PortfolioStressHistoryRecord` 在構造時驗 canonical `payload_json`／SHA-256 及索引欄對同份 Stress v1 payload 的情境、狀態、計數、金額與研究用途一致；read service 遇不一致會降級，不把索引欄當可信逐列資料。`project_position_rows()` 只投影已保存 payload，不查今天的 PortfolioService 或行情、不重算金融公式，保留原數值文字與列序。新結果 v1 可選帶 `position_id`／`portfolio_id`；舊 payload 缺身份或報價欄顯未知，`positions` 缺欄與明示空陣列分開，部分缺價代號不補成壓力結果列。Qt 歷史表使用隱藏 record ID 對回原件，逐列以保存列序對回同列 hash；索引與 payload hash 只證明本地保存一致性，不授來源可得時鐘、PIT 或正式交易資格。限定驗證見[UX 實作 QA](../../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m123-已保存-stress-逐列來源回訪)。
@@ -112,6 +116,8 @@ Windows 啟動入口為 baldr_launcher.py；桌面主程式入口為 ui_qt/main.
 
 ## 回測與研究時間軸
 
+Research Timeline list refresh reads one raw Journal snapshot under the store lock when its four production readers share the same `JournalService`; the manual projection and price, report, and theme decoders then work from those in-memory records. A failed shared snapshot falls back to the existing lane readers, while lane-specific decode failures remain isolated. This read-only reuse preserves the 500-entry display bound, lane ordering, and saved references; it does not write Journal records or change source qualification. Synthetic UI timing and parity evidence are recorded in [Research Timeline Journal Snapshot Reuse QA](../../06_qa/BALDR_RESEARCH_TIMELINE_JOURNAL_SNAPSHOT_REUSE_20261027.md).
+
 ### 計分策略的版本化因果輸入
 
 三個原計分ID以1.1.0另立缺值方法，legacy baseline1.0及穩健／暴衝1.0.0保持。`StrategyRegistry.get_strategy_meta(..., version=...)`可唯讀查明示版本的原metadata，不建立executor；未知版本回None，不借目前預設值。分析邊界`prepare_causal_score_input`核日期／OHLCV及別名，保存缺指標；`calculate_causal_score_frame`只分析連續有報價區段並清內部ATR快取，既有indicator reuse的明示因果政策不以未來非空值決定重算。原四價全缺且量明示0的列不計分、不發新單，部分缺件或矛盾仍拒絕；不在此處補價或改Broker。
@@ -145,6 +151,8 @@ Research Lab 的保存績效由 `StrategyHistoricalPerformanceReadService` 沿Re
 Research Lab雙run完整期間頁沿同一FullPeriodPairReadV1展示兩側capture.observations的原Decimal文字，以實際日期聯集與每頁100日排列現金／持倉估值／權益及原件可選P&L。UI不讀Registry附件、不補日或重算金融；分頁不觸發reader，返回／取消／選取變更沿原generation及clear清空。來源、幣別、日曆、成本缺件與performance/PIT資格維持原reader判定，原wire shape及金融引擎不變。
 
 通用Registry metadata comparator 遇到任一 recommendation_portfolio run 即回 incompatible，UI停用一般「比較選中」並指向兩筆exact run的完整期間診斷；直接呼叫服務也不可輸出通用績效混排或標準化權益。其他run仍沿原比較規則。這只阻止錯誤金融判讀，不補足pair的來源、日曆、貨幣、成本權威或完整績效資格。
+
+Research Registry 比較頁的清單首次載入／刷新走 Qt 背景 worker，類型、策略及標籤篩選只作用於已載入 snapshot；狀態回報清單總數與符合數，刷新失敗保留上次有效清單。這只改變 UI 等待與篩選路徑，不改 repository integrity filtering、comparator 或 exact reader 的資料／績效資格。
 
 兩個原 `1.0.0` 單股基本策略的對照另走 `BasicStrategySavedPairReader`，不從通用metadata comparability授績效。它以所選兩個 exact run 核原執行輸入、實際權益期間、共同來源hash、成本／成交設定及版本化指標，再走原 `ResearchHistoryLookup`、`StrategyHistoricalPerformanceReadService` 與保存規則卡讀回；任一缺件不並列數值。UI只投影原保存摘要，可逐側開原明細並返回同一選取，沒有新增保存格式、重算或排名資格。原規則卡的 `performance_status=not_evaluable` 必須保留；歷史PIT、成本／來源權威及完整雙策略帳本仍分開驗收。
 
@@ -322,4 +330,6 @@ Increment71 的價格頁只在 UI 層清除既有篩選並對同一 exact read s
 
 一般手動觀察股票的未連結研究，由 Watchlist 僅在無source ID、無result／決策日／snapshot且identity=unknown時明示選擇目前個股研究context；現有report reader讀目前行情，返回按原代號定位。已有來源或身份衝突仍保留保存來源路由；不將讀取失敗改成目前行情，也不授歷史PIT。儲存格式、public reader、金融計算與原收藏版本路徑均沿用，限定驗證見[Increment34 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment34v1一般觀察股票下鑽與回訪)。
 
-Watchlist 後繼 M120 的唯讀 `WatchlistService.get_review_snapshot()` 在一次 `_load_watchlist()` 中投影候選列、原 `get_stocks()` 呈現欄位、每列私人查看狀態與頂層 repository revision。`WatchlistReviewSnapshotRow.to_stock_mapping()` 供 Qt 表格沿原欄位顯示，status 統計取同一批 row，不逐列呼叫 `get_review_state()` 拼成分布。SQLite revision 為原非負整數，legacy JSON 為 `None`；成功空集合、清單缺件、讀取不可用分開。缺身份、重複 identity、schema/hash 失配或未知擴充狀態皆是 `unknown`，只有有效身份且無擴充欄位才是 pending。既有 notes 仍只沿原候選欄位呈現，不新增 review reason 欄或輸出 extension。選列另讀若 revision 與表格快照不同，Qt 停用保存並要求刷新；原逐列 CAS writer、私人 store、研究來源與金融公式未改。限定證據見[UX 實作收尾](../../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m120-watchlist-同版私人查看狀態分布)。
+Watchlist 後繼 M120 的唯讀 `WatchlistService.get_review_snapshot()` 每次候選池載入時投影候選列、原 `get_stocks()` 呈現欄位、每列私人查看狀態與頂層 repository revision。`WatchlistReviewSnapshotRow.to_stock_mapping()` 供 Qt 表格沿原欄位顯示，status 統計取同一批 row，不逐列呼叫 `get_review_state()` 拼成分布。SQLite revision 為原非負整數，legacy JSON 為 `None`；成功空集合、清單缺件、讀取不可用分開。缺身份、重複 identity、schema/hash 失配或未知擴充狀態皆是 `unknown`，只有有效身份且無擴充欄位才是 pending。既有 notes 仍只沿原候選欄位呈現，不新增 review reason 欄或輸出 extension。選列另讀若 revision 與表格快照不同，Qt 停用保存並要求刷新；原逐列 CAS writer、私人 store、研究來源與金融公式未改。限定證據見[UX 實作收尾](../../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m120-watchlist-同版私人查看狀態分布)。
+
+MainWindow 啟動路徑的 Watchlist 基本介面先建立，再由 `TaskWorker` 背景讀取同一份唯讀 review snapshot 與展示用名稱；結果經 generation guard 回到 GUI 執行緒後才建立表格模型。直接建構的相容路徑、手動刷新與既有寫入後讀回仍同步，讀取失敗留在頁內，不改快照、revision 或保存契約。

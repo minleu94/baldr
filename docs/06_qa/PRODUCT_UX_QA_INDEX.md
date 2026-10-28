@@ -1,5 +1,55 @@
 # 產品與個股研究 QA 索引
 
+[Gate 1 Advice 解鎖](BALDR_GATE1_ADVICE_UNLOCK_20261027.md)：策略升格、參數鎖定、揭露與作者契約不再作 Advice 輸出 Gate；未升格 Advice 保留限制提示。聚焦 suite 253 passed，1 項既有 MainWindow ML registry 初始化測試失敗／排除；必要 Workbench UI 97 passed、Update validator 25 passed／0 failed／4 skipped、py_compile 通過。全域 mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋；未驗正式資料端到端與原生 GUI／Owner UAT。
+
+[Workbench Advice 摘要與候選卡](BALDR_WORKBENCH_ADVICE_CARD_LAYOUT_20261027.md)記錄 Advice／未升格 Advice／配置列數摘要、寬版三欄／中版雙欄／窄版一欄獨立堆疊、編號理由及點卡原地展開；驗收結果與限制依 QA 報告更新。
+
+[Workbench Advice 快速判讀與窄版欄位](BALDR_WORKBENCH_ADVICE_QUICK_READ_RESPONSIVE_20261027.md)記錄 864 px 截圖中固定欄寬讓理由摘要只剩約 32 px，以及來源缺值與零配置列的語意；窄版收合風險／資料狀態欄、寬版恢復，並補上候選用途說明。Advice／契約聚焦測試 65 passed／4 failed（失敗為目前工作樹的範圍外舊斷言／導覽回歸），必要 Update Workbench UI 97 passed、Update validator 25／0／4、targeted mypy、py_compile 與 diff check 通過；全域 mypy 仍受既存 T164 bridge 語法錯誤阻擋。Offscreen 欄位切換通過；原生 MainWindow／Owner UAT 未驗。
+
+[策略庫保存版本背景讀取](BALDR_STRATEGY_LIBRARY_RESPONSIVE_VERSION_LOAD_20261027.md)記錄保存版本檔讀取移出 Qt UI 執行緒、載入／錯誤／重試狀態、單一 latest-only 佇列及舊回覆拒收。聚焦頁面與必要 Workbench UI 回歸、Update validator、定向 mypy 與 py_compile 結果按該報告判讀；阻塞合成 reader 確認 UI 事件迴圈仍能響應。沒有宣稱底層版本全目錄掃描更快、正式版本數量或 DannyQuant 端到端速度相同。
+
+[Research Timeline Journal 歷史快照重用](BALDR_RESEARCH_TIMELINE_JOURNAL_SNAPSHOT_REUSE_20261027.md)記錄四個唯讀 lane 共用一次 Journal JSONL 讀取、錯誤回退與單 lane 隔離；214 項時間軸／typed note／Journal storage／Workbench regression、6 模組 targeted mypy 與 10 檔編譯通過。6,000 筆合成 JSONL、offscreen Qt 的 30 次交替樣本 p50/p95 為 610.6/737.5 ms→335.1/436.3 ms，輸出 digest 相同、檔案讀取 4 次→1 次；不代表正式資料、原生繪製或 DannyQuant 網站速度。
+
+[DannyQuant 公開頁面參考](BALDR_DANNYQUANT_REFERENCE_20261027.md)記錄公開可見的名單範圍／篩選／資料完整度標籤，並明示沒有可重複的外部完成事件，故不宣稱網站速度對比。
+
+[Daily Research 局部篩選摘要](BALDR_DAILY_MARKET_RESEARCH_FILTER_CLARITY_20261027.md)記錄符合列／核驗列總數與作用中條件；4 項頁面測試及必要 Workbench UI 97 項通過，Update validator 25／0／4、4 模組 targeted mypy 與 8 檔編譯通過。全域 mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋；原生 GUI／Owner UAT 與正式資料延遲未驗。
+
+[個股研究代號／名稱搜尋](BALDR_STOCK_RESEARCH_NAME_SEARCH_20261027.md)記錄目前公司名錄內的名稱片段搜尋、唯一結果確認、多筆／無結果提示與原來源身份守衛；個股研究 89 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、targeted mypy、4 檔編譯與 scoped document-control 通過。Repo-wide mypy 受未修改 T164 bridge 第 411 行錯誤阻擋；未走原生 GUI／Owner UAT，也未量正式名錄或端到端延遲。
+
+[Smart Money 事件日期索引重用](BALDR_SMART_MONEY_EVENT_DATE_REUSE_20261027.md)記錄已驗證來源順序的解析／排序捷徑與不確定來源的安全回退；57 項相關測試通過，14,400 筆合成事件 digest 相同，60 次交替樣本的 p50／p95 皆改善。這只量預載事件語意整理，不代表資料庫、Worker 或 UI 端到端延遲；repo-wide mypy 仍被未修改 T164 bridge 第 411 行阻擋。
+
+[強勢個股逐列行情日](BALDR_STRONG_STOCKS_ROW_MARKET_DATE_20261027.md)記錄各列保留其選中來源行情日，與 DTO 整體資料日分開；22 項回歸、必要 Workbench UI 97 項、Update validator 25／0／4、targeted mypy 與編譯通過。全域 mypy 仍被未修改 T164 bridge 第 411 行阻擋；正式資料端到端延遲及原生 GUI／Owner UAT 未驗。
+
+[市況總覽窄版響應式版面](BALDR_MARKET_REGIME_RESPONSIVE_LAYOUT_20261027.md)記錄 820 Qt logical px 以下由左右 3:2 切換上下順序，並在 560／720／1280 寬度確認來源條件欄可讀、寬版比例恢復及內容狀態不變。市況總覽 14 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、定向 mypy、兩檔編譯與 scoped diff check 通過；全域 mypy 仍被未修改 T164 bridge 第 411 行語法錯誤阻擋。Scoped document control 有 4 個既有 Snapshot 錨點、task-wide 有 63 個既有連結／錨點問題，本次新增 QA 連結未列缺件。Offscreen 證據不代表原生 GUI／Owner UAT，也沒有 Danny Quant 延遲比較。
+
+[TAIEX 歷史頁合成資料端到端延遲基線](BALDR_TAIEX_HISTORY_LATENCY_BASELINE_20261027.md)記錄實際 `TaiexHistoryView`／`TaskWorker` 以唯讀合成 SQLite 載入 120 筆歷史資料的 30 次量測：刷新呼叫至圖表 Paint p50 8.2659 ms、p95 8.6771 ms，DTO 與可見狀態 35 次一致。沒有改 SQL 或索引；正式資料、MainWindow 導覽和原生螢幕呈現未測。
+
+[強勢個股目前清單本機搜尋](BALDR_STRONG_STOCKS_LOCAL_SEARCH_20261027.md)記錄原全市場模式的代號／名稱搜尋、僅代號的研究快照投影提示、目前已載清單筆數及未載入／空清單／零符合區分；原表排序與共用快照查詢不受影響。強弱勢 UI 與共享消費者 18 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、targeted mypy／compile 通過；repo-wide mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋。Changed-path document control 回報 Snapshot 四個既有日期化錨點；本輪新增連結未列缺件。未驗原生 GUI／Owner UAT 或正式資料端到端延遲。
+
+[Daily Decision Desk 資料脈絡優先版面](BALDR_DECISION_DESK_EVIDENCE_FIRST_LAYOUT_20261027.md)記錄總覽中的評估／判讀日、來源市場資料日、整體 quality 與警示摘要移至今日主結論之前；保存推薦與完整警示維持唯讀。Decision Desk UI 54 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、定向 mypy、編譯與 diff check 通過。全域 mypy 被未修改 T164 bridge 第 411 行阻擋；未做原生 GUI／Owner UAT。
+
+[Portfolio 交易歷史背景載入](BALDR_PORTFOLIO_TRADE_HISTORY_ASYNC_20261027.md)記錄自動刷新／股票篩選在背景讀取與建表、GUI thread 套用模型、快速換選丟棄舊回覆及同篩選暫留快照狀態。Portfolio UI 110 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、targeted mypy／編譯／diff check 通過；repo-wide mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋。未驗正式帳本 latency、大量交易欄寬／繪製或原生 GUI。
+
+[強勢個股背景載入與資料日](BALDR_STRONG_STOCKS_ASYNC_LOAD_20261027.md)記錄來源讀取移至受管背景 worker、GUI 執行緒更新模型、週期切換丟棄過期結果，以及 `effective_date`／快取資料日呈現。聚焦 UI 11 passed、共享市場消費者回歸 6 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、targeted mypy／編譯／diff check 通過；repo-wide mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋。Scoped document control 回報 Snapshot 原有四個日期化錨點，全庫共 63 個既有文件問題；新增文件連結未列缺件。未量測正式資料端到端延遲或走查原生 GUI。
+
+[強勢個股資料日呈現](BALDR_STRONG_STOCKS_EFFECTIVE_DATE_20261027.md)記錄強勢股頁保留 DTO `effective_date`、週期快取續顯原行情日，以及 missing date 明示。聚焦強弱勢 UI 9 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、targeted mypy／編譯／diff check 通過；repo-wide mypy 受未修改 T164 bridge 第 411 行語法錯誤阻擋。Document control 的四個 changed-scope 錯誤是 Snapshot 既有錨點，新增 QA／手冊連結無缺件；全域另有既存 `output/` 越界連結。未驗原生 GUI／Owner UAT 或正式資料端到端延遲。
+
+[Watchlist v3 revision cursor inventory](BALDR_WATCHLIST_REVISION_CURSOR_20261027.md)記錄保持全庫完整性驗證的 cursor 讀取、輸出與 late-corruption error-code 等價，以及 1,800 revisions／3,607 rows 合成 DB 的記憶體與延遲結果。27 項 storage tests、targeted mypy、編譯與 diff check 通過；repo-wide mypy 仍被未修改 T164 bridge 第 411 行擋住，document_control 有 63 個既有連結問題且新連結未列缺件。只確認約 1.34 MB peak allocation 減少，未證明正式 DB／端到端讀取延遲改善。
+
+[個股研究歷史持倉警示摘要轉換量](BALDR_STOCK_RESEARCH_ALERT_SUMMARY_20261027.md)記錄只轉換第一筆符合事件的 helper 微基準，並核對摘要文字完全相同；個股研究 UI 82 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、目標模組 mypy、編譯與 diff check 通過。全域 mypy 仍被未修改 T164 bridge 第 411 行既有語法錯誤阻擋；document_control 回報 63 個既有連結／錨點問題，本輪連結未列缺件。微基準不代表整頁或正式資料延遲；未驗原生 GUI／Owner UAT。
+
+[Research Registry 背景載入與本機篩選](BALDR_RESEARCH_REGISTRY_ASYNC_LOAD_20261027.md)記錄首次載入／手動刷新改由背景 TaskWorker 執行、篩選重用已載入快照及載入／錯誤／符合筆數呈現。聚焦 UI 53 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、兩個變更 UI 模組 targeted mypy 與 4 檔編譯通過；全域 mypy 仍被未修改 T164 bridge 第 411 行既有語法錯誤阻擋。未驗原生 GUI／Owner UAT，未量正式資料端到端延遲。Scoped document_control 仍回報 PROJECT_SNAPSHOT 四個既有錨點錯誤及 decision/research 分冊一個既有 `output/` 連結越界；本輪新增文件連結未列缺件。
+
+[Smart Money 主表範圍搜尋](BALDR_SMART_MONEY_SCOPE_SEARCH_20261027.md)記錄目前已載入列內的代號／名稱搜尋、符合數與品質摘要、空狀態區分及隱藏選取列後清除明細。聚焦 Smart Money 28 passed、必要 Workbench UI 97 passed、Update validator 25／0／4、targeted mypy 與 compile 通過；指定全域 mypy 仍受未修改 T164 bridge 語法錯誤阻擋，原生 GUI／Owner UAT 未做，不宣稱正式資料延遲改善。
+
+[Smart Money 主表欄寬重複量測快取](BALDR_SMART_MONEY_COLUMN_MEASUREMENT_20261027.md)記錄 1,600 列合成 offscreen 微基準：後續同模型 fit p50 由 47.3499 ms 降至 0.0107 ms，欄寬不變；首次 fit 約 50 ms，非端到端 UI 延遲。Smart Money view／async 26 passed、Update validator 25／0／4、targeted mypy 與編譯通過；必要 Workbench suite 55 passed、2 failed，Advice 測試失敗仍使 UI 回歸 Gate 待處理。未驗原生 GUI／Owner UAT。
+
+[Watchlist 顯示名稱歷史列查詢優化](BALDR_WATCHLIST_DISPLAY_NAME_QUERY_20261027.md)記錄索引條件下按請求代號取得最新非空名稱、舊 schema fallback 與唯讀測試；聚焦測試 2 passed，契約測試檔 22 passed、targeted mypy／compile 通過。20,000／100,000／400,000 筆合成歷史列上，舊／新查詢 p50 為 1.375／0.722、2.730／0.689、7.105／1.182 ms，輸出 digest 相同；此為 service query 微基準，未測正式 DB／UI／啟動延遲，不能宣稱端到端使用者延遲優於 DannyQuant。
+
+[Watchlist 候選池本機搜尋](BALDR_WATCHLIST_CANDIDATE_POOL_SEARCH_20261027.md)記錄目前已載入列的代號／名稱部分搜尋、符合列計數、重複來源列保留及載入狀態未知語意；Watchlist regression 14 passed。未驗原生 GUI／Owner UAT 或正式資料端到端搜尋延遲。
+
+[Smart Money 主表資料品質摘要](BALDR_SMART_MONEY_VISIBLE_QUALITY_20261027.md)記錄目前顯示範圍內含估算、張數未知與分類未知列數的呈現；25 項 Smart Money 測試、必要 Workbench UI 97 項及 Update validator 25／0／4 通過。全域 mypy 仍被既有 T164 bridge 語法錯誤阻擋；未驗原生 GUI／Owner UAT，資料資格不變。
+
 [2026-10-26 Gate 2 working-copy 與 Gate 3 現況觀測可見性](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md)記錄週報 working-copy 唯讀接線，以及 Decision Desk 對 current observations 的 SQL 分層計數；不代表實際 Owner UAT、來源接受、PIT、Gate 或 ML 資格通過。
 
 [Opus→Antigravity UX 原始碼實作收尾](BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)整理排程啟動、Sol 複核、M1–M169 工程／審查／QA 切片、最後共同 QA 與未完成 Gate；逐輪原收據及圖片留在本機任務目錄，不能由提交推定產品正式驗收。
@@ -9,6 +59,10 @@
 [UI／UX 外部審查包](BALDR_UI_UX_EXTERNAL_REVIEW_BRIEF_20261022.md)整理各使用路徑的現行呈現、視覺化進度、實圖位置與可交給Opus的獨立審查任務；不是新的設計合格或金融接受宣告。
 
 [個股營收與籌碼視覺整合](BALDR_RESEARCH_VISUALIZATION_20261022.md)承接既有圖卡布局，記錄原值圖卡、指標分組與資料界線；最終視覺驗證狀態依該頁判讀。
+
+[月營收原值表漸進展開](BALDR_STOCK_MONTHLY_REVENUE_DISCLOSURE_20261027.md)記錄只有在可見柱圖完整對應所有表格列時才預設收合原表；來源或圖表不完整時仍直接顯示原表，來源與金融資格維持不變。
+
+[Watchlist MainWindow 首次候選快照背景載入](BALDR_WATCHLIST_INITIAL_ASYNC_LOAD_20261027.md)記錄首次唯讀 snapshot／名稱讀取移至 `TaskWorker`、generation 與關閉守衛、inline failure 和同步刷新相容性；Watchlist regression 12 passed、必要 Workbench UI 97 passed，完整 mypy 受既存 T164 bridge 語法錯誤阻擋。未驗原生 GUI／Owner UAT或實際啟動延遲，來源與產品資格不變。
 
 [V2 圖卡優先研究體驗](BALDR_V2_CARD_EXPERIENCE_20261022.md)記錄首頁、個股同屏、選股與策略庫收合、題材缺件及研究時間展示的後繼 UI 增量；不改每日資料恢復或固定候選資格，進度按原文判讀。
 

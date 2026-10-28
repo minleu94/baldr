@@ -66,6 +66,8 @@
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
         "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
         "docs/06_qa/BALDR_WORKBENCH_ADVICE_EMPTY_STATE_20261025.md",
+        "docs/06_qa/BALDR_WORKBENCH_ADVICE_QUICK_READ_RESPONSIVE_20261027.md",
+        "docs/06_qa/BALDR_WORKBENCH_ADVICE_CARD_LAYOUT_20261027.md",
         "docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md",
         "docs/06_qa/BALDR_DAILY_WEEKLY_DISCLOSURE_QA_20261025.md",
         "docs/06_qa/BALDR_PROGRAM_READINESS_LIVE_UI_20261025.md"
@@ -134,6 +136,7 @@
       "contracts": [
         "docs/01_architecture/system_architecture.md",
         "docs/01_architecture/current/application_and_workspaces.md",
+        "docs/01_architecture/current/data_storage_runtime.md",
         "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md"
       ],
       "code": [
@@ -165,13 +168,20 @@
         "app_module/theme_research_notes.py",
         "ui_qt/widgets/theme_research_notes_widget.py",
         "app_module/market_data_visibility_service.py",
-        "app_module/market_data_visibility_dtos.py"
+        "app_module/market_data_visibility_dtos.py",
+        "decision_module/stock_screener.py",
+        "ui_qt/views/strong_stocks_view.py",
+        "ui_qt/views/smart_money/smart_money_flow_view.py",
+        "app_module/broker_flow_dashboard_query_service.py",
+        "app_module/smart_money_semantic_service.py",
+        "app_module/broker_flow_sqlite_read_repository.py"
       ],
       "tests": [
         "tests/test_theme_snapshot_catalog.py",
         "tests/test_ui_qt_theme_catalog_loading.py",
         "tests/test_ui_qt_market_analysis_workspace.py",
         "tests/test_ui_qt_market_regime_view.py",
+        "tests/test_ui_qt_weak_market_views.py",
         "tests/test_ui_qt_decision_desk_view.py",
         "tests/test_ui_qt_decision_desk_main_integration.py",
         "tests/test_decision_desk_dto_contract.py",
@@ -200,7 +210,12 @@
         "tests/test_ui_qt_industry_theme_stock_lookup.py",
         "tests/test_ui_qt_theme_research_clear.py",
         "tests/test_market_data_visibility_service.py",
-        "tests/test_ui_qt_decision_desk_view.py"
+        "tests/test_stock_screener_provider.py",
+        "tests/test_ui_qt_decision_desk_view.py",
+        "tests/test_ui_qt_smart_money_flow_async.py",
+        "tests/test_ui_qt_smart_money_flow_view.py",
+        "tests/test_broker_flow_dashboard_query_service.py",
+        "tests/test_broker_flow_sqlite_read_repository.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -208,6 +223,15 @@
       ],
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_MARKET_REGIME_RESPONSIVE_LAYOUT_20261027.md",
+        "docs/06_qa/BALDR_STRONG_STOCKS_LOCAL_SEARCH_20261027.md",
+        "docs/06_qa/BALDR_STRONG_STOCKS_ROW_MARKET_DATE_20261027.md",
+        "docs/06_qa/BALDR_DANNYQUANT_REFERENCE_20261027.md",
+        "docs/06_qa/BALDR_SMART_MONEY_SEMANTIC_OVERLAP_PROFILE_20261027.md",
+        "docs/06_qa/BALDR_SMART_MONEY_EVENT_DATE_REUSE_20261027.md",
+        "docs/06_qa/BALDR_SMART_MONEY_VISIBLE_QUALITY_20261027.md",
+        "docs/06_qa/BALDR_SMART_MONEY_COLUMN_MEASUREMENT_20261027.md",
+        "docs/06_qa/BALDR_SMART_MONEY_SCOPE_SEARCH_20261027.md",
         "docs/06_qa/BALDR_INDUSTRY_LEADER_CARDS_20261025.md",
         "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md",
         "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
@@ -223,6 +247,10 @@
         "tests/test_ui_qt_theme_catalog_loading.py",
         "tests/test_ui_qt_market_analysis_workspace.py",
         "ui_qt/views/market*",
+        "ui_qt/views/strong_stocks_view.py",
+        "tests/test_ui_qt_weak_market_views.py",
+        "decision_module/stock_screener.py",
+        "tests/test_stock_screener_provider.py",
         "app_module/regime_service.py",
         "app_module/industry_strength*",
         "app_module/decision_desk*",
@@ -269,6 +297,12 @@
         "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
         "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md",
         "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md",
+        "docs/06_qa/BALDR_STRONG_STOCKS_LOCAL_SEARCH_20261027.md",
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
         "app_module/technical_source_copy.py",
         "app_module/theme_research_presentation.py",
         "app_module/theme_research_notes.py",
@@ -279,10 +313,19 @@
         "tests/test_theme_stock_context_guard.py",
         "tests/test_ui_qt_industry_theme_stock_lookup.py",
         "tests/test_ui_qt_theme_chain_directory.py",
-        "tests/test_ui_qt_theme_research_clear.py"
+        "tests/test_ui_qt_theme_research_clear.py",
+        "ui_qt/views/smart_money/*",
+        "tests/test_ui_qt_smart_money_flow_async.py",
+        "tests/test_ui_qt_smart_money_flow_view.py",
+        "app_module/broker_flow_dashboard_query_service.py",
+        "app_module/smart_money_semantic_service.py",
+        "app_module/broker_flow_sqlite_read_repository.py",
+        "tests/test_broker_flow_dashboard_query_service.py",
+        "tests/test_broker_flow_sqlite_read_repository.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/data_storage_runtime.md",
         "docs/07_guides/APPLICATION_MANUAL.md",
         "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
         "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md",
@@ -361,6 +404,7 @@
         "ui_qt/views/daily_market_technical_official_disposition_composite_view.py",
         "ui_qt/views/daily_market_technical_official_disposition_revenue_view.py",
         "ui_qt/views/recommendation_view.py",
+        "ui_qt/views/daily_market_research_view.py",
         "ui_qt/views/daily_market_technical_universe_price_view_v1.py",
         "ui_qt/workers/revenue_source_actor_v2.py",
         "app_module/research_output_copy.py",
@@ -428,6 +472,7 @@
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_v2.py",
         "tests/test_ui_qt_recommendation_execution.py",
+        "tests/test_ux04_05_daily_market_research_view.py",
         "tests/test_ui_qt_recommendation_exact_saved_entry.py",
         "tests/test_ui_qt_daily_market_technical_universe_price_view_v1.py",
         "tests/test_ui_qt_revenue_source_actor_v2.py",
@@ -446,7 +491,10 @@
       ],
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
-        "docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md"
+        "docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md",
+        "docs/06_qa/BALDR_DAILY_MARKET_RESEARCH_FILTER_CLARITY_20261027.md",
+        "docs/06_qa/BALDR_DANNYQUANT_REFERENCE_20261027.md",
+        "docs/06_qa/BALDR_STOCK_RESEARCH_NAME_SEARCH_20261027.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -461,11 +509,13 @@
         "app_module/recommendation_profile_service.py",
         "ui_qt/views/recommendation/execution_coordinator.py",
         "ui_qt/views/recommendation_view.py",
+        "ui_qt/views/daily_market_research_view.py",
         "ui_qt/views/unified_screener_workspace.py",
         "tests/test_daily_banktaiwan_learning_cost.py",
         "tests/test_ui_qt_unified_screener_workspace.py",
         "ui_qt/views/revenue_stock_research_origin.py",
         "tests/test_ui_qt_revenue_stock_research_origin.py",
+        "tests/test_ux04_05_daily_market_research_view.py",
         "analysis_module/*",
         "app_module/advice_dtos.py",
         "app_module/advice_composer.py",
@@ -763,7 +813,9 @@
         "tests/test_saved_strategy_signal_comparison.py",
         "tests/test_ui_qt_saved_strategy_signal_comparison.py",
         "tests/test_saved_signal_zero_trade_journey.py",
-        "tests/test_ui_qt_registry_comparison_intent.py"
+        "tests/test_ui_qt_registry_comparison_intent.py",
+        "tests/test_ui_qt_run_registry_compare.py",
+        "tests/test_ui_qt_research_workflow.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -772,7 +824,9 @@
       "evidence": [
         "docs/06_qa/BALDR_COMPLETION_HANDOFF_20261014_INCREMENT19.md",
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
-        "docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md"
+        "docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md",
+        "docs/06_qa/BALDR_RESEARCH_REGISTRY_ASYNC_LOAD_20261027.md",
+        "docs/06_qa/BALDR_STRATEGY_LIBRARY_RESPONSIVE_VERSION_LOAD_20261027.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -917,7 +971,9 @@
         "tests/test_saved_strategy_signal_comparison.py",
         "tests/test_ui_qt_saved_strategy_signal_comparison.py",
         "tests/test_saved_signal_zero_trade_journey.py",
-        "tests/test_ui_qt_registry_comparison_intent.py"
+        "tests/test_ui_qt_registry_comparison_intent.py",
+        "tests/test_ui_qt_run_registry_compare.py",
+        "tests/test_ui_qt_research_workflow.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -960,6 +1016,7 @@
         "tests/test_ui_qt_watchlist_layout.py",
         "tests/test_watchlist_composite_bookmark_v2.py",
         "tests/test_watchlist_revenue_archived_bookmark_v3.py",
+        "tests/test_task_loop_07_contract.py",
         "tests/test_price_bookmark_copy.py",
         "tests/test_price_bookmark_copy_limits.py"
       ],
@@ -968,7 +1025,9 @@
         "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
       ],
       "evidence": [
-        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_WATCHLIST_DISPLAY_NAME_QUERY_20261027.md",
+        "docs/06_qa/BALDR_WATCHLIST_CANDIDATE_POOL_SEARCH_20261027.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -990,6 +1049,7 @@
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_v2.py",
         "tests/test_ui_qt_watchlist_layout.py",
         "tests/test_watchlist_revenue_archived_bookmark_v3.py",
+        "tests/test_task_loop_07_contract.py",
         "app_module/technical_source_copy.py",
         "scripts/copy_price_bookmarks.py",
         "tests/test_price_bookmark_copy.py",
@@ -1099,7 +1159,8 @@
         "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
       ],
       "evidence": [
-        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_STOCK_RESEARCH_NAME_SEARCH_20261027.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -1196,6 +1257,11 @@
       "code": [
         "app_module/research_timeline_dtos.py",
         "app_module/research_timeline_service.py",
+        "app_module/journal_service.py",
+        "app_module/portfolio_store.py",
+        "app_module/pinned_stock_research_notes.py",
+        "app_module/stock_research_report_notes.py",
+        "app_module/theme_research_notes.py",
         "app_module/research_evidence_comparison_dtos.py",
         "app_module/research_evidence_comparison_service.py",
         "ui_qt/widgets/research_evidence_comparison_widget.py",
@@ -1224,6 +1290,9 @@
       ],
       "tests": [
         "tests/test_research_timeline_service.py",
+        "tests/test_pinned_stock_research_notes.py",
+        "tests/test_stock_research_report_notes.py",
+        "tests/test_theme_research_notes.py",
         "tests/test_research_paper_producer.py",
         "tests/test_research_paper_evidence_binding.py",
         "tests/test_research_paper_ledger_snapshot.py",
@@ -1263,6 +1332,7 @@
       ],
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_RESEARCH_TIMELINE_JOURNAL_SNAPSHOT_REUSE_20261027.md",
         "docs/06_qa/BALDR_PAPER_FILL_IMPORT_PREVIEW_QA_20261025.md"
       ],
       "status": [
@@ -1271,12 +1341,20 @@
       "change_patterns": [
         "app_module/research_timeline_dtos.py",
         "app_module/research_timeline_service.py",
+        "app_module/journal_service.py",
+        "app_module/portfolio_store.py",
+        "app_module/pinned_stock_research_notes.py",
+        "app_module/stock_research_report_notes.py",
+        "app_module/theme_research_notes.py",
         "app_module/research_evidence_comparison_dtos.py",
         "app_module/research_evidence_comparison_service.py",
         "ui_qt/widgets/research_evidence_comparison_widget.py",
         "ui_qt/widgets/research_paper_prerequisite_dialog.py",
         "ui_qt/views/research_timeline_view.py",
         "tests/test_research_timeline_service.py",
+        "tests/test_pinned_stock_research_notes.py",
+        "tests/test_stock_research_report_notes.py",
+        "tests/test_theme_research_notes.py",
         "tests/test_research_evidence_comparison_service.py",
         "tests/test_ui_qt_research_evidence_comparison.py",
         "tests/test_ui_qt_research_paper_prerequisite_dialog.py",
@@ -1322,6 +1400,7 @@
         "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
         "docs/00_core/PROJECT_SNAPSHOT.md",
         "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/01_architecture/current/data_storage_runtime.md",
         "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
       ]
     },
@@ -1773,6 +1852,7 @@
       ],
       "evidence": [
         "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md",
+        "docs/06_qa/BALDR_STORAGE_OVERVIEW_METADATA_REUSE_20261027.md",
         "docs/06_qa/BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md",
         "docs/06_qa/BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md",
         "docs/06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md"

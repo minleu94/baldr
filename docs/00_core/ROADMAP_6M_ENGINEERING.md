@@ -108,10 +108,10 @@ Month 1–6 是依 Gate 依賴排列的相對月份，目前沒有指定日曆�
 ### Engineering Deliverables
 
 1. Advice action enum：`RESEARCH`、`ADD_CANDIDATE`、`HOLD`、`REDUCE_CANDIDATE`、`EXIT_CANDIDATE`、`AVOID`、`NO_NEW_POSITION`。
-2. Recommendation Advice Contract：Why、Why Not、Risk、Evidence tier、confidence tier、thesis、invalidation、horizon、liquidity、execution feasibility、strategy/data date。
-3. 策略 Advice 不依賴 Portfolio：不要求真實帳戶、風險預算或配置權重即可輸出有證據的研究候選；手動持倉可供獨立的選用 overlay 使用。
-4. Guided Mode policy：只允許 promoted / locked / disclosure-complete strategy。
-5. Professional Mode policy：candidate experiments 與 formal Advice 嚴格分離。
+2. Recommendation Advice DTO 攜帶 Why、Why Not、Risk、Evidence tier、confidence tier、thesis、invalidation、horizon、liquidity、execution feasibility、strategy/data date；來源未提供時顯示未知並列限制，不以作者契約缺漏作為 Advice 輸出 Gate。
+3. 策略 Advice 不依賴 Portfolio：不要求真實帳戶、風險預算或配置權重即可輸出可追溯 Advice；手動持倉可供獨立的選用 overlay 使用。
+4. 策略生命週期（candidate／promoted）、參數鎖定、揭露與作者契約是 Advice 的限制提示，不作為人工 Advice 輸出的前置 Gate。
+5. Guided／Professional 描述設定與研究工作流程，不把相同的 Advice 結果拆成「正式」與「非正式」建議。
 6. 共核驗證：兩種 Mode 使用相同 Recommendation / Portfolio / Evidence engine 與相同 DTO schema。
 7. Advice refusal policy：策略／市場證據不足、不可成交或整體風險過高時輸出 `RESEARCH` / `AVOID` / `NO_NEW_POSITION`；個人 risk budget 只限制可選 sizing，不阻擋策略建議。
 8. Workbench read model / UI slice：先呈現策略建議、風險、證據與失效條件；不直接在 UI 計算。
@@ -119,8 +119,8 @@ Month 1–6 是依 Gate 依賴排列的相對月份，目前沒有指定日曆�
 ### Testing
 
 - Contract / JSON round-trip / legacy compatibility。
-- Guided Mode 不可載入 candidate / shadow 策略。
-- Professional result 未經 Promotion 不得出現在 Guided Mode。
+- candidate／未 promoted 策略仍可形成 Advice；版本成熟度與作者欄位限制須清楚顯示。
+- shadow 或未通過 forward evidence 的結果不得偽稱為已驗證；逐列資料品質與 source trace 仍須 fail closed。
 - Missing / degraded / stale / execution unavailable 的 fail-closed matrix。
 - `NO_NEW_POSITION` 可被正常輸出且 UI 不視為錯誤。
 - Integer bp / Decimal / Look-ahead guard。

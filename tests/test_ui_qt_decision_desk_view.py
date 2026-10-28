@@ -1850,6 +1850,23 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "原始最新觀測／可得時間（語意未驗）：2026-06-14T12:00:00Z／2026-06-16T09:00:00Z" in view.visibility_sources_label.text()
 
 
+def test_decision_desk_visibility_truncates_excessive_categories():
+    app()
+    categories = tuple(
+        VisibilityCategoryCount(f"v_{i}", 100 - i)
+        for i in range(10)
+    )
+    result = DecisionDeskView._format_visibility_category_counts(
+        "source_version_counts", categories
+    )
+    assert result == "v_0 100 列、v_1 99 列、v_2 98 列、…等共 10 種版本"
+
+    result_sources = DecisionDeskView._format_visibility_category_counts(
+        "source_counts", categories
+    )
+    assert "…等共 10 個來源" in result_sources
+
+
 def test_decision_desk_displays_valid_regime_source_date_separately_from_decision_date():
     app()
     base = _snapshot()

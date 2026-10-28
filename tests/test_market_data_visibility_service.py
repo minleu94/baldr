@@ -564,3 +564,44 @@ def test_read_only_connection_is_closed_after_each_snapshot(
 
     assert opened
     assert all(connection.closed for connection in opened)
+
+
+def test_current_fundamental_observation_collapses_derived_source_versions(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "visibility.db"
+    with sqlite3.connect(db_file) as conn:
+        conn.execute(
+            """
+            CREATE TABLE fundamental_current_observations (
+                stock_code TEXT,
+                kind TEXT,
+                source TEXT,
+                source_version TEXT,
+                market TEXT,
+                period_basis TEXT,
+                basis_verified INTEGER,
+                aggregate_feature_eligible INTEGER,
+                source_available_at TEXT,
+                as_of_date TEXT,
+                observed_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO fundamental_current_observations VALUES
+                ('2330', 'monthly_revenue', 'mops', 'norm.v2:twse:2026-08:raw:raw-snap-v1:derived:sha256:hash1', 'twse', 'monthly_flow', 1, 0, '2026-09-10', '2026-08-31', '2026-09-10T00:00:00Z'),
+                ('2317', 'monthly_revenue', 'mops', 'norm.v2:twse:2026-08:raw:raw-snap-v1:derived:sha256:hash2', 'twse', 'monthly_flow', 1, 0, '2026-09-10', '2026-08-31', '2026-09-10T00:00:00Z'),
+                ('2454', 'monthly_revenue', 'mops', 'norm.v2:twse:2026-08:raw:raw-snap-v2:derived:sha256:hash3', 'twse', 'monthly_flow', 1, 0, '2026-09-10', '2026-08-31', '2026-09-10T00:00:00Z')
+            """
+        )
+    summary = MarketDataVisibilityService(db_file).build_summary(
+        as_of_date=date(2026, 9, 1)
+    )
+    projection = summary.current_fundamental_observations
+    assert projection is not None
+    assert {item.value: item.row_count for item in projection.source_version_counts} == {
+        "raw-snap-v1": 2,
+        "raw-snap-v2": 1,
+    }

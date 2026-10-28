@@ -721,6 +721,16 @@ def _current_observation_category_counts(
         for dimension in dimensions:
             raw_value = row[dimension]
             value = str(raw_value) if raw_value is not None else None
+            if (
+                dimension == "source_version"
+                and value is not None
+                and ":raw:" in value
+                and ":derived:" in value
+            ):
+                start = value.find(":raw:") + 5
+                end = value.find(":derived:", start)
+                if end > start:
+                    value = value[start:end]
             counts[dimension][value] = counts[dimension].get(value, 0) + row_count
     return {
         dimension: tuple(

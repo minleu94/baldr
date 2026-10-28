@@ -30,7 +30,7 @@ from app_module.decision_presentation import (
     DecisionPresentationService,
     format_decision_presentation,
 )
-from app_module.market_data_visibility_dtos import MarketDataVisibilitySummary
+from app_module.market_data_visibility_dtos import MarketDataVisibilitySummary, VisibilityCategoryCount
 from app_module.research_session import ResearchStockContextDTO
 from data_module.market_session_policy import resolve_project_market_session_boundary
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -1193,6 +1193,41 @@ class DecisionDeskView(QWidget):
         }.get(raw.lower(), f"資格狀態未登錄（{raw}）")
 
     @staticmethod
+    def _format_visibility_category_counts(
+        attribute: str,
+        categories: tuple[VisibilityCategoryCount, ...],
+    ) -> str:
+        """格式化可見性類別分布；過多項目時收斂摘要，避免長字串撐爆 UI。"""
+        if not categories:
+            return ""
+        max_items = (
+            3
+            if attribute == "source_version_counts"
+            else (5 if attribute == "source_counts" else 8)
+        )
+        if len(categories) <= max_items:
+            return "、".join(
+                f"{item.value if item.value is not None else '未提供'} {item.row_count:,} 列"
+                for item in categories
+            )
+        sorted_categories = sorted(
+            categories,
+            key=lambda item: (item.row_count, item.value or ""),
+            reverse=True,
+        )
+        displayed = sorted_categories[:max_items]
+        rendered = "、".join(
+            f"{item.value if item.value is not None else '未提供'} {item.row_count:,} 列"
+            for item in displayed
+        )
+        suffix = (
+            "種版本"
+            if attribute == "source_version_counts"
+            else ("個來源" if attribute == "source_counts" else "項")
+        )
+        return f"{rendered}、…等共 {len(categories):,} {suffix}"
+
+    @staticmethod
     def _format_ratio_bp(value: int | None) -> str:
         if value is None:
             return "N/A"
@@ -1356,9 +1391,8 @@ class DecisionDeskView(QWidget):
                 ):
                     categories = tuple(getattr(current_observations, attribute, ()) or ())
                     if categories:
-                        values = "、".join(
-                            f"{item.value if item.value is not None else '未提供'} {item.row_count:,} 列"
-                            for item in categories
+                        values = self._format_visibility_category_counts(
+                            attribute, categories
                         )
                         source_lines.append(f"  {title}：{values}")
                 basis_verified = current_observations.basis_verified_count

@@ -2960,6 +2960,7 @@ class RecommendationView(QWidget):
         self.result_scroll.setMinimumWidth(0)
         self._set_result_row_directions(
             result_narrow,
+            context_header_narrow=viewport_width < 560,
             saved_controls_narrow=saved_controls_narrow,
         )
         self._set_personal_policy_history_direction(history_narrow)
@@ -3084,6 +3085,7 @@ class RecommendationView(QWidget):
         self,
         narrow: bool,
         *,
+        context_header_narrow: bool | None = None,
         saved_controls_narrow: bool | None = None,
     ) -> None:
         """窄版時將長路徑欄與操作按鈕改為垂直排列，保留可讀寬度。"""
@@ -3093,8 +3095,12 @@ class RecommendationView(QWidget):
             if saved_controls_narrow
             else QBoxLayout.LeftToRight
         )
+        context_header_direction = (
+            QBoxLayout.TopToBottom
+            if context_header_narrow
+            else QBoxLayout.LeftToRight
+        )
         for layout_name in (
-            "research_context_header_layout",
             "personal_capture_row",
             "assessment_capture_path_row",
             "assessment_summary_path_row",
@@ -3108,6 +3114,10 @@ class RecommendationView(QWidget):
             if row is not None:
                 row.setDirection(direction)
                 row.setSpacing(6)
+        context_header = getattr(self, "research_context_header_layout", None)
+        if context_header is not None:
+            context_header.setDirection(context_header_direction)
+            context_header.setSpacing(6)
         for layout_name in ("saved_result_select_row", "saved_result_actions_row"):
             row = getattr(self, layout_name, None)
             if row is not None:
@@ -3823,10 +3833,12 @@ class RecommendationView(QWidget):
         context_header = QHBoxLayout()
         self.research_context_header_layout = context_header
         self.research_context_summary_label = QLabel(
-            "本次行情資料日與候選筆數會顯示在這裡；展開右側資料來源可核對決策日、Profile 與結果 ID。"
+            "分析後列行情資料日與候選數；按「本次資料日期與來源」核對決策日、Profile、來源與結果 ID。"
         )
         self.research_context_summary_label.setWordWrap(True)
-        self.research_context_summary_label.setAccessibleName("推薦分析資料摘要")
+        self.research_context_summary_label.setAccessibleName(
+            "本次推薦行情資料日與候選數量"
+        )
         self.research_context_summary_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_primary}; "
             f"background: {MIDNIGHT_ANALYST.surface_2}; "
@@ -3836,7 +3848,7 @@ class RecommendationView(QWidget):
         self.research_context_toggle = QToolButton()
         self.research_context_toggle.setText("本次資料日期與來源")
         self.research_context_toggle.setCheckable(True)
-        self.research_context_toggle.setAccessibleName("顯示推薦分析研究上下文細節")
+        self.research_context_toggle.setAccessibleName("展開本次資料日期與來源")
         self.research_context_toggle.setToolTip(
             "展開可核對本次決策日、資料日、Profile、來源與結果 ID；不會重新執行分析。"
         )
@@ -4560,6 +4572,9 @@ class RecommendationView(QWidget):
         )
         self.company_source_snapshot_details_button.setObjectName(
             "recommendationCompanySourceDetailsToggle"
+        )
+        self.company_source_snapshot_details_button.setAccessibleName(
+            "查看所選股票的完整來源與核驗資料"
         )
         self.company_source_snapshot_details_button.setCheckable(True)
         self.company_source_snapshot_details_button.setChecked(False)
@@ -8992,7 +9007,7 @@ class RecommendationView(QWidget):
             if market_date_note:
                 data_summary = f"價格／指標資料日：{market_date_note}"
             else:
-                data_summary = f"價格／指標更新至：{data_date}"
+                data_summary = f"價格／指標資料日：{data_date}"
             recommendations = self._current_items()
             result_count = len(recommendations) if recommendations else 0
             if result_count:

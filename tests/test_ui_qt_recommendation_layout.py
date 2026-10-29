@@ -446,7 +446,11 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
                     control.minimumSizeHint(),
                 )
             assert view.research_context_toggle.text() == "本次資料日期與來源"
-            assert "行情資料日與候選筆數" in view.research_context_summary_label.text()
+            assert view.research_context_toggle.accessibleName() == "展開本次資料日期與來源"
+            assert view.company_source_snapshot_details_button.accessibleName() == (
+                "查看所選股票的完整來源與核驗資料"
+            )
+            assert "分析後列行情資料日與候選數" in view.research_context_summary_label.text()
             assert "尚未分析" in view.result_status_label.text()
             view._toggle_research_context(True)
             assert view.research_context_label.isVisible()
@@ -458,6 +462,15 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
                 QBoxLayout.TopToBottom
                 if view.result_scroll.viewport().width() < 560
                 else QBoxLayout.LeftToRight
+            )
+            expected_context_direction = (
+                QBoxLayout.TopToBottom
+                if view.result_scroll.viewport().width() < 560
+                else QBoxLayout.LeftToRight
+            )
+            assert (
+                view.research_context_header_layout.direction()
+                == expected_context_direction
             )
             assert view.saved_result_select_row.direction() == expected_saved_row_direction
             assert view.saved_result_actions_row.direction() == expected_saved_row_direction

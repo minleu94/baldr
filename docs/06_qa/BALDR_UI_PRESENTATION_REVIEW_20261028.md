@@ -495,11 +495,13 @@ Backtest worker 直接回報錯誤時，原流程只顯示一次 modal；關閉�
 - 必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**，`.pytest-owned-temp/ui_round50_validator_logs/VALIDATION_REPORT.md`。三個修改 UI source scoped mypy **0 issues**；六個修改 Python source／tests `py_compile` 通過；`git diff --check` 通過。Repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。原生 GUI／Owner UAT 未做。
 - 操作手冊已同步卡面／詳細文字分工及缺失成交觀測保持未知的閱讀順序。整體 UI 盤點繼續進行；此輪不構成 Backtest 全模式或程式整體驗收。
 
-## 2026-10-29 第五十一輪：Recommendation 資料來源層級與狀態摘要
+## 2026-10-29 第五十二輪：Recommendation 資料來源層級與狀態摘要
 
-推薦頁原本用「查看資料與來源細節」和「查看完整來源欄位與核驗資料」兩個近似名稱，沒有說清楚前者是整次分析、後者是所選股票；頂端資料摘要與結果狀態也重複要求先閱讀理由／風險。現在入口分別標成「本次資料日期與來源」及「查看此股完整來源與核驗資料」；摘要只列資料日與候選／未入選筆數，狀態列只說明分析狀態與選列可讀的理由、風險及來源。此輪只調整呈現與引導，不改推薦、來源或資格判定。
+推薦頁原本用「查看資料與來源細節」和「查看完整來源欄位與核驗資料」兩個近似名稱，沒有說清楚前者是整次分析、後者是所選股票；頂端資料摘要與結果狀態也重複要求先閱讀理由／風險。左右分欄後，約 790 px 寬的結果欄仍把資料摘要旁的短切換按鈕堆到下一行，摘要區因此近百像素高。現在入口分別標成「本次資料日期與來源」及「查看此股完整來源與核驗資料」；摘要只列資料日與候選／未入選筆數，狀態列只說明分析狀態與選列可讀的理由、風險及來源。資料摘要與切換入口在結果欄至少 560 px 時並排，較窄才上下排列。此輪只調整呈現與引導，不改推薦、來源或資格判定。
 
-- `tests/test_ui_qt_recommendation_layout.py`：**17 passed**，覆核全體資料 context 與逐股來源入口的名稱、顯示狀態，以及摘要／狀態分工。必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round51_update_validator_logs/VALIDATION_REPORT.md`。
+- `tests/test_ui_qt_recommendation_layout.py`：**17 passed**，覆核全體資料 context 與逐股來源入口的名稱、顯示狀態，摘要／狀態分工及不同欄寬下的入口方向。必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round51_update_validator_logs/VALIDATION_REPORT.md`。
+- 同步無障礙名稱後重跑兩個相關案例：**2 passed／15 deselected**；Recommendation source 與 tab help scoped mypy **0 issues**，3 個修改 Python source／test `py_compile` 通過。
+- 1366×768 合成結果頁以正式 QSS 重拍 `.pytest-owned-temp/recommendation_success_round51.png`；結果欄 789 px 時，摘要與切換入口同列 29 px，表格可見高度由 222 px 增至 257 px，確認少一列控制項後把空間還給結果。合成狀態不代表真資料或 Owner UAT。
 - Recommendation source scoped mypy、修改 Python 檔 `py_compile` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止；`git diff --check` 通過（Git 顯示既有 LF→CRLF 提示）。
 - 操作指南已同步兩個來源入口的層級與狀態摘要分工。畫面證據為合成 UI；資料來源完整端到端、原生 GUI／Owner UAT 與全程式 UI 盤點仍未完成。
 

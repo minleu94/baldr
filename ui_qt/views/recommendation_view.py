@@ -6792,25 +6792,6 @@ class RecommendationView(QWidget):
                     "本次用途有使用產業指數表現，但封存列觀察缺漏、雜湊不符或時間狀態矛盾；"
                     "請檢查同次來源事件並重新產生推薦。"
                 )
-        lines = [
-            f"本筆保存推薦結果：result_id={getattr(execution, 'result_id', None) or '未知'}。",
-            "一、公司名冊與分類資格",
-            f"分類來源：{source_status_label}；{date_line}"
-            "僅代表 current_classification_only，PIT eligible=false。",
-            f"公司來源契約 SHA-256：{source_contract_hash or '未知'}；"
-            f"名冊 artifact SHA-256：{artifact_hash or '未知'}；"
-            f"契約產生時間：{contract_generated_at or '未知'}。",
-        ]
-        lines.extend(v2_source_facts)
-        lines.extend(("", "二、產業指數來源與列觀察", f"{index_status_label}。"))
-        lines.extend(industry_observation_lines)
-        if market_facts:
-            lines.extend(("", "三、同次市場來源", "市場來源：" + "；".join(market_facts) + "。"))
-        warnings = snapshot.get("warnings", ())
-        if isinstance(warnings, (list, tuple)) and warnings:
-            lines.extend(
-                ("", "來源提示", "；".join(str(item) for item in warnings) + "。")
-            )
         next_steps = []
         if company_status != "captured":
             next_steps.append(
@@ -6829,7 +6810,33 @@ class RecommendationView(QWidget):
             next_steps.append(
                 "如需歷史成分判讀，請使用具有歷史可得時間的成分資料；本快照不代表 PIT 成分。"
             )
-        lines.extend(("", "下一步", "• " + "\n• ".join(next_steps)))
+        lines = [
+            f"本筆保存推薦結果：result_id={getattr(execution, 'result_id', None) or '未知'}。",
+            "先看結論",
+            f"公司分類來源：{source_status_label}；{date_line}"
+            "只代表當時分類狀態，不是歷史 PIT 成分證據。",
+            f"產業指數：{index_status_label}。",
+            "下一步",
+            "• " + "\n• ".join(next_steps),
+            "",
+            "來源憑據（以下是核對資料，不代表來源資格已通過）",
+            "一、公司名冊與分類資格",
+            f"分類來源：{source_status_label}；{date_line}"
+            "僅代表 current_classification_only，PIT eligible=false。",
+            f"公司來源契約 SHA-256：{source_contract_hash or '未知'}；"
+            f"名冊 artifact SHA-256：{artifact_hash or '未知'}；"
+            f"契約產生時間：{contract_generated_at or '未知'}。",
+        ]
+        lines.extend(v2_source_facts)
+        lines.extend(("", "二、產業指數來源與列觀察", f"{index_status_label}。"))
+        lines.extend(industry_observation_lines)
+        if market_facts:
+            lines.extend(("", "三、同次市場來源", "市場來源：" + "；".join(market_facts) + "。"))
+        warnings = snapshot.get("warnings", ())
+        if isinstance(warnings, (list, tuple)) and warnings:
+            lines.extend(
+                ("", "來源提示", "；".join(str(item) for item in warnings) + "。")
+            )
         source_summary = (
             f"來源判讀：公司名冊契約{'已封存' if company_status == 'captured' else '未能核驗'}；"
             f"{index_status_label}。\n"

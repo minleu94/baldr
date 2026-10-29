@@ -1016,6 +1016,9 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
         text = view.company_source_snapshot_label.text()
         assert view.company_source_snapshot_label.textFormat() == Qt.TextFormat.PlainText
         assert "本筆保存推薦結果：result_id=result-1" in text
+        assert text.index("先看結論") < text.index("下一步")
+        assert text.index("下一步") < text.index("來源憑據")
+        assert text.index("來源憑據") < text.index("公司來源契約 SHA-256")
         assert "一、公司名冊與分類資格" in text
         assert "二、產業指數來源與列觀察" in text
         assert "下一步" in text

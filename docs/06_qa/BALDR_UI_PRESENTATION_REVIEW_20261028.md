@@ -376,7 +376,7 @@ Backtest 結果窗把「顯示完整來源與運算假設」獨立成橫跨結�
 幾何稽核覆蓋九工作區，但不證明資料齊全時的閱讀路徑、狀態顏色語意、主要操作是否就近，或新手能否完成流程。後續依下列順序逐項檢查，完成前不把 UI 整體盤點標成通過：
 
 1. **Gate 1 Advice 資料情境**：已用合成 Advice 呈現展開詳情並修正重疊與重複摘要；仍須以 canonical 保存結果走完來源核對、完整理由、人工決定、精確回查與 Journal，Owner 原生 GUI UAT 另由 Owner 執行。
-2. **Recommendation 有結果情境**：合成載入結果已覆核並修正外層捲動被收合來源詳情攔截、保存來源 controls 垂直堆疊過長兩項版面問題；仍須用可核驗保存來源走完核驗、條件捷徑、全域查詢、結果判讀／保存／比較，並檢查未載入／失敗／成功三態。
+2. **Recommendation 有結果情境**：合成載入結果已覆核並修正外層捲動被收合來源詳情攔截、保存來源 controls 垂直堆疊過長兩項版面問題；逐股來源詳情也已改為先呈現結論與下一步，再列技術憑據。仍須用可核驗保存來源走完核驗、條件捷徑、全域查詢、結果判讀／保存／比較，並檢查未載入／失敗／成功三態。
 3. **Backtest 成功／失敗結果**：已將空摘要與無交易列改成緊湊空態；有交易列才展開表格，offscreen 幾何仍通過。仍須以已載入成功與失敗結果複核摘要／明細、來源假設展開及補充查找的順序；原生 GUI／Owner UAT 未做。
 4. **其餘工作區資料情境**：Watchlist／Portfolio 的空態與載入列已做本地畫面／測試覆核；仍須以有內容的正式來源走主要旅程。Market Explore 已覆核空快照及有資料 synthetic DecisionDeskSnapshot 的摘要、警示、焦點與無產業列狀態；仍缺正式來源旅程及 Owner UAT。Stock Research 已修正無同源價格空卡並需再檢查有內容來源；Update 已修正寬版操作列並仍需正式來源旅程；Runtime 已收斂明細切換並仍需檢查有狀態色的多情境。全域 geometry／scroll coverage 不代替內容覆核。
 
@@ -637,3 +637,20 @@ Backtest 設定欄最上方原以整列寬按鈕「收合左側設定」開頭�
 - 修改視圖 scoped mypy **1 source／0 issues**、source/test `py_compile` 通過；QA 文件 document-control **12 features／1 link source／0 errors**。repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。操作手冊 document-control 仍受 9 個既有 `output/trial/` Junction 引用的 `WinError 5` 阻擋；本輪同步說明按鈕及狀態提示的視覺行為。
 - Recommendation／Research Lab 操作手冊已同步說明「可操作才顯示按鈕，否則顯示原因提示」。
 - 本輪是持續 UI 盤點的一項修正，不代表 Recommendation 全流程、來源資格、Gate 1 Owner UAT 或整體 UI 盤點完成；未改來源資料、Advice 或金融邏輯。
+
+## 2026-10-29 第六十六輪：共用主題修正停用變體按鈕仍像可用操作
+
+全域 QSS 先定義 `QPushButton:disabled` 的中性樣式，但後續 `[variant="primary"|"secondary"|...]` 規則覆蓋了它；Recommendation 空結果頁因此仍把「套用全域查詢」、「讀取原保存個股證據」等停用主動作畫成亮藍色。現在將 primary、secondary、success、warning、danger、ghost 六種變體的停用外觀統一覆寫為 surface／muted 文字／subtle border；啟用態、資格條件及操作流程不變。
+
+- `tests/test_ui_qt_theme.py::test_disabled_primary_button_has_a_distinct_muted_state` 與 V4 action layout case：**2 passed**。必要 Update UI **102 passed**；Update validator **25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round66_update_validator_logs/VALIDATION_REPORT.md`。
+- Recommendation 真實 MainWindow scale 1.5 default offscreen 稽核：**46 子頁、0 failures／0 coverage gaps**，報告 `.pytest-owned-temp/ui_audit_recommendation_disabled_primary_round66/`。檢視最終樣式截圖 `.pytest-owned-temp/ui_audit_recommendation_disabled_primary_round66b/scale_1_5/geometry_processes/default/screenshots/scale_1_5/default/recommendation_entry.png`，所有停用變體顯示為中性灰、主色只保留給可用查詢按鈕。round66b 重跑在截圖生成後於 QA runner `_synthetic_view_data` cleanup 發生 Windows access violation（`faulthandler.log`）；該次 runner 不列為完整通過，採用前一完整稽核的幾何收據及最終截圖的視覺核對。
+- 修改 Python source／test `py_compile` 通過；`qss.py` 與 Recommendation workspace scoped mypy **2 source／0 issues**。本輪追加的 `recommendation_view.py` scoped mypy **1 source／0 issues**；repo-wide mypy 仍由未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的既有語法錯誤阻斷。Round 66 QA 文件 document-control **passed（12 features／1 link source／0 errors）**；Recommendation 手冊重核受 9 個既有 `output/trial/` Junction 引用、APPLICATION_MANUAL 重核受 2 個既有 `output/trial/` Junction 引用的 `WinError 5` 阻擋。`tests/test_ui_qt_personal_recommendation_choice.py` 變更案例 **1 passed**。此輪只改跨工作區按鈕狀態視覺，不改流程、來源、資料、Advice 或金融邏輯，也不等同原生 GUI／Owner UAT。
+
+## 2026-10-29 第六十七輪：Recommendation 來源詳情先給結論與下一步
+
+逐筆來源詳情原先先列公司契約 hash、artifact hash與產業指數列定位，使用者需要讀完大量技術憑據才看到來源限制及建議動作。現在在同一份唯讀詳情最前方先列結果 ID、來源資格結論、時間／PIT 限制與下一步，再展開公司契約、產業觀察列、市場來源與原始警告；所有原值仍保留，來源判定、Advice 與資料不變。
+
+- `tests/test_ui_qt_personal_recommendation_choice.py::test_company_source_display_uses_only_the_matching_sealed_event`：**1 passed**；明確檢查結論／下一步排在契約 hash 前，且原有身份、日期、PIT 限制、hash、收合詳情與身分錯配拒讀仍成立。該測試檔整檔：**22 passed／12 failed**；失敗案例落在 learning root／系統 Temp 權限、`os.replace` 與 hardlink `WinError 5`，不是來源顯示斷言，故不列整檔通過。
+- 必要 Update UI **102 passed**；Update validator **25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round67_update_validator_logs/VALIDATION_REPORT.md`。修改的 source／test `py_compile` 通過，`recommendation_view.py` scoped mypy **1 source／0 issues**，`git diff --check` 通過。
+- QA 文件 document-control：**12 features／1 link source／0 errors**。推薦操作手冊覆核仍有 9 個既有 `output/trial/` junction 連結因 `WinError 5` 無法讀取；主操作手冊另有 2 個既有相同權限錯誤，本輪未新增或改動這些引用。受影響的文件檢查合計 **12 features／2 link sources**，錯誤只來自無法讀取的既有 junction 目標。
+- 指定 repo-wide mypy 在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇既有語法錯誤後停止；其餘模組未檢查。原生 GUI／Owner UAT、Recommendation 真實保存來源旅程及整體 UI 盤點仍未完成。本輪不改來源資格、資料或金融邏輯。

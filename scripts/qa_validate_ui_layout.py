@@ -1861,7 +1861,7 @@ def _audit_page_tree(
     capture_page_screenshots: bool,
 ) -> None:
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QStackedWidget, QTabWidget
+    from PySide6.QtWidgets import QStackedWidget, QTabWidget, QWidget
 
     visited_pages: set[int] = set()
     visited_navigators: set[int] = set()
@@ -1955,6 +1955,25 @@ def _audit_page_tree(
             tables_and_lists=len(page_entry["tables_and_lists"]),
             scroll_areas=len(page_entry["scroll_areas"]),
         )
+
+        if (
+            workspace_key == "backtest"
+            and page_widget is getattr(window, "backtest_view", None)
+        ):
+            _audit_backtest_product_routes(
+                adapter=getattr(window, "backtest_product_layout", None),
+                parent_path=page_path,
+                workspace_key=workspace_key,
+                geometry_key=geometry_key,
+                geometry_dir=geometry_dir,
+                window=window,
+                app=app,
+                evidence=evidence,
+                geometry_evidence=geometry_evidence,
+                workspace_evidence=workspace_evidence,
+                visited_navigators=visited_navigators,
+                audit_page=audit_page,
+            )
 
         for navigator in _visible_navigators(page_widget):
             if id(navigator) in visited_navigators:
@@ -2080,6 +2099,110 @@ def _audit_navigator(
             navigator.blockSignals(previous_blocked)
         _sync_update_navigation(navigator, original_index, window)
         app.processEvents()
+
+
+def _audit_backtest_product_routes(
+    *,
+    adapter: Any,
+    parent_path: str,
+    workspace_key: str,
+    geometry_key: str,
+    geometry_dir: Path,
+    window: QWidget,
+    app: QApplication,
+    evidence: dict[str, Any],
+    geometry_evidence: dict[str, Any],
+    workspace_evidence: dict[str, Any],
+    visited_navigators: set[int],
+    audit_page: Any,
+) -> None:
+    """Audit Backtest's flattened leaf selector instead of hidden legacy tab bars."""
+
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QStackedWidget, QTabWidget, QWidget
+
+    selector = getattr(adapter, "navigator", None)
+    result_tabs = getattr(adapter, "result_tabs", None)
+    routes = getattr(adapter, "_routes", None)
+    if selector is None or result_tabs is None or not isinstance(routes, dict):
+        gap = _finding(
+            "coverage_gap",
+            "backtest_leaf_selector_missing",
+            "Backtest 扁平結果頁選單或 route map 不可用，無法逐頁核對隱藏原生分頁。",
+            workspace_key,
+            parent_path,
+            type(adapter).__name__ if adapter is not None else "BacktestProductLayout",
+        )
+        workspace_evidence["coverage_gaps"].append(gap)
+        evidence["coverage_gaps"].append(gap)
+        return
+
+    # Product navigation intentionally hides these native tab bars. Mark them
+    # handled so the generic tab walker does not measure inactive descendants
+    # that cannot be reached without selecting the product's leaf route.
+    for candidate in (result_tabs, *result_tabs.findChildren(QWidget)):
+        if isinstance(candidate, (QTabWidget, QStackedWidget)):
+            visited_navigators.add(id(candidate))
+
+    original_key = selector.currentData()
+    inventory = workspace_evidence.setdefault("backtest_leaf_routes", [])
+    route_items = [
+        (selector.itemData(index), selector.itemText(index))
+        for index in range(selector.count())
+    ]
+    for route_key, route_label in route_items:
+        if not isinstance(route_key, str):
+            continue
+        selected = bool(adapter.select_result(route_key))
+        app.processEvents()
+        QTest.qWait(3)
+        app.processEvents()
+        route = adapter._routes.get(route_key)
+        page = None
+        if route is not None and route.kind == "custom":
+            page = route.page
+        elif route is not None and route.tab_steps:
+            tabs, index = route.tab_steps[-1]
+            page = tabs.widget(index) if 0 <= index < tabs.count() else None
+        elif route is not None and route.outer_index is not None:
+            page = result_tabs.widget(route.outer_index)
+        visible = bool(selected and page is not None and page.isVisible())
+        route_path = f"{parent_path}/{route_label}"
+        inventory.append(
+            {
+                "key": route_key,
+                "label": route_label,
+                "path": route_path,
+                "visible": visible,
+            }
+        )
+        if page is None:
+            gap = _finding(
+                "coverage_gap",
+                "backtest_route_page_missing",
+                "Backtest leaf selector 的 route 沒有可稽核頁面。",
+                workspace_key,
+                route_path,
+                route_key,
+            )
+            workspace_evidence["coverage_gaps"].append(gap)
+            evidence["coverage_gaps"].append(gap)
+        elif not visible:
+            gap = _finding(
+                "coverage_gap",
+                "backtest_route_not_visible",
+                "選取 Backtest leaf route 後頁面仍不可見，版面無法核對。",
+                workspace_key,
+                route_path,
+                route_key,
+            )
+            workspace_evidence["coverage_gaps"].append(gap)
+            evidence["coverage_gaps"].append(gap)
+        else:
+            audit_page(page, route_path)
+
+    if isinstance(original_key, str) and original_key in getattr(adapter, "_routes", {}):
+        adapter.select_result(original_key)
 
 
 def _visible_navigators(container: QWidget) -> list[QWidget]:

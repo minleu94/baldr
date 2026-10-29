@@ -548,6 +548,35 @@ def test_monthly_revenue_report_does_not_label_unverified_raw_amount_as_twd(
     assert section.status == ReportSectionStatus.PARTIAL.value
 
 
+def test_monthly_revenue_report_converts_verified_f22_detail_revision_to_twd(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    with sqlite3.connect(config.db_file) as conn:
+        conn.execute(
+            "INSERT INTO fundamental_monthly_revenues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "2330", "2026-07", "2026-07-31", "2026-08-10", "2026-08-11",
+                "511857399", "mops.monthly_revenue_f22_detail_revision",
+                "mops-f22-detail-revision-20260810-1314f599606e32b5", "observed",
+            ),
+        )
+
+    report = StockResearchReportReadService(config).read_report(
+        "2330", as_of_date="2026-08-12"
+    )
+    monthly = next(
+        item for item in report.fundamentals
+        if item.kind == "monthly_revenue" and item.period == "2026-07"
+    )
+    assert monthly.value == Decimal("511857399000")
+    assert monthly.unit == "TWD"
+    assert monthly.announced_date == "2026-08-10"
+    assert monthly.available_at == "2026-08-11"
+    assert monthly.source_version == "mops-f22-detail-revision-20260810-1314f599606e32b5"
+    assert monthly.quality == "observed"
+
+
 def test_legacy_statement_and_valuation_values_require_verified_units(
     tmp_path: Path,
 ) -> None:

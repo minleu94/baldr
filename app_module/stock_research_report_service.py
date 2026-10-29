@@ -105,6 +105,12 @@ _FLOW_LIMIT = 120
 _FUNDAMENTAL_LIMIT = 24
 _EVENT_LIMIT = 24
 _FRESHNESS_MAX_BYTES = 4 * 1024 * 1024
+_MONTHLY_REVENUE_THOUSAND_TWD_SOURCES = frozenset(
+    {
+        "mops.monthly_revenue_static_snapshot",
+        "mops.monthly_revenue_f22_detail_revision",
+    }
+)
 
 # 報告 service 只讀 freshness probe 的既有出口。這些 alias 讓 SQLite
 # read model 與 probe 的 upstream source id 對齊，不能以資料日重新推導月／季 cadence。
@@ -1613,8 +1619,9 @@ class StockResearchReportReadService:
                 aggregate_eligible = _db_bool(row["aggregate_feature_eligible"])
                 formal_pit_eligible = _db_bool(row["formal_pit_eligible"])
                 if kind == "monthly_revenue":
-                    if str(row["source"]) == "mops.monthly_revenue_static_snapshot" and raw_value is not None:
-                        # 既有 MOPS 契約的原件單位為千元，報告 DTO 才換成 TWD。
+                    source_type = str(row["source"])
+                    if source_type in _MONTHLY_REVENUE_THOUSAND_TWD_SOURCES and raw_value is not None:
+                        # 只有原件已核實為新台幣仟元的兩個 MOPS source contract 才換成 TWD。
                         value = raw_value * Decimal(1000)
                         unit = "TWD"
                     else:
@@ -1623,7 +1630,7 @@ class StockResearchReportReadService:
                         value = None
                         value_text = (
                             "來源單位未核實；金額不可用，原件保留。"
-                            if str(row["source"]) != "mops.monthly_revenue_static_snapshot"
+                            if source_type not in _MONTHLY_REVENUE_THOUSAND_TWD_SOURCES
                             else "來源金額無法解析；金額不可用，原件保留。"
                         )
                         quality = _worst_quality((quality, ReportQuality.DEGRADED.value))

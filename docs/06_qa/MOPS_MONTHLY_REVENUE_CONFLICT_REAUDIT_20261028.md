@@ -427,3 +427,9 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 37 個 late-detail manifest keys 中，另 4 個（`2392／2026-03`、`3712／2026-03`、`3712／2026-04`、`8101／2026-04`）已不屬目前 degraded 集合；其餘 33 個才與本次 degraded 母體相交。31 個於 2026-10-29 成功讀取並寫成 2026-10-30 才可用的新觀察版本；另兩鍵仍未形成可讀的單一 issuer detail revision。這些新版本不會追溯改寫舊 snapshot row 的 degraded 狀態。
 
 因此目前頁面月營收金額並未缺值（全表 251,947 rows 中空白值 0）；真正未結案的是舊列的公告時間／PIT 證據。正式舊列的安全解除數仍為 **0**；31 個新版本於 2026-10-30 起應按新 source version 讀取，不能追溯視為舊 snapshot 的解除。另 688 個 keys 尚無可供舊列採用的精確事件／修訂時間證據；其中 `6884／2026-08` 屬 686 個無精確 F22 配對鍵。後續優先補查 686 個無 F22 精確配對鍵的歷史官方公告與適用性，並處理餘下兩個 late-detail key；不能重抓同一批既有窗口取代缺失來源證據。
+
+### 2026-10-29 F22 revision 在個股研究報告的金額顯示修復
+
+發現 `StockResearchReportReadService` 先前只將 `mops.monthly_revenue_static_snapshot` 視為已核實的「新台幣仟元」來源；因此 31 筆已有官方 F22 明細、hash binding、available date 與逐筆值核驗的 `mops.monthly_revenue_f22_detail_revision`，即使 2026-10-30 cutoff 後可由 DB 查到，也會在報告 DTO 被設為 `value=None`。現已把這個精確 revision source type 加入單位契約白名單，只按原件仟元乘 1,000 顯示 TWD；未知來源及無法解析值仍維持不可用及 degraded，不擴大到泛用 MOPS／OpenAPI 來源。
+
+修復只改個股研究報告的展示換算，不動正式 SQLite、availability mapping、available date、公告時間、舊 snapshot 或 `FundamentalSQLiteProvider` 的 PIT 守衛。報告仍依 row available date 篩選，並保留 source version、公告日、available date 與 row quality。兩個聚焦測試（F22 revision 顯示換算、OpenAPI 未核單位仍不顯示）**2 passed**；沒有重跑整套報告 QA，也沒有進行原生 UI UAT。

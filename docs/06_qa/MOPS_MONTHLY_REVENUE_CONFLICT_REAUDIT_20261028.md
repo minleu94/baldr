@@ -445,3 +445,17 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 受控 recovery dry-run 接受 2 列、mapping 新增 2 列、0 conflict／0 diagnostics；跨檔 apply 使用任務備份目錄 `F:/Min/Python/Project/FA_Data/meta_data/backup/mops_2867_20261029/`，DB 2 列新增為 observed 版本，mapping SHA-256 從 `5b76f1b383c715ece53fa51ff8e7338a077ad3d2e191f4aae203004e0c1def5a` 變為 `5b9f71ec2caf453b713ba76ff669161a24e23a48244d2b16698182bb9d8e576a`。寫後 PIT 實讀首次發現 provider 不顯示兩筆：writer 將 SQLite target `source_version` 正規化成 `mops-static-snapshot-monthly-revenue-2026-06-16|snapshot=mops-static-2026-06-16`，而初版 mapping target 少了此後綴。現已為同一事件 hash 追加 revision 2，精確綁定實際 SQLite source version；不改 DB 數值或公告／可得日。對 2867／兩期的回歸檢查 49 passed，修改檔 `py_compile` 通過；修正後正式 availability validator 為 **250,069 accepted、0 diagnostics**，mapping SHA-256 `dff119b7c0112a683b2ae735e42fb5f8b65e5ea1db447c6999179fa69f6f7222`，SQLite `PRAGMA quick_check=ok`。`FundamentalSQLiteProvider` cutoff 2026-06-17 回傳 0 筆，6/18 精確回傳兩期值及公告日，確認 PIT 可見時間未提前。
 
 截至 2026-10-29 cutoff，正式表中 246,331 個已可見公司／期別有 716 個缺公告日；在原 degraded key 集合內，718 個有可見版本，其中只有剛回補的 2867 兩期已有公告 mapping，另 `6884／2026-08` 的 observed 金額列要到 10/30 才可見。以 2026-10-30 cutoff 重新讀取，31 個晚公告 detail revision 轉為可見，6884／2026-08 也進入可見範圍；251,916 個已可見公司／期別中仍有 686 個缺公告日。故「686」是 10/30 cutoff 的剩餘值，不能當作 10/29 已修復數；2 個 2867 mapping 已於 6/18 生效。這 686 個 10/30 cutoff 缺公告鍵高度集中：4130 健亞 145、5371 中光電 145、8183 精星 145、2867 三商壽 142、6806 森崴能源 85，前五家共 **662／686（96.5%）**；其餘 24 鍵分散於其他公司。舊 snapshot degraded 原列仍保留，物理列為 251,230 observed／719 degraded。2025 年兩列及其他未有精確、可用公告證據的鍵維持待查。Recovery 與 mapping writer 的 apply receipts、DB／mapping 前備份及 hash 均保存在正式資料根目錄備份和 ignored `.tmp_mops_2867_2026_jan_feb_20261029/`；沒有納入 Git。
+
+### 2026-10-29 月營收最新狀態複核與 Update tab 缺候選修正
+
+以唯讀 SQLite inspector 重新查核 `fundamental_monthly_revenues`：**251,230 observed、719 degraded，251,949 列的 `revenue` 空值為 0**；719 列皆缺 `announced_date`。這是公告時間／PIT 證據缺口，不是金額欄位缺值。2026-07 至 2026-09 為 5,585 列：7 月 1,861 observed；8 月 1,861 observed、`6884` 1 列 degraded；9 月 1,862 observed。四組的 `available_date` 均為 2026-10-30，需以該日期為 cutoff 才能讀取，不得提前曝光。
+
+重新驗證 2014–2019、2020–2025、2026 三批 SII／OTC harvest：共 1,800 個 raw JSON 視窗、266,836 個事件列；每個 raw 的檔案存在、byte count、SHA-256、JSON payload 列數均與 manifest／`events.csv` 對得上。payload 分別為 652/816、707/864、100/120 個有資料視窗，其餘為來源回覆「該窗無公告資料」，不是抓取成功覆蓋事件的證據。另 151 個 `rotc_pub` 視窗 HTTP 200 但 payload 全空、events.csv 為 0 列，不能算興櫃／公開發行全期覆蓋。
+
+719 個缺公告日鍵的最新精確 crosswalk 仍是 686 個沒有保存的精確 F22 event、33 個事件時間晚於 2026-06-16 舊 snapshot row capture；不能把晚公告時間套給舊值。先前對 `8183` 的官方公司月表抽查只驗證金額，頁面未提供公告時間，故不解除 degraded。Scrapling 已對官方 MOPS ezSearch 的 `2867／2026-04-14` 做範圍探測（含客戶端自動重試）；本機 DNS 解析逾時，未收到 HTTP response。這僅表示目前連線無法驗證，不表示公告不存在；此環境沒有使用 Remote Desktop。
+
+排程線路仍分兩種：每日 Quick 的 MOPS／OpenAPI 擷取是當期候選，並不追補舊期或直接寫正式 PIT；週排程的月營收工作是現況觀測，不能替代歷史 availability mapping。Task Scheduler 已啟用只證明排程註冊存在；修復版下一次自然執行的 receipt 尚待查核。
+
+Update → 月營收頁已修正：無候選檔時不再把 snapshot 輸出資料夾填入 CSV 路徑；路徑留白會引導使用者先抓候選，寫入時自動挑選最新的實際 CSV。服務端現在拒絕資料夾及非 CSV 檔，且仍要求正式歷史回填走獨立確認流程。歷史可得日 mapping 與自動命名改為清楚標示；現況更新按鈕另行說明。
+
+本次程式驗證：`tests/test_ui_qt_update_view_workbench.py` **102 passed**；`tests/test_update_service_monthly_revenue_status.py` **12 passed**；`scripts/qa_validate_update_tab.py` **25 passed、0 failed、4 skipped**；修改檔 `py_compile` 通過；`mypy` 對 3 個修改的 Python 檔通過。這些是自動測試／靜態檢查，未執行桌面原生 UI UAT；排程自然 receipt 亦未驗證。

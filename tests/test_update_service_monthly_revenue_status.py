@@ -6,6 +6,8 @@ from hashlib import sha256
 from types import SimpleNamespace
 from pathlib import Path
 
+import pytest
+
 from data_module.fundamental_availability_sources import (
     MONTHLY_REVENUE_AVAILABILITY_COLUMNS,
 )
@@ -22,10 +24,26 @@ from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnostic
 from app_module.update_service import UpdateService
 
 
+def test_monthly_revenue_snapshot_resolver_rejects_directory_as_input(
+    test_config,
+    tmp_path,
+) -> None:
+    snapshot_directory = tmp_path / "monthly_revenue_mops_snapshots"
+    snapshot_directory.mkdir()
+
+    with pytest.raises(FileNotFoundError, match="MOPS snapshot 不存在"):
+        UpdateService(test_config)._resolve_monthly_revenue_snapshot_file(
+            snapshot_directory
+        )
+
+
 def test_fetch_mops_monthly_revenue_snapshot_candidate_is_candidate_only(
     test_config,
     monkeypatch,
 ) -> None:
+    # Keep generated paths short enough for Windows raw-path limits.
+    test_config.output_root = Path.cwd() / ".pytest-owned-temp" / "monthly-revenue-candidate"
+
     def html_for(market: str) -> str:
         market_title = "\u4e0a\u5e02" if market == "twse" else "\u4e0a\u6ac3"
         stock_code = "2330" if market == "twse" else "6488"

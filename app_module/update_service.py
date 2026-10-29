@@ -725,17 +725,21 @@ class UpdateService :
             return {'success': False, 'cancelled': False, 'applied': False, 'formal_pit_eligible': False,
                     'message': f'現況月營收原件／正規化驗證失敗：{exc}'}
 
-    def _resolve_monthly_revenue_snapshot_file (self ,snapshot_file :Optional [Path ])->Path :
-        if snapshot_file :
-            path =Path (snapshot_file )
-            if not path .exists ():
-                raise FileNotFoundError (f"MOPS snapshot 不存在: {path}")
+    def _resolve_monthly_revenue_snapshot_file(
+        self, snapshot_file: Optional[Path]
+    ) -> Path:
+        if snapshot_file:
+            path = Path(snapshot_file)
+            if not path.is_file():
+                raise FileNotFoundError(f"MOPS snapshot 不存在: {path}")
+            if path.suffix.casefold() != ".csv":
+                raise ValueError(f"MOPS snapshot 必須是 CSV 檔案: {path}")
             return path
 
-        snapshot_dir =self .config .output_root /'monthly_revenue_mops_snapshots'
+        snapshot_dir = self.config.output_root / "monthly_revenue_mops_snapshots"
         selected = select_latest_monthly_revenue_snapshot(snapshot_dir)
         if selected is None:
-            raise FileNotFoundError (f"找不到 MOPS 月營收 snapshot CSV: {snapshot_dir}")
+            raise FileNotFoundError(f"找不到 MOPS 月營收 snapshot CSV: {snapshot_dir}")
         return selected
 
     def fetch_mops_monthly_revenue_snapshot_candidate(

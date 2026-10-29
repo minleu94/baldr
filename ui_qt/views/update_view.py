@@ -627,7 +627,7 @@ class UpdateView(QWidget):
             "tdcc_shareholding_update_btn": "抓取最新週候選",
             "monthly_revenue_fetch_btn": "抓取最新候選快照",
             "monthly_revenue_dry_run_btn": "先檢查，不寫入",
-            "monthly_revenue_apply_btn": "確認後寫入月營收",
+            "monthly_revenue_apply_btn": "確認後寫入歷史月營收",
         }
         for attr, label in defaults.items():
             button = getattr(self, attr, None)
@@ -1932,7 +1932,13 @@ class UpdateView(QWidget):
 
             self.monthly_revenue_snapshot_input = QLineEdit()
             self.monthly_revenue_snapshot_input.setObjectName("monthly_revenue_snapshot_input")
-            self.monthly_revenue_snapshot_input.setText(str(self._default_monthly_revenue_snapshot_path()))
+            default_snapshot = self._default_monthly_revenue_snapshot_path()
+            self.monthly_revenue_snapshot_input.setText(
+                str(default_snapshot) if default_snapshot is not None else ""
+            )
+            self.monthly_revenue_snapshot_input.setPlaceholderText(
+                "尚無候選；請先抓取最新候選快照"
+            )
             self.monthly_revenue_snapshot_input.setToolTip(
                 "這是系統自動保存的全市場月營收候選快照。抓取會自動決定輸出檔名；如要改用其它已核對快照，再按「選擇候選」。"
             )
@@ -1969,7 +1975,11 @@ class UpdateView(QWidget):
             # 從目前候選檔名推導版本；無法判讀時保持空白，不沿用舊版本。
             snapshot_path = self._default_monthly_revenue_snapshot_path()
             import re
-            match = re.search(r"_(\d{4}-\d{2}-\d{2})\.csv$", snapshot_path.name)
+            match = (
+                re.search(r"_(\d{4}-\d{2}-\d{2})\.csv$", snapshot_path.name)
+                if snapshot_path is not None
+                else None
+            )
             default_version = (
                 f"mops-static-snapshot-monthly-revenue-{match.group(1)}"
                 if match else ""
@@ -1992,14 +2002,16 @@ class UpdateView(QWidget):
                 else:
                     self.monthly_revenue_source_version_input.clear()
                 self._invalidate_monthly_revenue_preview()
+                if hasattr(self, "monthly_revenue_candidate_hint_label"):
+                    self._refresh_monthly_revenue_candidate_hint()
             self.monthly_revenue_snapshot_input.textChanged.connect(on_snapshot_changed)
             self.monthly_revenue_availability_input.textChanged.connect(
                 lambda _text: self._invalidate_monthly_revenue_preview()
             )
 
             form_layout.addRow("候選快照（可選另一份）：", snapshot_row)
-            form_layout.addRow("正式可得日對照（系統檔）：", availability_row)
-            form_layout.addRow("資料版本識別（自動，非檔名）：", self.monthly_revenue_source_version_input)
+            form_layout.addRow("歷史可用日對照（系統預設）：", availability_row)
+            form_layout.addRow("系統資料版本（自動，不需命名）：", self.monthly_revenue_source_version_input)
             config_layout = QVBoxLayout(config_group)
             config_layout.setContentsMargins(10, 6, 10, 8)
             config_layout.addWidget(config_content)
@@ -2033,6 +2045,8 @@ class UpdateView(QWidget):
             self.monthly_revenue_candidate_hint_label.setWordWrap(True)
             self.monthly_revenue_candidate_hint_label.setProperty("role", "hint")
             layout.addWidget(self.monthly_revenue_candidate_hint_label)
+            self._monthly_revenue_expected_period_hint = expected_hint
+            self._refresh_monthly_revenue_candidate_hint()
 
             op_group = QGroupBox("月營收資料操作")
             _set_update_group_tone(op_group)
@@ -2063,11 +2077,14 @@ class UpdateView(QWidget):
             )
             button_layout.addWidget(self.monthly_revenue_dry_run_btn)
 
-            self.monthly_revenue_apply_btn = QPushButton("確認後寫入月營收")
+            self.monthly_revenue_apply_btn = QPushButton("確認後寫入歷史月營收")
             self.monthly_revenue_apply_btn.setObjectName("monthly_revenue_apply_btn")
             self.monthly_revenue_apply_btn.setMinimumHeight(35)
             self.monthly_revenue_apply_btn.setEnabled(False)
-            self.monthly_revenue_apply_btn.setToolTip("先完成「檢查候選」且檢查通過，才可確認正式回填。")
+            self.monthly_revenue_apply_btn.setToolTip(
+                "先完成候選檢查；確認後依歷史可用日對照回填正式月營收與 PIT mapping。"
+                "此流程不同於下方只更新現況研究資料。"
+            )
             self.monthly_revenue_apply_btn.setProperty("variant", "success")
             self.monthly_revenue_apply_btn.clicked.connect(
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True)
@@ -2333,15 +2350,38 @@ class UpdateView(QWidget):
 
         layout.addStretch()
 
-    def _default_monthly_revenue_snapshot_path(self) -> Path:
+    def _default_monthly_revenue_snapshot_path(self) -> Path | None:
         config = getattr(self.update_service, "config", None)
         if config is None:
-            return Path("")
+            return None
         snapshot_dir = getattr(config, "output_root", Path("")) / "monthly_revenue_mops_snapshots"
         selected = select_latest_monthly_revenue_snapshot(snapshot_dir)
-        if selected is None:
-            return snapshot_dir
         return selected
+
+    def _refresh_monthly_revenue_candidate_hint(self) -> None:
+        """明示目前選到的 CSV；沒有候選時指向系統自動輸出位置。"""
+
+        label = getattr(self, "monthly_revenue_candidate_hint_label", None)
+        if label is None:
+            return
+        snapshot_text = self.monthly_revenue_snapshot_input.text().strip()
+        snapshot_path = Path(snapshot_text) if snapshot_text else None
+        if (
+            snapshot_path is not None
+            and snapshot_path.is_file()
+            and snapshot_path.suffix.casefold() == ".csv"
+        ):
+            state = f"目前候選：{snapshot_path.name}。"
+        else:
+            config = getattr(self.update_service, "config", None)
+            output_root = getattr(config, "output_root", Path(""))
+            output_dir = Path(output_root) / "monthly_revenue_mops_snapshots"
+            state = (
+                "目前沒有可用候選快照；請先按「抓取最新候選快照」。"
+                f"系統會自動保存到：{output_dir}（檔名由系統建立）。"
+            )
+        base_hint = getattr(self, "_monthly_revenue_expected_period_hint", "")
+        label.setText(f"{base_hint}\n{state}" if base_hint else state)
 
     def _default_monthly_revenue_availability_path(self) -> Path:
         config = getattr(self.update_service, "config", None)
@@ -2822,6 +2862,26 @@ class UpdateView(QWidget):
                 return
 
         snapshot_text = self.monthly_revenue_snapshot_input.text().strip()
+        if not snapshot_text:
+            selected_snapshot = self._default_monthly_revenue_snapshot_path()
+            if selected_snapshot is None:
+                QMessageBox.warning(
+                    self,
+                    "尚無月營收候選快照",
+                    "請先按「抓取最新候選快照」。完成後系統會自動帶入候選 CSV，"
+                    "不需要自行命名或指定輸出檔。",
+                )
+                return
+            snapshot_text = str(selected_snapshot)
+            self.monthly_revenue_snapshot_input.setText(snapshot_text)
+        snapshot_path = Path(snapshot_text)
+        if not snapshot_path.is_file() or snapshot_path.suffix.casefold() != ".csv":
+            QMessageBox.warning(
+                self,
+                "月營收候選快照無效",
+                "請選擇既有候選 CSV，或先抓取最新候選快照；資料夾不能當作候選檔。",
+            )
+            return
         availability_text = self.monthly_revenue_availability_input.text().strip()
         source_version = self.monthly_revenue_source_version_input.text().strip()
 

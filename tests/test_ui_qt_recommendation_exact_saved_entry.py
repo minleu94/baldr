@@ -66,7 +66,22 @@ def _assert_saved_table_is_compact(view: object, qt_app: QApplication, row_count
     qt_app.processEvents()
     table = view.results_table
     assert view.recommendations_model.rowCount() == row_count
-    assert table.minimumHeight() == view.results_table_minimum_height
+    detail_group = view.result_splitter.widget(1)
+    if row_count == 0:
+        assert view.result_splitter.isHidden()
+        assert view.empty_result_state_widget.isVisible()
+        assert detail_group.isHidden()
+        return
+    assert table.minimumHeight() == view.results_table_minimum_height, (
+        table.minimumHeight(),
+        table.maximumHeight(),
+        table.minimumSizeHint().height(),
+        table.size().height(),
+        view.results_table_minimum_height,
+        view.result_splitter.minimumHeight(),
+        view.result_splitter.maximumHeight(),
+        view.result_splitter.sizes(),
+    )
     frame_and_header = table.frameWidth() * 2 + table.horizontalHeader().height()
     five_row_height = frame_and_header + table.verticalHeader().defaultSectionSize() * 5
     assert table.minimumHeight() < five_row_height
@@ -76,6 +91,7 @@ def _assert_saved_table_is_compact(view: object, qt_app: QApplication, row_count
         frame_and_header
         + table.verticalHeader().defaultSectionSize() * max(1, row_count)
     )
+    assert not detail_group.isHidden()
     viewport = view.result_scroll.viewport()
     if row_count:
         first_cell_top = table.viewport().mapTo(
@@ -83,7 +99,6 @@ def _assert_saved_table_is_compact(view: object, qt_app: QApplication, row_count
             table.visualRect(table.model().index(0, 0)).topLeft(),
         ).y()
         assert 0 <= first_cell_top < viewport.height()
-    detail_group = view.result_splitter.widget(1)
     detail_top = detail_group.mapTo(viewport, QPoint(0, 0)).y()
     source_top = view.company_source_snapshot_label.mapTo(viewport, QPoint(0, 0)).y()
     assert detail_top < viewport.height()

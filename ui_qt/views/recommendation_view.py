@@ -3007,18 +3007,80 @@ class RecommendationView(QWidget):
         *,
         compact_saved_readback: bool = False,
     ) -> None:
-        """依目前列高配置結果表格；精確讀回時只保留實際列數所需高度。"""
+        """空結果採提示所需高度；有列時保留可掃讀的結果表高度。"""
         table = getattr(self, "results_table", None)
         if isinstance(table, QTableView):
+            model = table.model()
+            row_count = model.rowCount() if model is not None else 0
+            if row_count == 0:
+                table.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Expanding,
+                )
+                table.setMinimumHeight(0)
+                table.setMaximumHeight(16777215)
+                header_height = table.horizontalHeader().sizeHint().height()
+                self.results_table_minimum_height = max(
+                    0,
+                    table.frameWidth() * 2
+                    + header_height
+                    + table.fontMetrics().height() * 3
+                    + 16,
+                    table.minimumSizeHint().height(),
+                )
+                self._sync_empty_result_detail_state(has_rows=False)
+                return
+
+            table.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding,
+            )
+            table.setMinimumHeight(0)
+            table.setMaximumHeight(16777215)
             rows = 5
             if compact_saved_readback:
-                model = table.model()
-                row_count = model.rowCount() if model is not None else 0
                 rows = max(1, min(5, row_count))
                 # ensure_visible_rows 的 controller 只會調高 minimumHeight；
                 # 精確讀回前先解除先前長結果留下的高度，再以本次列數重測。
-                table.setMinimumHeight(0)
             self.results_table_minimum_height = ensure_visible_rows(table, rows=rows)
+            if compact_saved_readback and row_count <= 4:
+                compact_height = (
+                    table.frameWidth() * 2
+                    + table.horizontalHeader().height()
+                    + table.verticalHeader().defaultSectionSize() * rows
+                )
+                table.setFixedHeight(
+                    max(table.minimumHeight(), compact_height)
+                )
+            self._sync_empty_result_detail_state(has_rows=True)
+
+    def _sync_empty_result_detail_state(self, *, has_rows: bool) -> None:
+        """空結果只保留提示；有候選列時才顯示逐股理由詳情。"""
+        detail_group = getattr(self, "result_detail_group", None)
+        splitter = getattr(self, "result_splitter", None)
+        empty_state = getattr(self, "empty_result_state_widget", None)
+        if not isinstance(detail_group, QGroupBox) or not isinstance(
+            splitter, QSplitter
+        ):
+            return
+        was_compact = getattr(self, "_result_splitter_compact_empty", False)
+        if not has_rows:
+            detail_group.hide()
+            splitter.hide()
+            if isinstance(empty_state, QWidget):
+                empty_state.show()
+            self._result_splitter_compact_empty = True
+            return
+
+        if isinstance(empty_state, QWidget):
+            empty_state.hide()
+        detail_group.show()
+        splitter.show()
+        if was_compact:
+            splitter.setMinimumHeight(0)
+            splitter.setMaximumHeight(16777215)
+            splitter.setSizes([700, 300])
+        self._result_splitter_compact_empty = False
 
     def _install_recommendation_results_model(self, model: PandasTableModel) -> None:
         """預設聚焦候選摘要，完整來源／資格欄位仍可由控制項展開。"""
@@ -3876,7 +3938,7 @@ class RecommendationView(QWidget):
         saved_result_select_row = QHBoxLayout()
         self.saved_result_select_row = saved_result_select_row
         self.saved_result_row = saved_result_select_row
-        saved_result_select_row.addWidget(QLabel("讀取已保存結果"))
+        saved_result_select_row.addWidget(QLabel("回看已保存結果"))
         self.saved_source_combo = QComboBox()
         self.saved_source_combo.setObjectName("savedRecommendationSourceChoice")
         self.saved_source_combo.setAccessibleName("選擇已核驗保存推薦來源")
@@ -3893,8 +3955,9 @@ class RecommendationView(QWidget):
 
         saved_result_actions_row = QHBoxLayout()
         self.saved_result_actions_row = saved_result_actions_row
-        self.load_daily_recommendation_button = QPushButton("載入每日推薦")
+        self.load_daily_recommendation_button = QPushButton("讀取今日排程結果")
         self.load_daily_recommendation_button.setObjectName("loadDailyScheduledRecommendation")
+        self.load_daily_recommendation_button.setAccessibleName("讀取今日排程保存推薦結果")
         self.load_daily_recommendation_button.setToolTip(
             "讀取今日排程已保存的研究候選；不重新執行、不寫入證據或交易。"
         )
@@ -3916,8 +3979,9 @@ class RecommendationView(QWidget):
         # 保留舊單筆入口 ABI；日常操作由已核驗選項帶入完整 ID。
         self.saved_result_id_input.setVisible(False)
         saved_result_actions_row.addWidget(self.saved_result_id_input)
-        self.load_saved_result_button = QPushButton("讀取")
+        self.load_saved_result_button = QPushButton("讀取所選結果")
         self.load_saved_result_button.setObjectName("loadSavedRecommendationResult")
+        self.load_saved_result_button.setAccessibleName("讀取選中的已保存推薦結果")
         self.load_saved_result_button.setToolTip(
             "選擇已核驗保存來源，再讀回完全相同的結果身份；不重新執行推薦。"
         )
@@ -4553,6 +4617,7 @@ class RecommendationView(QWidget):
 
         # 詳細信息（推薦理由）
         detail_group = QGroupBox("推薦理由詳情")
+        self.result_detail_group = detail_group
         detail_group.setMinimumHeight(200)
         detail_layout = QVBoxLayout()
         self.company_source_summary_label = QLabel(
@@ -4655,11 +4720,38 @@ class RecommendationView(QWidget):
         result_splitter.setStretchFactor(0, 5)
         result_splitter.setStretchFactor(1, 2)
         result_splitter.setSizes([700, 300])
+        self.empty_result_state_widget = QWidget()
+        empty_state_layout = QVBoxLayout(self.empty_result_state_widget)
+        empty_state_layout.setContentsMargins(12, 9, 12, 9)
+        empty_state_layout.setSpacing(4)
+        empty_state_title = QLabel(_RecommendationResultsTableView.EMPTY_TITLE)
+        empty_state_title.setObjectName("recommendationEmptyResultTitle")
+        empty_state_title.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 600;"
+        )
+        empty_state_layout.addWidget(empty_state_title)
+        empty_state_body = QLabel(_RecommendationResultsTableView.EMPTY_BODY)
+        empty_state_body.setObjectName("recommendationEmptyResultBody")
+        empty_state_body.setWordWrap(True)
+        empty_state_body.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        empty_state_layout.addWidget(empty_state_body)
+        self.empty_result_state_widget.setAccessibleName("推薦結果空狀態")
+        self.empty_result_state_widget.setStyleSheet(
+            f"background: {MIDNIGHT_ANALYST.surface_1}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px;"
+        )
+        self._reserve_recommendation_table_rows()
+        self._fit_compact_saved_result_splitter()
 
         # 結果表與理由緊接狀態摘要，讓預設首屏先呈現推薦內容；
         # 個人評估／模式等研究工具留在其後並由外層捲動完整瀏覽。
         result_status_index = layout.indexOf(self.result_status_label)
-        layout.insertWidget(result_status_index + 1, result_splitter)
+        layout.insertWidget(result_status_index + 1, self.empty_result_state_widget)
+        layout.insertWidget(result_status_index + 2, result_splitter)
 
         self.personal_choice_controls = PersonalRecommendationChoiceControlsWidget(
             parent=panel

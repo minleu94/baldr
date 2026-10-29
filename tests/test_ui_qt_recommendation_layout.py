@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QBoxLayout,
     QDateEdit,
     QHBoxLayout,
+    QLabel,
     QLayout,
     QTimeEdit,
     QWidget,
@@ -344,18 +345,41 @@ def test_empty_result_table_guides_first_action_and_tracks_row_changes() -> None
     view = _new_view()
     try:
         table = view.results_table
+        row_height = table.verticalHeader().defaultSectionSize()
+        view._reserve_recommendation_table_rows()
         assert table.has_empty_rows()
+        assert view.result_detail_group.isHidden()
+        assert view.result_splitter.isHidden()
+        assert not view.empty_result_state_widget.isHidden()
+        assert "目前沒有可顯示的列" in view.empty_result_state_widget.findChild(
+            QLabel, "recommendationEmptyResultTitle"
+        ).text()
+        five_row_minimum = (
+            table.frameWidth() * 2
+            + table.horizontalHeader().sizeHint().height()
+            + row_height * 5
+        )
+        assert view.empty_result_state_widget.height() < five_row_minimum
         assert table.EMPTY_TITLE == "目前沒有可顯示的列"
         assert "執行／讀回摘要" in table.EMPTY_BODY
         assert "執行推薦" in table.EMPTY_BODY
 
         populated = PandasTableModel(pd.DataFrame([{"證券代號": "2330"}]))
         table.setModel(populated)
+        view._reserve_recommendation_table_rows()
         assert not table.has_empty_rows()
+        assert not view.result_detail_group.isHidden()
+        assert not view.result_splitter.isHidden()
+        assert view.empty_result_state_widget.isHidden()
+        assert table.minimumHeight() >= five_row_minimum
 
         empty = PandasTableModel(pd.DataFrame(columns=["證券代號"]))
         table.setModel(empty)
+        view._reserve_recommendation_table_rows()
         assert table.has_empty_rows()
+        assert view.result_detail_group.isHidden()
+        assert view.result_splitter.isHidden()
+        assert not view.empty_result_state_widget.isHidden()
     finally:
         view.close()
 
@@ -434,9 +458,22 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
         assert view.result_title_layout.indexOf(view.stock_research_btn) >= 0
         assert view.result_heading_layout.indexOf(view.stock_research_btn) == -1
         assert view.result_heading_layout.indexOf(view.result_columns_toggle) >= 0
+        assert view.saved_result_select_row.itemAt(0).widget().text() == "回看已保存結果"
+        assert view.load_daily_recommendation_button.text() == "讀取今日排程結果"
+        assert view.load_saved_result_button.text() == "讀取所選結果"
+        assert view.load_daily_recommendation_button.accessibleName() == (
+            "讀取今日排程保存推薦結果"
+        )
+        assert view.load_saved_result_button.accessibleName() == (
+            "讀取選中的已保存推薦結果"
+        )
+        assert "不重新執行" in view.load_daily_recommendation_button.toolTip()
+        assert "不重新執行推薦" in view.load_saved_result_button.toolTip()
         for width, height in ((1366, 768), (897, 360), (390, 844)):
             view.resize(width, height)
             app.processEvents()
+            if width == 1366:
+                _capture_if_requested(view, "recommendation_saved_result_actions.png")
             controls = (
                 view.research_context_toggle,
                 view.saved_source_combo,
@@ -581,12 +618,20 @@ def test_recommendation_result_scroll_and_five_rows_at_desktop_viewports() -> No
     view = _new_view()
     assert QFontMetrics(app.font()).inFont("推")
     initial_row_height = view.results_table.verticalHeader().defaultSectionSize()
-    assert view.results_table.minimumHeight() >= view.results_table_minimum_height
-    assert view.results_table_minimum_height >= initial_row_height * 5
+    assert not view.empty_result_state_widget.isHidden()
+    assert view.result_splitter.isHidden()
     expected_dpr = os.environ.get("UI_LAYOUT_EXPECTED_DPR")
     if expected_dpr:
         assert app.primaryScreen().devicePixelRatio() == float(expected_dpr)
     _attach_layout_fixture(view)
+    populated_five_row_minimum = (
+        view.results_table.frameWidth() * 2
+        + view.results_table.horizontalHeader().sizeHint().height()
+        + initial_row_height * 5
+    )
+    assert view.results_table.minimumHeight() >= populated_five_row_minimum
+    assert view.empty_result_state_widget.isHidden()
+    assert not view.result_splitter.isHidden()
     view.show()
 
     try:
@@ -982,6 +1027,8 @@ def test_expanded_reason_shows_complete_score_table_and_document_end() -> None:
         recommendation, {"filters": {"price_change_min": "1", "price_change_max": "8"}},
     )
     try:
+        # 合成一筆已選結果，讓版面測試聚焦詳情閱讀而非空結果狀態。
+        view._sync_empty_result_detail_state(has_rows=True)
         view.resize(800, 700)
         view.show()
         view.detail_text.setHtml(html)
@@ -1149,6 +1196,8 @@ def test_collapsed_reason_keeps_internal_keyboard_scrolling() -> None:
     app = _app()
     view = _new_view()
     try:
+        # 合成一筆已選結果，讓版面測試聚焦詳情閱讀而非空結果狀態。
+        view._sync_empty_result_detail_state(has_rows=True)
         view.resize(460, 700)
         view.show()
         view.detail_text.setPlainText("收合理由內容。\n" * 80)

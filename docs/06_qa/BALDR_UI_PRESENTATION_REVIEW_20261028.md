@@ -667,5 +667,6 @@ Workbench 的 Advice 詳情把「人工納入／略過決定」與註記、手�
 
 Advice 詳情把「查看機率依據」、前往策略回測建立新版本、記錄人工納入／略過決定，以及註記／手動檢視／讀回拆成目的明確的區塊，並在操作旁說明唯讀及不建立交易；身份或來源不足時將停用原因直接顯示。每日候選摘要中的逐股預覽改為唯讀，唯一選股入口移到每日來源詳情旁，原保存結果回訪另列為次要入口，避免主操作被收合卡片藏住或同頁重複。另合併同一 Advice 身分的併發讀回，避免重複選取事件取消第一筆查詢後留下「背景讀取中」。只調整操作呈現及重複讀回控制，不更改保存契約、來源判定、Advice、篩選或金融邏輯。
 
-- 變更範圍：`workbench_view.py`、Recommendation 來源詳情顯示、對應 Advice／候選選取／每日單頁測試與操作手冊。合併回歸測試及其餘必要驗證尚待本輪完成後填列；不得把待測項目視為通過。
-- 原生 GUI／Owner UAT 尚未執行；自動化檢查不會證明資料來源已合格，也不代表全程式 UI 盤點已完成。
+- `tests/test_workbench_advice_contract.py`、`tests/test_ui_qt_workbench_candidate_selection.py`、`tests/test_ui_qt_workbench_home_single_page.py`：**54 passed**；必要 Update UI **102 passed**；Update validator **25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round68_update_validator_logs/VALIDATION_REPORT.md`。修改的 source／test `py_compile` 通過，`workbench_view.py` 與 `recommendation_view.py` scoped mypy **2 source／0 issues**。
+- QA 文件 document-control **12 features／1 link source／0 errors** 通過。主操作手冊的 document-control 因 2 個既有 `output/trial/` 冷封存 Junction 引用出現 `WinError 5`／越界錯誤，未新增這些引用；文件正文已同步本輪候選入口位置。repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇既有語法錯誤而停止。
+- 原生 GUI／Owner UAT 尚未執行；自動化檢查不會證明資料來源已合格，也不代表全程式 UI 盤點已完成。使用者仍需按實際每日結果做一次 Owner UAT；跨 Recommendation、Portfolio、Backtest 等工作區的整體視覺盤點仍依本文件優先序繼續。

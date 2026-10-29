@@ -136,10 +136,31 @@
     .blockers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .blocker { box-shadow: none; padding: 14px; border-left: 3px solid var(--amber); }
     .blocker.redline { border-left-color: var(--red); }
+    .blocker.codex { border-left-color: var(--cyan); }
+    .blocker.user { border-left-color: #b79bf4; }
+    .blocker.external { border-left-color: var(--amber); }
+    .blocker.deferred { border-left-color: #718096; }
     .blocker h3 { margin: 0 0 6px; font-size: 14px; line-height: 1.45; }
     .blocker p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
     .blocker .blocker-next { margin-top: 8px; color: #dce8f6; }
     .blocker .source-line { margin-top: 10px; font-size: 11px; }
+    .owner-summary { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 9px; }
+    .owner-summary-card { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+    .owner-summary-card.codex { border-top: 2px solid var(--cyan); }
+    .owner-summary-card.user { border-top: 2px solid #b79bf4; }
+    .owner-summary-card.external { border-top: 2px solid var(--amber); }
+    .owner-summary-card.handoff { border-top: 2px solid var(--blue); }
+    .owner-summary-title { color: var(--muted); font-size: 11px; }
+    .owner-summary-count { font-size: 23px; font-weight: 750; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .owner-summary-note { color: var(--subtle); font-size: 10px; line-height: 1.45; margin-top: 4px; }
+    .owner-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .owner-pill, .phase-pill { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 3px 7px; font-size: 10px; line-height: 1.35; color: var(--muted); background: #0e1727; }
+    .owner-pill.codex { color: #a7e8ee; border-color: #35636a; }
+    .owner-pill.user { color: #d4c4ff; border-color: #625080; }
+    .owner-pill.external { color: #f2d39c; border-color: #735a34; }
+    .owner-pill.deferred { color: #b1bdcc; border-color: #465467; }
+    .phase-pill { color: var(--subtle); }
+    .blocker-state { color: var(--subtle); font-size: 11px; margin: 0 0 6px !important; }
     .timeline { display: grid; gap: 9px; }
     .timeline-card { box-shadow: none; padding: 12px 14px; background: var(--surface-2); }
     .timeline-date { color: var(--cyan); font-size: 11px; font-weight: 700; }
@@ -205,6 +226,7 @@
       .gap-row { grid-template-columns: 130px minmax(0,1fr); }
       .gap-meta { grid-column: 2; }
       .live-grid, .ml-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .owner-summary { grid-template-columns: repeat(2, minmax(0,1fr)); }
     }
     @media (max-width: 700px) {
       .shell { padding-top: 16px; }
@@ -219,6 +241,7 @@
       .flow-node:not(:last-child)::after { right: 22px; top: auto; bottom: -6px; transform: rotate(135deg); }
       .group-routes { grid-template-columns: 1fr; }
       .blockers { grid-template-columns: 1fr; }
+      .owner-summary { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .workspace-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
       .detail-grid { grid-template-columns: 1fr; }
       .tracking-fields { grid-template-columns: 1fr; }
@@ -287,6 +310,12 @@
 
     <section class="metrics" id="metrics" aria-label="導覽盤點摘要"></section>
 
+    <section class="panel" aria-labelledby="ownershipTitle">
+      <div class="section-head"><div><h2 id="ownershipTitle">目前輪到誰接棒</h2><p>標示下一個動作者與交接時機，不代表該工作已開工；「之後交你驗收」不代表現在卡在等你批准。</p></div><a href="#" data-open-view="gaps">查看完整責任清單 ↗</a></div>
+      <div class="owner-summary" id="ownershipSummary"></div>
+      <div class="notice" id="ownershipNote" style="margin-top:10px"></div>
+    </section>
+
     <section class="panel" aria-labelledby="liveTitle">
       <div class="section-head"><div><h2 id="liveTitle">目前專案來源同步</h2><p>刷新會唯讀讀取目前工作樹、UI 路由與 PROJECT_SNAPSHOT；不啟動排程、不讀正式資料庫，也不寫入專案。</p></div><span class="state-pill" id="refreshBadge"><span class="dot amber"></span>尚未連線</span></div>
       <div class="live-grid" id="liveStatus"></div>
@@ -305,7 +334,7 @@
 
     <section id="view-overview" role="tabpanel" aria-labelledby="tab-overview">
       <div class="panel">
-        <div class="section-head"><div><h2>產品 Gate 位置</h2><p>本 repo 的 Gate 0 定義為 Safe Refactor Closeout、目前已結案；2026-10-27 Advice 輸出條件調整屬 Gate 1。Gate 1 是目前主線；Gate 2／3 整體接受條件未滿；Gate 4–7 依前置條件排序。</p></div><span class="state-pill"><span class="dot blue"></span>狀態盤點截至 2026-10-27</span></div>
+        <div class="section-head"><div><h2>產品 Gate 位置</h2><p>本 repo 的 Gate 0 定義為 Safe Refactor Closeout、目前已結案；2026-10-27 Advice 輸出條件調整屬 Gate 1。Gate 1 是目前主線；Gate 2／3 整體接受條件未滿；Gate 4–7 依前置條件排序。</p></div><span class="state-pill"><span class="dot blue"></span>狀態盤點截至 2026-10-28</span></div>
         <div class="gate-grid" id="gateBoard"></div>
         <p class="refresh-help">Gate 定義取自產品／工程 Roadmap；狀態與摘要需在 Snapshot 或具名 QA 更新時人工複核。按刷新會更新來源快照，不會自行改寫 Gate 判定。</p>
       </div>
@@ -345,7 +374,7 @@
 
     <section id="view-gaps" class="hidden" role="tabpanel" aria-labelledby="tab-gaps">
       <div class="panel">
-        <div class="section-head"><div><h2>尚未打通或尚未具備接受證據</h2><p>「未接通」包括來源版本無法精確橋接、來源品質／PIT 未接受、尚待自然成熟或產品 Gate 未通過。</p></div></div>
+        <div class="section-head"><div><h2>卡點責任清單</h2><p>每列拆成一個下一步，標示下一個動作者、何時輪到他，以及 Codex 能否先繼續。責任判斷依現況文件與 Gate 順序，不用 Git 作者推定。</p></div></div>
         <div class="gap-list" id="gapList"></div>
       </div>
       <div class="panel">
@@ -413,8 +442,8 @@
 
   <script type="application/json" id="dashboardData">
   {
-    "version": "1.2",
-    "asOf": "2026-10-27",
+    "version": "1.3",
+    "asOf": "2026-10-28",
     "sourceState": "使用當前工作樹文件與原始碼盤點；不是已發布版本的功能清冊。",
     "navSource": "../ui_qt/main_window_coordinator.py",
     "featureMap": "../docs/02_features/UI_FEATURES_DOCUMENTATION.md",
@@ -605,16 +634,24 @@
       }
     ],
     "blockers": [
-      {"id":"gate1-acceptance","label":"Gate 1 日常流程／Owner UAT","state":"Advice 可輸出；整體接受證據不足","tone":"","text":"2026-10-27 政策調整後，candidate／未 promoted、參數未鎖、揭露或作者欄位缺漏不再阻擋 Advice。完整日常流程與原生 GUI／Owner UAT 尚未完成；局部資料端到端未驗證不等於來源資格已通過。","next":"核對資料日期、候選排除、Advice 限制、人工決定、保存與精確讀回，再完成 Owner UAT。","routes":["overview","screener","strategies"],"evidence":[["Gate 1 Advice 解鎖 QA","../docs/06_qa/BALDR_GATE1_ADVICE_UNLOCK_20261027.md"],["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]},
-      {"id":"monthly-revenue","label":"月營收公告日／數值版本橋","state":"來源／PIT 缺口","tone":"","text":"10/27 唯讀盤點仍有 242,650 列缺公告日；只有可精確對上公司、期別、as-of、數值與 target source version 才可補映射。後續限定 mapping 更新沒有把品質 Gate 整體解除。","next":"只處理能精確綁定公司、期別、as-of、數值與 target source version 的列；無法唯一認領就保留缺口。","routes":["market","screener","data"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["資料品質盤點","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"]]},
-      {"id":"quarterly","label":"季報數值版本與資格","state":"正式列／eligibility 為 0","tone":"redline","text":"2330／2026-Q2 正式季報表為 0 列；161 筆 current observations、11 個 source versions 的 aggregate eligibility 均為 0。仍需精確來源版本認領與未解欄位語義證據。","next":"先解完 QA 列出的 4 個未解財報欄位語義，再建立同來源版本橋；完成前不寫入正式季報列。","routes":["market","screener","data","ml"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["MOPS 版本重盤","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"]]},
-      {"id":"forward-maturity","label":"Forward outcome 成熟與來源 warning","state":"13 筆待成熟；整體 degraded","tone":"","text":"10/26–27 隔離盤點的 43 個精確事件有 30 ready、13 pending、0 missing；尚有 60 個公司行動／交易限制 warnings。待成熟 outcome 和來源品質是兩種不同缺口。","next":"保留 13 筆 pending 等成熟；另補具名官方公司行動／交易限制證據，不把來源警告當成零事件。","routes":["performance","operations"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["Forward maturity QA","../docs/06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md"]]},
-      {"id":"gate2-cadence","label":"Gate 2 cadence／recovery","state":"流程局部接線；啟用條件未滿","tone":"","text":"Evidence Review 有候選處置與 history 路徑；真實週期、操作日 evidence、backup／restore、disable-first recovery 與 Owner approval 仍未全數達成，scheduler 維持 disabled。","next":"只在解除 Gate 1 阻塞或已有可驗收證據時推進；未滿明確條件前保持 dry-run／disabled。","routes":["operations","overview"],"evidence":[["Gate 2 目前狀態","../docs/00_core/PROJECT_SNAPSHOT.md"],["Gate 2 啟用條件","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]},
-      {"id":"gate-acceptance","label":"Gate／自然執行／Owner 接受","state":"不以局部 QA 代替整體 Gate","tone":"","text":"局部測試、source readback、dry-run、shadow 或 Paper 都不是產品 Gate。Gate 2／3／ML 僅在直接解除 Gate 1 阻塞或具備可驗收證據時推進。","next":"Gate 1 優先完成日常閉環與 Owner UAT；保留各 Gate 自己的來源、自然成熟與安全條件。","routes":["overview","backtests","performance","ml","operations","paper"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"],["產品 Gate roadmap","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]}
+      {"id":"gate1-owner-uat","label":"Gate 1 Owner UAT／接受決定","ownerType":"user","phase":"handoff","state":"工程證據已備妥；Owner UAT 第 1–3、5–6 項待核對","text":"正式唯讀日常資料流程、固定輸入 deterministic replay、隔離 MainWindow 保存讀回與歷史查找已有收據；Owner 已回報第 4 項人工決定保存／讀回成功。現在由 Owner 在正式環境判斷完整日常流程、Advice 限制與歷史查找是否符合使用需求。","next":"以 2026-10-28 canonical result 依 QA 收據核對決策／資料日、候選與排除、Advice 限制、保存後時間軸查找；逐項回覆通過、限制接受或退回與原因。","routes":["overview","screener","strategies"],"evidence":[["Gate 1 日常 Advice／保存讀回 QA","../docs/06_qa/BALDR_GATE1_DAILY_E2E_20261028.md"],["Gate 1 工程定義","../docs/00_core/ROADMAP_6M_ENGINEERING.md#5-gate-1daily-usable-advice-product"]]},
+      {"id":"repo-mypy","label":"全域 mypy 型別檢查","ownerType":"codex","phase":"now","state":"被未修改的 T164 bridge 語法錯誤擋住","text":"Snapshot 記錄 repo-wide mypy 在 T164 bridge 第 411 行解析失敗。這是獨立工程檢查阻塞，不代表 Gate 或來源資格改變。","next":"定位並修正該語法錯誤，再重跑全域 mypy；保留原錯誤位置與修復前後結果。","routes":["overview","data","operations"],"evidence":[["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]},
+      {"id":"monthly-revenue-map","label":"月營收公告日精確版本橋","ownerType":"codex","phase":"later","state":"Codex 可做唯讀查核；Gate 1 優先","text":"2026-10-26/27 盤點記錄 242,650 列正式月營收缺公告日。Codex 可做精確候選比對，但這是 Gate 3 資料接受工作，除非直接解除 Gate 1 阻塞，否則依 Roadmap 後置。","next":"Gate 1 優先；投入時只整理唯一可認領的候選和證據，無法精確匹配的列保持缺件，不做全量回補或推定。","routes":["market","screener","data"],"evidence":[["資料品質盤點","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"],["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]},
+      {"id":"monthly-revenue-source","label":"月營收公告事件原件","ownerType":"external","phase":"waiting","state":"等待可核實的官方事件與版本證據","text":"靜態月報的出表日期不能當成公司公告日；大量列仍缺逐公司／月份事件證據。這是來源證據缺口，不能靠 Owner 按核准或用刷新時間補值。","next":"取得可讀的公司公告事件原件與來源版本後再做精確橋接；不可取得時繼續保留 missing。","routes":["market","data"],"evidence":[["資料品質盤點","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-靜態月報日期被誤當公司公告日的現況盤點"]]},
+      {"id":"quarterly-semantics","label":"季報欄位語義與版本橋查核","ownerType":"codex","phase":"later","state":"仍有 4 個欄位語義問題；Gate 1 優先","text":"2026-10-27 QA 的 2026-Q2 版本重盤指出 2330 季報還有 4 個欄位語義問題；Codex 可依官方定義和來源原件續查。此 Gate 3 工作依目前 Roadmap 後置，不需要你先批准。","next":"Gate 1 優先；投入時先核實欄位定義與精確來源版本，只產出可證明的對照，不將重播結果寫入正式列。","routes":["market","screener","data","ml"],"evidence":[["季報版本重盤","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"]]},
+      {"id":"quarterly-source","label":"2330／2026-Q2 官方季報原件","ownerType":"external","phase":"waiting","state":"正式季報列為 0；來源版本橋未成立","text":"廣泛查詢觸及 1,000 列上限，單日重查未取得 response body；隔離重播雖部分數值相同，但內容 hash 與 45 列 sign annotation 改變，不能當成只更新公告時間。","next":"等取得完整官方原件及可驗證來源版本，再建立橋接；在此之前不寫正式季報列。","routes":["market","screener","data","ml"],"evidence":[["季報原件與版本限制","../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-26-ezsearch-季報事件候選與數值重播限制"],["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]},
+      {"id":"gate3-source-decision","label":"Gate 3 逐來源接受／限制／拒絕","ownerType":"user","phase":"handoff","state":"等 Codex 提供逐來源證據包","text":"來源處置需要 Owner 根據 available-date、quality、license、missing 與版本證據選擇接受、限制、拒絕或延後。這是明確的人為決策，但要等 Codex 把可審查證據整理好。","next":"收到某一來源的完整證據包後，只決定該來源的處置；未核實來源不先升格。","routes":["market","data","ml"],"evidence":[["Gate 3 工程定義","../docs/00_core/ROADMAP_6M_ENGINEERING.md#7-gate-3p0-data-integration"],["產品來源政策","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]},
+      {"id":"forward-maturity","label":"Forward outcome 自然成熟","ownerType":"external","phase":"waiting","state":"13 筆 pending 尚待成熟","text":"隔離盤點的 43 個精確事件有 30 ready、13 pending、0 missing。等待期未到的結果不能由 Codex 或 Owner 填成已成熟。","next":"等各筆 outcome 到達成熟日，再依來源與品質規則讀回；不要用模擬或推估替代。","routes":["performance","operations"],"evidence":[["Forward maturity QA","../docs/06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md"],["PROJECT_SNAPSHOT","../docs/00_core/PROJECT_SNAPSHOT.md"]]},
+      {"id":"forward-warnings","label":"Forward 公司行動／交易限制警示","ownerType":"codex","phase":"later","state":"仍有 60 個來源 warning 待核","text":"警示需要官方公司行動與交易限制證據；資料 warning 不能解讀成零事件。此項屬 Gate 1 之後的支援工作。","next":"主線允許投入時，Codex 逐筆核對具名官方證據；找不到的列保留 warning。","routes":["performance","operations"],"evidence":[["Forward maturity QA","../docs/06_qa/BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md"]]},
+      {"id":"gate2-cadence","label":"Gate 2 真實 review／操作日週期","ownerType":"user","phase":"later","state":"需真實週期；目前尚未輪到排程核准","text":"啟用前需累積至少 3 個真實 weekly review period 與 3 個操作日 evidence record。這些必須在日常實際發生，不能由合成資料或 Codex 代造；Gate 1 仍優先。","next":"等 Gate 1 或符合 Roadmap 的投入條件後，在實際使用中累積並保留 review／操作日證據。","routes":["operations","overview"],"evidence":[["Gate 2 目前狀態","../docs/00_core/PROJECT_SNAPSHOT.md"],["Gate 2 啟用條件","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]},
+      {"id":"gate2-recovery","label":"Gate 2 backup／restore／recovery rehearsal","ownerType":"codex","phase":"later","state":"復原演練尚未完成；scheduler disabled","text":"技術準備與隔離演練可由 Codex 協助，但目前依 Gate 順序後置；不能因 UI 已接線就啟用排程。","next":"投入 Gate 2 時，在受控範圍完成 backup／restore 與 disable-first recovery rehearsal，保留證據並維持 scheduler disabled。","routes":["operations"],"evidence":[["Gate 2 啟用條件","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]},
+      {"id":"gate2-approval","label":"Gate 2 scheduler 啟用核准","ownerType":"user","phase":"later","state":"目前不是待你核准；前置條件尚未齊","text":"Owner approval artifact 要在真實週期、備份還原與復原演練完成後才需要。scheduler 現在保持 disabled。","next":"只有全部 Roadmap 條件具備並交付證據後，才由你明確決定是否啟用。","routes":["operations"],"evidence":[["Gate 2 啟用條件","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]},
+      {"id":"gate4-choice","label":"Gate 4 Portfolio Coach 是否投入","ownerType":"user","phase":"optional","state":"選用延伸，不阻塞 Gate 1","text":"手動持倉配置是可選能力；只有在 Gate 1／資料條件成熟且你確認需要時才建立工作。","next":"目前不用決定；需要配置輔助時再明確排入優先序。","routes":["positions","paper"],"evidence":[["Gate 4 工程定義","../docs/00_core/ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1"]]},
+      {"id":"gates567","label":"Gate 5／6／7 後續條件","ownerType":"deferred","phase":"deferred","state":"目前沒有可要求你批准的工作","text":"Gate 5／6 各有自己的前置 evidence；Gate 7 ML Shadow 還要先有可判讀的 Gate 5 rule baseline。Readiness、研究訓練或程式存在不構成啟動資格。","next":"依 Roadmap 保留為後續依賴；前置證據成熟前不派工、不把 ML 算入正式介入。","routes":["backtests","performance","ml","operations","paper"],"evidence":[["產品 Gate Roadmap","../docs/00_core/ROADMAP_6M_ENGINEERING.md"],["Gate 7 條件","../docs/06_qa/GATE_7_ML_SHADOW_ENGINEERING.md"]]}
     ],
     "productGates": [
       {"id":"0","title":"Safe Refactor Closeout","status":"已關閉 · 後續維護","tone":"complete","summary":"出口條件：受保護契約無未解差異；主要核心模組已拆薄或有保留理由；回滾點與 closeout 決定可追溯。Roadmap 將此 Gate 標為已關閉。","next":"只處理具名維護與回歸，不重新擴張為產品主線。","evidence":[["Gate 0 工程定義與狀態","../docs/00_core/ROADMAP_6M_ENGINEERING.md#4-gate-0safe-refactor-closeout"],["Gate 0 closeout 證據","../docs/09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md"]]},
-      {"id":"1","title":"Daily Usable Advice","status":"主線 · Advice 解鎖 · policy suite 253 passed","tone":"active","summary":"未升格、參數未鎖、揭露不全或作者欄位缺漏不再阻擋 Advice；資料品質、來源／日期、PIT 與可成交性仍依政策拒絕或降級。正式資料端到端與 Owner UAT 未完成。","next":"完成日常決定、保存／讀回與 Owner UAT；這次政策解鎖不等於 Gate 1 closeout。","evidence":[["2026-10-27 Advice policy QA","../docs/06_qa/BALDR_GATE1_ADVICE_UNLOCK_20261027.md"],["Gate 1 工程定義","../docs/00_core/ROADMAP_6M_ENGINEERING.md#5-gate-1daily-usable-advice-product"]]},
+      {"id":"1","title":"Daily Usable Advice","status":"主線 · 工程證據已備妥 · Owner UAT pending","tone":"active","summary":"Advice 輸出、正式唯讀 Daily Journey／Advice／同快照排除摘要、固定行情／策略／policy deterministic replay、研究決定保存讀回與 500 筆上限外歷史查找均有工程證據。Owner UAT 第 1–3、5–6 項仍待正式環境核對；第 4 項已由 Owner 回報完成。正式來源仍 estimated／research-only，screening quality 仍 missing，Gate 3 來源／PIT 接受不由此證據取代。","next":"Owner 依 Gate 1 QA 收據在正式環境完成剩餘核對；確認限制可理解後再記錄接受、限制接受或退回。","evidence":[["2026-10-28 Gate 1 日常流程 QA","../docs/06_qa/BALDR_GATE1_DAILY_E2E_20261028.md"],["2026-10-27 Advice policy QA","../docs/06_qa/BALDR_GATE1_ADVICE_UNLOCK_20261027.md"],["Gate 1 工程定義","../docs/00_core/ROADMAP_6M_ENGINEERING.md#5-gate-1daily-usable-advice-product"]]},
       {"id":"2","title":"Real Evidence Operating Loop","status":"部分路徑已接 · 條件未滿","tone":"conditional","summary":"候選處置與 history UI 已有局部證據；真實 weekly／operating-day cadence、backup／restore、recovery rehearsal 與 Owner approval 尚未完成，scheduler 維持 disabled。","next":"先滿足 Roadmap 的明確啟用條件；目前只在解除 Gate 1 阻塞或有可驗收證據時投入。","evidence":[["Gate 2 最新狀態","../docs/00_core/PROJECT_SNAPSHOT.md"],["Gate 2 啟用條件","../docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"]]},
       {"id":"3","title":"P0 Data Acceptance","status":"來源資格未完成","tone":"blocked","summary":"來源須逐一接受／限制／拒絕並保留 available-date、quality 與版本證據；2330／2026-Q2 尚無正式 statement rows，來源版本橋仍未成立。","next":"逐個 source 完成精確版本橋與接受決定；candidate 或 research-only 不進 formal layer。","evidence":[["Gate 3 最新資料狀態","../docs/00_core/PROJECT_SNAPSHOT.md"],["Gate 3 工程定義","../docs/00_core/ROADMAP_6M_ENGINEERING.md#7-gate-3p0-data-integration"]]},
       {"id":"4","title":"Portfolio Coach","status":"選用延伸 · 後續","tone":"deferred","summary":"以手動持倉為輸入的可選能力，不是帳戶無關的 Gate 1 Advice 前置條件。","next":"等 Gate 1／資料條件成熟且使用者需要時再推進。","evidence":[["Gate 4 工程定義","../docs/00_core/ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1"]]},
@@ -623,13 +660,14 @@
       {"id":"7","title":"ML Shadow Layer","status":"條件式 · 未獲啟動資格","tone":"deferred","summary":"只有在 Gate 5 有可判讀 rule baseline 並滿足 shadow 前置條件後才評估；目前研究／shadow 不計正式介入。","next":"維持獨立 ML 狀態；readiness 不等於啟動許可或 production promotion。","evidence":[["Gate 7 條件","../docs/00_core/ROADMAP_6M_ENGINEERING.md#11-gate-7ml-shadow-layer條件式"]]}
     ],
     "flow": [
-      {"title":"市場／資料日期","note":"來源、資料日、可得時間、品質", "state":"主線已接；缺值／降級依政策拒絕或降級", "className":"is-focus has-gap"},
-      {"title":"候選／明確排除","note":"保留母體、排除原因與缺件", "state":"正常排除不再誤報為資料降級；真缺件續追", "className":"is-focus"},
-      {"title":"Advice 與限制提示","note":"Why／Why Not／Risk／Evidence；未知不補填", "state":"candidate／作者欄位等條件不再阻擋輸出", "className":"is-focus"},
-      {"title":"人工決定與精確讀回","note":"明確研究決定、保存、回訪", "state":"需完成完整日常旅程驗收", "className":"has-gap"},
+      {"title":"市場／資料日期","note":"來源、資料日、可得時間、品質", "state":"canonical 10/28 read-only 對照通過；source／PIT 限制仍顯示", "className":"is-focus"},
+      {"title":"候選／明確排除","note":"保留母體、排除原因與缺件", "state":"同快照候選／排除摘要核對通過；screening missing 不作來源接受", "className":"is-focus"},
+      {"title":"Advice 與限制提示","note":"Why／Why Not／Risk／Evidence；未知不補填", "state":"policy 限制與未知欄位有工程證據；Owner 須確認正式畫面清楚", "className":"is-focus"},
+      {"title":"人工決定與精確讀回","note":"明確研究決定、保存、回訪", "state":"1569 保存／fresh-readback 已由 Owner 回報；時間軸精確回查有隔離測試證據", "className":"is-focus"},
       {"title":"Owner UAT／Gate 接受","note":"正式資料端到端與使用者接受", "state":"尚未整體接受；局部 QA 不代替 Gate", "className":"has-gap"}
     ],
     "timeline": [
+      {"date":"2026-10-28 · Advice comparison evidence","text":"Advice 卡補回同筆保存推薦的規則分數、百分位母體日期／大小、產業與行情原值；缺值維持未知，策略分數不作信心或勝率。局部 QA 通過，但原生 GUI／Owner UAT 未執行。","href":"../docs/06_qa/BALDR_WORKBENCH_ADVICE_COMPARISON_FIELDS_20261028.md"},
       {"date":"2026-10-27 · Gate 1 Advice policy","text":"candidate／未 promoted、參數未鎖、揭露或作者欄位缺漏不再阻擋 Advice；作者未提供欄位保留未知。資料品質、來源／日期、PIT、授權與可成交性限制仍有效。這是輸出政策調整，不是 Gate 1 整體 closeout。","href":"../docs/06_qa/BALDR_GATE1_ADVICE_UNLOCK_20261027.md"},
       {"date":"2026-10-27 · Advice cohort","text":"正常流動性排除與無策略訊號不再誤標為資料降級；逐股品質、選中 Advice 的支持／反證／風險保留。必要 Workbench UI 與 source bridge 有限定 QA；原生 GUI／Owner UAT 未做。","href":"../docs/06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-整體-degraded-cohort-保留逐檔可判讀建議"},
       {"date":"2026-10-27 · 正式資料盤點","text":"月營收仍有大量公告日期／版本橋缺口；2330／2026-Q2 正式季報列 0、current observations 的 eligibility 仍為 0。沒有改正式資料或替缺值推定。","href":"../docs/06_qa/BALDR_DATA_QUALITY_INVENTORY_20261025.md#2026-10-27-正式月營收與-2330-2026-q2-季報精確版本重盤"},
@@ -681,6 +719,8 @@
       "use strict";
       const data = JSON.parse(document.getElementById("dashboardData").textContent);
       const statuses = ["未盤點", "進行中", "已完成", "阻塞", "延後"];
+      const ownerLabels = {codex:"Codex", user:"你／Owner", external:"來源／時間", deferred:"暫不派工"};
+      const phaseLabels = {now:"現在可推進", handoff:"Codex 備妥後交你", waiting:"等待外部證據／自然成熟", later:"Gate 條件成熟後", optional:"你有需要時再決定", deferred:"依賴條件未到"};
       const storageKey = "baldr-project-progress-dashboard-v1";
       let memoryTracking = {};
       let storageAvailable = true;
@@ -857,10 +897,28 @@
             ${linkList(gate.evidence)}
           </article>`).join("");
       }
+      function renderOwnershipSummary() {
+        const codexNow = data.blockers.filter((item) => item.ownerType === "codex" && item.phase === "now").length;
+        const userNow = data.blockers.filter((item) => item.ownerType === "user" && item.phase === "now").length;
+        const externalWaiting = data.blockers.filter((item) => item.ownerType === "external" && item.phase === "waiting").length;
+        const userHandoff = data.blockers.filter((item) => item.ownerType === "user" && item.phase === "handoff").length;
+        const summary = [
+          {type:"codex", title:"Codex 可先接手", count:codexNow, note:"可開始補工程證據或處理技術檢查。"},
+          {type:"user", title:"你現在要點頭", count:userNow, note:userNow ? "只有標成現在的決策需要你此刻處理。" : "目前沒有需你立即核准的項目。"},
+          {type:"external", title:"來源／時間等待", count:externalWaiting, note:"需官方原件、來源回應或自然成熟。"},
+          {type:"handoff", title:"證據備妥後交你", count:userHandoff, note:"Codex 先整理好，再由你驗收或選來源處置。"}
+        ];
+        el("ownershipSummary").innerHTML = summary.map((item) => `<article class="owner-summary-card ${item.type}"><div class="owner-summary-title">${esc(item.title)}</div><div class="owner-summary-count">${item.count}</div><div class="owner-summary-note">${esc(item.note)}</div></article>`).join("");
+        const note = userNow
+          ? `目前有 ${userNow} 項需要你立即決定。其餘待 Owner 驗收的項目，會在 Codex 證據備妥後才交接。`
+          : `目前沒有需要你立即點頭的項目。Gate 1 工程與隔離 GUI 證據已備妥，下一棒是 Owner UAT；正式來源／PIT 接受仍按 Gate 3 分開追蹤。責任分類依截至 ${data.asOf} 的 Snapshot、Roadmap 與具名 QA 人工整理；刷新會讀取最新原文，但不會自動改寫責任判定。`;
+        el("ownershipNote").innerHTML = `<strong>${esc(note)}</strong><br><span class="hint">卡片數是下一步工作項目數，不是 Gate 數或完成率；來源／時間等待不等於你沒有按核准。</span>`;
+      }
       function renderBlockers() {
         const blocks = data.blockers.slice(0, 4);
-        el("topBlockers").innerHTML = blocks.map((block) => `<article class="blocker ${esc(block.tone)}"><h3>${esc(block.label)}</h3><p>${esc(block.text)}</p><p class="blocker-next"><strong>下一步：</strong>${esc(block.next || "沿具名證據核對目前狀態與阻塞原因。")}</p><div class="source-line">${linkList(block.evidence.slice(0, 1))}</div></article>`).join("");
-        el("gapList").innerHTML = data.blockers.map((block) => `<article class="gap-row"><div><div class="gap-label">${esc(block.label)}</div><div class="route-tags"><span class="tag ${block.tone === "redline" ? "gap" : "partial"}">${esc(block.state)}</span></div></div><p>${esc(block.text)}<br><strong>下一步：</strong>${esc(block.next || "依具名證據核對狀態。")}<br><span class="hint">相關子頁：${block.routes.map((id) => esc(data.routes.find((route) => route.id === id)?.label || id)).join("、")}</span></p><div class="gap-meta">${linkList(block.evidence)}</div></article>`).join("");
+        const responsibilityTags = (block) => `<div class="owner-tags"><span class="owner-pill ${esc(block.ownerType)}">下一棒：${esc(ownerLabels[block.ownerType] || "待分類")}</span><span class="phase-pill">${esc(phaseLabels[block.phase] || "輪次待確認")}</span></div>`;
+        el("topBlockers").innerHTML = blocks.map((block) => `<article class="blocker ${esc(block.ownerType)}">${responsibilityTags(block)}<h3>${esc(block.label)}</h3><p class="blocker-state">${esc(block.state)}</p><p>${esc(block.text)}</p><p class="blocker-next"><strong>下一步：</strong>${esc(block.next || "沿具名證據核對目前狀態與阻塞原因。")}</p><div class="source-line">${linkList((block.evidence || []).slice(0, 1))}</div></article>`).join("");
+        el("gapList").innerHTML = data.blockers.map((block) => `<article class="gap-row ${esc(block.ownerType)}"><div>${responsibilityTags(block)}<div class="gap-label">${esc(block.label)}</div><div class="route-tags"><span class="tag ${block.ownerType === "external" ? "partial" : "gap"}">${esc(block.state)}</span></div></div><div><p>${esc(block.text)}</p><p style="margin-top:7px"><strong>下一步：</strong>${esc(block.next || "依具名證據核對狀態。")}</p><p class="hint" style="margin-top:7px">相關頁籤：${(block.routes || []).map((id) => esc(data.routes.find((route) => route.id === id)?.label || id)).join("、") || "產品共用"}</p></div><div class="gap-meta">${linkList(block.evidence || [])}</div></article>`).join("");
       }
       function renderTimeline() {
         el("timeline").innerHTML = data.timeline.map((item) => `<article class="timeline-card"><div class="timeline-date">${esc(item.date)}</div><p>${esc(item.text)}</p><p><a href="${safeHref(item.href)}" target="_blank" rel="noreferrer">開啟具名 QA ↗</a></p></article>`).join("");
@@ -968,7 +1026,7 @@
         reader.readAsText(file, "utf-8");
       }
       function init() {
-        renderHeader(); renderLiveStatus(); renderGateBoard(); renderFlow(); renderBlockers(); renderTimeline(); renderRoutes(); renderKeys(); renderMl(); renderStorage(); renderTrackingSummary();
+        renderHeader(); renderLiveStatus(); renderGateBoard(); renderFlow(); renderOwnershipSummary(); renderBlockers(); renderTimeline(); renderRoutes(); renderKeys(); renderMl(); renderStorage(); renderTrackingSummary();
         document.querySelectorAll(".nav-tab").forEach((tab) => tab.addEventListener("click", () => activateView(tab.dataset.view)));
         el("refreshStatus").addEventListener("click", () => refreshProjectStatus());
         document.querySelectorAll("[data-open-view]").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); activateView(event.currentTarget.dataset.openView); }));

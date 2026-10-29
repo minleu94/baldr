@@ -17,6 +17,7 @@
 - **推薦來源詳情資訊過載**：原本把核驗狀態、下一步、來源定位、完整欄位與雜湊放在同一段長文字。新增首屏來源摘要，先交代狀態、時間限制與下一步；核驗不足時使用警示色，完整來源欄位由緊湊文字操作展開，限制在可捲動區，所有原追溯欄位仍保留；理由展開也改為緊湊文字操作，減少整列按鈕對閱讀的切斷。推薦版面、保存讀回與來源追溯回歸共 **18 passed**。完整個人推薦測試檔曾有 11 個測試因 sandbox 目錄讀取／immutable receipt 硬連結權限與來源 fixture 失敗（23 passed），需在可讀寫測試目錄的環境重跑完整套件。
 - **策略庫判讀與動作位置**：將策略內容／風險與資料／資格分組；「以此設定回測」移到右側固定面板底部，閱讀長說明時不必先捲到內容末端找入口。策略庫 UI 回歸 **12 passed**；只改資訊分組和動作位置，不啟動回測。
 - **自選清單結果閱讀順序**：候選列數／不同代號數與更新狀態移到候選表前；個人查看狀態分布移到表後，讓搜尋後先看清單和載入狀態，再讀附加統計。只調整呈現順序，統計仍來自同一讀取快照。
+- **綜合選股條件捷徑窄版擠壓**：MA、K／D、MACD 三個研究線索篩選按鈕由固定水平列改為 3／2／1 欄響應式分組，依可用寬度排列。來源選擇、收藏停用原因及篩選動作不變。新舊快捷列回歸 **2 passed**；完整 UI 檔 **25 passed**，另 1 項失敗、2 項 setup error 都因 sandbox tmp 目錄解析拒絕（WinError 5），非斷言失敗。
 - 操作說明已同步至 [`APPLICATION_MANUAL.md`](../07_guides/APPLICATION_MANUAL.md) 與[個股研究手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)。
 
 ## 其他優先檢視項目
@@ -97,3 +98,20 @@ Recommendation 結果載入不再按候選內容逐欄自動量寬。代號、�
 
 - `tests/test_ui_qt_storage_overview.py`：**4 passed、1 failed**。失敗在原 worker 測試；sandbox 對測試目錄列舉回傳 `WinError 5 Access is denied`，應用因此明示盤點未完成。提權重跑在讀取專案 QA 鎖時被拒絕，worker 尚未驗證。
 - Offscreen Qt 版面與唯讀控制檢查通過；尚未做原生 GUI／Owner UAT。
+
+## 2026-10-29 第六輪：個股研究導覽與操作分組
+
+個股研究原本把三個頁面切換與三個股票動作放在同一個標題列，按鈕縮寫為「內容／判斷／追蹤／回測」，容易把導覽和操作看成同一類。現在標題列只保留工作區名稱、一般查詢切換及說明；其下把導覽命名為「研究內容／保存判斷／成果追蹤」，把目前股票操作命名為「加入自選／加入比較／準備回測」。兩組以「研究區段／這檔操作」標籤區分，操作色彩保持低權重，選中的導覽用淡藍底和字重標出。寬版兩組同列，窄版上下排列；來源切換按鈕與這檔操作歸在一起。保留既有 signal、啟用條件、選擇狀態及資料行為。
+
+- 新增窄版重排及控制項幾何斷言。三個相關 UI 測試檔合跑，sandbox 可執行的 **37 passed**；另 4 個需真實隔離暫存目錄的案例因 Windows sandbox 在 `Path.resolve(strict=True)` 遭 `WinError 5` 未能執行，不列為通過。首屏高度回歸由 204 px 修至 200 px，專項測試 **1 passed**。
+- 必要更新頁 Workbench **98 passed**；三個變更 UI source py_compile 通過、scoped mypy **3 files / 0 issues**。未重跑 Update QA validator；此前本工作階段既有記錄為 **25 passed／0 failed／4 skipped**，不把它當成本輪 fresh 結果。
+- 只以 offscreen Qt 驗證幾何時，仍不能宣稱原生 GUI 色彩、字型、DPI 或 Owner UAT 完成。
+- 使用者回報的 Advice／推薦來源可理解性、每日來源詳情入口和歷史研究可發現性仍需沿各自頁面做跨頁閱讀檢查；這一輪先處理個股頁的混合導覽列。
+
+## 2026-10-29 第七輪：共用工作區子頁導覽響應式排列
+
+`WorkspaceSubnav` 原固定使用單列水平按鈕；最多四個子頁在窄視窗寬度下沒有換行或捲動容器，固定寬度按鈕可能離開可視範圍。改為按導覽容器寬度將子頁排成寬版單列、中窄版雙欄、極窄版單欄；選取路由、按鈕名稱與 Tab 順序不變。以「探索與研究」四個實際子頁名稱覆蓋 1200／600／280 px，斷言欄數、順序、目前選取和按鈕右緣均在容器內。
+
+- `tests/test_ui_qt_v2_shell_widgets.py`＋`tests/test_ui_qt_v2_product_shell.py`：**24 passed**；涵蓋 1200／600／280 px 欄數、按鈕容器邊界、route selection 保留及 ProductShell 整合。
+- 本輪 source／test `py_compile` 與 `mypy ui_qt/widgets/workspace_subnav.py` 通過；必要 Update UI **98 passed**，Update validator **25 passed／0 failed／4 skipped**。Repo-wide mypy 仍被未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻止。
+- Offscreen 幾何測試不代替原生 GUI 的字型／DPI視覺與 Owner UAT；其餘主工作區仍沿全程式盤點排序繼續檢查。

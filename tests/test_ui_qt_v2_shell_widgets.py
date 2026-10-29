@@ -43,6 +43,41 @@ def test_workspace_subnav_rejects_more_than_four_routes(app: QApplication) -> No
         subnav.set_routes(tuple((f"route-{index}", f"頁面 {index}") for index in range(5)))
 
 
+def test_workspace_subnav_reflows_without_clipping_or_losing_selection(app: QApplication) -> None:
+    subnav = WorkspaceSubnav()
+    subnav.set_routes(
+        (
+            ("market", "市場分析"),
+            ("themes", "產業與題材"),
+            ("screener", "綜合選股"),
+            ("lookup", "個股查詢"),
+        )
+    )
+    subnav.show()
+    subnav.set_current_route("screener")
+
+    for width, expected_columns in ((1200, 4), (600, 2), (280, 1)):
+        subnav.resize(width, 180)
+        app.processEvents()
+        assert subnav._column_count == expected_columns
+        assert subnav.current_route == "screener"
+        buttons = [subnav._buttons[route_id] for route_id, _label in subnav._routes]
+        positions = [button.pos() for button in buttons]
+        if expected_columns == 4:
+            assert len({position.y() for position in positions}) == 1
+        elif expected_columns == 2:
+            assert positions[0].y() == positions[1].y()
+            assert positions[2].y() == positions[3].y()
+            assert positions[2].y() > positions[0].y()
+        else:
+            assert [position.y() for position in positions] == sorted(
+                position.y() for position in positions
+            )
+        for button in buttons:
+            assert button.mapTo(subnav, button.rect().bottomRight()).x() <= subnav.width()
+    subnav.close()
+
+
 def test_workspace_subnav_tab_entry_and_reverse_return(app: QApplication) -> None:
     host = QWidget()
     layout = QVBoxLayout(host)

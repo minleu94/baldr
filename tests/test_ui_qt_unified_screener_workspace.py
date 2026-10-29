@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QGridLayout,
     QGroupBox,
     QLabel,
     QLineEdit,
@@ -733,6 +734,28 @@ def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason
     assert "題材條件" in workspace.unavailable_conditions.text()
     assert "財報條件" in workspace.unavailable_conditions.text()
     assert "月營收可由" in workspace.unavailable_conditions.text()
+
+
+def test_condition_recipe_shortcuts_reflow_at_three_widths(qtbot):
+    host, workspace, pages = _workspace(qtbot)
+    assert workspace.select_widget(pages[3])
+    host.main_splitter.show()
+    app = QApplication.instance()
+    assert app is not None
+
+    for width, expected_columns in ((1200, 3), (800, 2), (390, 1)):
+        host.main_splitter.resize(width, 700)
+        app.processEvents()
+        layout = workspace.condition_recipe_layout
+        assert isinstance(layout, QGridLayout)
+        positions = [
+            layout.getItemPosition(layout.indexOf(button))[:2]
+            for button in workspace.condition_recipe_buttons.values()
+        ]
+        assert positions == [
+            (index // expected_columns, index % expected_columns)
+            for index in range(len(workspace.condition_recipe_buttons))
+        ]
 
 
 def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot):

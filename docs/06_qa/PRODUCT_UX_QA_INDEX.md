@@ -1,5 +1,9 @@
 # 產品與個股研究 QA 索引
 
+[共用子頁導覽響應式排列（2026-10-29）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#2026-10-29-第七輪共用工作區子頁導覽響應式排列)：寬版單列、中窄版雙欄、極窄版單欄，保留 route 選取。子頁／ProductShell 回歸 24 passed，py_compile 與 targeted mypy 通過；原生 GUI／Owner UAT 待確認。
+
+[個股研究導覽與這檔操作分組（2026-10-29）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#2026-10-29-第六輪個股研究導覽與操作分組)：完整名稱區分頁面導覽和股票操作，寬版保留報告首屏位置、窄版上下排列；相關回歸 14 passed，2 個來源 fixture 因 sandbox `WinError 5` 未能啟動。
+
 [Recommendation 結果表初始欄寬（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#2026-10-28-第三輪recommendation-結果表初始欄寬)：理由欄初始 260 px，可拖曳；長文改由詳情／提示閱讀。推薦版面與保存讀回 16 passed；推薦投資組合結果測試遇 Qt WebEngine Windows fatal exception，未完成。尚待原生 GUI／Owner UAT。
 
 [Storage overview 分區與欄位可達性（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#2026-10-28-第五輪storage-overview-分區與欄位可達性)：容量與明示根盤點分區，摘要位置／項目數；窄窗只在欄位溢出時水平捲動。版面 4 passed；原 worker 測試被 sandbox 目錄掃描拒絕（`WinError 5`），提權重跑受 QA 鎖讀取權限阻擋，尚待可驗證環境完成 worker 回歸。

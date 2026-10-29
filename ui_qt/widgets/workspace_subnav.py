@@ -5,13 +5,20 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtWidgets import QAbstractButton, QButtonGroup, QHBoxLayout, QToolButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QButtonGroup,
+    QGridLayout,
+    QToolButton,
+    QSizePolicy,
+    QWidget,
+)
 
 from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 class WorkspaceSubnav(QWidget):
-    """以單列按鈕呈現目前工作區的一層子頁導覽。"""
+    """依容器寬度排列目前工作區的一層子頁導覽。"""
 
     routeSelected = Signal(str)
 
@@ -21,7 +28,7 @@ class WorkspaceSubnav(QWidget):
         self.setAccessibleName("工作區子頁導覽")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        self._layout = QHBoxLayout(self)
+        self._layout = QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(6)
         self._button_group = QButtonGroup(self)
@@ -31,6 +38,7 @@ class WorkspaceSubnav(QWidget):
         self._current_route: str | None = None
         self._routes: tuple[tuple[str, str], ...] = ()
         self._tab_predecessor: QWidget | None = None
+        self._column_count = 0
 
     def set_tab_predecessor(self, widget: QWidget | None) -> None:
         """指定 Tab 進入目前子頁按鈕的前一個可聚焦元件。"""
@@ -65,6 +73,8 @@ class WorkspaceSubnav(QWidget):
         previous_route = self._current_route
         self._clear_buttons()
         self._routes = normalized
+        columns = self._columns_for_width(self.width(), len(normalized))
+        self._column_count = columns
         for index, (route_id, label) in enumerate(normalized):
             button = QToolButton(self)
             button.setObjectName(f"WorkspaceSubnavRoute_{route_id}")
@@ -75,10 +85,11 @@ class WorkspaceSubnav(QWidget):
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             button.setProperty("routeId", route_id)
             self._button_group.addButton(button, index)
-            self._layout.addWidget(button)
+            row, column = divmod(index, columns)
+            self._layout.addWidget(button, row, column)
             self._buttons[route_id] = button
 
-        self._layout.addStretch(1)
+        self._layout.setColumnStretch(columns, 1)
         self.setStyleSheet(
             f"""
             QWidget#WorkspaceSubnav QToolButton {{
@@ -134,6 +145,33 @@ class WorkspaceSubnav(QWidget):
     def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
         return QSize(0, 30)
 
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        if not self._routes:
+            return
+        columns = self._columns_for_width(event.size().width(), len(self._routes))
+        if columns == self._column_count:
+            return
+        self._column_count = columns
+        for index, (route_id, _label) in enumerate(self._routes):
+            button = self._buttons[route_id]
+            self._layout.removeWidget(button)
+            row, column = divmod(index, columns)
+            self._layout.addWidget(button, row, column)
+        for column in range(5):
+            self._layout.setColumnStretch(column, 0)
+        self._layout.setColumnStretch(columns, 1)
+
+    @staticmethod
+    def _columns_for_width(width: int, route_count: int) -> int:
+        if route_count <= 1:
+            return max(route_count, 1)
+        if width < 300:
+            return 1
+        if width < 760:
+            return 2
+        return route_count
+
     def _clear_buttons(self) -> None:
         for button in self._buttons.values():
             self._button_group.removeButton(button)
@@ -145,6 +183,9 @@ class WorkspaceSubnav(QWidget):
             item = self._layout.takeAt(0)
             if item.widget() is not None:
                 self._layout.removeWidget(item.widget())
+        for column in range(5):
+            self._layout.setColumnStretch(column, 0)
+        self._column_count = 0
 
     def _on_button_clicked(self, button: QAbstractButton) -> None:
         route_id = button.property("routeId")

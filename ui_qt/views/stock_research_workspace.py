@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QSize, Signal, Qt, QSignalBlocker
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton,
+    QBoxLayout, QButtonGroup, QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -70,60 +70,93 @@ class StockResearchWorkspace(QWidget):
         self.setObjectName("stockResearchWorkspace")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        self.workspace_header = QWidget(self)
+        self.workspace_header.setObjectName("stockResearchWorkspaceHeader")
+        self.workspace_header_layout = QBoxLayout(
+            QBoxLayout.Direction.LeftToRight, self.workspace_header
+        )
+        self.workspace_header_layout.setContentsMargins(0, 0, 0, 0)
+        self.workspace_header_layout.setSpacing(4)
         title_layout = QHBoxLayout()
         self.workspace_title = QLabel("個股研究")
         title_layout.addWidget(self.workspace_title)
         title_layout.addStretch()
-        title_layout.addWidget(InfoButton("stock_research", self))
         self.general_lookup_button = QPushButton("改用一般個股查詢", self)
         self.general_lookup_button.setObjectName("stockResearchGeneralLookupButton")
         self.general_lookup_button.setToolTip("離開原選股來源，使用一般個股頁已配置的價庫；不會把兩份資料合併。")
         self.general_lookup_button.clicked.connect(self._open_general_lookup)
         self.general_lookup_button.hide()
-        title_layout.addWidget(self.general_lookup_button)
+        title_layout.addWidget(InfoButton("stock_research", self))
+
         self.product_action_row = QWidget(self)
         self.product_action_row.setObjectName("stockResearchWorkspaceActionRow")
         self.product_action_row.setStyleSheet(
             "QPushButton { padding: 1px 6px; min-height: 19px; font-size: 9pt; }"
+            "QPushButton:checked { color: #174ea6; background: #e8f0fe; "
+            "border: 1px solid #8ab4f8; font-weight: 600; }"
         )
-        product_action_layout = QHBoxLayout(self.product_action_row)
+        product_action_layout = QBoxLayout(
+            QBoxLayout.Direction.LeftToRight, self.product_action_row
+        )
         product_action_layout.setContentsMargins(0, 0, 0, 0)
-        product_action_layout.setSpacing(3)
-        self.favorite_action = QPushButton("☆自選", self.product_action_row)
+        product_action_layout.setSpacing(8)
+
+        navigation_group = QWidget(self.product_action_row)
+        navigation_group.setObjectName("stockResearchNavigationGroup")
+        navigation_layout = QHBoxLayout(navigation_group)
+        navigation_layout.setContentsMargins(0, 0, 0, 0)
+        navigation_layout.setSpacing(4)
+        navigation_label = QLabel("研究區段", navigation_group)
+        navigation_label.setStyleSheet("color: #5f6368; font-weight: 600;")
+        navigation_layout.addWidget(navigation_label)
+
+        self.favorite_action = QPushButton("加入自選", self.product_action_row)
         self.favorite_action.setObjectName("stockResearchFavoriteAction")
         self.favorite_action.setAccessibleName("加入純自選")
         self.favorite_action.setToolTip("只以股票代號與名稱加入純自選，不保存原選股 Query。")
         self.favorite_action.clicked.connect(self._emit_favorite_request)
-        product_action_layout.addWidget(self.favorite_action)
-        self.price_comparison_action = QPushButton("＋比較", self.product_action_row)
+        self.price_comparison_action = QPushButton("加入比較", self.product_action_row)
         self.price_comparison_action.setObjectName("stockResearchPriceComparisonAction")
         self.price_comparison_action.setAccessibleName("加入來源內比較")
         self.price_comparison_action.setToolTip("只有母體價量原來源可加入同來源比較；其他來源請回來源頁建立比較。")
         self.price_comparison_action.clicked.connect(self._emit_price_comparison_request)
-        product_action_layout.addWidget(self.price_comparison_action)
         self.prepare_backtest_action = QPushButton("準備回測", self.product_action_row)
         self.prepare_backtest_action.setObjectName("stockResearchPrepareBacktestAction")
         self.prepare_backtest_action.setAccessibleName("以目前一般個股報告準備回測")
         self.prepare_backtest_action.setToolTip("只為已載入的一般最新可用個股報告預填，不會執行回測。")
         self.prepare_backtest_action.clicked.connect(self._emit_prepare_backtest_request)
-        product_action_layout.addWidget(self.prepare_backtest_action)
+
+        operations_group = QWidget(self.product_action_row)
+        operations_group.setObjectName("stockResearchOperationsGroup")
+        operations_layout = QHBoxLayout(operations_group)
+        operations_layout.setContentsMargins(0, 0, 0, 0)
+        operations_layout.setSpacing(4)
+        operations_label = QLabel("這檔操作", operations_group)
+        operations_label.setStyleSheet("color: #5f6368; font-weight: 600;")
+        operations_layout.addWidget(operations_label)
+        self.general_lookup_button.setParent(operations_group)
+        operations_layout.addWidget(self.general_lookup_button)
+        self.favorite_action.setParent(operations_group)
+        operations_layout.addWidget(self.favorite_action)
+        self.price_comparison_action.setParent(operations_group)
+        operations_layout.addWidget(self.price_comparison_action)
+        self.prepare_backtest_action.setParent(operations_group)
+        operations_layout.addWidget(self.prepare_backtest_action)
+        self.favorite_action.show()
+        self.price_comparison_action.show()
+        self.prepare_backtest_action.show()
+
         self._product_action_group = QButtonGroup(self)
         self._product_action_group.setExclusive(True)
-        self.research_content_action = QPushButton("研究內容", self.product_action_row)
+        self.research_content_action = QPushButton("研究內容", navigation_group)
         self.research_content_action.setObjectName("stockResearchContentAction")
         self.research_content_action.setAccessibleName("切換到研究內容")
-        self.save_judgment_action = QPushButton("保存判斷", self.product_action_row)
+        self.save_judgment_action = QPushButton("保存判斷", navigation_group)
         self.save_judgment_action.setObjectName("stockResearchJudgmentAction")
         self.save_judgment_action.setAccessibleName("切換到保存判斷")
-        self.outcome_tracking_action = QPushButton("成果追蹤", self.product_action_row)
+        self.outcome_tracking_action = QPushButton("成果追蹤", navigation_group)
         self.outcome_tracking_action.setObjectName("stockResearchOutcomeAction")
         self.outcome_tracking_action.setAccessibleName("切換到成果追蹤")
-        self.favorite_action.setText("☆自選")
-        self.price_comparison_action.setText("＋比較")
-        self.prepare_backtest_action.setText("回測")
-        self.research_content_action.setText("內容")
-        self.save_judgment_action.setText("判斷")
-        self.outcome_tracking_action.setText("追蹤")
         for key, button in (
             ("content", self.research_content_action),
             ("judgment", self.save_judgment_action),
@@ -134,11 +167,12 @@ class StockResearchWorkspace(QWidget):
                 lambda _checked=False, action=key: self._activate_product_action(action)
             )
             self._product_action_group.addButton(button)
-            product_action_layout.addWidget(button)
-        product_action_layout.addStretch(1)
-        # 同列保留工作區身份、研究動作及說明，將首屏高度留給圖表。
-        title_layout.insertWidget(1, self.product_action_row, 1)
-        layout.addLayout(title_layout)
+            navigation_layout.addWidget(button)
+        product_action_layout.addWidget(navigation_group, 1)
+        product_action_layout.addWidget(operations_group, 0)
+        self.workspace_header_layout.addLayout(title_layout, 0)
+        self.workspace_header_layout.addWidget(self.product_action_row, 1)
+        layout.addWidget(self.workspace_header)
         self.content_stack = QStackedWidget(self)
         self.content_stack.currentChanged.connect(self._sync_product_action_state)
         self.general_report_page = QWidget(self.content_stack)
@@ -225,6 +259,20 @@ class StockResearchWorkspace(QWidget):
             self.price_notes_page.hide()
         layout.addWidget(self.content_stack)
         self.enable_product_layout()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        header_direction = (
+            QBoxLayout.Direction.LeftToRight
+            if event.size().width() >= 860
+            else QBoxLayout.Direction.TopToBottom
+        )
+        if self.workspace_header_layout.direction() != header_direction:
+            self.workspace_header_layout.setDirection(header_direction)
+        action_layout = self.product_action_row.layout()
+        if isinstance(action_layout, QBoxLayout):
+            if action_layout.direction() != header_direction:
+                action_layout.setDirection(header_direction)
 
     def _invalidate_report_snapshot(self, _context: object = None) -> None:
         if getattr(self, "_product_content_report", self.report_view) is not self.report_view:

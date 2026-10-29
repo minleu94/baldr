@@ -113,14 +113,14 @@ def test_status_strip_returns_only_the_exact_saved_price_context():
     assert returned == [origin] and "原價格來源身份不可用" in messages[-1]
 
 
-def test_workspace_actions_use_compact_labels_with_accessible_names():
+def test_workspace_actions_use_clear_labels_with_accessible_names():
     app = QApplication.instance() or QApplication([])
     workspace = StockResearchWorkspace(_ReadService())
-    assert workspace.favorite_action.text() == "☆自選"
+    assert workspace.favorite_action.text() == "加入自選"
     assert workspace.favorite_action.accessibleName() == "加入純自選"
-    assert workspace.price_comparison_action.text() == "＋比較"
+    assert workspace.price_comparison_action.text() == "加入比較"
     assert workspace.price_comparison_action.accessibleName() == "加入來源內比較"
-    assert workspace.prepare_backtest_action.text() == "回測"
+    assert workspace.prepare_backtest_action.text() == "準備回測"
     assert workspace.prepare_backtest_action.accessibleName() == "以目前一般個股報告準備回測"
     workspace.deleteLater()
     app.processEvents()

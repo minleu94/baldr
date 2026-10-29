@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any, Callable, cast
 
-from PySide6.QtCore import QSignalBlocker, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QSignalBlocker, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QBoxLayout,
+    QGridLayout,
     QGroupBox,
     QAbstractButton,
     QLabel,
@@ -59,6 +60,19 @@ _FUNNEL_DISTRIBUTION_STATES = (
     ("not_applicable", "不適用", "#927BC6"),
 )
 _FUNNEL_DISTRIBUTION_LIMIT = 6
+
+
+class _ResizeCallbackFilter(QObject):
+    """在宿主寬度變更時更新局部響應式控制排列。"""
+
+    def __init__(self, callback: Callable[[int], None], parent: QWidget) -> None:
+        super().__init__(parent)
+        self._callback = callback
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if isinstance(watched, QWidget) and event.type() == QEvent.Type.Resize:
+            self._callback(watched.width())
+        return False
 
 
 def _complete_funnel_distribution(
@@ -436,7 +450,7 @@ class UnifiedScreenerWorkspace:
         )
         self.disabled_note.setObjectName("unifiedScreenerUsageHint")
         self.disabled_note.setWordWrap(True)
-        self.quick_routes = QHBoxLayout()
+        self.quick_routes = QVBoxLayout()
         self.quick_routes.setContentsMargins(0, 0, 0, 0)
         self.quick_routes.setSpacing(4)
         self.source_routes = QHBoxLayout()
@@ -454,9 +468,19 @@ class UnifiedScreenerWorkspace:
             button.setToolTip("開啟既有來源條件頁；不會自動執行查詢。")
             self.quick_route_buttons[key] = button
             self.source_routes.addWidget(button)
+        quick_routes_header = QHBoxLayout()
         self.condition_recipe_group_label = QLabel("研究線索篩選")
         self.condition_recipe_group_label.setObjectName("unifiedScreenerConditionGroupLabel")
-        self.quick_routes.addWidget(self.condition_recipe_group_label)
+        self.condition_recipe_group_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
+        )
+        quick_routes_header.addWidget(self.condition_recipe_group_label)
+        quick_routes_header.addStretch(1)
+        self.quick_routes.addLayout(quick_routes_header)
+        self.condition_recipe_layout = QGridLayout()
+        self.condition_recipe_layout.setContentsMargins(0, 0, 0, 0)
+        self.condition_recipe_layout.setHorizontalSpacing(6)
+        self.condition_recipe_layout.setVerticalSpacing(4)
         self.condition_recipe_buttons: dict[str, QPushButton] = {}
         for key, label in (
             ("ma5_20_golden_cross", "MA5／MA20 金叉符合"),
@@ -471,7 +495,7 @@ class UnifiedScreenerWorkspace:
                 "需再按來源頁「套用全域查詢」；不代表資料資格或投資建議。"
             )
             self.condition_recipe_buttons[key] = button
-            self.quick_routes.addWidget(button)
+            self.condition_recipe_layout.addWidget(button, 0, len(self.condition_recipe_buttons) - 1)
         self.save_filter_button = QPushButton("儲存篩選條件")
         self.save_filter_button.setObjectName("unifiedScreenerSaveFilter")
         self.save_filter_button.setMinimumHeight(28)
@@ -480,7 +504,8 @@ class UnifiedScreenerWorkspace:
             "目前來源沒有可用的原生收藏流程。"
         )
         self.save_filter_button.clicked.connect(self.save_current_filter)
-        self.quick_routes.addWidget(self.save_filter_button)
+        quick_routes_header.addWidget(self.save_filter_button)
+        self.quick_routes.addLayout(self.condition_recipe_layout)
         self.unavailable_conditions = QLabel(
             "尚未接通：題材條件、財報條件、法人條件。月營收可由「官方＋技術＋月營收」來源頁使用。"
         )
@@ -535,8 +560,31 @@ class UnifiedScreenerWorkspace:
                 lambda _checked=False, recipe=key: self.apply_condition_recipe(recipe)
             )
         self.tabs.currentChanged.connect(self._on_outer_changed)
+        self._quick_routes_resize_filter = _ResizeCallbackFilter(
+            self._arrange_condition_recipe_buttons,
+            self.host,
+        )
+        self.host.installEventFilter(self._quick_routes_resize_filter)
+        self._condition_recipe_columns: int | None = None
+        self._arrange_condition_recipe_buttons(self.host.width())
         self.sync_sources()
         self._timer.start()
+
+    def _arrange_condition_recipe_buttons(self, width: int) -> None:
+        """依來源工作區寬度重排研究捷徑，避免窄版把按鈕擠成一列。"""
+
+        columns = 3 if width >= 1080 else 2 if width >= 620 else 1
+        if columns == self._condition_recipe_columns:
+            return
+        layout = self.condition_recipe_layout
+        while layout.count():
+            layout.takeAt(0)
+        for index, button in enumerate(self.condition_recipe_buttons.values()):
+            row, column = divmod(index, columns)
+            layout.addWidget(button, row, column)
+        for column in range(columns):
+            layout.setColumnStretch(column, 1)
+        self._condition_recipe_columns = columns
 
     @staticmethod
     def _is_ml_widget(widget: QWidget, label: str) -> bool:

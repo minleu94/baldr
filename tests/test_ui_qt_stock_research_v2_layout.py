@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication, QBoxLayout, QPushButton, QToolButton
+from PySide6.QtWidgets import QApplication, QBoxLayout, QPushButton, QToolButton, QWidget
 
 from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_dtos import (
@@ -147,6 +147,42 @@ def test_workspace_uses_action_row_and_all_six_report_sections_remain_reachable(
         assert workspace.outcome_tracking_action.isChecked()
         workspace.report_tabs.setCurrentWidget(report)
         assert workspace.research_content_action.isChecked()
+    finally:
+        workspace.request_close()
+        _wait(app, lambda: not workspace.is_busy())
+        workspace.close()
+
+
+def test_workspace_separates_navigation_and_stock_actions_when_narrow():
+    app = _app()
+    workspace = StockResearchWorkspace(_ReadService())
+    workspace.resize(700, 760)
+    workspace.show()
+    app.processEvents()
+    try:
+        action_layout = workspace.product_action_row.layout()
+        assert action_layout.direction() == QBoxLayout.Direction.TopToBottom
+        navigation = workspace.product_action_row.findChild(
+            QWidget, "stockResearchNavigationGroup"
+        )
+        operations = workspace.product_action_row.findChild(
+            QWidget, "stockResearchOperationsGroup"
+        )
+        assert navigation is not None and operations is not None
+        assert navigation.y() < operations.y()
+        for button in (
+            workspace.research_content_action,
+            workspace.save_judgment_action,
+            workspace.outcome_tracking_action,
+            workspace.favorite_action,
+            workspace.price_comparison_action,
+            workspace.prepare_backtest_action,
+        ):
+            assert button.text()
+            bottom_right = button.mapTo(
+                workspace.product_action_row, button.rect().bottomRight()
+            )
+            assert bottom_right.x() <= workspace.product_action_row.width()
     finally:
         workspace.request_close()
         _wait(app, lambda: not workspace.is_busy())

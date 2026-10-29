@@ -245,9 +245,9 @@ class ResearchTimelineView(QWidget):
         query = str(result_id or "").strip()
         if self._closing or not query:
             return False
-        self._search_timer.stop()
         self.stock_filter.setText(query)
         if self._full_history_limited:
+            self._search_timer.stop()
             self.refresh(search_query=query)
         return True
 

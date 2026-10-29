@@ -248,6 +248,7 @@ def test_limited_timeline_searches_complete_history_by_stock_or_result_id():
 
     assert view.search_result_id("rec_old")
     _wait(application, lambda: reader.search_queries[-1:] == ["rec_old"] and _timeline_idle(view))
+    assert reader.search_queries.count("rec_old") == 1
     assert view.entries_table.rowCount() == 1
     assert view._selected is older
     assert view._full_history_limited is True

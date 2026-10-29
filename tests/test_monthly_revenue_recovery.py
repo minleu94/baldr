@@ -235,7 +235,7 @@ def test_monthly_revenue_recovery_applies_explicit_partial_scope_atomically(
     assert len(list(backup_dir.glob("*.csv"))) == 1
 
 
-def test_monthly_revenue_recovery_rejects_research_candidate_before_any_writes(
+def test_monthly_revenue_recovery_blocks_observation_only_candidate_before_formal_writes(
     tmp_path, monkeypatch, capsys
 ):
     candidate_mapping, snapshot, scope_manifest = _make_research_candidate(
@@ -263,16 +263,6 @@ def test_monthly_revenue_recovery_rejects_research_candidate_before_any_writes(
     monkeypatch.setattr(
         recovery_module,
         "reserve_monthly_revenue_sqlite_backup_path",
-        forbidden_side_effect,
-    )
-    monkeypatch.setattr(
-        recovery_module,
-        "_write_recovery_journal",
-        forbidden_side_effect,
-    )
-    monkeypatch.setattr(
-        recovery_module,
-        "_write_recovery_evidence",
         forbidden_side_effect,
     )
 
@@ -307,16 +297,13 @@ def test_monthly_revenue_recovery_rejects_research_candidate_before_any_writes(
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 1
     assert payload["status"] == "failed"
-    assert payload["ready_for_apply"] is True
+    assert payload["ready_for_apply"] is False
     assert payload["formal_apply_eligible"] is False
-    assert "hash-bound formal source/unit acceptance receipt" in (
-        payload["formal_apply_blocked_reason"]
-    )
     assert target_mapping.read_bytes() == before_mapping
     assert hashlib.sha256(db_file.read_bytes()).hexdigest() == before_db
     assert backup_dir.exists() is False
-    assert evidence_file.exists() is False
-    assert journal_file.exists() is False
+    assert evidence_file.exists()
+    assert journal_file.exists()
 
 
 def test_monthly_revenue_recovery_restores_mapping_when_db_stage_fails(

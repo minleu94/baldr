@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from decimal import Decimal
 from io import BytesIO
 import gzip
 import hashlib
@@ -14,7 +13,6 @@ import pytest
 
 from data_module import monthly_revenue_research_candidate as capture_module
 from data_module.monthly_revenue_availability_history import OFFICIAL_OPENAPI_URLS
-from data_module.monthly_revenue_backfill import plan_mops_snapshot_monthly_revenue_backfill
 from scripts import capture_monthly_revenue_research_candidate as capture_cli
 
 
@@ -128,9 +126,12 @@ def test_capture_creates_hash_bound_full_scope_candidate_and_preserves_preview_c
     candidate = json.loads((run_root / "candidate_manifest.json").read_text("utf-8"))
     scope = json.loads((run_root / "full_source_scope_manifest.json").read_text("utf-8"))
     capture = json.loads((run_root / "source" / "capture_run.json").read_text("utf-8"))
-    assert candidate["status"] == "research_only_candidate_created"
+    assert candidate["status"] == "research_observation_only_created"
     assert candidate["source_row_count"] == 2
-    assert candidate["availability_row_count"] == 2
+    assert candidate["availability_row_count"] == 0
+    assert candidate["availability_status"] == (
+        "not_emitted_no_issuer_period_announcement_evidence"
+    )
     assert candidate["owner_acceptance"] is False
     assert candidate["formal_apply_authorized"] is False
     assert candidate["units"]["source_api_unit_explicit"] is False
@@ -161,33 +162,29 @@ def test_capture_creates_hash_bound_full_scope_candidate_and_preserves_preview_c
     observed_at = datetime.fromisoformat(policy["source_observed_at_utc"])
     source_date = observed_at.astimezone(_TAIPEI).date()
     assert policy["source_capture_date_taipei"] == source_date.isoformat()
-    assert policy["snapshot_capture_available_date"] == (
+    assert policy["conservative_capture_observation_date"] == (
         source_date + timedelta(days=1)
     ).isoformat()
+    assert policy["report_date_semantics"] == "report_level_only"
+    assert policy["capture_date_is_formal_availability"] is False
     availability_path = run_root / candidate["availability_file"]
     availability_rows = list(
         __import__("csv").DictReader(
             availability_path.read_text(encoding="utf-8-sig").splitlines()
         )
     )
-    assert all(
-        row["available_date"] >= policy["snapshot_capture_available_date"]
-        for row in availability_rows
+    assert availability_rows == []
+    snapshot_rows = list(
+        __import__("csv").DictReader(
+            (run_root / candidate["candidate_file"])
+            .read_text(encoding="utf-8-sig")
+            .splitlines()
+        )
     )
-
-    plan = plan_mops_snapshot_monthly_revenue_backfill(
-        snapshot_file=run_root / candidate["candidate_file"],
-        availability_file=availability_path,
-        source_version="monthly-revenue-research-test",
-        scope_manifest_file=run_root / candidate["scope_manifest_file"],
-    )
-    assert plan.ready_for_apply is True
-    assert plan.formal_apply_eligible is False
-    assert len(plan.records) == 2
-    assert {record.revenue for record in plan.records} == {
-        Decimal("1000"),
-        Decimal("1000"),
-    }
+    assert len(snapshot_rows) == 2
+    assert all(row["fetched_at"] for row in snapshot_rows)
+    assert all(row["source_version"].startswith(("twse-openapi-", "tpex-openapi-"))
+               for row in snapshot_rows)
 
 
 def test_capture_rejects_non_identity_content_encoding_and_keeps_raw_bytes(

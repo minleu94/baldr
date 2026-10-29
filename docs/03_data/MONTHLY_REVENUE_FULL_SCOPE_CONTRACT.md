@@ -28,6 +28,8 @@ Owner 明確指示：其個人研究要取得公開可讀的 MOPS／TWSE／TPEx 
 
 `出表日期`、`資料年月`、官方發布時刻、本機捕獲、落盤完成、可供此版本讀取的下界是不同事實。歷史事後取得的值可保存為 retrospective 候選；不能稱當年已知值。`first_observed`／captured-as-of 只能證明當時本機觀測，不能替代既有 `formal-availability.v2` 所需的官方公告原件／版本／parent revision。回測與 ML 逐決策 cutoff 重選版本，不能先選最新值再改日期。
 
+每日 TWSE／TPEx OpenAPI 採集只保存當期 current snapshot；其 `出表日期` 是 report-level 欄位，不能送進歷史 issuer-period 公告 mapping。候選流程應先落地帶 raw SHA、source version 與 capture time 的 normalized research CSV，mapping 可留空並清楚列出缺公告事件證據；這不構成 formal availability 或 PIT。MOPS F22 事件可以提供公告日期／時間，但若對照已於事後擷取的數值快照，必須把公告事件鐘與 snapshot 數值可得鐘分開，`available_date` 不可早於數值實際可讀日；target source version 必須等於正式 SQLite 完整版本字串。
+
 舊歷史表與 availability mapping 的鍵缺少市場，不直接改寫正式資料或默默遷入新雙市場資料。新候選歸檔須以市場、公司、period、來源與修訂識別原件；hash-addressed raw 保留一次、索引 create-only 並由外部 SHA 明選，讀回重核原 bytes／parser／row identity。未知單位亦能保留，無須先取得 TWD 金融資格。相同可見時間的不同內容必須回報衝突，不能依檔名或 hash 排序選勝者。
 
 ## 實作與驗收位置

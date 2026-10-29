@@ -216,3 +216,11 @@ Recovery receipt：`C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5c
 複核 harvest 程式時發現 HTTP 200 但 JSON 解碼失敗、頂層型別錯誤或 `data` 列表格式錯誤，先前可能被當成成功的空視窗。本次改為回報解析錯誤並進入既有重試；只有驗證成功的 HTTP 200 才寫入原件、manifest 與 checkpoint。另將 `acquired_at_utc`／台北時間移到回應解析成功後記錄，欄位代表回應取得完成時間；最終重試失敗時不再多等一次 15 秒。
 
 驗證收據：受控 Windows Job Object（8 GiB 記憶體／12 程序上限，readback verified）內執行三個 Python 檔 `py_compile` 與指定測試，**43 passed、1 skipped**，exit 0。輸出位於 `C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5cf-7a92-8d1e-e77dc2eba235/mops_quality_tests_20261029/final_20261029T061235Z/`。這是程式與回歸測試通過；不代表正式 live DB 的完整 `PRAGMA quick_check` 已通過，亦不把有限測試外推成全產品 QA。
+
+## 2026-10-29 每日 OpenAPI 候選保存修復與 7–9 月現況
+
+正式 DB 唯讀讀回確認 `fundamental_monthly_revenues` 的 2026-07／08／09 分別為 1,861／1,862／1,862 列，合計 **5,585 列**；來源版本均為 10/28 MOPS static snapshot，數值 `available_date=2026-10-30`，`announced_date` 空白且品質 `degraded`。同鍵 F22 crosswalk 有 5,584 個唯一公告事件，缺少 6884／2026-08；事件 timestamp 留在 sidecar，正式表沒有 `announced_at` 欄。Crosswalk snapshot lineage 與這 5,584 列 DB source version 的 snapshot lineage 相符，但這不改變 numeric snapshot 於 10/30 才可見的界線。
+
+10/27 與 10/28 排程收據顯示，TWSE 1,088 列與 TPEx 893 列 OpenAPI 原件皆 HTTP 200、hash 可讀；候選隨後將 `出表日期` 送入歷史公告日期 builder。該 builder 正確拒絕 TWSE／TPEx 的 report-level date 作為 issuer-period announcement evidence；候選程式卻將此預期拒絕升級為整批失敗，因而沒有保存 normalized snapshot CSV。修正後，daily capture 只保存原件與標準化研究快照；availability CSV 保留空表及明確狀態 `not_emitted_no_issuer_period_announcement_evidence`，manifest 記錄 report-level date 語義及擷取時間，不把它轉成 `announced_date` 或正式可得日。這個修正不會回寫 DB 或解除 7–9 月 `degraded`；須待下一次自然排程成功讀回候選，再核對正式 scheduler 註冊狀態。
+
+回歸收據：歷史公告 builder＋候選／recovery／排程稽核 suite **72 passed、1 skipped**；Update Workbench **98 passed**；資料更新 tab validator **25 passed、0 failed、4 skipped**。本機排程狀態查詢回報 `TASK_NOT_FOUND_OR_SCHEDULER_UNAVAILABLE`，因此尚無法確認 Windows Task Scheduler 註冊是否有效。這一節記錄程式修正與現況讀回，不宣稱下一次排程已執行、DB 7–9 月已解除降級或歷史 PIT 已完成。

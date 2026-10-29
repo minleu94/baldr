@@ -21,7 +21,6 @@ from zoneinfo import ZoneInfo
 
 from data_module.monthly_revenue_availability_history import (
     OFFICIAL_OPENAPI_URLS,
-    build_historical_monthly_revenue_availability,
     parse_announcement_date,
     parse_revenue_period,
 )
@@ -227,9 +226,6 @@ def _capture_monthly_revenue_research_candidate(
                 source_rows=source_rows,
                 source_results=source_results,
             )
-            raw_periods = {
-                (row["stock_code"], row["period"]) for row in snapshot_rows
-            }
             latest_source_capture = max(
                 datetime.fromisoformat(str(item["observed_at_utc"]).replace("Z", "+00:00"))
                 for item in source_results.values()
@@ -237,55 +233,19 @@ def _capture_monthly_revenue_research_candidate(
             latest_source_capture_utc = latest_source_capture.astimezone(timezone.utc)
             capture_date_taipei = latest_source_capture_utc.astimezone(_TAIPEI_TZ).date()
             date_only_available_date = capture_date_taipei + timedelta(days=1)
-            for venue in ("twse", "tpex"):
-                for raw_row in source_rows[venue]:
-                    announced = parse_announcement_date(str(raw_row["出表日期"]).strip())
-                    if announced > capture_date_taipei:
-                        raise ValueError(
-                            f"{venue} API row announcement date is after source capture: "
-                            f"{raw_row.get('公司代號')}:{announced.isoformat()}"
-                        )
-            for venue in ("twse", "tpex"):
-                for raw_row in source_rows[venue]:
-                    raw_row["__availability_source"] = (
-                        "twse.monthly_revenue_announcement"
-                        if venue == "twse"
-                        else "tpex.monthly_revenue_announcement"
-                    )
-                    raw_row["__source_version"] = source_results[venue]["source_version"]
-            availability_result = build_historical_monthly_revenue_availability(
-                official_rows_by_market=source_rows,
-                raw_periods=raw_periods,
-                start_period=period,
-                end_period=period,
-                markets=("twse", "tpex"),
-                fetch_date=capture_date_taipei,
-                snapshot_captured_at=latest_source_capture_utc.isoformat(),
-            )
-            if (
-                availability_result.diagnostics
-                or availability_result.duplicate_mapping_rows
-                or availability_result.missing_availability_count
-                or len(availability_result.rows) != len(snapshot_rows)
-            ):
-                diagnostics.extend(
-                    str(item.message) for item in availability_result.diagnostics
-                )
-                diagnostics.append(
-                    "availability coverage is incomplete or contains duplicate mappings"
-                )
-                raise ValueError("availability candidate did not cover every source key")
-            availability_rows = [dict(row) for row in availability_result.rows]
             capture_manifest["requested_period"] = period
             capture_manifest["captured_at_utc"] = latest_source_capture_utc.isoformat()
             capture_manifest["source_row_count"] = len(snapshot_rows)
-            capture_manifest["availability_row_count"] = len(availability_rows)
+            capture_manifest["availability_row_count"] = 0
             capture_manifest["numeric_qa"] = numeric_qa
             capture_manifest["availability_policy"] = {
-                "date_only_rule": "Taipei source capture date plus one calendar day",
+                "status": "not_emitted_report_date_is_not_issuer_announcement_evidence",
+                "report_date_field": "出表日期",
+                "report_date_semantics": "report_level_only",
                 "source_observed_at_utc": latest_source_capture_utc.isoformat(),
                 "source_capture_date_taipei": capture_date_taipei.isoformat(),
-                "snapshot_capture_available_date": date_only_available_date.isoformat(),
+                "conservative_capture_observation_date": date_only_available_date.isoformat(),
+                "capture_date_is_formal_availability": False,
                 "not_formal_acceptance": True,
             }
             for venue in ("twse", "tpex"):
@@ -342,13 +302,14 @@ def _capture_monthly_revenue_research_candidate(
             )
             candidate_manifest_payload = {
                 "schema_version": "monthly-revenue-research-candidate.v1",
-                "status": "research_only_candidate_created",
+                "status": "research_observation_only_created",
                 "run_id": run_id,
                 "candidate_period": period,
                 "candidate_file": snapshot_file_name,
                 "candidate_file_sha256": snapshot_sha256,
                 "availability_file": availability_file_name,
                 "availability_file_sha256": availability_sha256,
+                "availability_status": "not_emitted_no_issuer_period_announcement_evidence",
                 "scope_manifest_file": "full_source_scope_manifest.json",
                 "scope_manifest_sha256": hashlib.sha256(scope_manifest_bytes).hexdigest(),
                 "source_row_count": len(snapshot_rows),
@@ -800,9 +761,9 @@ def _verify_readback(
     )
     if len(snapshot_rows) != expected_rows or len(availability_rows) != expected_availability_rows:
         raise ValueError("candidate CSV readback row count differs from in-memory result")
-    if {f"{row['stock_code']}|{row['period']}" for row in snapshot_rows} != {
-        f"{row['stock_code']}|{row['period']}" for row in availability_rows
-    }:
+    if availability_rows and {
+        f"{row['stock_code']}|{row['period']}" for row in snapshot_rows
+    } != {f"{row['stock_code']}|{row['period']}" for row in availability_rows}:
         raise ValueError("candidate snapshot and availability readback keys differ")
     return {
         "status": "verified",

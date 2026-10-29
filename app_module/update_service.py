@@ -32,6 +32,7 @@ official_twse_session_exists ,
 )
 from data_module.phase3c_backfill_runner import configured_candidate_db_path
 from data_module.monthly_revenue_snapshot_selection import (
+    expected_latest_monthly_revenue_period,
     inspect_monthly_revenue_snapshot,
     select_latest_monthly_revenue_snapshot,
 )
@@ -86,20 +87,17 @@ def _monthly_revenue_status_today() -> str:
 
 
 def _expected_latest_monthly_revenue_period(reference_date: str) -> str | None:
-    """依 MOPS 通常每月 10 日前後公告節奏推算應檢查的最新期別。
+    """依每月 10 日申報期限（週末順延）提示應檢查的最新期別。
 
     這只是一個 UI／資料新鮮度提示，不會把推算期別當成官方公告證據，也
-    不會讓正式回填跳過 availability mapping。月初（1--9 日）預期前兩個
-    月，10 日起預期前一個月；例如 2026-09-03 對應 2026-07。
+    不會讓正式回填跳過 availability mapping。期限當日仍預期前兩個月，
+    超過期限後才預期前一個月；週末期限順延至週一。
     """
     try:
         current = date.fromisoformat(str(reference_date).strip()[:10])
     except (TypeError, ValueError):
         return None
-    months_back = 2 if current.day < 10 else 1
-    month_index = current.year * 12 + (current.month - 1) - months_back
-    year, month_zero = divmod(month_index, 12)
-    return f"{year:04d}-{month_zero + 1:02d}"
+    return expected_latest_monthly_revenue_period(current)
 
 
 def _emit_update_progress(
@@ -798,11 +796,41 @@ class UpdateService :
                 cancel_callback=cancel_callback,
                 progress_callback=progress_callback,
             )
+            expected_pairs = {
+                (market, period)
+                for market in normalized_markets
+                for period in result.requested_periods
+            }
+            observed_pairs = {
+                (str(row.get("market") or ""), str(row.get("period") or ""))
+                for row in result.rows
+            }
+            row_keys = [
+                (
+                    str(row.get("market") or ""),
+                    str(row.get("period") or ""),
+                    str(row.get("stock_code") or ""),
+                )
+                for row in result.rows
+            ]
+            market_row_counts = {
+                market: sum(1 for row in result.rows if row.get("market") == market)
+                for market in normalized_markets
+            }
+            complete_candidate = (
+                not result.cancelled
+                and result.requested_periods == result.fetched_periods
+                and not result.diagnostics
+                and expected_pairs.issubset(observed_pairs)
+                and all(market_row_counts.values())
+                and len(row_keys) == len(set(row_keys))
+                and all(row.get("current_month_revenue", "") != "" for row in result.rows)
+            )
             output_csv = capture_dir / (
                 f"mops_monthly_revenue_snapshot_{start_period}_{end_period}_"
                 f"{target_date.isoformat()}.csv"
             )
-            if result.rows and not result.cancelled:
+            if complete_candidate:
                 write_mops_snapshot_csv(output_csv, result.rows)
             if progress_callback is not None:
                 progress_callback(
@@ -816,12 +844,12 @@ class UpdateService :
                 }
                 for diagnostic in result.diagnostics
             ]
-            success = bool(result.rows) and result.valid_candidate
+            success = complete_candidate
             return {
                 "success": success and not result.cancelled,
                 "cancelled": result.cancelled,
                 "candidate_only": True,
-                "output_csv": str(output_csv) if result.rows and not result.cancelled else None,
+                "output_csv": str(output_csv) if complete_candidate else None,
                 "raw_html_dir": str(raw_html_dir),
                 "capture_dir": str(capture_dir),
                 "start_period": start_period,
@@ -830,6 +858,8 @@ class UpdateService :
                 "markets": list(normalized_markets),
                 "fetched_periods": list(result.fetched_periods),
                 "row_count": len(result.rows),
+                "market_row_counts": market_row_counts,
+                "complete_candidate": complete_candidate,
                 "diagnostics": diagnostics,
                 "message": (
                     f"MOPS 月營收候選完成：{len(result.rows):,} 筆；"

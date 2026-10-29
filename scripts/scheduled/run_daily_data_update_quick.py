@@ -886,6 +886,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--capture-monthly-revenue-mops-snapshot-candidate",
+        action="store_true",
+        help=(
+            "after the daily core is published, capture the expected MOPS SII/OTC "
+            "monthly snapshot as an Update-tab candidate only; never writes DB or mapping"
+        ),
+    )
+    parser.add_argument(
         "--reverify-unknown-legacy-industry-dates",
         action="store_true",
         help=(
@@ -978,6 +986,64 @@ def _run_monthly_revenue_research_capture() -> dict[str, Any]:
             "status": "failed",
             "reason": "research_capture_child_not_captured",
             "child_status": child_status,
+            "return_code": completed.returncode,
+            "command": command,
+            "result": child_result,
+            "stderr_tail": _bounded_process_text(completed.stderr),
+        }
+    return {
+        "status": "captured",
+        "return_code": completed.returncode,
+        "command": command,
+        "result": child_result,
+    }
+
+
+def _run_monthly_revenue_mops_snapshot_capture(output_root: Path) -> dict[str, Any]:
+    script = REPO_ROOT / "scripts" / "capture_mops_monthly_revenue_candidate.py"
+    command = [sys.executable, str(script), "--output-root", str(output_root)]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "timeout",
+            "reason": "mops_snapshot_capture_timeout",
+            "timeout_seconds": 120,
+            "command": command,
+            "stdout_tail": _bounded_process_text(exc.stdout),
+            "stderr_tail": _bounded_process_text(exc.stderr),
+        }
+    except OSError as exc:
+        return {
+            "status": "failed",
+            "reason": f"mops_snapshot_capture_process_start_failed:{type(exc).__name__}",
+            "error": str(exc)[:1000],
+            "command": command,
+        }
+    try:
+        child_result = json.loads(completed.stdout or "")
+    except (TypeError, json.JSONDecodeError):
+        child_result = None
+    if not isinstance(child_result, dict):
+        return {
+            "status": "failed",
+            "reason": "mops_snapshot_capture_child_output_invalid",
+            "return_code": completed.returncode,
+            "command": command,
+            "stdout_tail": _bounded_process_text(completed.stdout),
+            "stderr_tail": _bounded_process_text(completed.stderr),
+        }
+    if completed.returncode != 0 or child_result.get("status") != "captured":
+        return {
+            "status": "failed",
+            "reason": "mops_snapshot_capture_child_not_captured",
             "return_code": completed.returncode,
             "command": command,
             "result": child_result,
@@ -1425,11 +1491,17 @@ def main(argv: list[str] | None = None) -> int:
                 "events": [],
                 "errors": [f"{type(exc).__name__}:{str(exc)[:240]}"],
             }
+        discovered_events = temporary_closure_discovery.get("events")
+        event_count = (
+            len(discovered_events)
+            if isinstance(discovered_events, (list, tuple))
+            else 0
+        )
         logging.info(
             "TWSE temporary closure discovery status=%s attempts=%s events=%s",
             temporary_closure_discovery.get("status"),
             temporary_closure_discovery.get("network_attempts"),
-            len(temporary_closure_discovery.get("events", [])),
+            event_count,
         )
 
     calendar_records: list[dict[str, Any]] = []
@@ -2045,6 +2117,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.capture_monthly_revenue_research_candidate and failed is None
         else None
     )
+    mops_snapshot_capture_receipt_path = (
+        status_path.parent
+        / "mops_snapshot_capture_receipts"
+        / f"{run_id}-{uuid4().hex}.json"
+        if args.capture_monthly_revenue_mops_snapshot_candidate and failed is None
+        else None
+    )
     research_capture: dict[str, Any] = (
         {
             "status": "pending_after_core_publication",
@@ -2053,6 +2132,16 @@ def main(argv: list[str] | None = None) -> int:
         if research_capture_receipt_path is not None
         else {"status": "skipped_core_failure"}
         if args.capture_monthly_revenue_research_candidate
+        else {"status": "not_requested"}
+    )
+    mops_snapshot_capture: dict[str, Any] = (
+        {
+            "status": "pending_after_core_publication",
+            "result_receipt_path": str(mops_snapshot_capture_receipt_path),
+        }
+        if mops_snapshot_capture_receipt_path is not None
+        else {"status": "skipped_core_failure"}
+        if args.capture_monthly_revenue_mops_snapshot_candidate
         else {"status": "not_requested"}
     )
     capacity_reservation_released_before_research_capture = False
@@ -2111,6 +2200,7 @@ def main(argv: list[str] | None = None) -> int:
             "skip_broker_branch": bool(args.skip_broker_branch),
         },
         "monthly_revenue_research_capture": research_capture,
+        "monthly_revenue_mops_snapshot_capture": mops_snapshot_capture,
         "daily_price_source_bundle": daily_price_source_bundle,
     }
     try:
@@ -2139,7 +2229,7 @@ def main(argv: list[str] | None = None) -> int:
     # terminal history/status have been published. The candidate collector is
     # a separate, lower-priority research child and must not race the technical
     # publication that describes this same data-update run.
-    if research_capture_receipt_path is not None:
+    if research_capture_receipt_path is not None or mops_snapshot_capture_receipt_path is not None:
         try:
             release_heavy_chain_reservation(capacity_reservation)
             capacity_reservation = None
@@ -2151,28 +2241,65 @@ def main(argv: list[str] | None = None) -> int:
                 "error_type": type(exc).__name__,
                 "error": str(exc)[:1000],
             }
+            mops_snapshot_capture = {
+                "status": "failed",
+                "reason": "capacity_reservation_release_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:1000],
+            }
         else:
-            research_capture = _run_monthly_revenue_research_capture()
-        try:
-            _write_json_create_only(
-                research_capture_receipt_path,
-                {
-                    "schema_version": "scheduled-monthly-revenue-research-capture.v1",
-                    "run_id": run_id,
-                    "core_status": final_status,
-                    "core_status_path": str(status_path),
-                    "captured_at": scheduled_now().isoformat(),
-                    "capacity_reservation_released_before_capture": (
-                        capacity_reservation_released_before_research_capture
-                    ),
-                    "research_capture": research_capture,
-                    "core_status_unchanged": True,
-                },
-            )
-        except Exception as exc:  # noqa: BLE001 - child receipt is nonfatal
-            logging.warning(
-                "Unable to write monthly revenue research child receipt: %s", exc
-            )
+            if research_capture_receipt_path is not None:
+                research_capture = _run_monthly_revenue_research_capture()
+            if mops_snapshot_capture_receipt_path is not None:
+                mops_snapshot_capture = _run_monthly_revenue_mops_snapshot_capture(
+                    config.output_root
+                )
+        if research_capture_receipt_path is not None:
+            try:
+                _write_json_create_only(
+                    research_capture_receipt_path,
+                    {
+                        "schema_version": "scheduled-monthly-revenue-research-capture.v1",
+                        "run_id": run_id,
+                        "core_status": final_status,
+                        "core_status_path": str(status_path),
+                        "captured_at": scheduled_now().isoformat(),
+                        "capacity_reservation_released_before_capture": (
+                            capacity_reservation_released_before_research_capture
+                        ),
+                        "research_capture": research_capture,
+                        "core_status_unchanged": True,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 - child receipt is nonfatal
+                logging.warning(
+                    "Unable to write monthly revenue research child receipt: %s", exc
+                )
+        if mops_snapshot_capture_receipt_path is not None:
+            try:
+                _write_json_create_only(
+                    mops_snapshot_capture_receipt_path,
+                    {
+                        "schema_version": "scheduled-monthly-revenue-mops-snapshot-capture.v1",
+                        "run_id": run_id,
+                        "core_status": final_status,
+                        "core_status_path": str(status_path),
+                        "captured_at": scheduled_now().isoformat(),
+                        "capacity_reservation_released_before_capture": (
+                            capacity_reservation_released_before_research_capture
+                        ),
+                        "source": "MOPS static monthly revenue snapshot",
+                        "candidate_only": True,
+                        "formal_pit_eligible": False,
+                        "writes_formal_database": False,
+                        "writes_availability_mapping": False,
+                        "formal_apply_authorized": False,
+                        "mops_snapshot_capture": mops_snapshot_capture,
+                        "core_status_unchanged": True,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 - child receipt is nonfatal
+                logging.warning("Unable to write MOPS snapshot child receipt: %s", exc)
 
     logging.info("Scheduled quick data update finished with status=%s", final_status)
     release_heavy_chain_reservation(capacity_reservation)

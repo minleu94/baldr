@@ -145,8 +145,8 @@ def test_taiwan_date_controls_monthly_period_at_utc_taiwan_day_boundary(monkeypa
     assert utc_now.date() == date(2026, 9, 9)
     assert utc_now.astimezone(ZoneInfo("Asia/Taipei")).date() == date(2026, 9, 10)
     assert UpdateView._safe_update_end_date() == date(2026, 9, 10)
-    # The release-on-day-10 rule uses Taiwan's September 10, not the host's 9th.
-    assert UpdateView._latest_expected_monthly_revenue_period() == "2026-08"
+    # The filing deadline is inclusive; September 10 still expects July.
+    assert UpdateView._latest_expected_monthly_revenue_period() == "2026-07"
 
 
 def test_market_date_failure_is_explicit_and_does_not_use_host_date(monkeypatch):

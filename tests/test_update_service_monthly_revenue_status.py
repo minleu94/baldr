@@ -126,6 +126,40 @@ def test_monthly_candidate_service_passes_cooperative_cancel_to_harvester(
     assert observed["cancel_callback"]() is False
 
 
+def test_manual_mops_candidate_rejects_single_market_partial_result(
+    test_config, monkeypatch
+) -> None:
+    partial_row = {
+        "market": "twse",
+        "period": "2026-07",
+        "stock_code": "2330",
+        "current_month_revenue": "100",
+    }
+    monkeypatch.setattr(
+        monthly_harvester,
+        "build_mops_monthly_revenue_snapshot",
+        lambda **_kwargs: MopsMonthlyRevenueSnapshotResult(
+            rows=[partial_row],
+            requested_periods=("2026-07",),
+            fetched_periods=("2026-07",),
+            diagnostics=(),
+        ),
+    )
+
+    result = UpdateService(test_config).fetch_mops_monthly_revenue_snapshot_candidate(
+        start_period="2026-07",
+        end_period="2026-07",
+        fetch_date="2026-09-04",
+        sleep_seconds=0,
+    )
+
+    snapshot_root = test_config.output_root / "monthly_revenue_mops_snapshots"
+    assert result["success"] is False
+    assert result["output_csv"] is None
+    assert result["complete_candidate"] is False
+    assert select_latest_monthly_revenue_snapshot(snapshot_root) is None
+
+
 def test_monthly_revenue_dry_run_preserves_legacy_diagnostic_wire_payload(
     test_config,
     tmp_path,

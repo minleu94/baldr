@@ -53,6 +53,7 @@ from app_module.evidence_weekly_review_decision import (
 )
 from data_module.source_acceptance_decision_registry import parse_source_acceptance_decisions
 from data_module.monthly_revenue_snapshot_selection import (
+    expected_latest_monthly_revenue_period,
     select_latest_monthly_revenue_snapshot,
 )
 from ui_qt.widgets.info_button import InfoButton
@@ -2442,10 +2443,7 @@ class UpdateView(QWidget):
         """依月初／月中公告節奏提示本次應抓的月營收期別。"""
 
         current = current if current is not None else cls._safe_update_end_date()
-        months_back = 2 if current.day < 10 else 1
-        month_index = current.year * 12 + (current.month - 1) - months_back
-        year, month_zero = divmod(month_index, 12)
-        return f"{year:04d}-{month_zero + 1:02d}"
+        return expected_latest_monthly_revenue_period(current)
 
     def _candidate_update_window(self, source: str) -> tuple[str, str]:
         """取得候選來源的增量窗口；沒有 checkpoint 時只抓近 30 日。"""

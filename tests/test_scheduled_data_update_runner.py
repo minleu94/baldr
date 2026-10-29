@@ -180,11 +180,16 @@ def test_unknown_legacy_reverification_is_explicit_cli_opt_in() -> None:
     research_capture_args = runner.build_parser().parse_args(
         common + ["--capture-monthly-revenue-research-candidate"]
     )
+    mops_capture_args = runner.build_parser().parse_args(
+        common + ["--capture-monthly-revenue-mops-snapshot-candidate"]
+    )
 
     assert default_args.reverify_unknown_legacy_industry_dates is False
     assert opted_in_args.reverify_unknown_legacy_industry_dates is True
     assert default_args.capture_monthly_revenue_research_candidate is False
     assert research_capture_args.capture_monthly_revenue_research_candidate is True
+    assert default_args.capture_monthly_revenue_mops_snapshot_candidate is False
+    assert mops_capture_args.capture_monthly_revenue_mops_snapshot_candidate is True
 
 
 def test_industry_policy_preserves_old_service_call_by_default() -> None:
@@ -785,6 +790,16 @@ def test_monthly_revenue_research_capture_runs_after_capacity_release_without_ch
         return real_release(reservation)
 
     monkeypatch.setattr(runner, "release_heavy_chain_reservation", tracked_release)
+    monkeypatch.setattr(
+        runner,
+        "refresh_twse_temporary_closure_events",
+        lambda **_kwargs: {
+            "status": "verified_cache",
+            "network_attempts": 0,
+            "events": [],
+            "errors": [],
+        },
+    )
 
     class _FakeUpdateService:
         def __init__(self, _config) -> None:
@@ -811,8 +826,7 @@ def test_monthly_revenue_research_capture_runs_after_capacity_release_without_ch
             return {"success": True, "is_current": True}
 
     def fail_candidate_capture(command, **kwargs):
-        assert command[-1].endswith("capture_monthly_revenue_research_candidate.py")
-        assert kwargs["timeout"] == 90
+        script_name = Path(command[1]).name
         assert release_calls["count"] == 1
         core_status = json.loads(status_path.read_text(encoding="utf-8"))
         assert core_status["status"] == "passed"
@@ -827,10 +841,25 @@ def test_monthly_revenue_research_capture_runs_after_capacity_release_without_ch
         reservation = acquire_heavy_chain_reservation(lock_path)
         observed["capacity_released_before_capture"] = reservation is not None
         release_heavy_chain_reservation(reservation)
+        if script_name == "capture_monthly_revenue_research_candidate.py":
+            assert kwargs["timeout"] == 90
+            return SimpleNamespace(
+                returncode=2,
+                stdout=json.dumps({"status": "rejected", "reason": "source_unavailable"}),
+                stderr="official source timeout",
+            )
+        assert script_name == "capture_mops_monthly_revenue_candidate.py"
+        assert kwargs["timeout"] == 120
         return SimpleNamespace(
-            returncode=2,
-            stdout=json.dumps({"status": "rejected", "reason": "source_unavailable"}),
-            stderr="official source timeout",
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "status": "captured",
+                    "candidate_only": True,
+                    "formal_database_written": False,
+                }
+            ),
+            stderr="",
         )
 
     from data_module import recommendation_calibration_source_contract as source_contract
@@ -861,6 +890,7 @@ def test_monthly_revenue_research_capture_runs_after_capacity_release_without_ch
             "--status-path",
             str(status_path),
             "--capture-monthly-revenue-research-candidate",
+            "--capture-monthly-revenue-mops-snapshot-candidate",
         ]
     )
 
@@ -884,6 +914,14 @@ def test_monthly_revenue_research_capture_runs_after_capacity_release_without_ch
     assert child_receipt["core_status"] == "passed"
     assert child_receipt["research_capture"]["status"] == "failed"
     assert child_receipt["research_capture"]["child_status"] == "rejected"
+    mops_receipt_path = Path(
+        payload["monthly_revenue_mops_snapshot_capture"]["result_receipt_path"]
+    )
+    assert mops_receipt_path.is_file()
+    mops_receipt = json.loads(mops_receipt_path.read_text(encoding="utf-8"))
+    assert mops_receipt["mops_snapshot_capture"]["status"] == "captured"
+    assert mops_receipt["writes_formal_database"] is False
+    assert mops_receipt["writes_availability_mapping"] is False
     assert status_path.read_bytes() == observed["status_bytes_before_capture"]
 
 

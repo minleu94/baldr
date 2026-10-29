@@ -533,3 +533,9 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 這是對 **PUB 市場 + F22 公告查詢端點 + 本次涵蓋日期窗** 的完整有效負結果，不表示其他 MOPS 頁面、公告類型或不同查詢路徑沒有公告。相較於原有 SII／OTC F22 harvest，本批沒有新事件、公司或公告時間可合併，故不會解除任何新的 degraded，也沒有寫入正式 SQLite 或 `monthly_revenue_availability.csv`。既有正式資料與 PIT mapping 未因本批改動。輸出保存在 `output/mops_harvest_pub_2014_2026_backfill20261029/`；此目錄的 manifest、raw、checkpoint、events 是採集與可重現驗證依據。
 
 **後續處置：**不再重複掃描同一 PUB/F22/date 窗口。剩餘缺口須由既有 SII／OTC F22 事件精確配對、可識別的發行人營收明細或其他能提供公告時間證據的官方查詢路徑處理；現有分類仍以本報告上述整表讀回及晚公告處置為準。本次負查詢結果不能作為將其他 market/announcement source 視為已掃描的理由。
+
+### 2026-10-30 更正：PUB 全期空結果不能視為市場覆蓋證據
+
+完成上述報告後，重新用 Scrapling 讀取 MOPS EZSearch 頁面及其官方 `mop_search.js`。前端 URL 市場映射明確處理 `TYPEK=sii` 與 `TYPEK=otc`（對應選單上市／上櫃）；專案 collector 額外允許的 `pub` 並沒有出現在該前端市場選擇／映射中。交叉看相同 `115/01/01–115/01/05` 視窗：既有 `sii` harvest 為 HTTP 200、72 列；本次 `pub` 則為 HTTP 200、`查無公告資料`、0 列。這不足以把 `pub` 判成官方支援的有效歷史市場查詢值。
+
+因此上節的 **924／924 `pub` 空窗只證明 API 對傳入 `TYPEK=pub` 的回應內容一致，不構成公開發行市場已完整掃描，也不能據此判斷該市場無公告**。本報告先前稱其為「有效負結果」及「完整覆蓋」的部分予以撤回；此批保留為技術探測原件，不納入市場覆蓋率，不解除或改寫任何 degraded。後續只以 MOPS 官方前端實際提供的市場值（目前可證實 `sii`、`otc`）及其正式歷史 harvest 為公告證據；若要擴至興櫃或公開發行，先由官方頁面／端點確認正確市場參數並用已知公告作正反向驗證，再規劃批次。

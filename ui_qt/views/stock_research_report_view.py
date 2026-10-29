@@ -3090,14 +3090,22 @@ class StockResearchReportView(QWidget):
         if tooltip:
             label.setToolTip(tooltip)
         card_layout.addWidget(label)
-        button = QPushButton("查看章節")
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.addStretch(1)
+        button = QToolButton()
+        button.setText("查看 →")
         button.setObjectName(f"stockResearchSummaryFacetOpen_{title}")
         button.setStyleSheet(
-            "QPushButton { padding: 1px 6px; min-height: 18px; font-size: 9pt; }"
+            "QToolButton { padding: 1px 4px; min-height: 18px; font-size: 9pt; }"
         )
+        button.setAutoRaise(True)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         button.setAccessibleName(f"查看{title}研究章節")
+        button.setToolTip(f"前往完整的{title}研究章節；不會重新查詢資料。")
         button.clicked.connect(lambda _checked=False, key=target: self.focus_section(key))
-        card_layout.addWidget(button)
+        action_row.addWidget(button)
+        card_layout.addLayout(action_row)
         layout.addWidget(card, 1)
 
     def _add_metric_summary_facet(
@@ -4306,9 +4314,9 @@ class StockResearchReportView(QWidget):
                 update_monthly_table_toggle(False)
                 monthly_table_details.hide()
             self._add_table(
-                monthly_table_layout, ("項目", "值／原披露單位", "期間", "資料可得時間"),
-                tuple((item.label, _metric_text(item), item.period or "—", item.available_at or "—") for item in monthly),
-                240, tooltips=tuple(tuple(_fundamental_basis_tooltip(item) for _ in range(4)) for item in monthly),
+                monthly_table_layout, ("項目", "值／原披露單位", "期間", "公告日", "資料可得時間"),
+                tuple((item.label, _metric_text(item), item.period or "—", item.announced_date or "缺公告時間", item.available_at or "—") for item in monthly),
+                240, tooltips=tuple(tuple(_fundamental_basis_tooltip(item) for _ in range(5)) for item in monthly),
                 object_name="fundamentalMonthlyRevenueTable", balanced_columns=True, numeric_columns=(1,),
             )
             if monthly_table_details is not None:
@@ -4320,7 +4328,7 @@ class StockResearchReportView(QWidget):
                 item.label,
                 item.period or "—",
                 item.as_of_date or "—",
-                item.announced_date or "—",
+                item.announced_date or ("缺公告時間" if item.kind == "monthly_revenue" else "—"),
                 item.available_at or "—",
                 _metric_text(item),
                 item.quality,
@@ -6372,7 +6380,7 @@ def _metric_text(metric: StockMetricDTO | StockFundamentalObservationDTO) -> str
                 number = f"{metric.value:,.1f}"
         value = number + (f" {metric.unit}" if metric.unit else "")
         return f"{value}（{note}）" if note else value
-    return note or "—"
+    return note or ("缺值" if isinstance(metric, StockFundamentalObservationDTO) and metric.kind == "monthly_revenue" else "—")
 
 
 def _fundamental_basis_tooltip(metric: StockFundamentalObservationDTO) -> str:
@@ -6390,9 +6398,17 @@ def _fundamental_basis_tooltip(metric: StockFundamentalObservationDTO) -> str:
         else f"期間基礎為 {basis}。"
     )
     pit = "符合正式 PIT" if metric.formal_pit_eligible else "不具正式 PIT 資格"
+    announced_part = (
+        f"公告時間：{metric.announced_date if metric.announced_date else '缺公告時間'}\n"
+        if metric.kind == "monthly_revenue"
+        else ""
+    )
+    value_part = "數值狀態：缺值\n" if metric.value is None and metric.kind == "monthly_revenue" else ""
     return (
         f"報告顯示值：{_metric_text(metric)}\n"
+        f"{value_part}"
         f"期間基礎：{basis}（{basis_verified}）\n"
+        f"{announced_part}"
         f"特徵聚合資格：{aggregate}\n"
         f"歷史資格：{pit}\n{basis_note}"
     )

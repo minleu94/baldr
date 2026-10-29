@@ -239,7 +239,8 @@ def test_fundamental_filters_pe_and_yoy_scenarios(test_config) -> None:
 
     # 執行推薦生成
     result = service.run_recommendation(
-        config=config
+        config=config,
+        as_of_date="2026-07-16",
     )
 
     # 5. 斷言驗證

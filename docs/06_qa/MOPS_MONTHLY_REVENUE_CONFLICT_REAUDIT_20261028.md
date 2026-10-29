@@ -404,6 +404,10 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 
 正式寫入收據及讀回：新增 31 列、mapping 新增 31 列；SQLite `PRAGMA quick_check=ok`。PIT provider cutoff 驗證為 **2026-10-29 不可見、2026-10-30 31/31 精確值可見**。SQLite 物理列品質目前為 **251,228 observed／719 degraded**：observed 增加 31，但舊 snapshot 的 degraded 標記仍保留，因而底層 degraded 計數不變。這 31 個鍵於 10/30 之後有可用的新觀察版本；不能稱舊 snapshot 被回填，也不能把其更正值回寫到更早時間。DB 與 mapping 備份、逐筆寫入／provider 驗證收據保存在正式資料根目錄 `meta_data/backup/` 及本次 ignored scratch `.tmp_mops_late_revision_20261029/`。
 
+整表讀回亦確認目前 `fundamental_monthly_revenues` 共 **251,947 列、收入值空白 0 列**；719 個 degraded canonical rows 的 `announced_date` 全部空白，observed rows 則公告日期均有值。因此目前的 719 筆不是缺少營收數字，而是缺可供正式 PIT 使用的公司別公告時間證據；報表仍可顯示舊快照數字及 degraded 品質，但正式 PIT provider 不會把沒有公告 mapping 的舊列當可用歷史特徵。
+
+後續又加入更嚴格的 mapping validator 規則：新 source version 內的 16 位明細 SHA 前綴必須與 `source_hash` 相符，capture date 必須是可得日的前一日。以正式 mapping 重跑驗證為 **valid、250,069 accepted、0 diagnostics**；mapping SHA-256 `5b76f1b383c715ece53fa51ff8e7338a077ad3d2e191f4aae203004e0c1def5a` 與寫入收據一致。使用目前程式直接對正式 SQLite／mapping 重跑 `FundamentalSQLiteProvider`：31 鍵在 2026-10-29 cutoff **0 筆可見**，2026-10-30 cutoff **31/31 精確值可見、0 mismatch**。因此次序與 hash binding 在現行 reader 上也通過實讀，並非只通過測試 fixture。
+
 此處置將 36 個晚於舊 snapshot 可得日事件及 1 個晚於原列擷取時間事件中的 31 個鍵，補成「目前頁面值、於本次實際觀察後可用」的新版本；其餘晚公告鍵仍需可識別的單一公司營收明細，尤其 3712 的選擇頁不能代替子公司資料。原分類的 681 個缺少已配對事件、未解的晚公告鍵及 6884／2026-08 特殊缺口仍須繼續逐類處理。這不是 719 個 degraded 全數解除，也不代表歷史公告版本都已還原。
 
 ### 2026-10-29 6806 歷史公告缺口離線交叉核查
@@ -413,3 +417,13 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 本次另以 Scrapling 普通 HTTPS POST 對同一官方 `t05st01` 入口做一次即時重試，DNS 解析失敗，沒有收到 HTTP 回應；失敗收據位於 ignored `.tmp_mops_gap_scout_6806_20261029/`。沒有替換解析器、代理或使用 Remote Desktop。現有 F22 harvest 事件欠缺是來源事件未取得，非本地 market/date 欄位配對錯誤；這 85 個目前仍 degraded 的 6806 keys 沒有可安全解除列。還需從另一條能取得其歷史公告的公開官方路徑查核，或補得能綁定精確公司、期別、數值及當時可得時間的原件。原件集合與摘要保留於上述 ignored scratch；正式 DB／mapping 未修改。
 
 另用程式庫既有官方月表 redirect chain（`redirectToOld → ajax_t21sc04_ifrs → static report`）對 `tpex／2019-01` 做一個單窗歷史數值探測。POST 在第一跳 DNS `getaddrinfo failed`，尚未取得 HTTP 回應或月表原件；失敗收據位於 ignored `.tmp_mops_6806_historical_month_probe_20261029/failure_receipt.json`。因此本次仍沒有 6806 數值或公告時間新證據，也沒有安全解除列。這個月表路徑若日後可連線，可能核對目前可觀察的官方歷史月值；它本身不含當年公告 timestamp，必須以實際擷取時間建立新觀察版本，不能回填成原公告可得時間。
+
+### 2026-10-29 current degraded 719 keys crosswalk reconciliation
+
+以正式 SQLite 中目前 719 個 `degraded` canonical keys，重新和四批保存的 F22 `events.csv` 以 `(stock_code, period)` 精確交叉比對，並另外對照 37 個 F22 detail revision manifest keys 與既有 `t05st01` 原件線索：**686 keys 沒有精確 F22 event；33 keys 有精確 F22 event，但事件時間晚於 2026-06-16 舊 snapshot row capture**。兩組合計正好 719；市場標籤正規化及事件時間解析沒有額外找回 key。這也解釋舊分類的「681 缺事件」：另有 5 keys 帶不完整 `t05st01` 線索，但不能精確配對到 issuer-period 數值與公告事件，因此仍在 686 個無 F22 精確配對鍵內。
+
+這 5 keys 為 `2867／2025-01`、`2867／2025-02`、`2867／2026-01`、`2867／2026-02`（同一 2026-04-14 17:00:38 更正公告標題涵蓋多期，但候選期別空白，無法逐鍵裁決），以及 `8183／2014-07`（清單標題為自願申報，詳情 API 500，未取得可驗證的月營收數值）。它們目前都沒有精確 F22 event candidate，故不能只憑公司年度或標題解除 degraded。
+
+37 個 late-detail manifest keys 中，另 4 個（`2392／2026-03`、`3712／2026-03`、`3712／2026-04`、`8101／2026-04`）已不屬目前 degraded 集合；其餘 33 個才與本次 degraded 母體相交。31 個於 2026-10-29 成功讀取並寫成 2026-10-30 才可用的新觀察版本；另兩鍵仍未形成可讀的單一 issuer detail revision。這些新版本不會追溯改寫舊 snapshot row 的 degraded 狀態。
+
+因此目前頁面月營收金額並未缺值（全表 251,947 rows 中空白值 0）；真正未結案的是舊列的公告時間／PIT 證據。正式舊列的安全解除數仍為 **0**；31 個新版本於 2026-10-30 起應按新 source version 讀取，不能追溯視為舊 snapshot 的解除。另 688 個 keys 尚無可供舊列採用的精確事件／修訂時間證據；其中 `6884／2026-08` 屬 686 個無精確 F22 配對鍵。後續優先補查 686 個無 F22 精確配對鍵的歷史官方公告與適用性，並處理餘下兩個 late-detail key；不能重抓同一批既有窗口取代缺失來源證據。

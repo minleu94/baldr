@@ -77,6 +77,17 @@ def build_global_stylesheet(tokens: ThemeTokens = MIDNIGHT_ANALYST) -> str:
         background: {tokens.accent_hover};
         border-color: {tokens.accent_hover};
     }}
+    QPushButton[variant="primary"]:disabled,
+    QPushButton[variant="secondary"]:disabled,
+    QPushButton[variant="success"]:disabled,
+    QPushButton[variant="warning"]:disabled,
+    QPushButton[variant="danger"]:disabled,
+    QPushButton[variant="ghost"]:disabled {{
+        background: {tokens.surface_1};
+        color: {tokens.text_muted};
+        border-color: {tokens.border_subtle};
+        font-weight: 400;
+    }}
     QPushButton[variant="secondary"] {{
         background: {tokens.surface_2};
         color: {tokens.text_primary};

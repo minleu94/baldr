@@ -516,7 +516,14 @@ class UnifiedScreenerWorkspace:
             "目前來源沒有可用的原生收藏流程。"
         )
         self.save_filter_button.clicked.connect(self.save_current_filter)
+        self.save_filter_status_label = QLabel()
+        self.save_filter_status_label.setObjectName("unifiedScreenerSaveFilterStatus")
+        self.save_filter_status_label.setProperty("statusTone", "info")
+        self.save_filter_status_label.setAccessibleName("研究篩選收藏狀態")
+        self.save_filter_status_label.setWordWrap(False)
+        self.save_filter_status_label.hide()
         quick_routes_header.addWidget(self.save_filter_button)
+        quick_routes_header.addWidget(self.save_filter_status_label)
         self.quick_routes.addLayout(self.condition_recipe_layout)
         self.quick_routes.addWidget(self.condition_recipe_hint)
         self.unavailable_conditions = QLabel(
@@ -820,9 +827,11 @@ class UnifiedScreenerWorkspace:
         native_button = self._bookmark_button_for(source)
         if native_button is None:
             self.save_filter_button.setEnabled(False)
-            self.save_filter_button.setText("此來源未提供收藏")
-            self.save_filter_button.setToolTip(
-                "此來源尚未提供已接通的原生收藏流程；無法由共用選股頁保存。"
+            self.save_filter_button.hide()
+            self._set_save_filter_status(
+                "此來源未提供收藏",
+                "此來源尚未提供已接通的原生收藏流程；無法由共用選股頁保存。",
+                "info",
             )
             return None
         enabled = native_button.isEnabled()
@@ -834,12 +843,26 @@ class UnifiedScreenerWorkspace:
             self.save_filter_button.setToolTip(
                 f"沿用目前來源的「{detail}」流程；不另建或改寫收藏內容。"
             )
+            self.save_filter_status_label.hide()
+            self.save_filter_button.show()
         else:
-            self.save_filter_button.setText("目前無法收藏")
-            self.save_filter_button.setToolTip(
-                native_hint or "來源頁尚未滿足收藏條件；請核對來源狀態與查詢結果。"
+            self.save_filter_button.hide()
+            self._set_save_filter_status(
+                "目前無法收藏",
+                native_hint or "來源頁尚未滿足收藏條件；請核對來源狀態與查詢結果。",
+                "warning",
             )
         return native_button
+
+    def _set_save_filter_status(self, text: str, tooltip: str, tone: str) -> None:
+        label = self.save_filter_status_label
+        label.setText(text)
+        label.setToolTip(tooltip)
+        if label.property("statusTone") != tone:
+            label.setProperty("statusTone", tone)
+            label.style().unpolish(label)
+            label.style().polish(label)
+        label.show()
 
     def save_current_filter(self) -> bool:
         """只點擊目前精確來源已接通的收藏按鈕，沿用原有保存管線。"""

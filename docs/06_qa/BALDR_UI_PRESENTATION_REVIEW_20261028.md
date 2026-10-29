@@ -620,8 +620,20 @@ Runtime 的營運排程清單原本每列都使用相同文字色，雖然上方
 
 ## 2026-10-29 第六十四輪：Backtest 設定區標題與收合入口併列
 
-Backtest 設定欄最上方原以整列寬按鈕「收合左側設定」開頭，動作與設定內容標題分離，按鈕也搶占設定欄的水平空間。現在加入「回測設定」標題，將收合入口作為同列的次要 ghost 操作靠右放置；按鈕寬度依文字需求，設定表單仍在同一捲動面板，切換至結果頁及回到設定的行為不變。沒有改回測、結果、資料或金融邏輯。
+Backtest 設定欄最上方原以整列寬按鈕「收合左側設定」開頭，動作與設定內容標題分離，按鈕也搶占設定欄的水平空間。現在加入「回測設定」標題，將收合入口作為同列的次要 ghost 操作靠右放置；按鈕寬度依文字需求，設定表單仍在同一捲動面板，切換至結果頁及回到設定的行為不變。MainWindow 截圖另發現「閱讀順序」兩行提示被垂直拉到 242 px，將摘要往下推；現限制提示依文字高度呈現，讀回高度 51 px。沒有改回測、結果、資料或金融邏輯。
 
-- `tests/test_ui_qt_backtest_layout.py::test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusive`：**1 passed**；檢查設定標題、按鈕與標題列的父子關係、按鈕不再填滿設定欄，以及結果摘要／明細的既有顯示行為。`tests/test_ui_qt_backtest_product_layout.py`：**11 passed**。
+- `tests/test_ui_qt_backtest_layout.py::test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusive`：**1 passed**；檢查設定標題、按鈕與標題列的父子關係、按鈕不再填滿設定欄、判讀提示採自然高度，以及結果摘要／明細的既有顯示行為。`tests/test_ui_qt_backtest_product_layout.py`：**11 passed**。
+- 真實 MainWindow default／scale 1.0 offscreen 稽核：**19 子頁、passed、0 coverage gaps**；輸出 `.pytest-owned-temp/ui_audit_backtest_config_header_round64b/`。更新後畫面截圖核對設定標題列和判讀提示不再佔用不必要的整欄／整段高度。
 - 必要 Update UI：**102 passed**；Update validator：**25 passed／0 failed／4 skipped**。Backtest source scoped mypy **0 issues**，修改 Python source／test `py_compile` 通過。
 - Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。原生 GUI／Owner UAT 未做；本次不代表 Backtest 成功／失敗正式結果旅程或全程式 UI 盤點完成。
+- Recommendation／Research Lab 操作手冊已同步設定標題與收合入口位置；document-control 仍回報 9 個既有 `output/trial/` Junction 外部連結越界，未將其記為通過。
+
+## 2026-10-29 第六十五輪：Recommendation 收藏狀態從按鈕改為提示
+
+統一選股頁的來源收藏尚未接通或尚未滿足條件時，先前仍以與主要操作同樣大小的停用按鈕呈現；這讓不能執行的狀態也佔用操作列位置，且容易被看成可按入口。現在只有來源收藏可用時才顯示「儲存篩選條件」按鈕；未接通與暫時不可收藏改顯示帶有既有語意色的小型狀態標籤和 Tooltip。原生收藏按鈕代理、來源資格門檻及保存流程不變。
+
+- `tests/test_ui_qt_unified_screener_workspace.py -k unified_save_filter`：**2 passed**，覆蓋原生收藏流程仍可用、暫時不可用顯示 warning、未接通來源顯示 info、V4 disabled gate 不呼叫來源收藏。整個模組執行為 **25 passed／1 failed／2 errors**；3 個非本次收藏案例在系統 Temp 的 `Path.resolve(strict=True)` 遇 `WinError 5`，與新增斷言無關。必要 Update UI **102 passed**；Update validator **25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round65_update_validator_logs/VALIDATION_REPORT.md`。
+- Recommendation 真實 MainWindow default／compact、scale 1.5 offscreen 稽核：**92 子頁 visits、0 failures／0 coverage gaps**；檢視 `recommendation_entry.png`，標籤已無邊框、單行著色，沒有停用按鈕外觀或額外換行高度。輸出 `.pytest-owned-temp/ui_audit_recommendation_save_state_round65c/`；offscreen 畫面不等同原生 GUI／Owner UAT。
+- 修改視圖 scoped mypy **1 source／0 issues**、source/test `py_compile` 通過；QA 文件 document-control **12 features／1 link source／0 errors**。repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。操作手冊 document-control 仍受 9 個既有 `output/trial/` Junction 引用的 `WinError 5` 阻擋；本輪同步說明按鈕及狀態提示的視覺行為。
+- Recommendation／Research Lab 操作手冊已同步說明「可操作才顯示按鈕，否則顯示原因提示」。
+- 本輪是持續 UI 盤點的一項修正，不代表 Recommendation 全流程、來源資格、Gate 1 Owner UAT 或整體 UI 盤點完成；未改來源資料、Advice 或金融邏輯。

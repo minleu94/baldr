@@ -800,6 +800,8 @@ def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot
     source = next(item for item in workspace._sources if item.widget is supported)
     assert workspace.select_source(source.key)
     assert workspace.save_filter_button.isEnabled()
+    assert not workspace.save_filter_button.isHidden()
+    assert workspace.save_filter_status_label.isHidden()
 
     workspace.save_filter_button.click()
     assert calls == ["native"]
@@ -807,6 +809,10 @@ def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot
     supported.bookmark_button.setEnabled(False)
     workspace.refresh_funnel()
     assert not workspace.save_filter_button.isEnabled()
+    assert workspace.save_filter_button.isHidden()
+    assert not workspace.save_filter_status_label.isHidden()
+    assert workspace.save_filter_status_label.text() == "目前無法收藏"
+    assert workspace.save_filter_status_label.property("statusTone") == "warning"
     assert workspace.save_current_filter() is False
     assert calls == ["native"]
 
@@ -815,8 +821,11 @@ def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot
     unsupported_source = next(item for item in workspace._sources if item.widget is unsupported)
     assert workspace.select_source(unsupported_source.key)
     assert not workspace.save_filter_button.isEnabled()
-    assert workspace.save_filter_button.text() == "此來源未提供收藏"
-    assert "尚未提供" in workspace.save_filter_button.toolTip()
+    assert workspace.save_filter_button.isHidden()
+    assert not workspace.save_filter_status_label.isHidden()
+    assert workspace.save_filter_status_label.text() == "此來源未提供收藏"
+    assert workspace.save_filter_status_label.property("statusTone") == "info"
+    assert "尚未提供" in workspace.save_filter_status_label.toolTip()
 
 
 def test_primary_date_preserves_rejected_selection_and_clears_missing_source(qtbot):
@@ -852,6 +861,8 @@ def test_unified_save_filter_preserves_v4_dirty_bookmark_gate(qtbot):
     view.bookmark_button.setEnabled(False)
     workspace.refresh_funnel()
     assert not workspace.save_filter_button.isEnabled()
+    assert workspace.save_filter_button.isHidden()
+    assert workspace.save_filter_status_label.text() == "目前無法收藏"
     assert workspace.save_current_filter() is False
 
 

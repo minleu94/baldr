@@ -105,6 +105,27 @@ def test_global_stylesheet_contains_core_qt_selectors():
         assert f"border-color: {color};" in selector_block
 
 
+def test_disabled_primary_button_has_a_distinct_muted_state():
+    qss = build_global_stylesheet()
+    selectors = (
+        'QPushButton[variant="primary"]:disabled',
+        'QPushButton[variant="secondary"]:disabled',
+        'QPushButton[variant="success"]:disabled',
+        'QPushButton[variant="warning"]:disabled',
+        'QPushButton[variant="danger"]:disabled',
+        'QPushButton[variant="ghost"]:disabled',
+    )
+    for selector in selectors:
+        assert selector in qss
+    selector = selectors[0]
+    selector_start = qss.index(selector)
+    selector_end = qss.index("    }", selector_start)
+    selector_block = qss[selector_start:selector_end]
+    assert f"background: {MIDNIGHT_ANALYST.surface_1};" in selector_block
+    assert f"color: {MIDNIGHT_ANALYST.text_muted};" in selector_block
+    assert f"border-color: {MIDNIGHT_ANALYST.border_subtle};" in selector_block
+
+
 def _app():
     instance = QApplication.instance()
     if instance is None:

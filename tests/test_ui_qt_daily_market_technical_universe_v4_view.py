@@ -104,6 +104,7 @@ def test_v4_result_actions_are_grouped_and_reflow_at_narrow_width(app: QApplicat
         assert view.apply_action_hint.isVisible()
         assert view.apply_action_hint.width() >= 120
         assert view.open_button.property("variant") == "primary"
+        assert not view.open_button.isEnabled()
         assert view.compare_button.property("variant") == "primary"
         assert view.clear_comparison_button.property("variant") == "ghost"
         assert all(

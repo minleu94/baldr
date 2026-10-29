@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -140,6 +141,56 @@ def test_build_mops_snapshot_fetches_markets_and_periods_with_summary() -> None:
         assert row["source_version"].endswith(
             f":sha256:{sha256(MOPS_SAMPLE_HTML.encode('utf-8')).hexdigest()}"
         )
+
+
+def test_build_mops_snapshot_retries_a_transient_connection_reset() -> None:
+    calls: list[tuple[str, str]] = []
+    sleeps: list[float] = []
+
+    def fetch_with_one_reset(*, market: str, period: str) -> str:
+        calls.append((market, period))
+        if len(calls) == 1:
+            raise URLError(ConnectionResetError(10054, "connection reset"))
+        return MOPS_SAMPLE_HTML
+
+    result = build_mops_monthly_revenue_snapshot(
+        start_period="2026-03",
+        end_period="2026-03",
+        markets=("twse",),
+        fetch_date=date(2026, 6, 16),
+        fetch_html=fetch_with_one_reset,
+        sleep=sleeps.append,
+    )
+
+    assert calls == [("twse", "2026-03"), ("twse", "2026-03")]
+    assert sleeps == [10.0]
+    assert result.fetched_periods == ("2026-03",)
+    assert not result.diagnostics
+    assert len(result.rows) == 1
+
+
+def test_build_mops_snapshot_does_not_retry_http_errors() -> None:
+    calls: list[tuple[str, str]] = []
+    sleeps: list[float] = []
+
+    def reject_with_http_error(*, market: str, period: str) -> str:
+        calls.append((market, period))
+        raise HTTPError("https://mops.twse.com.tw", 403, "Forbidden", {}, None)
+
+    result = build_mops_monthly_revenue_snapshot(
+        start_period="2026-03",
+        end_period="2026-03",
+        markets=("twse",),
+        fetch_date=date(2026, 6, 16),
+        fetch_html=reject_with_http_error,
+        sleep=sleeps.append,
+    )
+
+    assert calls == [("twse", "2026-03")]
+    assert sleeps == []
+    assert result.fetched_periods == ()
+    assert len(result.diagnostics) == 1
+    assert "attempts=1" in result.diagnostics[0].message
 
 
 def test_build_records_each_source_time_after_its_response_completes(monkeypatch) -> None:

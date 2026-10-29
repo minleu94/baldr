@@ -27,3 +27,11 @@
 這輪未手動啟動正式每日核心排程，也未對外重抓 MOPS，因既有 ROTC／PUB 歷史事件採集正在執行。Task Scheduler 已有 daily Quick `.cmd`，因此無須改註冊；需在下一次自然排程後檢查 `latest_status.json` 的 `monthly_revenue_mops_snapshot_capture.result_receipt_path` 及 MOPS child receipt，確認雙市場候選／marker 可由 Update tab selector 讀到。取得排程證據前，只能說修復程式與排程 wiring 已驗，不能宣稱 production schedule 已成功。
 
 目前正式月營收仍為 **251,189 observed／727 degraded**。新候選採集不會解除舊列 degraded、建立公告 mapping 或寫正式 DB；剩餘 degraded 需依歷史事件 harvest 與精確版本／時間證據另行裁決。
+
+## 2026-10-29 暫時連線重試與正式候選 selector live readback
+
+初次正式 output 的候選 smoke 遇到 TWSE `WinError 10054`，TPEx 成功但單市場候選被完整性守衛拒絕。共用 `data_module/monthly_revenue_snapshot_harvester.py` 現只對連線 reset／timeout 增加 1 次重試（間隔 10 秒）；HTTP status error 不重送。兩個新回歸案例加原 suite 共 **11 passed**，修改檔 compile 通過，使用受控 Windows Job／執行鎖（8 GiB／12 processes，readback verified；程序及 handles 關閉）。
+
+修復後直接執行候選腳本至設定的正式 `OUTPUT_ROOT`，MOPS 2026-09 SII／OTC 共 **1,862 列**（996／866），無診斷；兩份原始 HTML、候選 CSV、receipt 及最後 publish marker 都完整保存。受控 selector readback 選中該候選。此手動擷取可供 Update tab 顯示候選，仍明確不寫正式 SQLite／availability mapping。Task Scheduler 最近 `latest_status.json` 仍是 10/28 舊程式，修復版自然排程尚未有成功收據；不要把這次手動 capture 當作自然 run。
+
+資料庫狀態另於同日以公告事件正式解除三筆 canonical rows 後成為 **251,192 observed／724 degraded**；原因分類及逐筆證據見[月營收衝突複核](MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md#2026-10-29-t05st01-定向公告核驗與正式解除3筆)。

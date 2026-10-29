@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
+from urllib.error import HTTPError, URLError
 from uuid import uuid4
 
 from bs4 import BeautifulSoup
@@ -128,6 +129,8 @@ def build_mops_monthly_revenue_snapshot(
     fetch_html: Callable[..., str] = fetch_mops_static_monthly_revenue_html,
     save_html_dir: Path | None = None,
     sleep_seconds: float = 0.0,
+    retry_sleep_seconds: float = 10.0,
+    fetch_retries: int = 1,
     sleep: Callable[[float], object] = time.sleep,
     cancel_callback: Callable[[], bool] | None = None,
     progress_callback: Callable[[str, int], None] | None = None,
@@ -147,16 +150,27 @@ def build_mops_monthly_revenue_snapshot(
                 except Exception:
                     # 取消 callback 的故障不應假造取消或丟棄已取得來源。
                     pass
-            try:
-                html = fetch_html(market=market, period=period)
-            except Exception as exc:
-                diagnostics.append(
-                    _diagnostic(
-                        "monthly_revenue_snapshot.mops_static_fetch_failed",
-                        market,
-                        f"failed to fetch MOPS static monthly revenue; period={period}; error={exc}",
+            retry_count = 0
+            html: str | None = None
+            while True:
+                try:
+                    html = fetch_html(market=market, period=period)
+                    break
+                except Exception as exc:
+                    if retry_count < fetch_retries and _is_retryable_mops_fetch_error(exc):
+                        retry_count += 1
+                        sleep(retry_sleep_seconds)
+                        continue
+                    diagnostics.append(
+                        _diagnostic(
+                            "monthly_revenue_snapshot.mops_static_fetch_failed",
+                            market,
+                            f"failed to fetch MOPS static monthly revenue; period={period}; "
+                            f"attempts={retry_count + 1}; error={exc}",
+                        )
                     )
-                )
+                    break
+            if html is None:
                 continue
             # fetch_html returns only after the official response body has been read.
             fetched_at = _utc_now_text()
@@ -200,6 +214,16 @@ def build_mops_monthly_revenue_snapshot(
         diagnostics=tuple(diagnostics),
         cancelled=cancelled,
     )
+
+
+def _is_retryable_mops_fetch_error(exc: Exception) -> bool:
+    """只重試遠端暫時中斷；HTTP 狀態拒絕或其他錯誤不重送。"""
+    if isinstance(exc, HTTPError):
+        return False
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        return isinstance(reason, (TimeoutError, ConnectionError))
+    return isinstance(exc, (TimeoutError, ConnectionError))
 
 
 def parse_mops_monthly_revenue_snapshot_html(

@@ -110,6 +110,17 @@ def _requires_disclosure_window_check(
         and override.available_date.isoformat() == "2026-06-18"
     ):
         return False
+    # 2026-07..09 靜態數值於 2026-10-28/29 一併擷取；公告日只保留作事件沿革，
+    # 數值快照僅自保守的擷取邊界可見，不得提前到公告日。
+    if (
+        override.source == "mops.monthly_revenue_announcement"
+        and str(override.target_source_version or "").startswith(
+            "mops-static-snapshot-monthly-revenue-2026-10-29"
+            "|snapshot=mops-static-snapshot.v2:"
+        )
+        and override.available_date.isoformat() == "2026-10-30"
+    ):
+        return False
     return override.source != RETROACTIVE_BASELINE_SOURCE
 
 

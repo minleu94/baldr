@@ -184,6 +184,68 @@ def test_validate_monthly_revenue_availability_file_keeps_other_snapshot_targets
     )
 
 
+def test_validate_monthly_revenue_availability_file_accepts_july_to_september_capture_boundary(
+    tmp_path,
+):
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    mapping_file.write_text(
+        _FORMAL_HEADER
+        + _formal_csv_row(
+            period="2026-07",
+            as_of_date="2026-07-31",
+            announced_date="2026-08-10",
+            available_date="2026-10-30",
+            source="mops.monthly_revenue_announcement",
+            source_version="mops-ezsearch-f22-otc-1240-2026-07",
+            target_source_version=(
+                "mops-static-snapshot-monthly-revenue-2026-10-29"
+                "|snapshot=mops-static-snapshot.v2:tpex:2026-07:"
+                "body_completed_at:2026-10-29T06:47:33.594802+00:00:sha256:"
+                + "a" * 64
+            ),
+        ),
+        encoding="utf-8-sig",
+    )
+
+    result = validate_monthly_revenue_availability_file(mapping_file)
+
+    assert result.valid is True
+    assert result.accepted_count == 1
+    assert result.diagnostics == ()
+
+
+def test_validate_monthly_revenue_availability_file_keeps_july_to_september_capture_date_exact(
+    tmp_path,
+):
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    mapping_file.write_text(
+        _FORMAL_HEADER
+        + _formal_csv_row(
+            period="2026-07",
+            as_of_date="2026-07-31",
+            announced_date="2026-08-10",
+            available_date="2026-10-29",
+            source="mops.monthly_revenue_announcement",
+            source_version="mops-ezsearch-f22-otc-1240-2026-07",
+            target_source_version=(
+                "mops-static-snapshot-monthly-revenue-2026-10-29"
+                "|snapshot=mops-static-snapshot.v2:tpex:2026-07:"
+                "body_completed_at:2026-10-29T06:47:33.594802+00:00:sha256:"
+                + "a" * 64
+            ),
+        ),
+        encoding="utf-8-sig",
+    )
+
+    result = validate_monthly_revenue_availability_file(mapping_file)
+
+    assert result.valid is False
+    assert result.accepted_count == 0
+    assert result.diagnostics[0].code == (
+        "fundamental_availability.available_date_unreasonably_late"
+    )
+
+
 def test_validate_monthly_revenue_availability_file_accepts_retroactive_baseline_source(
     tmp_path,
 ):

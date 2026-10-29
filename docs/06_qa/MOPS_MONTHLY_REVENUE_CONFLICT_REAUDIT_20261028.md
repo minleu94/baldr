@@ -510,7 +510,7 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 
 並回溯解析四批既存官方 F22 原件（2013–2019 額外 6 窗、2014–2019、2020–2025、2026），共 **1,806 份**：1,464 份 `status=success`、342 份 `status=fail`；342 份 fail 的 message **全數都是「查無公告資料」**，未發現「參數錯誤」或其他應用層錯誤被舊 collector 記成空窗。此項只驗既存 raw 回應本文的應用狀態，不替代 PUB 新批完整採集。
 
-依使用者既有授權，已啟動全期 PUB F22 獨立 harvest：2014–2026-10，規劃 **924 個窗口**，目標 `output/mops_harvest_pub_2014_2026_backfill20261029/`，維持每請求至少 10 秒間隔與 checkpoint；首個程序使用狀態修正前版本，已安全中止並保留前 5 窗原件；修正版從 checkpoint 續跑，截至 2026-10-29 22:56 台北時間已完成 31／924 窗，均 HTTP 200、`查無公告資料`、0 列。任務仍在跑，不能把局部空窗外推為全期空，也未把任何事件寫入正式 DB／mapping。原件與即時進度以該目錄 manifest、raw、checkpoint 為準。
+依使用者既有授權，已啟動全期 PUB F22 獨立 harvest：2014–2026-10，規劃 **924 個窗口**，目標 `output/mops_harvest_pub_2014_2026_backfill20261029/`，維持每請求至少 10 秒間隔與 checkpoint；首個程序使用狀態修正前版本，已安全中止並保留前 5 窗原件；修正版從 checkpoint 續跑。截至 2026-10-29 23:03 台北時間共完成 **64／924** 窗；其中 2026-01..10 的 **60／60** 窗全部為 HTTP 200、應用狀態 `fail／查無公告資料`、0 列，並逐窗重新核對原件 SHA-256、byte count 與 row count，60／60 一致。最新 4 窗已進入 2025 年 1 月。這使 2026 年 PUB F22 路徑（含 6884／2026-08 相關公告季）完成覆蓋，但全期 harvest 仍在跑，不能把 2026 局部空窗外推成其他年份也全空；尚未發現可映射事件，正式 DB／mapping 未寫入。原件與即時進度以該目錄 manifest、raw、checkpoint 為準。
 
 ### 2026-10-29 Weekly MOPS child 實跑：編碼與 output junction 修復
 

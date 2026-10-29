@@ -498,7 +498,7 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 
 ### 2026-10-29 MOPS 6884 官方新站端點補查
 
-使用 Scrapling 對官方 MOPS 新站作普通 HTTPS 唯讀查詢，未使用 Remote Desktop、登入、代理或 challenge 處理。對 `POST https://mops.twse.com.tw/mops/api/t05st01` 查詢 `companyId=6884, year=115, month=all`，HTTP/API 200，但僅回傳最近 20 筆公告（115/02/04 至 115/08/19）；再帶入 `firstDay=115/09/01,lastDay=115/09/30`，仍回同樣 20 筆、相同 5,722 bytes，表示這組日期欄位未形成可用的九月歷史篩選。第二次原件 SHA-256 為 `914277f70994bbaa85619ab2a36fba2075c2547286b2f638c1b3a623de2f185d`。不能把「最新 20 筆未含九月」解讀成九月沒有公告，也不能再用這個端點的空結果裁決 6884。
+使用 Scrapling 對官方 MOPS 新站作普通 HTTPS 唯讀查詢，未使用 Remote Desktop、登入、代理或 challenge 處理。`POST https://mops.twse.com.tw/mops/api/t05st01` 的 `companyId=6884, year=115, month=all` 回 HTTP/API 200，但僅回最近 20 筆公告（115/02/04 至 115/08/19），SHA-256 `bd1a45ae0dcef4cb31540a2483e77b82f120029d79e3435226cf3387773eb93e`。起初將 `firstDay/lastDay` 送成完整民國日期，與前端 `dataType=day` 欄位格式不一致，故該次結果不作日期篩選結論。改依 UI 欄位送 `month=9, firstDay=1, lastDay=30` 後，HTTP 200、API 406「查無相符資料」、0 列、89 bytes，原件 SHA-256 `216f43e4114288e53ea86b6d75c6e381565367c0116ee5c0ee5b29564248d63c`。這表示官方歷史重大訊息查詢在該公司／月份條件下沒有回公告列，是比「最近 20 筆」更有效的負面證據，但仍只代表此 endpoint/query 的結果。
 
 同日官方 EZSearch `TYPEK=pub, PRO_ITEM=F22, SDATE=EDATE=115/09/07` 以 Scrapling 收到 HTTP 200、API `fail／查無公告資料`、0 列，原件 82 bytes，SHA-256 `416900c0bedd419e17635d2d44d06c1d79200907efbff484987d0296df40f6da`。此是該官方端點、該市場類型與單日窗口的有效負結果，但只排除這個查詢窗口回傳 6884，不能排除其他公告查詢路徑、不同日期或歷史索引結果。MOPS 新站 `t51sb10` 則是「最新財務／營收報表」頁，頁面模組呼叫 `home_page/t51sb10` 並呈現財報報表清單；它不是 issuer-period F22 公告事件查詢，故不把它當作公告時間證據。原始回應及收據留在 ignored `.tmp_mops_6884_t05_20261029/` 與 `.tmp_mops_home_20261029/`。
 

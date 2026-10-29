@@ -8,6 +8,10 @@
 3. 推薦服務層：RecommendationService 在啟用月營收 YoY 篩選時，
    僅具 degraded 舊快照或缺月營收之股票以 fundamental_revenue_yoy_missing 排除，
    絕不進入推薦名單。
+4. 產品契約邊界：當推薦模式為純技術指標（不要求月營收門檻）時，依既有契約
+   不強制請求月營收，正常評估技術分數。
+5. 推薦呈現層：RecommendationView 篩選清單與 presenter 明確將
+   fundamental_revenue_yoy_missing 翻譯為「月營收缺值或缺公告時間」並詳細說明排除理由。
 """
 
 from __future__ import annotations
@@ -33,6 +37,11 @@ from tests.test_recommendation_fundamental_filters import (
     _FakeMarketFrameProvider,
     _write_formal_mapping,
     build_recommendation_test_preparer,
+)
+from ui_qt.views.recommendation.presenter import screening_research_summary
+from ui_qt.views.recommendation_view import (
+    _SCREENING_REASON_DISPLAY_LABELS,
+    _screening_code_display,
 )
 from ui_qt.views.stock_research_report_view import (
     StockResearchReportView,
@@ -294,3 +303,81 @@ def test_recommendation_service_excludes_degraded_and_missing_revenue_stocks(tes
     assert row_9999["status"] == "skipped"
     assert "fundamental_revenue_yoy_missing" in row_9999["reason_codes"]
     assert row_9999["quality"] == "missing"
+
+
+def test_recommendation_pure_technical_mode_without_monthly_revenue_filter_allows_stocks(test_config):
+    """驗證產品契約邊界：當推薦模式為純技術/量能（未啟用 monthly_revenue_yoy_min）時，不要求月營收。"""
+    rows = []
+    codes = [("2330", "台積電"), ("4130", "健亞")]
+    for code, name in codes:
+        for i in range(20):
+            date_val = pd.Timestamp("2026-07-16") - pd.Timedelta(days=(19 - i))
+            rows.append({
+                "日期": date_val,
+                "證券代號": code,
+                "證券名稱": name,
+                "漲幅%": 2.0,
+                "成交量": 50000,
+                "收盤價": 100.0,
+                "成交量變化率%": 10.0,
+            })
+    mock_df = pd.DataFrame(rows)
+
+    # 不指定 monthly_revenue_yoy_min (純技術模式)
+    technical_only_config = {
+        "filters": {
+            "volume_change_min_percent": 0.0,
+        },
+        "ranking": {
+            "weights": {"漲幅%": 100},
+        },
+    }
+
+    provider = _FakeMarketFrameProvider(mock_df)
+    service = RecommendationService(
+        config=test_config,
+        market_data_provider=provider,
+        input_preparer=build_recommendation_test_preparer(test_config, market_data_provider=provider),
+    )
+
+    result = service.run_recommendation(config=technical_only_config, as_of_date="2026-07-16")
+
+    # 在純技術模式下，兩檔皆滿足技術條件，均可入選（月營收不介入阻擋）
+    recommended_codes = {rec.stock_code for rec in result}
+    assert "2330" in recommended_codes
+    assert "4130" in recommended_codes
+
+
+def test_screening_matrix_and_presenter_display_fundamental_revenue_exclusion_reason():
+    """驗證畫面呈現層：screening matrix 與 presenter 清楚顯示月營收缺漏排除原因與說明。"""
+    # 1. 驗證 RecommendationView 之原因代碼翻譯
+    label_missing = _screening_code_display(
+        "fundamental_revenue_yoy_missing", _SCREENING_REASON_DISPLAY_LABELS
+    )
+    assert label_missing == "月營收缺值或缺公告時間（fundamental_revenue_yoy_missing）"
+
+    label_below = _screening_code_display(
+        "fundamental_revenue_yoy_below_min", _SCREENING_REASON_DISPLAY_LABELS
+    )
+    assert label_below == "月營收年增率未達門檻（fundamental_revenue_yoy_below_min）"
+
+    # 2. 驗證 presenter screening_research_summary 詳細解說
+    summary_missing = screening_research_summary({
+        "原因代碼": "fundamental_revenue_yoy_missing",
+        "原篩選狀態": "skipped",
+        "觀測值": "missing",
+        "要求值": "5.0",
+    })
+    assert "本次未入選：月營收缺值或缺少可驗證之官方公告時間" in summary_missing
+    assert "該股票不參與推薦" in summary_missing
+    assert "個人 H20" in summary_missing
+
+    summary_below = screening_research_summary({
+        "原因代碼": "月營收年增率未達門檻（fundamental_revenue_yoy_below_min）",
+        "原篩選狀態": "skipped",
+        "觀測值": "3.50",
+        "要求值": "5.0",
+    })
+    assert "本次未入選：月營收年增率（YoY）未達策略門檻" in summary_below
+    assert "3.50%" in summary_below
+    assert "5.00%" in summary_below

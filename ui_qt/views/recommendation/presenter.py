@@ -53,6 +53,36 @@ def screening_research_summary(row: Mapping[str, Any]) -> str:
             + purpose
             + "\n下一步：核對策略條件與資料日期，再決定是否用另一策略研究。"
         )
+    if (
+        isinstance(reason, str)
+        and (
+            "fundamental_revenue_yoy_missing" in reason
+            or reason == "fundamental_revenue_yoy_missing"
+        )
+        and row.get("原篩選狀態") == "skipped"
+    ):
+        return (
+            "本次未入選：月營收缺值或缺少可驗證之官方公告時間。\n"
+            "為避免使用未公告或缺失數據造成推薦偏差，該股票不參與推薦。\n"
+            + purpose
+            + "\n下一步：請確認發行人是否已發布當期月營收公告或待官方資料修復。"
+        )
+    if (
+        isinstance(reason, str)
+        and (
+            "fundamental_revenue_yoy_below_min" in reason
+            or reason == "fundamental_revenue_yoy_below_min"
+        )
+        and row.get("原篩選狀態") == "skipped"
+    ):
+        req_str = f"{required:.2f}%" if required is not None else "門檻"
+        obs_str = f"{observed:.2f}%" if observed is not None else "未達"
+        return (
+            "本次未入選：月營收年增率（YoY）未達策略門檻。\n"
+            f"觀測年增率為 {obs_str}；策略要求至少 {req_str}。\n"
+            + purpose
+            + "\n下一步：核對基本面成長門檻與資料日期，再決定是否調整策略條件。"
+        )
     return "本次策略沒有產生入選結果。\n" + purpose
 
 

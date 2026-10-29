@@ -175,6 +175,10 @@ _SCREENING_STAGE_DISPLAY_LABELS = {
 _SCREENING_REASON_DISPLAY_LABELS = {
     "official_delisted": "已核驗下市／終止",
     "liquidity_volume_ratio_below_min": "量能未達本次策略的放量門檻",
+    "fundamental_revenue_yoy_missing": "月營收缺值或缺公告時間",
+    "fundamental_revenue_yoy_below_min": "月營收年增率未達門檻",
+    "valuation_pe_missing": "本益比數據缺失",
+    "valuation_pe_above_max": "本益比高於上限門檻",
 }
 _SCORE_INPUT_DISPLAY_LABELS = {
     "RSI": "RSI",

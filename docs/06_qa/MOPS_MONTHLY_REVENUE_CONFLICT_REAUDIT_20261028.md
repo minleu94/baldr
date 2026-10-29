@@ -559,35 +559,39 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 
 #### 2. 「缺值／缺公告時間清楚顯示」行為實作與 UI 驗證
 
-在個股研究報告介面（`ui_qt/views/stock_research_report_view.py`）落實月營收狀態呈現：
-1. **數值顯示**：當月營收數值為空（`value is None`）時，指標文字清楚顯示 `"缺值"`（不再以橫槓 `"—"` 混淆）。
-2. **公告時間與欄位**：
-   - 月營收原值表格（`fundamentalMonthlyRevenueTable`）欄位標題擴充為：`("項目", "值／原披露單位", "期間", "公告日", "資料可得時間")`。
-   - 逐列精確核驗公告日：當 `announced_date` 為空或缺失時，明確顯示 `"缺公告時間"`。
-   - 相關基礎資訊 Tooltip 增補：包含 `公告時間：{announced_date or '缺公告時間'}`；當數值為空時增補提示 `數值狀態：缺值`。
-3. **其餘基本面表公告日**：基本面總表中之月營收觀測列，無公告日者統一明確顯示 `"缺公告時間"`。
+1. **個股研究報告介面（`ui_qt/views/stock_research_report_view.py`）**：
+   - **數值顯示**：當月營收數值為空（`value is None`）時，指標文字清楚顯示 `"缺值"`（不再以橫槓 `"—"` 混淆）。
+   - **公告時間與欄位**：月營收原值表格（`fundamentalMonthlyRevenueTable`）欄位標題擴充為：`("項目", "值／原披露單位", "期間", "公告日", "資料可得時間")`；逐列精確核驗公告日，當 `announced_date` 為空或缺失時，明確顯示 `"缺公告時間"`。
+   - **Tooltip 增補**：包含 `公告時間：{announced_date or '缺公告時間'}`；當數值為空時增補提示 `數值狀態：缺值`。
+   - **其餘基本面表公告日**：基本面總表中之月營收觀測列，無公告日者統一明確顯示 `"缺公告時間"`。
+2. **推薦未入選清單與 Presenter（`ui_qt/views/recommendation_view.py`、`ui_qt/views/recommendation/presenter.py`）**：
+   - `_SCREENING_REASON_DISPLAY_LABELS` 補充基本面原因映射：`fundamental_revenue_yoy_missing` 顯示為 `"月營收缺值或缺公告時間（fundamental_revenue_yoy_missing）"`，`fundamental_revenue_yoy_below_min` 顯示為 `"月營收年增率未達門檻（fundamental_revenue_yoy_below_min）"`。
+   - `screening_research_summary` 針對缺營收／缺公告時間股票給出完整研究脈絡說明，明示：「本次未入選：月營收缺值或缺少可驗證之官方公告時間。為避免使用未公告或缺失數據造成推薦偏差，該股票不參與推薦。」
 
-#### 3. 缺資料股票不參與建議推薦（RecommendationService 排除驗證）
+#### 3. 缺資料股票不參與建議推薦與各入口驗證
 
 1. **PIT 資料防線（FundamentalSQLiteProvider）**：
    - provider 內部強制執行 `evaluate_pit_availability(require_announced_date=True)` 以及 formal availability mapping 白名單核驗。
    - 未具合法公告日或未在 availability mapping 白名單中的 degraded 舊快照列，在 provider 層即被完全過濾（例如 4130、5371、8183 讀回為 0 筆，6806 僅讀回 3 筆 mapped observed 列，其餘 85 筆 degraded 被完全排除）。
-2. **推薦服務篩選（RecommendationService）**：
-   - 當政策設定 `monthly_revenue_yoy_min` 篩選條件時，由於缺少合規 PIT 月營收資料，計算得到的 `revenue_yoy` 為 `None`。
-   - 候選股票直接以 `status="skipped"`, `reason_codes=["fundamental_revenue_yoy_missing"]`, `quality="missing"` 被淘汰，**絕不進入最終推薦名單**。
-   - 經專屬單元測試驗證：包含 2330（合格推薦）、4130（只有 degraded 列）、9999（無月營收紀錄），結果僅 2330 獲得推薦，4130 與 9999 均被明確排除。
+2. **推薦服務篩選（RecommendationService 所有入口）**：
+   - **基本面成長／月營收門檻模式**：當政策設定 `monthly_revenue_yoy_min` 篩選條件時，由於缺少合規 PIT 月營收資料，計算得到的 `revenue_yoy` 為 `None`。候選股票直接以 `status="skipped"`, `reason_codes=["fundamental_revenue_yoy_missing"]`, `quality="missing"` 淘汰，**絕不進入最終推薦名單**。
+   - **純技術／量能策略契約邊界**：若使用者執行純技術指標或量能策略（未設定 `monthly_revenue_yoy_min` 與基本面門檻），依既有產品契約 `RecommendationEvaluator._revenue_enabled(policy)` 為 `False`，不強制請求月營收數據，純技術候選正常評分，合規保障策略多樣性且不產生跨域阻擋。
+   - 經專屬單元測試驗證：包含 2330（合格推薦）、4130（只有 degraded 列）、9999（無月營收紀錄），在啟用營收門檻時僅 2330 獲得推薦；在純技術模式下均可依技術條件正常評估。
 
 #### 4. 自動化測試驗證結果
 
-- `tests/test_monthly_revenue_degraded_display_and_exclusion.py`: **3 passed**
+- `tests/test_monthly_revenue_degraded_display_and_exclusion.py`: **5 passed**
   - `test_ui_monthly_revenue_displays_missing_value_and_missing_announcement_date`: 通過（驗證 UI 表格欄位、缺值顯示「缺值」、缺公告時間顯示「缺公告時間」、tooltip 註記）。
   - `test_fundamental_sqlite_provider_excludes_degraded_unmapped_rows`: 通過（驗證 provider 排除 degraded 與 unmapped 舊列）。
   - `test_recommendation_service_excludes_degraded_and_missing_revenue_stocks`: 通過（驗證 degraded/缺資料股票被 RecommendationService 淘汰排除）。
+  - `test_recommendation_pure_technical_mode_without_monthly_revenue_filter_allows_stocks`: 通過（驗證純技術模式下不阻擋無月營收要求之候選）。
+  - `test_screening_matrix_and_presenter_display_fundamental_revenue_exclusion_reason`: 通過（驗證推薦畫面原因代碼翻譯與詳細解說文字）。
 - `tests/test_recommendation_fundamental_filters.py`: **3 passed**
   - 修復 `test_fundamental_filters_pe_and_yoy_scenarios` 之 PIT 決策基準日傳遞（指定 `as_of_date="2026-07-16"`），3 項測試全部通過。
-- `tests/test_ui_qt_stock_research_visual_integration.py`: **5 passed**
-- 修改檔案 `py_compile ui_qt/views/stock_research_report_view.py tests/test_monthly_revenue_degraded_display_and_exclusion.py tests/test_recommendation_fundamental_filters.py`: 通過（exit code 0）。
-- Scoped mypy `ui_qt/views/stock_research_report_view.py`: 通過（Success: no issues found in 1 source file）。
+- `tests/test_recommendation_screening_presenter.py`: **2 passed**。
+- `tests/test_ui_qt_stock_research_visual_integration.py`: **5 passed**。
+- 修改檔案 `py_compile ui_qt/views/stock_research_report_view.py ui_qt/views/recommendation/presenter.py ui_qt/views/recommendation_view.py tests/test_monthly_revenue_degraded_display_and_exclusion.py`: 通過（exit code 0）。
+- Scoped mypy `ui_qt/views/stock_research_report_view.py ui_qt/views/recommendation/presenter.py`: 通過（Success: no issues found in source files）。
 
 #### 5. 仍無官方證據逐筆清單與下一步處置建議
 

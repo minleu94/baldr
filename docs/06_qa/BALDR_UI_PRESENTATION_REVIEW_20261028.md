@@ -561,6 +561,23 @@ Recommendation 的「每日研究／技術母體」未載入或查詢零符合�
 - 操作手冊已同步來源詳情的閱讀順序、窗口欄名及空摘要限制。
 - 本輪不改來源擷取、資料資格、Advice 或金融邏輯；offscreen 測試不等同 Owner 原生 GUI UAT。
 
+## 2026-10-29 第五十九輪：Advice 來源理由回歸判讀依據
+
+Advice 詳情的文字流程先說明判讀、逐股來源證據和作者契約，最後才附上來源理由／論點；使用者需要在作者欄後回頭找建議根據。現在把來源理由放回第 1 節判讀與限制之內，再接第 2 節保存逐股證據和第 3 節作者選填說明，與詳情外層的四步操作標題保持同一閱讀方向。沒有刪除、重算或變更任何 Advice／來源欄位。
+
+- `tests/test_workbench_advice_contract.py`：**16 passed**；新增斷言固定 Advice 判讀與來源理由、逐股證據、作者說明的先後順序。
+- 必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，輸出於 `.pytest-owned-temp/ui_round59_update_validator_logs/`。
+- `workbench_view.py` scoped mypy **0 issues**；本輪 2 個修改 Python 檔 `py_compile` 通過。Repo-wide mypy 仍被未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的既有語法錯誤阻斷。
+- 本 QA 文件 document-control 通過（12 features／1 link source）；Application manual check 仍只回報既有兩個 `output/trial/` Junction 連結越界，與本輪內容無關。
+
+## 2026-10-29 第六十輪：窄版 Advice 操作列換行
+
+Advice 詳情的完整判讀／機率依據、原始結果／每日來源，以及註記／下次檢視／重新讀取都固定使用水平列；390 px 窄窗可能讓固定寬度按鈕搶占內容空間。現在窄於 560 logical px 時前兩組導覽入口改垂直排列，後續操作改為兩欄；主要研究決定仍維持同列，桌面寬度保留單列緊湊操作。操作行為與保存契約未改。
+
+- `tests/test_workbench_advice_contract.py`：**16 passed**；增加 390／1280 px 下入口方向及後續按鈕網格位置檢查。必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**。`workbench_view.py` scoped mypy **0 issues**，修改 Python 檔 `py_compile` 通過。
+- 操作手冊已補窄版操作列規則。畫面 QA 為 offscreen，不等同 Owner 原生 GUI UAT。
+- 操作手冊已同步詳情文字的閱讀順序。此修改只調整顯示順序，不代表 Advice 來源已核驗或 Gate 1 已接受。
+
 ## 2026-10-29 第五十一輪：工作區提交前定向回歸核對
 
 提交前重跑目前 dirty UI 變更的部分相關測試。單一 Workbench 四欄桌面／窄版案例 **1 passed**；Decision Desk **55 passed**、Recommendation layout **16 passed**、Research Timeline **17 passed**、Runtime view **26 passed**。個人推薦選擇測試 **8 passed／1 failed**，失敗於 learning `runs` 目錄安全讀取（`runs_directory_unsafe_or_unreadable`），在系統 Temp 與 repo `.tmp_` basetemp 都可重現；個股研究報告測試 **29 passed／1 failed**，失敗案例啟動 MainWindow 時 ML registry 因測試輸出路徑存取錯誤未建立。兩者不是本輪新增的顯示斷言，但仍列為未通過，不能將整檔標示為 pass。

@@ -250,6 +250,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._workbench_narrow = False
         self._workbench_action_columns = 0
         self._workbench_advice_compact: bool | None = None
+        self._advice_follow_up_controls_narrow: bool | None = None
         self._workbench_advice_compact = None
         self.presentation_service = DecisionPresentationService()
         self._selected_advice_presentation = None
@@ -748,7 +749,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "不會由排名分數計算機率。"
         )
         self.advice_lineage_button.toggled.connect(self._toggle_advice_lineage)
-        advice_evidence_actions = QHBoxLayout()
+        advice_evidence_actions = QBoxLayout(QBoxLayout.LeftToRight)
+        self.advice_evidence_actions_layout = advice_evidence_actions
         advice_evidence_actions.setContentsMargins(0, 0, 0, 0)
         advice_evidence_actions.setSpacing(6)
         advice_evidence_actions.addWidget(self.advice_presentation_toggle)
@@ -789,7 +791,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"color: {MIDNIGHT_ANALYST.accent}; font-weight: 700; padding-top: 4px;"
         )
         self.advice_selection_detail_layout.addWidget(self.advice_source_heading)
-        source_actions = QHBoxLayout()
+        source_actions = QBoxLayout(QBoxLayout.LeftToRight)
+        self.advice_source_actions_layout = source_actions
         source_actions.setContentsMargins(0, 0, 0, 0)
         source_actions.setSpacing(6)
         self.advice_daily_source_button = QPushButton("今日總覽｜每日來源與排除")
@@ -921,18 +924,21 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._schedule_selected_advice_review
         )
         self.advice_selection_detail_layout.addLayout(decision_actions)
-        follow_up_actions = QHBoxLayout()
+        follow_up_actions = QGridLayout()
+        self.advice_follow_up_actions_layout = follow_up_actions
         follow_up_actions.setContentsMargins(0, 0, 0, 0)
-        follow_up_actions.setSpacing(6)
-        for button in (
+        follow_up_actions.setHorizontalSpacing(6)
+        follow_up_actions.setVerticalSpacing(4)
+        self.advice_follow_up_buttons = (
             self.advice_note_decision_button,
             self.advice_schedule_review_button,
             self.advice_readback_decision_button,
-        ):
+        )
+        for column, button in enumerate(self.advice_follow_up_buttons):
             button.setProperty("variant", "ghost")
             button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            follow_up_actions.addWidget(button)
-        follow_up_actions.addStretch(1)
+            follow_up_actions.addWidget(button, 0, column, Qt.AlignLeft)
+        follow_up_actions.setColumnStretch(3, 1)
         self.advice_selection_detail_layout.addLayout(follow_up_actions)
         self.advice_selection_detail_panel.setVisible(False)
         advice_panel.layout.addWidget(self.advice_selection_detail_panel)
@@ -2279,6 +2285,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._layout_advice_candidate_cards(
                 self._advice_candidate_columns_for_width(self.width())
             )
+        self._apply_advice_decision_action_layout()
         if (
             not force
             and narrow == self._workbench_narrow
@@ -2321,6 +2328,43 @@ class UnifiedDecisionWorkbenchView(QWidget):
         for column in range(4):
             cards_layout.setColumnStretch(column, 1 if column < action_columns else 0)
         self._resize_tables()
+
+    def _apply_advice_decision_action_layout(self) -> None:
+        """窄窗時將 Advice 導覽操作換行，避免固定按鈕擠壓證據內容。"""
+
+        evidence_actions = getattr(self, "advice_evidence_actions_layout", None)
+        source_actions = getattr(self, "advice_source_actions_layout", None)
+        follow_up_actions = getattr(
+            self, "advice_follow_up_actions_layout", None
+        )
+        follow_up_buttons = getattr(self, "advice_follow_up_buttons", ())
+        if (
+            evidence_actions is None
+            or source_actions is None
+            or follow_up_actions is None
+            or len(follow_up_buttons) != 3
+        ):
+            return
+        narrow = self.width() < 560
+        direction = (
+            QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+        )
+        evidence_actions.setDirection(direction)
+        source_actions.setDirection(direction)
+        if self._advice_follow_up_controls_narrow == narrow:
+            return
+        for button in follow_up_buttons:
+            follow_up_actions.removeWidget(button)
+        if narrow:
+            positions = ((0, 0), (0, 1), (1, 0))
+        else:
+            positions = ((0, 0), (0, 1), (0, 2))
+        for button, (row, column) in zip(follow_up_buttons, positions):
+            follow_up_actions.addWidget(button, row, column, Qt.AlignLeft)
+        for column in range(4):
+            follow_up_actions.setColumnStretch(column, 0)
+        follow_up_actions.setColumnStretch(3, 1)
+        self._advice_follow_up_controls_narrow = narrow
 
     def _apply_advice_table_width_mode(self) -> None:
         """窄版收合次要欄，將首屏寬度留給理由摘要。"""
@@ -5217,9 +5261,20 @@ class UnifiedDecisionWorkbenchView(QWidget):
         ):
             value = getattr(item, attribute, None) if item is not None else None
             identity_lines.append(f"{label}：{value or '未提供'}")
+        original_reasons = (
+            "\n".join(
+                public_advice_reason(reason)
+                for reason in self._selected_advice_original_reasons
+            )
+            if self._selected_advice_original_reasons
+            else "未提供"
+        )
         sections = [
             "本筆資料身份（唯讀）\n" + "\n".join(identity_lines),
-            "1｜Advice 判讀與限制（唯讀）\n" + format_decision_presentation(presentation),
+            "1｜Advice 判讀與限制（唯讀）\n"
+            + format_decision_presentation(presentation)
+            + "\n來源理由／論點\n"
+            + original_reasons,
         ]
         if item is not None:
             source_evidence = tuple(getattr(item, "source_evidence", ()) or ())
@@ -5233,15 +5288,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     ),
                     "3｜策略版本作者說明（選填；缺漏不阻擋 Advice）\n"
                     + _advice_contract_completeness(item),
-                    "Advice 原始理由／論點\n"
-                    + (
-                        "\n".join(
-                            public_advice_reason(reason)
-                            for reason in self._selected_advice_original_reasons
-                        )
-                        if self._selected_advice_original_reasons
-                        else "未提供"
-                    ),
                 )
             )
         if self.advice_lineage_button.isChecked():

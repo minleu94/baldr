@@ -11,6 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QDateTimeEdit,
     QDialog,
     QFrame,
@@ -241,6 +242,15 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     assert "本筆資料身份（唯讀）" in detail
     assert "股票：2330" in detail
     assert "1｜Advice 判讀與限制（唯讀）" in detail
+    assert detail.index("1｜Advice 判讀與限制（唯讀）") < detail.index(
+        "來源理由／論點"
+    )
+    assert detail.index("來源理由／論點") < detail.index(
+        "2｜這筆保存結果的逐股來源證據"
+    )
+    assert detail.index("2｜這筆保存結果的逐股來源證據") < detail.index(
+        "3｜策略版本作者說明"
+    )
     assert "適用期間：未提供" in detail
     assert "風險：未提供" in detail
     assert "失效條件：未提供" in detail
@@ -477,6 +487,30 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
         view.advice_selection_detail_panel
     )
     assert not view.advice_accept_decision_button.isEnabled()
+
+    view.resize(390, 844)
+    view._apply_responsive_layout(force=True)
+    assert view.advice_evidence_actions_layout.direction() == QBoxLayout.TopToBottom
+    assert view.advice_source_actions_layout.direction() == QBoxLayout.TopToBottom
+    narrow_follow_up = view.advice_follow_up_actions_layout
+    assert narrow_follow_up.getItemPosition(
+        narrow_follow_up.indexOf(view.advice_note_decision_button)
+    )[:2] == (0, 0)
+    assert narrow_follow_up.getItemPosition(
+        narrow_follow_up.indexOf(view.advice_schedule_review_button)
+    )[:2] == (0, 1)
+    assert narrow_follow_up.getItemPosition(
+        narrow_follow_up.indexOf(view.advice_readback_decision_button)
+    )[:2] == (1, 0)
+
+    view.resize(1280, 844)
+    view._apply_responsive_layout(force=True)
+    assert view.advice_evidence_actions_layout.direction() == QBoxLayout.LeftToRight
+    assert view.advice_source_actions_layout.direction() == QBoxLayout.LeftToRight
+    wide_follow_up = view.advice_follow_up_actions_layout
+    assert wide_follow_up.getItemPosition(
+        wide_follow_up.indexOf(view.advice_readback_decision_button)
+    )[:2] == (0, 2)
 
 
 def test_advice_selection_and_warnings_clear_when_state_changes() -> None:

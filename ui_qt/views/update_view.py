@@ -1904,7 +1904,7 @@ class UpdateView(QWidget):
             "industry": "檢查與更新產業指數數據，可將各產業分類的歷史指數同步至 industry_indices 表。",
             "broker_branch": "維護 MoneyDJ 目前啟用的追蹤分點之買賣超資料，並可執行券商分點合併至 SQLite broker_flows 表。",
             "technical": "增量或全量重新計算個股的技術指標（KD, MACD, RSI 等），並高速批量儲存至資料庫中。",
-            "monthly_revenue": "使用 MOPS 月營收快照檔搭配正式可得日對照檔，先檢查筆數與診斷結果，再受控寫入正式月營收資料表。",
+            "monthly_revenue": "依序抓取候選快照、先檢查，再確認寫入。抓取時系統自動存檔；輸出檔名與資料版本由系統管理。",
         }
 
         desc_label = QLabel(descriptions.get(key, "檢查此資料來源的更新狀態。"))
@@ -1915,7 +1915,7 @@ class UpdateView(QWidget):
 
         if key == "monthly_revenue":
             self._monthly_revenue_preview_signature = None
-            config_group = QGroupBox("正式歷史回填：候選檔與可得日")
+            config_group = QGroupBox("本次回填來源（通常不需手動設定）")
             _set_update_group_tone(config_group)
             form_layout = QFormLayout(config_group)
             form_layout.setSpacing(8)
@@ -1924,7 +1924,7 @@ class UpdateView(QWidget):
             self.monthly_revenue_snapshot_input.setObjectName("monthly_revenue_snapshot_input")
             self.monthly_revenue_snapshot_input.setText(str(self._default_monthly_revenue_snapshot_path()))
             self.monthly_revenue_snapshot_input.setToolTip(
-                "選擇全市場月營收候選 CSV。抓取只建立候選檔；正式歷史回填前仍須先檢查。"
+                "這是系統自動保存的全市場月營收候選快照。抓取會自動決定輸出檔名；如要改用其它已核對快照，再按「選擇候選」。"
             )
             self.monthly_revenue_snapshot_input.setReadOnly(True)
             snapshot_picker = QPushButton("選擇候選…")
@@ -1940,7 +1940,7 @@ class UpdateView(QWidget):
             self.monthly_revenue_availability_input.setObjectName("monthly_revenue_availability_input")
             self.monthly_revenue_availability_input.setText(str(self._default_monthly_revenue_availability_path()))
             self.monthly_revenue_availability_input.setToolTip(
-                "正式可得日對照檔。此檔決定每筆月營收從哪一天起可被因子層讀取，用來避免偷看未來資料。"
+                "系統正式可得日對照檔，決定月營收從何時起可供歷史研究使用。一般情況保持預設，不需另選檔案。"
             )
             self.monthly_revenue_availability_input.setReadOnly(True)
             availability_picker = QPushButton("選擇對照…")
@@ -1967,7 +1967,7 @@ class UpdateView(QWidget):
 
             self.monthly_revenue_source_version_input.setText(default_version)
             self.monthly_revenue_source_version_input.setToolTip(
-                "由候選檔名推導的版本標籤；唯讀，避免檔案與來源版本被手動配錯。"
+                "系統依候選快照日期自動產生的資料版本識別，不是輸出檔名；唯讀，避免來源配錯。"
             )
 
             def on_snapshot_changed(text: str):
@@ -1987,10 +1987,18 @@ class UpdateView(QWidget):
                 lambda _text: self._invalidate_monthly_revenue_preview()
             )
 
-            form_layout.addRow("月營收候選 CSV：", snapshot_row)
-            form_layout.addRow("正式歷史可得日 CSV：", availability_row)
-            form_layout.addRow("本次寫入版本名稱：", self.monthly_revenue_source_version_input)
+            form_layout.addRow("候選快照（可選另一份）：", snapshot_row)
+            form_layout.addRow("正式可得日對照（系統檔）：", availability_row)
+            form_layout.addRow("資料版本識別（自動，非檔名）：", self.monthly_revenue_source_version_input)
             layout.addWidget(config_group)
+
+            workflow_hint = QLabel(
+                "操作順序：抓取最新候選快照 → 先檢查 → 確認後寫入。"
+                "不必自行命名或指定輸出檔；只有要使用其它快照時才更換候選檔。"
+            )
+            workflow_hint.setWordWrap(True)
+            workflow_hint.setProperty("role", "hint")
+            layout.addWidget(workflow_hint)
 
             try:
                 if self._market_date_error is not None:

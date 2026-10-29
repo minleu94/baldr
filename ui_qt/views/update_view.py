@@ -1915,9 +1915,13 @@ class UpdateView(QWidget):
 
         if key == "monthly_revenue":
             self._monthly_revenue_preview_signature = None
-            config_group = QGroupBox("本次回填來源（通常不需手動設定）")
+            config_group = QGroupBox("使用其他來源檔案（進階；預設自動）")
             _set_update_group_tone(config_group)
-            form_layout = QFormLayout(config_group)
+            config_group.setCheckable(True)
+            config_group.setChecked(False)
+            config_content = QWidget(config_group)
+            config_content.setObjectName("monthly_revenue_advanced_source_content")
+            form_layout = QFormLayout(config_content)
             form_layout.setSpacing(8)
 
             self.monthly_revenue_snapshot_input = QLineEdit()
@@ -1990,6 +1994,11 @@ class UpdateView(QWidget):
             form_layout.addRow("候選快照（可選另一份）：", snapshot_row)
             form_layout.addRow("正式可得日對照（系統檔）：", availability_row)
             form_layout.addRow("資料版本識別（自動，非檔名）：", self.monthly_revenue_source_version_input)
+            config_layout = QVBoxLayout(config_group)
+            config_layout.setContentsMargins(10, 6, 10, 8)
+            config_layout.addWidget(config_content)
+            config_content.hide()
+            config_group.toggled.connect(config_content.setVisible)
             layout.addWidget(config_group)
 
             workflow_hint = QLabel(

@@ -3136,8 +3136,14 @@ def _synthetic_view_data(view: QWidget, *, rows: int) -> Iterator[dict[str, Any]
                         if item is not None and item_row < original_row_count and item_column < original_column_count:
                             view.setItem(item_row, item_column, item)
                     for column, header in enumerate(original_headers):
-                        if header is not None and column < original_column_count:
-                            view.setHorizontalHeaderItem(column, header)
+                        if column < original_column_count:
+                            if header is None:
+                                # The fixture populated every synthetic header.
+                                # Remove it when the original table had no
+                                # QTableWidgetItem for this section.
+                                view.takeHorizontalHeaderItem(column)
+                            else:
+                                view.setHorizontalHeaderItem(column, header)
                     for column, width in enumerate(original_column_widths):
                         if column < original_column_count:
                             view.setColumnWidth(column, width)

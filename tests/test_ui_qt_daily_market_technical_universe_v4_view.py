@@ -97,6 +97,12 @@ def test_v4_result_actions_are_grouped_and_reflow_at_narrow_width(app: QApplicat
         assert view.comparison_controls_layout.direction() == QBoxLayout.Direction.LeftToRight
         assert view.stock_action_group.title() == "所選個股"
         assert view.comparison_action_group.title() == "比較籃"
+        assert view.apply_button.property("variant") == "primary"
+        assert view.apply_button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+        assert view.apply_button.width() <= view.apply_button.sizeHint().width() + 2
+        assert view.apply_action_hint.text() == "條件變更後按此更新結果"
+        assert view.apply_action_hint.isVisible()
+        assert view.apply_action_hint.width() >= 120
         assert view.open_button.property("variant") == "primary"
         assert view.compare_button.property("variant") == "primary"
         assert view.clear_comparison_button.property("variant") == "ghost"
@@ -116,6 +122,9 @@ def test_v4_result_actions_are_grouped_and_reflow_at_narrow_width(app: QApplicat
         app.processEvents()
         assert view.action_groups_layout.direction() == QBoxLayout.Direction.TopToBottom
         assert view.comparison_controls_layout.direction() == QBoxLayout.Direction.TopToBottom
+        assert view.apply_button.geometry().right() < (
+            view.apply_button.parentWidget().contentsRect().right()
+        )
         assert all(
             button.geometry().right() <= view.comparison_action_group.contentsRect().right()
             for button in (

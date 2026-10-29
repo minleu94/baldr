@@ -470,6 +470,31 @@ def test_table_widget_fixture_restores_cells_headers_sorting_and_callbacks(
         qt_app.processEvents()
 
 
+def test_table_widget_fixture_removes_synthetic_header_when_original_header_is_empty(
+    qt_app: object,
+) -> None:
+    from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
+
+    view = QTableWidget(1, 1)
+    view.setItem(0, 0, QTableWidgetItem("原始資料"))
+    view.resize(360, 120)
+    view.show()
+    qt_app.processEvents()
+    try:
+        assert view.horizontalHeaderItem(0) is None
+
+        with qa_layout._synthetic_view_data(view, rows=8) as fixture_info:
+            assert view.horizontalHeaderItem(0) is not None
+
+        assert fixture_info["restoration"]["passed"] is True
+        assert view.horizontalHeaderItem(0) is None
+        assert view.item(0, 0).text() == "原始資料"
+    finally:
+        view.close()
+        view.deleteLater()
+        qt_app.processEvents()
+
+
 def test_adaptive_table_widths_restore_after_formal_qss_scrollbar_change(
     qt_app: object,
 ) -> None:

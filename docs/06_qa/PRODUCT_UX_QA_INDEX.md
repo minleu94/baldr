@@ -1,6 +1,20 @@
 # 產品與個股研究 QA 索引
 
-[Baldr 全工作區資料呈現與響應性盤點](BALDR_UI_PRESENTATION_REVIEW_20261028.md)：Workbench Advice 長判讀改為可捲動文字窗、個股研究摘要移除窄窗高度裁切；另分級列出市場研究、時間軸、Smart Money、Recommendation、Backtest、Storage、Update 與排程頁的改善候選及尚未量測的風險。使用者旅程補充新增 Advice 同筆來源直達、每日來源分段與研究歷史 ID 導覽；Advice／每日旅程／Research Timeline 64 passed，MainWindow 跨頁路由 1 passed，必要 Workbench Update UI 98 passed，核准後 Update validator 25 passed／0 failed／4 skipped；repo-wide mypy 受未修改 T164 bridge 語法錯誤阻擋。原生 GUI／Owner UAT 未執行。
+[Recommendation 結果表初始欄寬（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#2026-10-28-第三輪recommendation-結果表初始欄寬)：理由欄初始 260 px，可拖曳；長文改由詳情／提示閱讀。推薦版面與保存讀回 16 passed；推薦投資組合結果測試遇 Qt WebEngine Windows fatal exception，未完成。尚待原生 GUI／Owner UAT。
+
+[Storage overview 分區與欄位可達性（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#2026-10-28-第五輪storage-overview-分區與欄位可達性)：容量與明示根盤點分區，摘要位置／項目數；窄窗只在欄位溢出時水平捲動。版面 4 passed；原 worker 測試被 sandbox 目錄掃描拒絕（`WinError 5`），提權重跑受 QA 鎖讀取權限阻擋，尚待可驗證環境完成 worker 回歸。
+
+[每日市場研究結果清單分組（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#本輪已修正)：代號搜尋、狀態篩選、列數摘要、排序與原始排名控制集中於表格前；快照更新／重讀保留獨立操作列。每日研究條件回歸 4 passed；原生 GUI／Owner UAT 待確認。
+
+[研究時間軸清單與查找分組（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#本輪已修正)：來源、股票／result ID 搜尋集中於「查找已保存研究紀錄」；清單及選取紀錄詳情各有明確標題。研究時間軸 UI 回歸 17 passed；原生 GUI 窄窗驗收待確認。
+
+[Update 狀態卡長文字換行（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#本輪已修正)：額外來源資訊允許在窄卡片換行並收縮；必要 Update UI 回歸 98 passed。
+
+[排程成熟分布輔助字級（2026-10-28）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#本輪已修正)：圖例、計數與未知訊息由 8 pt 提至 9 pt；聚焦 UI 回歸 60 passed，原生字型／DPI 待確認。
+
+[題材成員卡片響應式網格（2026-10-29）](BALDR_UI_PRESENTATION_REVIEW_20261028.md#本輪已修正)：預設卡片依寬度排 1／2／3 欄，避免每頁 50 位全數直向堆疊；題材頁 UI 62 passed，Main 成員導覽 8 passed。
+
+[Baldr 全工作區資料呈現與響應性盤點](BALDR_UI_PRESENTATION_REVIEW_20261028.md)：Workbench Advice 長判讀改為可捲動文字窗、個股研究摘要移除窄窗高度裁切；另分級列出市場研究、時間軸、Smart Money、Recommendation、Backtest、Storage、Update 與排程頁的改善候選及尚未量測的風險。使用者旅程補充新增 Advice 同筆來源直達、每日來源分段與研究歷史 ID 導覽；Smart Money 摘要／控制換列 36 passed；Advice／每日旅程／Research Timeline 64 passed，MainWindow 跨頁路由 1 passed，必要 Workbench Update UI 98 passed，核准後 Update validator 25 passed／0 failed／4 skipped；repo-wide mypy 受未修改 T164 bridge 語法錯誤阻擋。原生 GUI／Owner UAT 未執行。
 
 [產業題材頁探索、卡片與版本選擇](BALDR_THEME_PAGE_EXPLORATION_ORDER_20261028.md)：題材排行與成員預設卡片、九項指標卡預設顯示，完整表格保留切換／展開；版本選擇改為頁內已核驗清單，載入時沿 manifest SHA 重讀。版本選擇、題材頁及入口回歸 UI 79 passed；snapshot catalog 10 passed／1 skipped；開發版實際清單驗證得到 1 個可讀版本（2026-10-16 price-v1），2026-10-19 flow-v2 因其依賴路徑超出明選版本庫而拒絕。Targeted mypy／py_compile 通過、Update validator 25／0／4。完整更新頁 UI 本輪 21 passed／76 failed（未修改的 `update_view.py` 缺少 `_choose_monthly_revenue_snapshot`）；repo-wide mypy 仍受未修改 T164 bridge 第 411 行語法錯誤阻擋。原生 GUI／Owner UAT 未執行。
 

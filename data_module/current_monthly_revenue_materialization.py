@@ -7,9 +7,11 @@ from datetime import datetime, timezone
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
+import shutil
 from typing import Any
 from uuid import uuid4
 
@@ -27,6 +29,43 @@ from data_module.scheduled_research_acquisition_binding import _read_stable_byte
 class CurrentRevenuePlan:
     records: list[dict[str, str]]
     custody: dict[str, Any]
+
+
+_MIB = 1024 * 1024
+_BACKUP_HEADROOM_BYTES = 64 * _MIB
+_TRANSACTION_HEADROOM_BYTES = 256 * _MIB
+
+
+def current_revenue_capacity_preflight_error(
+    db_file: Path, backup_dir: Path
+) -> str | None:
+    """依完整備份大小及本次 SQLite 寫入預留檢查容量，不設固定磁碟保留線。"""
+    db_file = Path(db_file)
+    backup_dir = Path(backup_dir)
+    if not db_file.is_file():
+        return "existing database required"
+
+    db_size = db_file.stat().st_size
+    backup_required = db_size + _BACKUP_HEADROOM_BYTES
+    transaction_required = max(_TRANSACTION_HEADROOM_BYTES, db_size // 20)
+    backup_volume = backup_dir if backup_dir.exists() else backup_dir.parent
+    if not backup_volume.exists():
+        return "backup volume is unavailable"
+    if shutil.disk_usage(backup_volume).free < backup_required:
+        return "insufficient backup space for full SQLite backup"
+
+    try:
+        backup_shares_db_volume = (
+            os.stat(db_file.parent).st_dev == os.stat(backup_volume).st_dev
+        )
+    except OSError:
+        return "database or backup volume is unavailable"
+    database_required = transaction_required
+    if backup_shares_db_volume:
+        database_required += backup_required
+    if shutil.disk_usage(db_file.parent).free < database_required:
+        return "insufficient database volume headroom for backup and transaction"
+    return None
 
 
 def plan_current_revenue(snapshot: Path, *, raw_html_dir: Path | None = None) -> CurrentRevenuePlan:

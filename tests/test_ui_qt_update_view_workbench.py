@@ -2610,14 +2610,16 @@ def test_monthly_revenue_tab_runs_mops_dry_run(monkeypatch):
     monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.Ok)
 
     view = make_view()
-    view.monthly_revenue_snapshot_input.setText("snapshot.csv")
+    view.monthly_revenue_snapshot_input.setText(
+        "mops_monthly_revenue_snapshot_2026-05_2026-06-16.csv"
+    )
     view.monthly_revenue_availability_input.setText("availability.csv")
 
     view._execute_monthly_revenue_backfill(apply=False)
 
     assert view.update_service.calls[-1] == (
         "dry_run_mops_monthly_revenue_backfill",
-        "snapshot.csv",
+        "mops_monthly_revenue_snapshot_2026-05_2026-06-16.csv",
         "availability.csv",
         "mops-static-snapshot-monthly-revenue-2026-06-16",
     )
@@ -2629,9 +2631,16 @@ def test_monthly_revenue_tab_uses_user_facing_chinese_labels():
     labels = [label.text() for label in view.content_stack.widget(6).findChildren(QLabel)]
     buttons = [button.text() for button in view.content_stack.widget(6).findChildren(QPushButton)]
 
-    assert "MOPS 月營收快照檔：" in labels
-    assert "正式可得日對照檔：" in labels
+    assert "月營收候選 CSV：" in labels
+    assert "正式歷史可得日 CSV：" in labels
     assert "本次寫入版本名稱：" in labels
+    assert "只更新現況研究（獨立流程）" in [
+        group.title()
+        for group in view.content_stack.widget(6).findChildren(QGroupBox)
+    ]
+    assert view.monthly_revenue_snapshot_input.isReadOnly()
+    assert view.monthly_revenue_availability_input.isReadOnly()
+    assert view.monthly_revenue_source_version_input.isReadOnly()
     assert "先檢查，不寫入" in buttons
     assert "確認後寫入月營收" in buttons
     assert all("Dry-run" not in text for text in labels + buttons)
@@ -2648,12 +2657,46 @@ def test_monthly_revenue_tab_requires_confirmation_before_apply(monkeypatch):
     monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.Ok)
 
     view = make_view()
-    view.monthly_revenue_snapshot_input.setText("snapshot.csv")
+    view.monthly_revenue_snapshot_input.setText(
+        "mops_monthly_revenue_snapshot_2026-05_2026-06-16.csv"
+    )
     view.monthly_revenue_availability_input.setText("availability.csv")
 
+    view._execute_monthly_revenue_backfill(apply=False)
     view._execute_monthly_revenue_backfill(apply=True)
 
     assert any(call[0] == "apply_mops_monthly_revenue_backfill" for call in view.update_service.calls)
+
+
+def test_monthly_revenue_apply_preview_is_invalidated_when_input_changes(monkeypatch):
+    from ui_qt.views import update_view
+
+    monkeypatch.setattr(update_view, "TaskWorker", SynchronousTaskWorker)
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok)
+    warnings = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, title, message: warnings.append((title, message)) or QMessageBox.Ok,
+    )
+    view = make_view()
+    view.monthly_revenue_snapshot_input.setText(
+        "mops_monthly_revenue_snapshot_2026-05_2026-06-16.csv"
+    )
+    view.monthly_revenue_availability_input.setText("availability.csv")
+
+    view._execute_monthly_revenue_backfill(apply=False)
+    assert view.monthly_revenue_apply_btn.isEnabled()
+
+    view.monthly_revenue_availability_input.setText("changed-availability.csv")
+    assert view.monthly_revenue_apply_btn.isEnabled() is False
+    view._execute_monthly_revenue_backfill(apply=True)
+
+    assert warnings and warnings[-1][0] == "請先檢查候選"
+    assert not any(
+        call[0] == "apply_mops_monthly_revenue_backfill"
+        for call in view.update_service.calls
+    )
 
 def test_safe_update_all_runs_conservative_sequence_sqlite():
     view = make_view()

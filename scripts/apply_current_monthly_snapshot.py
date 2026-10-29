@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from data_module.current_monthly_revenue_materialization import (
     apply_current_revenue,
+    current_revenue_capacity_preflight_error,
     plan_current_revenue,
 )
 from data_module.ml_storage_capacity import (
@@ -160,14 +161,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _apply_preflight_error(db_file: Path, backup_dir: Path) -> str | None:
-    if not db_file.is_file():
-        return "existing database required"
-    if shutil.disk_usage(db_file.parent).free < 200 * 1024**3:
-        return "data disk reserve below 200 GiB"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(backup_dir).free < db_file.stat().st_size * 2:
-        return "insufficient backup space"
-    return None
+    return current_revenue_capacity_preflight_error(db_file, backup_dir)
 
 
 def _evidence_path_collision_reason(

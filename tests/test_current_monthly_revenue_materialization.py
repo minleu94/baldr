@@ -125,6 +125,67 @@ def test_append_is_idempotent_and_formal_table_unchanged(tmp_path):
         assert conn.execute('SELECT * FROM fundamental_current_observations ORDER BY stock_code').fetchall() == before
 
 
+def test_current_revenue_capacity_has_no_fixed_200_gib_reserve(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import data_module.current_monthly_revenue_materialization as materialization
+
+    database = tmp_path / 'data' / 'twstock.db'
+    database.parent.mkdir()
+    with sqlite3.connect(database) as connection:
+        ensure_current_observation_schema(connection)
+    backup_dir = tmp_path / 'meta_data' / 'backup'
+    backup_dir.mkdir(parents=True)
+
+    # 200 GiB - 1 byte used to be rejected by the hard-coded reserve.
+    monkeypatch.setattr(
+        materialization.shutil,
+        'disk_usage',
+        lambda _path: SimpleNamespace(free=200 * 1024**3 - 1),
+    )
+
+    assert materialization.current_revenue_capacity_preflight_error(
+        database, backup_dir
+    ) is None
+
+
+def test_update_service_current_apply_obeys_batch_sized_capacity(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app_module.update_service import UpdateService
+    import data_module.current_monthly_revenue_materialization as materialization
+    import data_module.ml_storage_capacity as storage_capacity
+
+    database = tmp_path / 'data' / 'twstock.db'
+    database.parent.mkdir()
+    with sqlite3.connect(database) as connection:
+        ensure_current_observation_schema(connection)
+    service = object.__new__(UpdateService)
+    service.config = SimpleNamespace(
+        db_file=database,
+        meta_data_dir=tmp_path / 'meta_data',
+        output_root=tmp_path / 'output',
+    )
+    (tmp_path / 'meta_data').mkdir()
+    monkeypatch.setattr(materialization.shutil, 'disk_usage', lambda _path: SimpleNamespace(free=1))
+    monkeypatch.setattr(
+        storage_capacity,
+        'acquire_heavy_chain_reservation',
+        lambda _path: pytest.fail('disk preflight must reject before acquiring writer lock'),
+    )
+
+    result = service.materialize_current_monthly_revenue(
+        snapshot_file=snapshot(tmp_path), apply=True
+    )
+
+    assert result['success'] is False
+    assert result['formal_pit_eligible'] is False
+    assert 'insufficient backup space' in result['message']
+    assert not (tmp_path / 'meta_data' / 'backup').exists()
+
+
 def test_reverification_appends_normalizer_v2_beside_legacy_raw_source_version(tmp_path):
     plan = plan_current_revenue(snapshot(tmp_path))
     record = next(row for row in plan.records if row['stock_code'] == '2330')

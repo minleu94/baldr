@@ -8,6 +8,7 @@ import os
 import sys
 import sqlite3
 import hashlib
+import shutil
 from pathlib import Path
 from typing import Dict ,Any ,Optional ,List ,Callable, Sequence, TYPE_CHECKING
 from datetime import date, datetime, timedelta, timezone
@@ -667,17 +668,58 @@ class UpdateService :
         if _is_cancel_requested(cancel_callback):
             return {'success': False, 'cancelled': True, 'message': '現況月營收已在開始前取消'}
         try:
-            from data_module.current_monthly_revenue_materialization import plan_current_revenue, apply_current_revenue
+            from data_module.current_monthly_revenue_materialization import (
+                apply_current_revenue,
+                current_revenue_capacity_preflight_error,
+                plan_current_revenue,
+            )
             plan = plan_current_revenue(self._resolve_monthly_revenue_snapshot_file(snapshot_file))
             result = dict(plan.custody)
             if _is_cancel_requested(cancel_callback):
                 return dict(result, success=False, cancelled=True, applied=False, message='現況月營收已在寫入前取消')
             if apply:
-                result = apply_current_revenue(
-                    plan, db_file=Path(self.config.db_file),
-                    backup_dir=Path(self.config.meta_data_dir) / 'backup',
-                    receipt_dir=Path(self.config.output_root) / 'current_monthly_revenue_receipts',
+                from data_module.ml_storage_capacity import (
+                    HEAVY_CHAIN_LOCK_FILENAME,
+                    acquire_heavy_chain_reservation,
+                    release_heavy_chain_reservation,
                 )
+
+                db_file = Path(self.config.db_file)
+                backup_dir = Path(self.config.meta_data_dir) / 'backup'
+                capacity_error = current_revenue_capacity_preflight_error(
+                    db_file, backup_dir
+                )
+                if capacity_error is not None:
+                    raise RuntimeError(capacity_error)
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                lock_path = (
+                    Path(self.config.output_root)
+                    / 'release_v4'
+                    / HEAVY_CHAIN_LOCK_FILENAME
+                )
+                reservation = acquire_heavy_chain_reservation(lock_path)
+                if reservation is None:
+                    raise RuntimeError('heavy chain active; no database write attempted')
+                try:
+                    if _is_cancel_requested(cancel_callback):
+                        return dict(
+                            result,
+                            success=False,
+                            cancelled=True,
+                            applied=False,
+                            message='現況月營收已在取得共用鎖後安全取消',
+                        )
+                    result = apply_current_revenue(
+                        plan,
+                        db_file=db_file,
+                        backup_dir=backup_dir,
+                        receipt_dir=(
+                            Path(self.config.output_root)
+                            / 'current_monthly_revenue_receipts'
+                        ),
+                    )
+                finally:
+                    release_heavy_chain_reservation(reservation)
             return dict(result, success=True, cancelled=False, ready_for_current_apply=True,
                         cancel_requested_after_commit=apply and _is_cancel_requested(cancel_callback),
                         message=f"現況月營收{'已更新' if apply else '重驗完成'}：{len(plan.records):,} 筆 TWD；僅供現況研究，正式歷史可得日未改")

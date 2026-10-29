@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional, List, Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import json
+from hashlib import sha256
 import os
 import subprocess
 import sys
@@ -1911,7 +1912,8 @@ class UpdateView(QWidget):
         layout.addWidget(desc_label)
 
         if key == "monthly_revenue":
-            config_group = QGroupBox("MOPS 月營收回填設定")
+            self._monthly_revenue_preview_signature = None
+            config_group = QGroupBox("正式歷史回填：候選檔與可得日")
             _set_update_group_tone(config_group)
             form_layout = QFormLayout(config_group)
             form_layout.setSpacing(8)
@@ -1920,8 +1922,17 @@ class UpdateView(QWidget):
             self.monthly_revenue_snapshot_input.setObjectName("monthly_revenue_snapshot_input")
             self.monthly_revenue_snapshot_input.setText(str(self._default_monthly_revenue_snapshot_path()))
             self.monthly_revenue_snapshot_input.setToolTip(
-                "MOPS 月營收快照檔。系統會從這個檔案讀取各公司每月營收金額；先檢查與正式寫入都使用同一份檔案。"
+                "選擇全市場月營收候選 CSV。抓取只建立候選檔；正式歷史回填前仍須先檢查。"
             )
+            self.monthly_revenue_snapshot_input.setReadOnly(True)
+            snapshot_picker = QPushButton("選擇候選…")
+            snapshot_picker.setObjectName("monthly_revenue_snapshot_picker")
+            snapshot_picker.clicked.connect(self._choose_monthly_revenue_snapshot)
+            snapshot_row = QWidget()
+            snapshot_row_layout = QHBoxLayout(snapshot_row)
+            snapshot_row_layout.setContentsMargins(0, 0, 0, 0)
+            snapshot_row_layout.addWidget(self.monthly_revenue_snapshot_input, 1)
+            snapshot_row_layout.addWidget(snapshot_picker)
 
             self.monthly_revenue_availability_input = QLineEdit()
             self.monthly_revenue_availability_input.setObjectName("monthly_revenue_availability_input")
@@ -1929,22 +1940,32 @@ class UpdateView(QWidget):
             self.monthly_revenue_availability_input.setToolTip(
                 "正式可得日對照檔。此檔決定每筆月營收從哪一天起可被因子層讀取，用來避免偷看未來資料。"
             )
+            self.monthly_revenue_availability_input.setReadOnly(True)
+            availability_picker = QPushButton("選擇對照…")
+            availability_picker.setObjectName("monthly_revenue_availability_picker")
+            availability_picker.clicked.connect(self._choose_monthly_revenue_availability)
+            availability_row = QWidget()
+            availability_row_layout = QHBoxLayout(availability_row)
+            availability_row_layout.setContentsMargins(0, 0, 0, 0)
+            availability_row_layout.addWidget(self.monthly_revenue_availability_input, 1)
+            availability_row_layout.addWidget(availability_picker)
 
             self.monthly_revenue_source_version_input = QLineEdit()
             self.monthly_revenue_source_version_input.setObjectName("monthly_revenue_source_version_input")
+            self.monthly_revenue_source_version_input.setReadOnly(True)
 
-            # 動態解析預設版本名稱
+            # 從目前候選檔名推導版本；無法判讀時保持空白，不沿用舊版本。
             snapshot_path = self._default_monthly_revenue_snapshot_path()
-            default_version = "mops-static-snapshot-monthly-revenue-2026-06-16"
-            if snapshot_path and snapshot_path.is_file():
-                import re
-                match = re.search(r"_(\d{4}-\d{2}-\d{2})\.csv$", snapshot_path.name)
-                if match:
-                    default_version = f"mops-static-snapshot-monthly-revenue-{match.group(1)}"
+            import re
+            match = re.search(r"_(\d{4}-\d{2}-\d{2})\.csv$", snapshot_path.name)
+            default_version = (
+                f"mops-static-snapshot-monthly-revenue-{match.group(1)}"
+                if match else ""
+            )
 
             self.monthly_revenue_source_version_input.setText(default_version)
             self.monthly_revenue_source_version_input.setToolTip(
-                "本次寫入版本名稱。用來區分不同批次的月營收資料，未來重跑或比對時可以追溯來源。"
+                "由候選檔名推導的版本標籤；唯讀，避免檔案與來源版本被手動配錯。"
             )
 
             def on_snapshot_changed(text: str):
@@ -1956,10 +1977,16 @@ class UpdateView(QWidget):
                     self.monthly_revenue_source_version_input.setText(
                         f"mops-static-snapshot-monthly-revenue-{match.group(1)}"
                     )
+                else:
+                    self.monthly_revenue_source_version_input.clear()
+                self._invalidate_monthly_revenue_preview()
             self.monthly_revenue_snapshot_input.textChanged.connect(on_snapshot_changed)
+            self.monthly_revenue_availability_input.textChanged.connect(
+                lambda _text: self._invalidate_monthly_revenue_preview()
+            )
 
-            form_layout.addRow("MOPS 月營收快照檔：", self.monthly_revenue_snapshot_input)
-            form_layout.addRow("正式可得日對照檔：", self.monthly_revenue_availability_input)
+            form_layout.addRow("月營收候選 CSV：", snapshot_row)
+            form_layout.addRow("正式歷史可得日 CSV：", availability_row)
             form_layout.addRow("本次寫入版本名稱：", self.monthly_revenue_source_version_input)
             layout.addWidget(config_group)
 
@@ -2014,7 +2041,8 @@ class UpdateView(QWidget):
             self.monthly_revenue_apply_btn = QPushButton("確認後寫入月營收")
             self.monthly_revenue_apply_btn.setObjectName("monthly_revenue_apply_btn")
             self.monthly_revenue_apply_btn.setMinimumHeight(35)
-            self.monthly_revenue_apply_btn.setToolTip("跳出確認視窗後，使用正式可得日對照檔把 MOPS 月營收寫入正式月營收資料表。")
+            self.monthly_revenue_apply_btn.setEnabled(False)
+            self.monthly_revenue_apply_btn.setToolTip("先完成「檢查候選」且檢查通過，才可確認正式回填。")
             self.monthly_revenue_apply_btn.setProperty("variant", "success")
             self.monthly_revenue_apply_btn.clicked.connect(
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True)
@@ -2030,9 +2058,17 @@ class UpdateView(QWidget):
             self.monthly_revenue_current_btn.clicked.connect(
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True, current_only=True)
             )
-            button_layout.addWidget(self.monthly_revenue_current_btn)
             button_layout.addStretch()
             layout.addWidget(op_group)
+
+            current_group = QGroupBox("只更新現況研究（獨立流程）")
+            _set_update_group_tone(current_group, "muted")
+            current_layout = QVBoxLayout(current_group)
+            current_layout.addWidget(QLabel(
+                "使用目前候選快照追加現況觀測；不使用歷史可得日對照，也不回填正式歷史 PIT。"
+            ))
+            current_layout.addWidget(self.monthly_revenue_current_btn)
+            layout.addWidget(current_group)
             self._add_source_detail_status(layout, key, self)
             layout.addStretch()
             return
@@ -2288,6 +2324,50 @@ class UpdateView(QWidget):
             return Path("")
         return getattr(config, "monthly_revenue_availability_file", Path(""))
 
+    def _choose_monthly_revenue_snapshot(self) -> None:
+        current = self.monthly_revenue_snapshot_input.text().strip()
+        selected, _ = QFileDialog.getOpenFileName(
+            self, "選擇月營收候選 CSV",
+            str(Path(current).parent) if current else "", "CSV 檔案 (*.csv)"
+        )
+        if selected:
+            self.monthly_revenue_snapshot_input.setText(selected)
+
+    def _choose_monthly_revenue_availability(self) -> None:
+        current = self.monthly_revenue_availability_input.text().strip()
+        selected, _ = QFileDialog.getOpenFileName(
+            self, "選擇正式歷史可得日對照 CSV",
+            str(Path(current).parent) if current else "", "CSV 檔案 (*.csv)"
+        )
+        if selected:
+            self.monthly_revenue_availability_input.setText(selected)
+
+    def _monthly_revenue_input_signature(self) -> tuple[str, ...]:
+        """將最近一次預覽綁定到輸入路徑、內容雜湊及版本標籤。"""
+        signature: list[str] = []
+        for raw_path in (
+            self.monthly_revenue_snapshot_input.text().strip(),
+            self.monthly_revenue_availability_input.text().strip(),
+        ):
+            path = Path(raw_path)
+            try:
+                hasher = sha256()
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        hasher.update(chunk)
+                digest = hasher.hexdigest()
+            except OSError:
+                digest = "unreadable-or-missing"
+            signature.extend((str(path.resolve(strict=False)), digest))
+        signature.append(self.monthly_revenue_source_version_input.text().strip())
+        return tuple(signature)
+
+    def _invalidate_monthly_revenue_preview(self) -> None:
+        self._monthly_revenue_preview_signature = None
+        button = getattr(self, "monthly_revenue_apply_btn", None)
+        if button is not None:
+            button.setEnabled(False)
+
     def _set_monthly_revenue_buttons_enabled(self, enabled: bool):
         for attr in (
             "monthly_revenue_fetch_btn",
@@ -2297,7 +2377,13 @@ class UpdateView(QWidget):
         ):
             button = getattr(self, attr, None)
             if button:
-                button.setEnabled(enabled)
+                if attr == "monthly_revenue_apply_btn":
+                    preview_ready = getattr(
+                        self, "_monthly_revenue_preview_signature", None
+                    ) == self._monthly_revenue_input_signature()
+                    button.setEnabled(enabled and preview_ready)
+                else:
+                    button.setEnabled(enabled)
 
     def _default_taiwan_market_qdate(self, date_edit: QDateEdit) -> QDate:
         """用頁面啟動時的台灣日期設定欄位；日期未知時不借用主機日期。"""
@@ -2687,6 +2773,17 @@ class UpdateView(QWidget):
         """Run MOPS monthly revenue dry-run or controlled SQLite apply."""
         if self._reject_busy_write("月營收處理"):
             return
+        input_signature = self._monthly_revenue_input_signature()
+        if apply and not current_only and input_signature != getattr(
+            self, "_monthly_revenue_preview_signature", None
+        ):
+            QMessageBox.warning(
+                self,
+                "請先檢查候選",
+                "正式歷史回填前，請先檢查目前選取的候選檔與可得日對照；"
+                "檢查通過後若更換檔案，需重新檢查。",
+            )
+            return
         if apply:
             reply = QMessageBox.question(
                 self,
@@ -2743,12 +2840,24 @@ class UpdateView(QWidget):
             return result
 
         worker = self._start_worker(TaskWorker(task), operation_kind="write")
-        worker.finished.connect(lambda result, apply_mode=apply: self._on_monthly_revenue_finished(result, apply_mode))
+        worker.finished.connect(
+            lambda result, apply_mode=apply, only=current_only, signature=input_signature:
+            self._on_monthly_revenue_finished(
+                result, apply_mode, current_only=only, input_signature=signature
+            )
+        )
         worker.error.connect(self._on_monthly_revenue_error)
         self._attach_worker_cleanup(worker)
         worker.start()
 
-    def _on_monthly_revenue_finished(self, result: Dict[str, Any], apply: bool):
+    def _on_monthly_revenue_finished(
+        self,
+        result: Dict[str, Any],
+        apply: bool,
+        *,
+        current_only: bool = False,
+        input_signature: tuple[str, ...] | None = None,
+    ):
         self._invalidate_detail_cache()
         self._set_monthly_revenue_buttons_enabled(True)
         self.progress_bar.setVisible(False)
@@ -2761,6 +2870,19 @@ class UpdateView(QWidget):
         if diagnostic_blocks:
             message = f"{message}\n\n" + "\n\n".join(diagnostic_blocks)
         cancelled = result.get("cancelled") is True
+        if not apply and not current_only and result.get("ready_for_apply") is True:
+            current_signature = self._monthly_revenue_input_signature()
+            if input_signature == current_signature:
+                self._monthly_revenue_preview_signature = current_signature
+                self.monthly_revenue_apply_btn.setEnabled(True)
+                self.monthly_revenue_apply_btn.setToolTip(
+                    f"檢查通過：{result.get('normalized_record_count', 0):,} 筆；"
+                    "按下後仍會重新驗證並先備份資料庫。"
+                )
+        elif not apply and not current_only:
+            self._invalidate_monthly_revenue_preview()
+        elif apply and not current_only:
+            self._invalidate_monthly_revenue_preview()
         if result.get("cancel_requested_after_commit") is True:
             message = f"{message}（取消要求於交易提交後收到，完整交易已保留）"
         self._log(message)

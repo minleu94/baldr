@@ -51,6 +51,7 @@ docs/agents/shared_state/handoff_log.md
 /meta_data/
 
 # 虛擬環境
+.venv-scrapling/
 venv/
 env/
 ENV/

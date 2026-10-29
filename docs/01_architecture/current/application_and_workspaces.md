@@ -92,6 +92,8 @@ Workbench 的策略研究 Advice 以市場資料、保存結果、策略版本�
 
 AdviceComposer 另從同一保存結果 read model 投影逐股票篩選、Why Not 與流動性列到 Advice DTO；只採完全相同的 `stock_code`，不把排除股票的理由串到另一個建議。Workbench 選列後獨立顯示這些來源證據。Advice DTO 另以 optional 欄位沿用同筆保存列的規則分數、分數百分位與母體日期／大小、產業及行情值；百分位母體未提供時維持未知。卡片只作中性百分位描述，不將規則分數映射成信心或勝率。重複出現的共用限制集中在 Advice 區塊，原始逐股理由、限制與證據仍留在 DTO／展開詳情。沒有同股資料時明示未提供，不代表無反證或無風險；這些欄位與證據不參與 Policy、推薦排序或 action 決定，詳[逐股保存證據 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-25-advice-保存結果逐股證據呈現)。
 
+DailyInvestmentJourney 另以唯讀 EvidenceEventRepository 依決策日與 source ID 讀取候選篩選事件，並在投影摘要前精確核對 source snapshot ID；WorkbenchDailyEvidence 將同結果的流動性排除、screening pass／fail／missing／degraded／skipped 與 why-not 事件摘要放入收合的「每日來源詳情」。摘要保持事件數、唯一股票數與 `data_quality` 分列；缺 snapshot、缺事件、身份不合或讀取上限會留下警告，不推論沒有排除或來源已接受。這是查看同一每日候選結果的證據，沒有改動 Advice 的候選、排序或 action。
+
 Advice 缺欄判讀卡的回查按鈕只沿 Advice DTO 的結構化 `source_result_id` 回開保存推薦結果；該欄位只在每日 read model 與 Advice 同一結果 ID／決策日／資料日對齊時填入。Workbench 再核對目前 daily candidate ID、股票與 fresh dashboard，Main 才呼叫 Recommendation exact open；canonical verified payload hash 可選附於 Advice DTO 及按鈕提示。自由文字 source trace 不用來解析 ID，缺 ID、日期／股票不符或 stale 時隱藏入口。此流程只回查原件，不補契約欄位或 Gate evidence；詳[Advice exact source 回查 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-26-advice-缺欄列的-exact-保存來源回查)。
 
 缺欄卡將同筆來源欄位與策略作者契約欄位分開：來源欄位只在同一個保存推薦結果有 exact ID 時提供回查；進場論點、失效條件、持有期間與檢視頻率若缺漏，明示只能在新合格回測建立新策略版本時由作者填寫。既有版本不補綁；新按鈕只透過 Main 切到 Backtest，不執行回測、不升版，也不回寫 Workbench Advice。新舊入口的條件與驗收見[Advice 缺欄 QA](../../06_qa/BALDR_WORKBENCH_ADVICE_SOURCE_BRIDGE_20261024.md#2026-10-27-workbench-advice-缺欄改為按欄位來源導引)。

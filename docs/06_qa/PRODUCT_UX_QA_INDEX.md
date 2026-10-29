@@ -1,6 +1,12 @@
 # 產品與個股研究 QA 索引
 
-[Workbench Advice 逐股比較資訊](BALDR_WORKBENCH_ADVICE_COMPARISON_FIELDS_20261028.md)記錄保存推薦的規則分數、百分位母體、產業及行情投影、共用警告集中與逐股證據保留。Advice／Workbench source／Recommendation codec focused tests 139 passed，必要 Workbench UI 97 passed，Update validator 25／0／4；targeted mypy、repo-wide mypy 與原生 GUI 狀態見該報告。
+[Baldr 全工作區資料呈現與響應性盤點](BALDR_UI_PRESENTATION_REVIEW_20261028.md)：Workbench Advice 長判讀改為可捲動文字窗、個股研究摘要移除窄窗高度裁切；另分級列出市場研究、時間軸、Smart Money、Recommendation、Backtest、Storage、Update 與排程頁的改善候選及尚未量測的風險。使用者旅程補充新增 Advice 同筆來源直達、每日來源分段與研究歷史 ID 導覽；Advice／每日旅程／Research Timeline 64 passed，MainWindow 跨頁路由 1 passed，必要 Workbench Update UI 98 passed，核准後 Update validator 25 passed／0 failed／4 skipped；repo-wide mypy 受未修改 T164 bridge 語法錯誤阻擋。原生 GUI／Owner UAT 未執行。
+
+[產業題材頁探索、卡片與版本選擇](BALDR_THEME_PAGE_EXPLORATION_ORDER_20261028.md)：題材排行與成員預設卡片、九項指標卡預設顯示，完整表格保留切換／展開；版本選擇改為頁內已核驗清單，載入時沿 manifest SHA 重讀。版本選擇、題材頁及入口回歸 UI 79 passed；snapshot catalog 10 passed／1 skipped；開發版實際清單驗證得到 1 個可讀版本（2026-10-16 price-v1），2026-10-19 flow-v2 因其依賴路徑超出明選版本庫而拒絕。Targeted mypy／py_compile 通過、Update validator 25／0／4。完整更新頁 UI 本輪 21 passed／76 failed（未修改的 `update_view.py` 缺少 `_choose_monthly_revenue_snapshot`）；repo-wide mypy 仍受未修改 T164 bridge 第 411 行語法錯誤阻擋。原生 GUI／Owner UAT 未執行。
+
+[Gate 1 日常 Advice 與保存讀回](BALDR_GATE1_DAILY_E2E_20261028.md)：Workbench Advice 人工決定寫入隔離 journal，fresh controller 精確讀回；真 MainWindow 保存推薦跨頁讀回通過。正式推薦／排除事件同屬 `rec_bc108d4d483a46f4bd758706e6fb8d37`，但 snapshot 為 estimated／research-only、screening 品質 missing、無 formal credit；當前 Workbench 是否讀此正式快照與 Owner UAT 未驗。受控 runner 的 `busy_close` case 未通過。
+
+[Workbench Advice 逐股比較資訊](BALDR_WORKBENCH_ADVICE_COMPARISON_FIELDS_20261028.md)記錄保存推薦比較欄位、逐股證據及圖卡易讀性改善：一般桌面雙欄、完整判讀可捲動，展開讀取不阻塞 UI。視覺調整前的比較欄位聚焦 tests 139 passed；本輪 Advice contract suite 16 passed，必要 Workbench UI 98 passed，Update validator 25／0／4；其他驗證與未驗證界線見該報告。
 
 [可比產業超額圖卡清晰度](BALDR_INDUSTRY_STRENGTH_CARDS_20261028.md)記錄 3／2／1 欄產業小卡、明示相對基準方向、成分資料覆蓋率、期別 hover 與卡內詳情。Decision Desk／必要 Workbench UI 152 passed、Update validator 25 passed／0 failed／4 skipped、定向 mypy、py_compile、原生主程式畫面確認通過；repo-wide mypy 仍被未修改 T164 bridge 第 411 行語法錯誤阻擋。原生視窗載入快照品質降級；固定舊 EXE 與 Owner UAT 未驗。
 

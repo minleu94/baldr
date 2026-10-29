@@ -1,5 +1,7 @@
 # QA 證據導覽
 
+- [產業題材頁探索與卡片優先呈現（2026-10-28）](BALDR_THEME_PAGE_EXPLORATION_ORDER_20261028.md)：排行與成員預設卡片、九項指標改以指標卡閱讀，完整表格可切換／展開；主要題材探索及明細前移。題材 UI 61 passed，必要 Workbench UI、Update validator、定向 mypy 與編譯結果及 repo-wide mypy 阻塞均有記錄。
+- [Gate 1 日常 Advice 與保存讀回證據（2026-10-28）](BALDR_GATE1_DAILY_E2E_20261028.md)：隔離 MainWindow／journal readback、busy-close 與 500 筆上限外的歷史查找已通過；凍結資料／策略／Advice policy 的完整推薦至 Advice deterministic replay 也通過。正式來源仍 estimated/missing、research-only 且無 formal credit；Owner 原生 GUI UAT 尚未完成。
 - [2026-10-27 Evidence Review 內保存候選處置與 SQLite WAL 防競態](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-27-evidence-review-內保存候選處置與-sqlite-wal-防競態)：候選處置可由 UI 綁到明選 working-copy weekly history，完整重驗 SQLite file set 並讀回 ID/hash；Owner UAT 與 Gate 2 真實週期仍未完成。
 
 - [MarketSessionCadence 與 Evidence dry-run 修正（2026-10-26/27）](BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md)：讀取臨時休市 sidecar、歷史 replay 以決策日驗證日曆，並以 hash-verified TWSE 原始方向符分類 Breadth；完整隔離流程無 pipeline blocker，已知官方不可比排除保留數量並列 advisory，Forward summary 仍 degraded。
@@ -13,6 +15,7 @@
 - [V2 Release Closeout](BALDR_V2_RELEASE_CLOSEOUT_20261021.md)：唯一 Source／EXE、Windows 全發現、Codex 設定讀回與恢復邊界；自然運行、金融資格及真人接受分軌。
 
 - [月營收全用途整合](MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)：雙市場原件、版本歸檔、逐用途資格與研究接線；Source 工程與正式金融接受分別判讀。
+- [MOPS 月營收衝突報告獨立複核（2026-10-28）](MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md)：逐類對照 412 列問題與 325 列處置清冊、核對 37 列 OpenAPI 值、直接檢視可達的 F22 明細頁及正式 SQLite 月份覆蓋；區分本機缺件、MOPS 頁面觀察、來源版本衝突與正式 DB 尚未載入。
 
 - [V2工程補完與整合](BALDR_V2_FINAL_COMPLETION_20261021.md)：具名月營收來源、人工確認Paper producer、真Main歷史來源保存重開與五旅程五軌判讀；不取代原金融批准或Native／Owner驗收。
 

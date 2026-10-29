@@ -360,6 +360,7 @@ Recovery planner 對上述 3 列回報 0 conflict／diagnostic、3 normalized、
 - 對正式庫 724 筆 degraded row 去重後的 96 個公司／公告年度查詢鍵完成盤點：76 個新查詢，另重用 20 個既有原始回應；每次請求間隔至少 10 秒，零自動重試。96 個結果中 95 個為 HTTP/API 200，1 個 `6806／2019` 為 HTTP 200、API 406。結果有 81 個查詢年度未找到月營收標題、11 個年度找到 1 筆、4 個年度找到 2 筆；清單的 10 個候選事件逐筆請求詳情，9 筆成功、`8183／2014` 詳情回 API 500（公司已不繼續公開發行）。
 - 可與舊 snapshot 精確值、公告期別和公告日期同時對上的只有兩列：`2392／2026-03`，更正公告時間 `2026-05-15 19:04:16`、更正後月營收 `8,015,155` 仟元；`3712／2026-03`，時間 `2026-05-15 17:35:01`、更正後月營收 `3,383,462` 仟元。兩筆均早於 snapshot，且詳情值與 snapshot 完全一致；更晚的 2026-10 更正事件不得回寫至 2026-06 snapshot。
 - 依治理回填流程只新增上述兩筆 mapping，採用官方 snapshot 與 mapping 備份後套用。套用後以精確鍵、金額、公告日及可用日守衛交易，將既有 canonical rows 更新為 observed，並清除本次流程產生的兩筆完全相同 suffix duplicate。正式 DB readback：兩列均為 canonical `mops-static-snapshot-monthly-revenue-2026-06-16`、available `2026-06-18`、quality `observed`；全表品質數由 251,192 observed／724 degraded 變成 **251,194 observed／722 degraded**；`PRAGMA quick_check=ok`。DB 與 mapping 備份收據記錄於 ignored `.tmp_ezsearch_probe_20261029/recovery_applied.json`。
+- 按先前 724 筆逐鍵裁定分類，兩筆回填後餘額為：**684** 筆沒有可配對的公告事件、**36** 筆公告時間晚於 snapshot 可得日、**1** 筆公告時間晚於該列擷取時間，另有 **1** 筆 `6884／2026-08` 特殊缺口。四類合計 722；不能藉由放寬日期規則將後三類混入舊 snapshot。
 - 其餘候選均不符合舊 snapshot 回填條件：`2608`、`3437`、`4304`、`5460`、`8101` 的修正晚於 snapshot，或詳情只覆蓋累計值／數字與舊 snapshot 不同；`8183` 只有自願申報公告列表，詳情 API 拒絕回傳；`6806／2019` API 406。這些列仍 degraded，不能只因有公告標題便推定精確值與可用時間。
 - `1528／2025` 換用官方 ezSearch 前端 host 後，結果仍與既有 MOPS `t05st01` 回應相同，未找到月營收標題；因此換 host/Scrapling 解決了入口探測，但沒有補出缺失事件。`2330` 控制組則證明重大訊息與 F22 數值公告時間不同、金額精度亦不同，不能混用公告時間。
 

@@ -525,3 +525,11 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 修正後以隔離 controller receipt 實跑成功：core `exit_code=0`、sidecar readback verified、未逾時；MOPS 財報公告研究 child `captured_research`，6/6 查詢成功、失敗 0、無效事件 0，成功回應 custody 6 件且 source readback verified。研究 run `run_20261029T142745954121Z`，artifact SHA-256 `1ae1a1cfce9a9f143311dc12a5f786a7d7c91a928292da0de5a45891475f5058`。本次明確停用無關的 quarterly OpenAPI child，只執行 controller，未呼叫外層 `current_fundamentals` writer；`formal_database_write_performed_by_controller=false`。注意這個 child 查詢的是財報公告 F26–F28，與月營收 F22 歷史缺口不同；此為手動隔離驗證，不代表 Task Scheduler 自然週排程已成功。
 
 修改的週核心 CLI 在 `PYTHONIOENCODING=cp1252` 下回歸測試通過；CLI／output-path focused checks **8 passed**，Weekly controller **40 passed／1 個具名遷移測試 deselected**，py_compile 通過。較大的三檔合併測試另有 8 個環境失敗（MOPS custody fixture 輸出目錄問題與 `cmd.exe` wrapper 執行結果 99）；因此不宣稱三檔測試全通過。此修復沒有解除任何月營收 `degraded` mapping。
+
+### 2026-10-30 PUB F22 全歷史查詢完成：沒有新增可映射事件
+
+2014–2026-10 的 PUB 市場 F22 查詢已完成 **924／924 個日期視窗**。原始回應 924 份、manifest 924 列、checkpoint 924 鍵；924 個視窗無重複，events.csv 僅標頭、0 事件。逐檔重算 SHA-256 與 byte count、比對 manifest/checkpoint 後 **0 項不一致**；924 份原件全部為 HTTP 200，JSON 全部是 `status=fail`、`message=["查無公告資料"]`、`data=[]`。其中少數 HTTP 502 經既有 retry 後成功取得 HTTP 200，沒有留下失敗視窗。採集程式使用 Scrapling 對 MOPS `ezsearch_query` 做 HTTP POST；未使用 Remote Desktop。
+
+這是對 **PUB 市場 + F22 公告查詢端點 + 本次涵蓋日期窗** 的完整有效負結果，不表示其他 MOPS 頁面、公告類型或不同查詢路徑沒有公告。相較於原有 SII／OTC F22 harvest，本批沒有新事件、公司或公告時間可合併，故不會解除任何新的 degraded，也沒有寫入正式 SQLite 或 `monthly_revenue_availability.csv`。既有正式資料與 PIT mapping 未因本批改動。輸出保存在 `output/mops_harvest_pub_2014_2026_backfill20261029/`；此目錄的 manifest、raw、checkpoint、events 是採集與可重現驗證依據。
+
+**後續處置：**不再重複掃描同一 PUB/F22/date 窗口。剩餘缺口須由既有 SII／OTC F22 事件精確配對、可識別的發行人營收明細或其他能提供公告時間證據的官方查詢路徑處理；現有分類仍以本報告上述整表讀回及晚公告處置為準。本次負查詢結果不能作為將其他 market/announcement source 視為已掃描的理由。

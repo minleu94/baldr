@@ -310,3 +310,36 @@ Recovery planner 對上述 3 列回報 0 conflict／diagnostic、3 normalized、
 針對上一節 TWSE `WinError 10054`，`data_module/monthly_revenue_snapshot_harvester.py` 加入保守重試：只對 `TimeoutError`／`ConnectionError` 及其 `urllib.URLError` 包裝型態多試 1 次，等待 10 秒；`HTTPError` 不重送，其他失敗照常留下診斷並阻止候選發布。此共用 harvester 同時供排程與 Update tab 使用。新增兩個回歸案例（連線 reset 一次後成功、HTTP 403 不重試）；在受控 Windows Job／同工作區 lock 下執行整個 `tests/test_monthly_revenue_snapshot_harvester.py` **11 passed**，兩個修改 Python 檔 `py_compile` 通過；Job 8 GiB／12 process limits readback verified、child exit 0、process tree／handles 關閉、無強制清理。收據目錄 `.tmp_mops_retry_validation_20261029/run_20261029_031008_cecda689/`。
 
 套用修復後先在 ignored scratch 捕獲，再用同一支程式把正式候選寫到 `F:\Min\Python\Project\FA_Data\output\monthly_revenue_mops_snapshots\captures\run_2026-10-29_ff8681d75e804b2099cf256a694af9aa\`：期別 2026-09、SII 996 列＋OTC 866 列，共 **1,862 列**，0 diagnostics。原件 SHA-256：SII `6220d4fb93197736fbe34fe0f413b742eae887549ad4321f790cf01f2072f894`、OTC `c343226a97cd8cc3a937d5b69d290901bf7097d334abe6947bbec321df21a13b`；候選 CSV `mops_monthly_revenue_snapshot_2026-09_2026-09_2026-10-29.csv` SHA-256 `3148a7380d3000301a579e01e319f614a646e201113ffcf8bb3552d336d35107`；`capture_receipt.json` SHA-256 `3b1cb156e1ba557d8fb5fc964554836c0bd1ed39edc6148158f4af8ed1f16937`。候選選擇器的受控唯讀 readback 選中此完整發布標記綁定的 2026-09 CSV。這證實手動 live capture 到正式 output 及 selector 可見；候選仍標 `formal_database_written=false`、`availability_mapping_emitted=false`，沒有寫正式 SQLite 或 PIT mapping。Task Scheduler `latest_status.json` 仍停在 10/28，因此**修復版自然排程的實際成功尚未驗證**。
+
+### 2026-10-29 20 個 singleton 缺口定向探查
+
+針對剩餘 degraded 中此前未定向查過的 20 個 singleton 代碼／期別，使用 MOPS `t05st01` issuer／年度查詢逐筆查公告清單。**20/20 HTTP 200 且 API 查詢成功；另有一次 6561 詳頁請求；21 個請求的起始間隔至少 10.913836 秒。**20 份清單原始 JSON、manifest 與逐鍵 adjudication CSV 保存在 repo ignored `.tmp_mops_singleton_probe_20261029/`；20/20 清單 SHA-256 經 root readback 核對相符。未修改正式 DB、availability mapping 或程式碼。
+
+| 代碼／期別 | 固定 snapshot 值（仟元） | t05st01 結果 |
+|---|---:|---|
+| 1528／2025-09 | 290,203 | 無精確月份月營收標題 |
+| 1709／2022-10 | 1,098,776 | 無精確月份月營收標題 |
+| 1735／2023-04 | 178,002 | 無精確月份月營收標題 |
+| 2012／2022-10 | 814,191 | 無精確月份月營收標題 |
+| 2207／2022-10 | 20,746,066 | 無精確月份月營收標題 |
+| 2433／2022-10 | 257,446 | 無精確月份月營收標題 |
+| 3219／2022-10 | 140,632 | 無精確月份月營收標題 |
+| 3466／2022-10 | 96,473 | 無精確月份月營收標題 |
+| 5205／2023-03 | 858 | 無精確月份月營收標題 |
+| 5457／2022-10 | 1,838,900 | 無精確月份月營收標題 |
+| 6111／2022-10 | 151,317 | 無精確月份月營收標題 |
+| 6224／2022-11 | 239,770 | 無精確月份月營收標題 |
+| 6561／2022-06 | 254,784 | 日期字串誤命中股東常會；詳頁確認不是月營收 |
+| 6589／2022-06 | 108,521 | 無精確月份月營收標題 |
+| 6645／2023-03 | 36,245 | 1 個泛營收標題，但期別不符 |
+| 6823／2023-10 | 28,179 | 無精確月份月營收標題 |
+| 6846／2025-09 | 59,169 | 無精確月份月營收標題 |
+| 6859／2022-10 | 62,850 | 2 個泛營收標題，期別均不符 |
+| 8034／2022-10 | 84,041 | 無精確月份月營收標題 |
+| 8279／2025-08 | 177,697 | 無精確月份月營收標題 |
+
+6561 詳頁原件於 `2026-10-29T10:31:59.821643Z` 取得，HTTP/API 200，SHA-256 `1314f599606e32b5d1207a017271ca79e4b0c786b5c4d5c912576b5e396350fe`；公告時間為民國 111/02/17 14:58:24，標題為股東常會，沒有月營收值。此次未有任何鍵取得可與 snapshot 綁定的精確月份月營收公告時間，20 列維持 degraded。結論僅限 `t05st01` 此次逐 issuer／年度清單查詢；它不能證明其他官方歷史頁／API 沒有公告資料。
+
+#### 替代官方來源路徑判讀
+
+離線檢視既有程式與本機原件後，確認 MOPS 歷史月營收表可透過 `POST https://mops.twse.com.tw/mops/api/redirectToOld`、`apiName=ajax_t21sc04_ifrs`、`TYPEK=sii0|otc0`、民國年／月份參數取得指定期別的全市場 HTML；此路徑可用於核對公司、期別、仟元本月值，但頁面是查詢時重新產生，並非當年公告時的原頁，沒有原始公告時間，不能替舊 snapshot 建 PIT mapping。TWSE／TPEx OpenAPI 目前只有最新月表，亦無歷史期別參數。這些路徑未在本次發出 HTTP 請求；需另做有界的數值核對或新增帶現今 capture time 的 revision，不能回填舊版公告時間。

@@ -512,6 +512,12 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 
 依使用者既有授權，已啟動全期 PUB F22 獨立 harvest：2014–2026-10，規劃 **924 個窗口**，目標 `output/mops_harvest_pub_2014_2026_backfill20261029/`，維持每請求至少 10 秒間隔與 checkpoint；首個程序使用狀態修正前版本，已安全中止並保留前 5 窗原件；修正版從 checkpoint 續跑。截至 2026-10-29 23:03 台北時間共完成 **64／924** 窗；其中 2026-01..10 的 **60／60** 窗全部為 HTTP 200、應用狀態 `fail／查無公告資料`、0 列，並逐窗重新核對原件 SHA-256、byte count 與 row count，60／60 一致。截至 2026-10-29 23:12 台北時間共完成 113／924 窗，最新覆蓋至 2025-09-20；目前所有已查窗口合計 0 個事件列。這使 2026 年 PUB F22 路徑（含 6884／2026-08 相關公告季）完成覆蓋，但全期 harvest 仍在跑，不能把 2026 或其他已掃窗口的空結果外推成全期也全空；尚未發現可映射事件，正式 DB／mapping 未寫入。原件與即時進度以該目錄 manifest、raw、checkpoint 為準。
 
+### 2026-10-29 PUB F22 採集器續跑完整性修正
+
+對 2014–2026-10 PUB F22 批次作程式複核後，補上兩個完整性防線：HTTP 200 JSON 必須明確回 `status=success` 且有資料列，或 `status=fail`、空資料且訊息清單精確只有「查無公告資料」；缺少／空白狀態、`success` 空列、混合錯誤訊息均拒絕落地。續跑跳過既有視窗前，現在會核對 raw SHA／byte count、HTTP/API 狀態、payload row／correction count、唯一 manifest row，並從原始 JSON 重建該窗事件列後與 `events.csv` 比對；checkpoint 前已存在孤立 raw／manifest 時則停止，不覆寫、不重複追加。
+
+修正後受控 Windows Job 的 collector 測試 **15 passed**、兩檔 `py_compile` 通過；Job 限制讀回 8 GiB／12 processes，啟動前可用 RAM 約 26.8 GiB，結束後 Job 與 child handles 已關閉。舊程序停止時有 133 個 checkpoint／manifest／raw 視窗，`events.csv` 0 列，未發現孤立原件；新程序以同一 checkpoint 嚴格續跑。沙盒內 Scrapling DNS 解析逾時後已停止重試，改由獲准的網路執行環境重新連線，官方端點已回 HTTP 200。截至 2026-10-29 23:20 台北時間共 **136／924** 窗，已掃視窗回應的 API 狀態與原件一致且事件列 0 筆；全期採集仍在進行，不能外推未掃窗口。沒有使用 Remote Desktop；沒有寫正式 DB／availability mapping。
+
 ### 2026-10-29 Weekly MOPS child 實跑：編碼與 output junction 修復
 
 隔離手動執行 Weekly controller 時先重現兩個可修故障：核心 collector 在 Windows `cp1252` stdout 輸出含中文 JSON 時拋 `UnicodeEncodeError`；修正為子程序自行重設 UTF-8 後，core 已能正常完成。接著 `fetch_mops_statement_availability.py` 把已由 output guard 驗證的輸出路徑 `resolve()` 後再檢查是否位於 repo；本機 `repo/output` 是指向 `F:/Min/Python/Project/BaldrStorage/repo-output` 的既定 junction，故被誤判為越界。現在以固定 repo 內預設路徑做詞法範圍驗證，再由既有 output guard 確認解析後位置不在正式 `DATA_ROOT`。

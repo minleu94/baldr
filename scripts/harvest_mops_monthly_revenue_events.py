@@ -216,14 +216,141 @@ def fetch_ezsearch_window(
             messages = []
 
         if api_status == "fail":
-            is_expected_empty = not rows and any(message == "查無公告資料" for message in messages)
+            is_expected_empty = not rows and messages == ["查無公告資料"]
             if not is_expected_empty:
                 detail = " / ".join(messages) or "unspecified application error"
                 raise ValueError(f"MOPS application-level query failure: {detail}")
-        elif api_status and api_status != "success":
+        elif api_status != "success":
             raise ValueError(f"MOPS returned an unexpected application status: {api_status}")
+        elif not rows:
+            raise ValueError("MOPS returned success with an empty data list; refusing to treat it as a verified no-data window")
 
     return status_code, body, parsed_json
+
+
+def _build_event_rows(
+    rows: list[dict[str, Any]], market: str, raw_filename: str, raw_sha: str
+) -> tuple[list[list[str]], int]:
+    parsed_event_rows: list[list[str]] = []
+    corrections_count = 0
+    for row in rows:
+        subject = str(row.get("SUBJECT", "")).strip()
+        period, is_correction = parse_subject(subject)
+        if is_correction:
+            corrections_count += 1
+
+        announced_date = _roc_to_iso_date(str(row.get("CDATE", "")).strip())
+        announced_time = str(row.get("CTIME", "")).strip()
+        announced_at = (
+            f"{announced_date}T{announced_time}+08:00"
+            if announced_date and announced_time
+            else ""
+        )
+        parsed_event_rows.append([
+            market,
+            str(row.get("COMPANY_ID", "")).strip(),
+            str(row.get("COMPANY_NAME", "")).strip(),
+            str(row.get("CODE_NAME", "")).strip(),
+            str(row.get("AN_CODE", "")).strip(),
+            announced_date,
+            announced_time,
+            announced_at,
+            subject,
+            period,
+            "TRUE" if is_correction else "FALSE",
+            str(row.get("HYPERLINK", "")).strip(),
+            f"raw/{raw_filename}",
+            raw_sha,
+        ])
+    return parsed_event_rows, corrections_count
+
+
+def _validate_checkpointed_window(
+    *,
+    window_key: str,
+    checkpoint_data: Mapping[str, Any],
+    raw_filepath: Path,
+    manifest_rows: list[dict[str, str]],
+    event_rows: list[dict[str, str]],
+    market: str,
+    start_roc: str,
+    end_roc: str,
+) -> tuple[int, int]:
+    """驗證續跑跳過條件，避免 raw/checkpoint 與 CSV 輸出彼此失配。"""
+    if not raw_filepath.is_file():
+        raise ValueError(f"checkpoint {window_key} has no raw response: {raw_filepath}")
+
+    raw_body = raw_filepath.read_bytes()
+    raw_sha = _sha256_of_bytes(raw_body)
+    if raw_sha != checkpoint_data.get("sha256"):
+        raise ValueError(f"checkpoint {window_key} raw SHA-256 mismatch")
+    if len(raw_body) != checkpoint_data.get("byte_count"):
+        raise ValueError(f"checkpoint {window_key} raw byte count mismatch")
+    if checkpoint_data.get("http_status") != 200:
+        raise ValueError(f"checkpoint {window_key} does not record HTTP 200")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8-sig", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise ValueError(f"checkpoint {window_key} raw is not valid UTF-8 JSON: {err}") from err
+    if not isinstance(payload, dict):
+        raise ValueError(f"checkpoint {window_key} raw has an invalid top-level shape")
+    rows = payload.get("data")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError(f"checkpoint {window_key} raw has an invalid data list")
+    api_status = str(payload.get("status", "")).strip().lower()
+    message_value = payload.get("message", [])
+    if isinstance(message_value, str):
+        messages = [message_value.strip()]
+    elif isinstance(message_value, list):
+        messages = [str(message).strip() for message in message_value]
+    else:
+        messages = []
+    is_expected_empty = api_status == "fail" and not rows and messages == ["查無公告資料"]
+    if (api_status != "success" or not rows) and not is_expected_empty:
+        raise ValueError(f"checkpoint {window_key} raw does not contain a recognized successful response")
+
+    row_count = len(rows)
+    if row_count != checkpoint_data.get("row_count"):
+        raise ValueError(f"checkpoint {window_key} payload row count mismatch")
+    expected_events, corrections_count = _build_event_rows(
+        rows, market, raw_filepath.name, raw_sha
+    )
+    if corrections_count != checkpoint_data.get("corrections_count"):
+        raise ValueError(f"checkpoint {window_key} correction count mismatch")
+
+    manifest_matches = [row for row in manifest_rows if row.get("file_name") == raw_filepath.name]
+    if len(manifest_matches) != 1:
+        raise ValueError(f"checkpoint {window_key} requires exactly one manifest row; found {len(manifest_matches)}")
+    manifest = manifest_matches[0]
+    expected_manifest = {
+        "file_path": f"raw/{raw_filepath.name}",
+        "source_url": EZSEARCH_URL,
+        "http_method": "POST",
+        "http_status": "200",
+        "market": market,
+        "query_window": f"{start_roc}-{end_roc}",
+        "row_count": str(row_count),
+        "sha256": raw_sha,
+        "byte_count": str(len(raw_body)),
+    }
+    if any(manifest.get(key, "") != value for key, value in expected_manifest.items()):
+        raise ValueError(f"checkpoint {window_key} manifest does not match its raw response")
+
+    matching_events = [
+        row for row in event_rows if row.get("raw_file") == f"raw/{raw_filepath.name}"
+    ]
+    expected_event_dicts = [dict(zip(EVENT_HEADERS, row)) for row in expected_events]
+    if matching_events != expected_event_dicts:
+        raise ValueError(f"checkpoint {window_key} events.csv rows do not match its raw response")
+    return row_count, corrections_count
+
+
+EVENT_HEADERS = [
+    "market", "stock_code", "stock_name", "industry", "announcement_item",
+    "announced_date", "announced_time", "announced_at", "subject", "period",
+    "is_correction", "detail_url", "raw_file", "raw_sha256",
+]
 
 
 def main() -> int:
@@ -338,26 +465,16 @@ def main() -> int:
             writer = csv.writer(f)
             writer.writerow(manifest_headers)
 
-    event_headers = [
-        "market",
-        "stock_code",
-        "stock_name",
-        "industry",
-        "announcement_item",
-        "announced_date",
-        "announced_time",
-        "announced_at",
-        "subject",
-        "period",
-        "is_correction",
-        "detail_url",
-        "raw_file",
-        "raw_sha256",
-    ]
+    event_headers = EVENT_HEADERS
     if not events_file.exists():
         with events_file.open("w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(event_headers)
+
+    with manifest_file.open("r", encoding="utf-8-sig", newline="") as f:
+        manifest_rows = list(csv.DictReader(f))
+    with events_file.open("r", encoding="utf-8-sig", newline="") as f:
+        event_rows = list(csv.DictReader(f))
 
     success_count = 0
     skip_count = 0
@@ -375,18 +492,37 @@ def main() -> int:
         raw_filepath = raw_dir / raw_filename
 
         # 斷點續傳檢查
-        if window_key in checkpoint and raw_filepath.exists():
+        if window_key in checkpoint:
             cp_data = checkpoint[window_key]
-            current_sha = _sha256_of_bytes(raw_filepath.read_bytes())
-            if current_sha == cp_data.get("sha256"):
-                skip_count += 1
-                total_events += cp_data.get("row_count", 0)
-                total_corrections += cp_data.get("corrections_count", 0)
-                print(
-                    f"[{idx}/{total_tasks}] [SKIP] ({market}) {s_roc} ~ {e_roc} "
-                    f"已存在 ({cp_data.get('row_count', 0)} 列, {cp_data.get('corrections_count', 0)} 更正)"
+            try:
+                validated_rows, validated_corrections = _validate_checkpointed_window(
+                    window_key=window_key,
+                    checkpoint_data=cp_data,
+                    raw_filepath=raw_filepath,
+                    manifest_rows=manifest_rows,
+                    event_rows=event_rows,
+                    market=market,
+                    start_roc=s_roc,
+                    end_roc=e_roc,
                 )
-                continue
+            except (OSError, ValueError, TypeError) as err:
+                print(f"[INTEGRITY ERROR] {err}; refusing to skip or overwrite this window.", file=sys.stderr)
+                return 3
+            skip_count += 1
+            total_events += validated_rows
+            total_corrections += validated_corrections
+            print(
+                f"[{idx}/{total_tasks}] [SKIP] ({market}) {s_roc} ~ {e_roc} "
+                f"已驗證 ({validated_rows} 列, {validated_corrections} 更正)"
+            )
+            continue
+        if raw_filepath.exists() or any(row.get("file_name") == raw_filename for row in manifest_rows):
+            print(
+                f"[INTEGRITY ERROR] {window_key} has output artifacts without a checkpoint; "
+                "refusing to overwrite or append to a partial window.",
+                file=sys.stderr,
+            )
+            return 3
 
         # 執行網路請求 (最多重試 3 次)
         attempts = 0
@@ -453,34 +589,9 @@ def main() -> int:
             )
 
         # 寫入 events.csv
-        parsed_event_rows = []
-        for r in rows:
-            subject = str(r.get("SUBJECT", "")).strip()
-            period, is_corr = parse_subject(subject)
-            if is_corr:
-                corrections_in_window += 1
-
-            cdate = str(r.get("CDATE", "")).strip()
-            ctime = str(r.get("CTIME", "")).strip()
-            announced_d = _roc_to_iso_date(cdate)
-            announced_at = f"{announced_d}T{ctime}+08:00" if (announced_d and ctime) else ""
-
-            parsed_event_rows.append([
-                market,
-                str(r.get("COMPANY_ID", "")).strip(),
-                str(r.get("COMPANY_NAME", "")).strip(),
-                str(r.get("CODE_NAME", "")).strip(),
-                str(r.get("AN_CODE", "")).strip(),
-                announced_d,
-                ctime,
-                announced_at,
-                subject,
-                period,
-                "TRUE" if is_corr else "FALSE",
-                str(r.get("HYPERLINK", "")).strip(),
-                f"raw/{raw_filename}",
-                raw_sha,
-            ])
+        parsed_event_rows, corrections_in_window = _build_event_rows(
+            rows, market, raw_filename, raw_sha
+        )
 
         if parsed_event_rows:
             _append_csv_with_retry(events_file, parsed_event_rows)
@@ -501,6 +612,8 @@ def main() -> int:
             byte_count,
         ]
         _append_csv_with_retry(manifest_file, [manifest_row])
+        manifest_rows.append(dict(zip(manifest_headers, map(str, manifest_row))))
+        event_rows.extend(dict(zip(event_headers, row)) for row in parsed_event_rows)
 
         # 更新 Checkpoint
         checkpoint[window_key] = {

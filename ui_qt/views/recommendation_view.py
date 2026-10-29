@@ -69,7 +69,12 @@ from app_module.strategy_version_service import StrategyVersionService
 from data_module.config import TWStockConfig
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
-from ui_qt.widgets.layout_helpers import CurrentPageSizeTabWidget, create_scroll_area, ensure_visible_rows
+from ui_qt.widgets.layout_helpers import (
+    CurrentPageSizeTabWidget,
+    create_scroll_area,
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from ui_qt.widgets.text_sanitizer import remove_symbol_icons
 from ui_qt.theme import MIDNIGHT_ANALYST
 
@@ -3815,7 +3820,7 @@ class RecommendationView(QWidget):
         layout = QVBoxLayout(panel)
         # 結果在窄版研究區由外層 scroll area 承接，不能讓所有控制項的
         # sizeHint 把整個面板最小寬度鎖死，否則 390px 視窗無法重排。
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        set_scroll_content_constraints(panel, horizontal_scroll=False)
         layout.setSpacing(10)
 
         context_header = QHBoxLayout()

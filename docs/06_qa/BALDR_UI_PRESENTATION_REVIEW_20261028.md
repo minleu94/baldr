@@ -164,3 +164,44 @@ Recommendation 結果頁原先把內層 layout 的水平與垂直 size constrain
 - `tests/test_ui_qt_recommendation_layout.py::test_saved_recommendation_primary_controls_keep_their_readable_height`：**1 passed**；檢查寬／窄視窗保存來源、主要操作、研究決定與日期時間控件高度，並斷言水平／垂直 layout constraints。
 - 稽核器誤報也一併修正：把 `QTimeEdit` 內部 `QLineEdit` 改按複合控件量測。`tests/test_qa_validate_ui_layout.py::test_spinbox_editor_is_audited_through_its_composite_control`：**1 passed**。
 - 修正後 Recommendation 定向 MainWindow 稽核（scale 1.0、1400×800、46 子頁）：**0 failures／0 coverage gaps**；保存來源選單為 30×30 px，研究決定組高度問題不再出現。原九工作區多尺寸稽核未重跑；原生 GUI／Owner UAT 與全程式 UI 盤點仍未完成。
+
+## 2026-10-29 第十四輪：全工作區現況基線
+
+以目前版本重新跑 MainWindow 全九工作區、default 1400×800、scale 1.0：涵蓋 **325 子頁**。Recommendation 與 Workbench 各自的定向結果沒有再現前版 Recommendation 控件壓縮或 Workbench「研究證據」水平溢位；Workbench 研究證據內容寬度與 viewport 同為 1306 px、水平範圍 0。舊報告的這兩類告警不代表目前程式狀態。
+
+- 全九工作區報告仍有 **8 failures／7 coverage gaps**：4 個 Backtest daily-signals 合成 fixture 在 header tooltip 還原核對失敗；3 個 Portfolio「配置研究封存」合成列的第 5 列未完整顯示；另有 7 個 Backtest replay／strategy-research 子頁在切換後仍未可見。這些項目目前不足以證明是使用者可見產品缺陷，仍作為盤點缺口，不宣稱全程式稽核通過。
+- QA 原始輸出位於 ignored `.pytest-owned-temp/ui_audit_all_default_round14/`。本輪只做 default 尺寸、1.0 scale；未覆蓋 compact／最大化幾何、1.5 scale、原生 GUI 或 Owner UAT。
+
+## 2026-10-29 第十五輪：Advice 空狀態診斷操作層級
+
+Workbench 的「查看技術診斷」原占滿 Advice 空狀態卡寬度，讓次要技術動作看起來像主操作並切開狀態說明。現在改成卡片內靠左、依文字寬度排列的 ghost 操作；展開／收合與診斷內容不變。
+
+- `tests/test_ui_qt_workbench_view.py` Advice 狀態與新幾何定向測試：**2 passed**；寬／窄尺寸均確認操作按鈕保持緊湊且靠左，原診斷展開／收合行為保留。
+- 修正後 Workbench 定向 MainWindow 稽核（scale 1.0、1400×800、13 子頁）：**0 failures／0 coverage gaps**；首頁 Advice 空狀態診斷操作已恢復為內容寬度。
+- 必要 Update UI **98 passed**；Update validator **25 passed／0 failed／4 skipped**；兩個修改 source targeted mypy **0 issues**，4 個 Python source／test `py_compile` 通過，`git diff --check` 無空白錯誤。
+- Repo-wide mypy 仍在 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇未修改語法錯誤，未檢查其餘模組。Advice 原生 GUI／Owner UAT、全程式多尺寸盤點仍未完成。
+
+## 2026-10-29 第十六輪：來源閱讀與查詢動作路徑
+
+依使用者回報重新整理 Gate 1 的跨頁導覽與來源閱讀：Advice 的每日來源入口明示目的地為今日總覽；同筆研究狀態以明確的緊湊按鈕前往「研究紀錄與覆盤」，讀回文字也標出回查位置。每日來源詳情改為先呈現候選、日期、篩選／排除及證據狀態；來源 ID、snapshot、事件、學習與診斷欄位放入收合的「進階追蹤」。綜合選股的「套用全域查詢」不再橫跨整列，改為靠左的主要動作並加上條件變更提示。所有變更只調整操作呈現與文字，沒有改資料來源、篩選或保存行為。
+
+- `tests/test_ui_qt_workbench_view.py`＋`tests/test_workbench_advice_contract.py`：**75 passed**；涵蓋 Advice 的來源導覽、歷史查找按鈕與保存位置文字、每日來源摘要及進階追蹤分層。
+- `tests/test_ui_qt_daily_market_technical_universe_v4_view.py::test_v4_result_actions_are_grouped_and_reflow_at_narrow_width`：**1 passed**；更新頁 UI **98 passed**；Update validator **25 passed／0 failed／4 skipped**。
+- Workbench 定向 MainWindow 稽核，scale 1.0／1.5：**13 子頁、0 failures／0 coverage gaps**。Recommendation 定向稽核，scale 1.0／1.5：**46 子頁、0 failures／0 coverage gaps**。推薦頁稽核畫面確認主要查詢按鈕改為緊湊靠左；offscreen 測試不取代原生 GUI 視覺或 Owner UAT。
+- 兩個修改 UI source 的 scoped mypy 均 **0 issues**；修改 Python source／test `py_compile` 通過。全程式 9 工作區多幾何稽核目前仍有每個 scale **70 failures／21 coverage gaps**，集中於 Workbench 擴展情境的水平溢位、Recommendation 非作用中狀態的控件量測、Backtest 夾具還原／文字裁切與子頁覆蓋、Portfolio 合成列邊界，以及 3 個 child process 退出錯誤。Recommendation 與 Workbench 各自定向重跑為綠；整體告警尚未逐項重驗，不能據此宣稱全程式 UI 通過。
+- `git diff --check` 無 whitespace error。尚未完成全部工作區的逐頁資訊層級盤點、原生 GUI 視覺檢查或 Owner UAT；Gate 1 整體接受仍待 Owner 核對。
+
+## 2026-10-29 第十七輪：保存來源詳情的可掃讀分段
+
+使用者提供的推薦來源內容同時含分類資格、公司名冊契約、產業指數觀察、來源警示及下一步；原本顯示為連續段落。現在在完整來源欄位中加上可掃讀的段落標題與留白，並用同一來源卡片樣式及純文字格式顯示，分段為公司名冊／分類資格、產業指數來源與列觀察、同次市場來源、來源提示和下一步。摘要仍先顯示核驗狀態及下一步；原始欄位、hash、日期、未知值與 PIT 限制均保留。
+
+- `tests/test_ui_qt_personal_recommendation_choice.py::test_company_source_display_uses_only_the_matching_sealed_event`：**1 passed**；原來源資格、封存資料與 unknown 顯示斷言保留，新增分段標題和純文字檢查。
+- Recommendation 定向 MainWindow 稽核於 scale 1.0／1.5：**46 子頁、0 failures／0 coverage gaps**。這是 offscreen 版面稽核，沒有驗證 Windows 原生視窗字型／DPI。
+- 完整 `tests/test_ui_qt_personal_recommendation_choice.py`：**23 passed、11 failed**，不能列為整檔通過。失敗包含 runs 目錄不可讀或 fixture 未產生 replay samples、個人策略歷史讀回與預期不同、以及 `os.link` 暫存 receipt 權限拒絕；這些測試涉及來源／策略保存行為，未判成此次呈現變更的缺陷或通過。須獨立查清後才能將該測試檔列為綠燈。
+- `recommendation_view.py` scoped mypy **0 issues**；修改 Python source／test `py_compile` 通過；全程式多工作區稽核的既有 70 failures／21 coverage gaps 每 scale 仍待分類與重驗。原生 GUI／Owner UAT、全程式 UI 盤點未完成。
+
+## 2026-10-29 第十八輪：合併前 focused QA readback
+
+針對本輪改動的 Workbench、Recommendation 來源詳情、Daily Market 查詢操作與 layout fixture，使用專案 `.venv` 在隔離 basetemp 執行 focused 測試：**79 passed**；修改 Python source／test `py_compile` 通過；3 個產品 UI source scoped mypy **0 issues**，`git diff --check` 通過。修改之 layout QA script 在單檔 mypy 下回報既有檔案內 86 個 typing diagnostics（包含多處 QWidget／QApplication 名稱與 optional 型別），不將該 validator 腳本記為 mypy 通過。
+
+另執行五個受影響測試檔的廣泛回歸：**149 passed、14 failed、5 errors**。5 個 setup errors 及多個寫檔失敗指向 Windows sandbox 的系統 Temp 解析／原子替換／hardlink 權限；另有候選 inventory 測試在 sandbox 指定的 learning root 回報 unsafe-or-unreadable，未能驗證其預期樣本。此結果不是整檔通過；相關完整保存／來源行為尚需在可讀寫的受控 Windows Job 環境重跑。更新頁既有 98／25 測試收據另見第十六輪，不代表本次 5 檔廣泛回歸全綠。全九工作區稽核、原生 GUI 與 Owner UAT 仍未完成。

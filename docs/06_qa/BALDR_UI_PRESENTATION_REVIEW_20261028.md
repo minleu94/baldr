@@ -574,9 +574,10 @@ Advice 詳情的文字流程先說明判讀、逐股來源證據和作者契約�
 
 Advice 詳情的完整判讀／機率依據、原始結果／每日來源，以及註記／下次檢視／重新讀取都固定使用水平列；390 px 窄窗可能讓固定寬度按鈕搶占內容空間。現在窄於 560 logical px 時前兩組導覽入口改垂直排列，後續操作改為兩欄；主要研究決定仍維持同列，桌面寬度保留單列緊湊操作。操作行為與保存契約未改。
 
-- `tests/test_workbench_advice_contract.py`：**16 passed**；增加 390／1280 px 下入口方向及後續按鈕網格位置檢查。必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**。`workbench_view.py` scoped mypy **0 issues**，修改 Python 檔 `py_compile` 通過。
-- 操作手冊已補窄版操作列規則。畫面 QA 為 offscreen，不等同 Owner 原生 GUI UAT。
-- 操作手冊已同步詳情文字的閱讀順序。此修改只調整顯示順序，不代表 Advice 來源已核驗或 Gate 1 已接受。
+- `tests/test_workbench_advice_contract.py`：**16 passed**；增加 390／1280 px 下入口方向及後續按鈕網格位置檢查。必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，輸出於 `.pytest-owned-temp/ui_round60_update_validator_logs/`。
+- `workbench_view.py` scoped mypy **0 issues**；本輪 2 個修改 Python 檔 `py_compile` 通過，`git diff --check` 通過。Repo-wide mypy 在掃描既有 `output/qa/.../origins` 路徑時遇到 `WinError 3`，未進入全域型別檢查。
+- 操作手冊已補窄版操作列規則。新 QA／手冊 scoped document-control 未列本輪新錯誤；手冊檢查仍被兩個既有 `output/trial/` junction 的 `WinError 5` 阻擋。畫面 QA 為 offscreen，不等同 Owner 原生 GUI UAT。
+- 本輪只調整 Advice 操作入口排列，不改操作行為、保存契約或資料／金融邏輯；也不代表 Advice 來源已核驗或 Gate 1 已接受。
 
 ## 2026-10-29 第五十一輪：工作區提交前定向回歸核對
 

@@ -97,6 +97,25 @@ def test_latest_legal_uses_data_date_and_completion_clock_not_manifest_name_or_m
     assert older != newer_earlier_completion
 
 
+def test_version_list_returns_all_reader_verified_entries_in_latest_first_order(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "versions"
+    older = _write_candidate(root / "older", data_date="2026-10-14")
+    newer = _write_candidate(root / "newer", data_date="2026-10-16")
+
+    result = catalog.list_theme_research_snapshots(root, known_at=_KNOWN_AT)
+
+    assert [entry.manifest_path for entry in result.entries] == [
+        newer.resolve(), older.resolve(),
+    ]
+    assert result.selected is not None
+    assert result.selected.manifest_path == newer.resolve()
+    assert result.candidate_count == result.verified_count == 2
+    assert result.unverified_candidate_count == 0
+    assert result.limited is False
+
+
 def test_not_yet_available_newest_candidate_is_rejected_and_older_legal_is_selected(tmp_path: Path) -> None:
     root = tmp_path / "versions"
     available = _write_candidate(root / "available", data_date="2026-10-15")

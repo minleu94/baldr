@@ -298,19 +298,21 @@ def _scan_manifests(
     return manifests, rejections, limited, reason
 
 
-def resolve_latest_theme_research_snapshot(
+def _resolve_theme_research_snapshots(
     root: Path,
     *,
     known_at: datetime,
-    schema: Literal["price-v1", "flow-v2"] = "price-v1",
+    schemas: tuple[str, ...],
+    include_all: bool,
     cancel_callback: Callable[[], object] | None = None,
 ) -> ThemeSnapshotCatalogResult:
-    """從明選root以資料日、保存完成時排序並回傳最新合法快照。
+    """有界發現並驗證指定題材版本；呼叫端決定只取最新或列出全部。
 
     每個JSON manifest最多32KiB，搜尋root與兩層子目錄，最多128個manifest、
     4096個目錄項目及4MiB discovery讀量。reader候選按manifest日期排序，
-    逐一驗證到第一個合法版本；只有該版本會進entries。讀取額度用於保守估計
-    既有reader可能讀取的artifact bytes，不使用mtime或自製報告判斷資格。
+    latest模式逐一驗證到第一個合法版本；列表模式在既有reader預算內驗證候選。
+    讀取額度用於保守估計既有reader可能讀取的artifact bytes，不使用mtime或
+    自製報告判斷資格。
     cancel_callback在掃描、metadata與候選邊界檢查；既有reader沒有取消介面，
     單次reader驗證不可中斷，完成後會立刻回應取消。
     """
@@ -318,9 +320,9 @@ def resolve_latest_theme_research_snapshot(
     _check_cancel(cancel_callback)
     if not isinstance(known_at, datetime) or known_at.tzinfo is None or known_at.utcoffset() is None:
         raise ValueError("known_at必須是aware datetime")
-    if schema not in _SCHEMA_BY_CHOICE:
+    if not schemas or any(schema not in _SCHEMA_BY_CHOICE for schema in schemas):
         raise ValueError("schema只接受price-v1或flow-v2")
-    selected_schema = _SCHEMA_BY_CHOICE[schema]
+    selected_schemas = {_SCHEMA_BY_CHOICE[schema] for schema in schemas}
     resolved_root = _validate_root(root)
     _check_cancel(cancel_callback)
     manifests, rejections, limited, limit_reason = _scan_manifests(
@@ -342,7 +344,8 @@ def resolve_latest_theme_research_snapshot(
             if type(meta_obj) is not dict:
                 raise ValueError("manifest頂層必須是object")
             meta = meta_obj
-            if meta.get("schema") != selected_schema:
+            candidate_schema = meta.get("schema")
+            if type(candidate_schema) is not str or candidate_schema not in selected_schemas:
                 continue
             _check_cancel(cancel_callback)
             try:
@@ -358,7 +361,7 @@ def resolve_latest_theme_research_snapshot(
                 continue
             candidates.append(_MetadataCandidate(
                 path=path,
-                schema=selected_schema,
+                schema=str(candidate_schema),
                 data_date=data_date,
                 saved_completed_at=completed,
                 identity_sha256=sha256(raw).hexdigest(),
@@ -379,6 +382,7 @@ def resolve_latest_theme_research_snapshot(
                      reverse=True)
     reader_budget = 0
     attempted = 0
+    entries: list[ThemeSnapshotCatalogEntry] = []
     for candidate in candidates:
         _check_cancel(cancel_callback)
         try:
@@ -408,10 +412,12 @@ def resolve_latest_theme_research_snapshot(
                 identity_sha256=candidate.identity_sha256,
                 snapshot=snapshot,
             )
-            return ThemeSnapshotCatalogResult(
-                (entry,), tuple(rejections), candidate_count, 1,
-                max(0, candidate_count - attempted), False, None,
-            )
+            entries.append(entry)
+            if not include_all:
+                return ThemeSnapshotCatalogResult(
+                    tuple(entries), tuple(rejections), candidate_count, len(entries),
+                    max(0, candidate_count - attempted), False, None,
+                )
         except _CatalogCancelled:
             raise
         except _CatalogLimitReached as exc:
@@ -422,6 +428,41 @@ def resolve_latest_theme_research_snapshot(
             rejections.append(ThemeSnapshotRejection(candidate.path, str(exc)))
 
     return ThemeSnapshotCatalogResult(
-        (), tuple(rejections), candidate_count, 0, max(0, candidate_count - attempted),
-        limited, limit_reason,
+        tuple(entries), tuple(rejections), candidate_count, len(entries),
+        max(0, candidate_count - attempted), limited, limit_reason,
+    )
+
+
+def resolve_latest_theme_research_snapshot(
+    root: Path,
+    *,
+    known_at: datetime,
+    schema: Literal["price-v1", "flow-v2"] = "price-v1",
+    cancel_callback: Callable[[], object] | None = None,
+) -> ThemeSnapshotCatalogResult:
+    """從明選root回傳最新合法的指定schema題材快照。"""
+
+    return _resolve_theme_research_snapshots(
+        root,
+        known_at=known_at,
+        schemas=(schema,),
+        include_all=False,
+        cancel_callback=cancel_callback,
+    )
+
+
+def list_theme_research_snapshots(
+    root: Path,
+    *,
+    known_at: datetime,
+    cancel_callback: Callable[[], object] | None = None,
+) -> ThemeSnapshotCatalogResult:
+    """列出明選版本庫中由既有reader驗證的price-v1與flow-v2快照。"""
+
+    return _resolve_theme_research_snapshots(
+        root,
+        known_at=known_at,
+        schemas=("price-v1", "flow-v2"),
+        include_all=True,
+        cancel_callback=cancel_callback,
     )

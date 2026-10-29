@@ -7,8 +7,25 @@ from app_module.research_session import ResearchStockContextDTO
 from app_module.theme_daily_service import ThemeDailyReport
 from app_module.theme_research_snapshot import ThemeResearchSnapshot
 from decision_module.industry_theme_map import ThemeMappingRow
+from ui_qt import main as main_module
 from ui_qt.main import MainWindow
 from ui_qt.views.theme_member_navigation import ThemeMemberNavigation
+
+
+def test_default_theme_catalog_uses_known_snapshot_root_when_standard_root_is_missing(
+    monkeypatch, tmp_path,
+):
+    repo_root = tmp_path / "repo"
+    source_package = repo_root / "ui_qt"
+    source_package.mkdir(parents=True)
+    standard_root = tmp_path / "configured-output" / "theme_research_snapshots"
+    known_root = (
+        repo_root / "output" / "tasks" / "baldr-post-completion-execution" / "snapshots"
+    )
+    known_root.mkdir(parents=True)
+    monkeypatch.setattr(main_module, "__file__", str(source_package / "main.py"))
+
+    assert main_module._default_theme_catalog_root(standard_root.parent) == known_root
 
 
 def host():

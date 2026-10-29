@@ -56,7 +56,9 @@ from app_module.theme_research_snapshot import (
     read_theme_research_snapshot,
 )
 from app_module.theme_snapshot_catalog import (
+    ThemeSnapshotCatalogEntry,
     ThemeSnapshotCatalogResult,
+    list_theme_research_snapshots,
     resolve_latest_theme_research_snapshot,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -101,6 +103,12 @@ class IndustryThemeMapView(QWidget):
         self._closed = False
         self._snapshot: ThemeResearchSnapshot | None = None
         self._catalog_root: Path | None = None
+        self._catalog_entries: tuple[ThemeSnapshotCatalogEntry, ...] = ()
+        self._catalog_scan_worker: TaskWorker | None = None
+        self._catalog_scan_generation = 0
+        self._catalog_scan_worker_generation: int | None = None
+        self._catalog_scan_result: object = None
+        self._catalog_scan_error = ""
         self._presentation: ThemeResearchPresentation | None = None
         self._ascending_presentation: ThemeResearchPresentation | None = None
         self._theme_options: list[tuple[str, str] | None] = []
@@ -137,9 +145,9 @@ class IndustryThemeMapView(QWidget):
         self._navigation_selection_revision = 0
 
         self._build_ui()
-        self._render_empty("請設定題材版本目錄，或明選歷史版本。")
+        self._render_empty("請從已驗證版本清單選擇題材研究版本。")
         self.status_label.setText(
-            "尚未設定本機題材版本目錄；請選擇目錄或明選歷史版本。"
+            "正在準備本機題材版本清單。"
         )
         self._update_controls()
 
@@ -224,27 +232,6 @@ class IndustryThemeMapView(QWidget):
         )
         header.addWidget(self.title_label)
         header.addStretch(1)
-        self.latest_snapshot_button = QPushButton("最新可讀版本")
-        self.latest_snapshot_button.setObjectName("industryThemeLoadLatestButton")
-        self.latest_snapshot_button.setAccessibleName("載入最新可讀價量題材版本")
-        self.latest_snapshot_button.setToolTip(
-            "只搜尋已設定的本機版本目錄，預設使用已完成且可讀的 price-v1 版本。"
-        )
-        self.latest_snapshot_button.clicked.connect(self.load_latest_snapshot)
-        header.addWidget(self.latest_snapshot_button)
-        self.choose_catalog_root_button = QPushButton("選擇版本目錄…")
-        self.choose_catalog_root_button.setObjectName("industryThemeChooseCatalogRootButton")
-        self.choose_catalog_root_button.setAccessibleName("選擇本機題材版本目錄")
-        self.choose_catalog_root_button.clicked.connect(self._choose_catalog_root)
-        header.addWidget(self.choose_catalog_root_button)
-        self.open_snapshot_button = QPushButton("明選歷史版本…")
-        self.open_snapshot_button.setObjectName("industryThemeOpenSnapshotButton")
-        self.open_snapshot_button.setAccessibleName("明選題材歷史版本manifest")
-        self.open_snapshot_button.setToolTip(
-            "保留原 manifest 選取器，可明選 price-v1 或 flow-v2 歷史版本。"
-        )
-        self.open_snapshot_button.clicked.connect(self._choose_snapshot)
-        header.addWidget(self.open_snapshot_button)
         self.clear_research_button = QPushButton("清除研究")
         self.clear_research_button.setObjectName("industryThemeClearResearchButton")
         self.clear_research_button.setAccessibleName("清除目前題材研究")
@@ -255,6 +242,67 @@ class IndustryThemeMapView(QWidget):
         self.clear_research_button.clicked.connect(self.clear_research)
         header.addWidget(self.clear_research_button)
         page_layout.addLayout(header)
+
+        self.version_group = QGroupBox("選擇已保存的題材版本")
+        self.version_group.setObjectName("industryThemeVersionPicker")
+        version_layout = QVBoxLayout(self.version_group)
+        version_location = QHBoxLayout()
+        version_location.addWidget(QLabel("版本庫"))
+        self.catalog_root_label = QLabel("尚未設定")
+        self.catalog_root_label.setObjectName("industryThemeCatalogRootPath")
+        self.catalog_root_label.setAccessibleName("題材版本庫位置")
+        self.catalog_root_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.catalog_root_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.catalog_root_label.setWordWrap(True)
+        version_location.addWidget(self.catalog_root_label, 1)
+        self.choose_catalog_root_button = QPushButton("更換版本庫位置…")
+        self.choose_catalog_root_button.setObjectName("industryThemeChooseCatalogRootButton")
+        self.choose_catalog_root_button.setAccessibleName("更換本機題材版本庫位置")
+        self.choose_catalog_root_button.setToolTip(
+            "一般情況使用預設版本庫；只有版本檔存放在其他位置時才需要更換。"
+        )
+        self.choose_catalog_root_button.clicked.connect(self._choose_catalog_root)
+        version_location.addWidget(self.choose_catalog_root_button)
+        version_layout.addLayout(version_location)
+
+        version_controls = QHBoxLayout()
+        self.catalog_version_combo = QComboBox()
+        self.catalog_version_combo.setObjectName("industryThemeSavedVersionCombo")
+        self.catalog_version_combo.setAccessibleName("已驗證的題材研究版本")
+        self.catalog_version_combo.addItem("正在讀取已保存版本…", None)
+        self.catalog_version_combo.currentIndexChanged.connect(self._update_controls)
+        self.catalog_version_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        version_controls.addWidget(self.catalog_version_combo, 1)
+        self.open_snapshot_button = QPushButton("載入所選版本")
+        self.open_snapshot_button.setObjectName("industryThemeOpenSnapshotButton")
+        self.open_snapshot_button.setAccessibleName("載入清單中所選題材版本")
+        self.open_snapshot_button.clicked.connect(self._load_selected_catalog_version)
+        version_controls.addWidget(self.open_snapshot_button)
+        self.latest_snapshot_button = QPushButton("載入最新可讀")
+        self.latest_snapshot_button.setObjectName("industryThemeLoadLatestButton")
+        self.latest_snapshot_button.setAccessibleName("載入最新可讀價量題材版本")
+        self.latest_snapshot_button.setToolTip(
+            "依資料日與保存時間載入版本庫中最新且完整通過既有 reader 的 price-v1。"
+        )
+        self.latest_snapshot_button.clicked.connect(self.load_latest_snapshot)
+        version_controls.addWidget(self.latest_snapshot_button)
+        self.refresh_catalog_button = QPushButton("更新清單")
+        self.refresh_catalog_button.setObjectName("industryThemeRefreshCatalogButton")
+        self.refresh_catalog_button.setAccessibleName("重新掃描題材已保存版本")
+        self.refresh_catalog_button.clicked.connect(self.refresh_catalog_versions)
+        version_controls.addWidget(self.refresh_catalog_button)
+        version_layout.addLayout(version_controls)
+        self.catalog_list_status_label = QLabel("版本清單尚未載入。")
+        self.catalog_list_status_label.setObjectName("industryThemeCatalogListStatus")
+        self.catalog_list_status_label.setAccessibleName("題材版本清單狀態")
+        self.catalog_list_status_label.setWordWrap(True)
+        self.catalog_list_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        version_layout.addWidget(self.catalog_list_status_label)
+        page_layout.addWidget(self.version_group)
 
         self.status_label = QLabel("尚未載入題材研究版本。")
         self.status_label.setAccessibleName("題材研究版本讀取狀態")
@@ -601,8 +649,28 @@ class IndustryThemeMapView(QWidget):
             self._render_leaderboard
         )
         ranking_header.addWidget(self.sorting_direction_combo)
+        ranking_header.addWidget(QLabel("呈現方式"))
+        self.ranking_view_combo = QComboBox()
+        self.ranking_view_combo.setAccessibleName("題材排行呈現方式")
+        self.ranking_view_combo.addItem("排行卡片", "cards")
+        self.ranking_view_combo.addItem("資料表", "table")
+        self.ranking_view_combo.currentIndexChanged.connect(
+            self._set_ranking_presentation
+        )
+        ranking_header.addWidget(self.ranking_view_combo)
         ranking_header.addStretch(1)
         ranking_layout.addLayout(ranking_header)
+
+        self.ranking_cards_widget = QWidget(self.ranking_group)
+        self.ranking_cards_widget.setObjectName("industryThemeRankingCards")
+        self.ranking_cards_layout = QGridLayout(self.ranking_cards_widget)
+        self.ranking_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.ranking_cards_layout.setHorizontalSpacing(8)
+        self.ranking_cards_layout.setVerticalSpacing(8)
+        ranking_layout.addWidget(self.ranking_cards_widget)
+        self._ranking_card_buttons: list[QPushButton] = []
+        self._ranking_card_columns = 0
+        self.ranking_group.installEventFilter(self)
 
         self.ranking_table = QTableWidget(0, 5)
         self.ranking_table.setObjectName("industryThemeResearchRankingTable")
@@ -638,6 +706,7 @@ class IndustryThemeMapView(QWidget):
         )
         self.ranking_table.cellClicked.connect(self._on_leaderboard_row_clicked)
         ranking_layout.addWidget(self.ranking_table)
+        self.ranking_table.hide()
         self.ranking_empty_label = QLabel("尚未載入題材觀察排行。")
         self.ranking_empty_label.setAccessibleName("題材排行缺件說明")
         self.ranking_empty_label.setWordWrap(True)
@@ -914,6 +983,12 @@ class IndustryThemeMapView(QWidget):
             self.metrics_card_rows.append(card_row)
         self.metrics_group.installEventFilter(self)
         metrics_layout.addWidget(self.metrics_cards_group)
+        self.metrics_detail_toggle = QPushButton("檢視九項指標原表（展開）")
+        self.metrics_detail_toggle.setObjectName("industryThemeMetricsDetailToggle")
+        self.metrics_detail_toggle.setAccessibleName("展開或收合九項指標原表")
+        self.metrics_detail_toggle.setCheckable(True)
+        self.metrics_detail_toggle.toggled.connect(self._toggle_metrics_table)
+        metrics_layout.addWidget(self.metrics_detail_toggle)
         self.metrics_table = QTableWidget(0, 3)
         self.metrics_table.setObjectName("industryThemeMetricsTable")
         self.metrics_table.setAccessibleName("題材指標與欄位覆蓋表")
@@ -934,9 +1009,10 @@ class IndustryThemeMapView(QWidget):
             2, QHeaderView.ResizeMode.ResizeToContents
         )
         metrics_layout.addWidget(self.metrics_table)
+        self.metrics_table.hide()
         self.theme_detail_splitter.addWidget(self.metrics_group)
 
-        self.members_group = QGroupBox("題材成員（雙擊任一欄開啟）")
+        self.members_group = QGroupBox("題材成員")
         self.members_group.setMinimumWidth(0)
         members_layout = QVBoxLayout(self.members_group)
         member_actions = QHBoxLayout()
@@ -944,6 +1020,15 @@ class IndustryThemeMapView(QWidget):
         self.member_selection_label.setTextFormat(Qt.TextFormat.PlainText)
         self.member_selection_label.setWordWrap(True)
         member_actions.addWidget(self.member_selection_label, 1)
+        member_actions.addWidget(QLabel("呈現方式"))
+        self.member_view_combo = QComboBox()
+        self.member_view_combo.setAccessibleName("題材成員呈現方式")
+        self.member_view_combo.addItem("成員卡片", "cards")
+        self.member_view_combo.addItem("資料表", "table")
+        self.member_view_combo.currentIndexChanged.connect(
+            self._set_member_presentation
+        )
+        member_actions.addWidget(self.member_view_combo)
         self.open_member_button = QPushButton("研究選取股票")
         self.open_member_button.setObjectName("industryThemeOpenSelectedMember")
         self.open_member_button.setEnabled(False)
@@ -976,6 +1061,14 @@ class IndustryThemeMapView(QWidget):
         )
         self.member_table.itemDoubleClicked.connect(self._emit_selected_stock)
         self.member_table.currentCellChanged.connect(self._on_member_cell_changed)
+        self.member_cards_widget = QWidget(self.members_group)
+        self.member_cards_widget.setObjectName("industryThemeMemberCards")
+        self.member_cards_widget.setAccessibleName("題材成員卡片")
+        self.member_cards_layout = QVBoxLayout(self.member_cards_widget)
+        self.member_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.member_cards_layout.setSpacing(6)
+        self._member_card_buttons: dict[str, QPushButton] = {}
+        members_layout.addWidget(self.member_cards_widget)
         member_pagination = QHBoxLayout()
         self.member_page_previous_button = QPushButton("上一頁")
         self.member_page_previous_button.setObjectName("industryThemeMemberPreviousPage")
@@ -998,9 +1091,25 @@ class IndustryThemeMapView(QWidget):
         member_pagination.addWidget(self.member_page_next_button)
         members_layout.addLayout(member_pagination)
         members_layout.addWidget(self.member_table)
+        self.member_table.hide()
         self.theme_detail_splitter.addWidget(self.members_group)
         self.theme_detail_splitter.setStretchFactor(0, 4)
         self.theme_detail_splitter.setStretchFactor(1, 6)
+
+        # 載入版本後先讓使用者選題材／反查個股並讀取明細，完整圖表與目錄留在後段。
+        exploration_sections = (
+            self.filter_group,
+            self.selected_theme_summary,
+            self.theme_overlap_toggle,
+            self.theme_overlap_group,
+            self.classification_explorer_toggle,
+            self.classification_explorer_group,
+            self.theme_detail_splitter,
+        )
+        for offset, widget in enumerate(exploration_sections):
+            content_layout.removeWidget(widget)
+            content_layout.insertWidget(2 + offset, widget)
+
         content_layout.addStretch(1)
 
         self.scroll_area.setWidget(self.content)
@@ -1347,47 +1456,217 @@ class IndustryThemeMapView(QWidget):
         self.comparison_chain_filter.setEnabled(loaded)
         self.comparison_theme_filter.setEnabled(loaded)
 
-    def _choose_snapshot(self) -> None:
-        if self._closed or self._busy:
-            return
-        selected, _ = QFileDialog.getOpenFileName(
-            self,
-            "選取題材研究版本",
-            "",
-            "題材版本 manifest (*.json);;所有檔案 (*.*)",
-        )
-        if selected:
-            self.load_snapshot(Path(selected))
-
     def _choose_catalog_root(self) -> None:
-        if self._closed or self._busy:
+        if self._closed or self._busy or self._catalog_scan_worker is not None:
             return
         selected = QFileDialog.getExistingDirectory(
             self,
-            "選擇本機題材版本目錄",
+            "更換本機題材版本庫位置",
             str(self._catalog_root) if self._catalog_root is not None else "",
         )
         if not selected:
             return
-        previous_root = self._catalog_root
         selected_root = Path(selected).resolve()
         self.configure_catalog_root(selected_root)
-        if self.load_latest_snapshot():
-            self.catalogRootSelected.emit(selected_root)
-        else:
-            self.configure_catalog_root(previous_root)
+        self.catalogRootSelected.emit(selected_root)
 
     def configure_catalog_root(self, root: Path | None) -> None:
-        """設定由主視窗提供的本機版本根目錄；此處不列舉或讀取檔案。"""
+        """設定版本庫位置並背景刷新可讀版本清單。"""
 
         if root is not None and not isinstance(root, Path):
             raise TypeError("root 必須是 pathlib.Path 或 None")
         self._catalog_root = root
-        if root is None and self._snapshot is None and not self._busy:
-            self.status_label.setText(
-                "尚未設定本機題材版本目錄；請選擇目錄或明選歷史版本。"
+        self.catalog_root_label.setText(str(root) if root is not None else "尚未設定")
+        if root is None:
+            self._clear_catalog_version_list("尚未設定版本庫位置。")
+        elif not root.is_dir():
+            self._clear_catalog_version_list(
+                "這個版本庫路徑目前不存在，沒有可選版本。"
             )
+        else:
+            self.refresh_catalog_versions()
         self._update_controls()
+
+    def _clear_catalog_version_list(self, message: str) -> None:
+        self._catalog_entries = ()
+        self.catalog_list_status_label.setToolTip("")
+        self.catalog_list_status_label.setAccessibleDescription(message)
+        blocker = QSignalBlocker(self.catalog_version_combo)
+        self.catalog_version_combo.clear()
+        self.catalog_version_combo.addItem("目前沒有可選版本", None)
+        del blocker
+        self.catalog_list_status_label.setText(message)
+
+    def refresh_catalog_versions(self) -> bool:
+        """在背景讀取且完整驗證版本庫中的歷史題材版本。"""
+
+        root = self._catalog_root
+        if (
+            self._closed or self._busy or self._catalog_scan_worker is not None
+            or root is None
+        ):
+            return False
+        if not root.is_dir():
+            self._clear_catalog_version_list(
+                "這個版本庫路徑目前不存在，沒有可選版本。"
+            )
+            self._update_controls()
+            return False
+        self._catalog_scan_generation += 1
+        generation = self._catalog_scan_generation
+        self._catalog_scan_result = None
+        self._catalog_scan_error = ""
+        self.catalog_list_status_label.setText("正在驗證版本庫中的已保存版本…")
+        worker = TaskWorker(
+            list_theme_research_snapshots,
+            root,
+            known_at=datetime.now(timezone.utc),
+        )
+        self._catalog_scan_worker = worker
+        self._catalog_scan_worker_generation = generation
+        worker.finished.connect(
+            self._receive_catalog_scan_result, Qt.ConnectionType.QueuedConnection
+        )
+        worker.error.connect(
+            self._receive_catalog_scan_error, Qt.ConnectionType.QueuedConnection
+        )
+        worker.cancelled.connect(
+            self._receive_catalog_scan_cancelled, Qt.ConnectionType.QueuedConnection
+        )
+        worker.native_thread_finished.connect(
+            self._finish_catalog_scan, Qt.ConnectionType.QueuedConnection
+        )
+        self._update_controls()
+        try:
+            worker.start()
+        except Exception as exc:
+            self._catalog_scan_worker = None
+            self._catalog_scan_worker_generation = None
+            self.catalog_list_status_label.setText(
+                f"版本清單無法啟動讀取：{str(exc).splitlines()[0]}"
+            )
+            worker.deleteLater()
+            self._update_controls()
+            return False
+        return True
+
+    @Slot(object)
+    def _receive_catalog_scan_result(self, result: object) -> None:
+        if (
+            self.sender() is self._catalog_scan_worker
+            and self._catalog_scan_worker_generation == self._catalog_scan_generation
+            and not self._closed
+        ):
+            self._catalog_scan_result = result
+
+    @Slot(str)
+    def _receive_catalog_scan_error(self, error: str) -> None:
+        if (
+            self.sender() is self._catalog_scan_worker
+            and self._catalog_scan_worker_generation == self._catalog_scan_generation
+            and not self._closed
+        ):
+            self._catalog_scan_error = error
+
+    @Slot()
+    def _receive_catalog_scan_cancelled(self) -> None:
+        if (
+            self.sender() is self._catalog_scan_worker
+            and self._catalog_scan_worker_generation == self._catalog_scan_generation
+            and not self._closed
+        ):
+            self._catalog_scan_error = "版本清單讀取已取消。"
+
+    @Slot()
+    def _finish_catalog_scan(self) -> None:
+        worker = self.sender()
+        if worker is not self._catalog_scan_worker:
+            return
+        result = self._catalog_scan_result
+        error = self._catalog_scan_error
+        self._catalog_scan_worker = None
+        self._catalog_scan_worker_generation = None
+        self._catalog_scan_result = None
+        self._catalog_scan_error = ""
+        try:
+            if self._closed:
+                return
+            if error:
+                self._clear_catalog_version_list(
+                    "版本清單讀取失敗：" + error.splitlines()[0]
+                )
+            elif not isinstance(result, ThemeSnapshotCatalogResult):
+                self._clear_catalog_version_list("版本清單沒有回傳可核驗的讀取結果。")
+            else:
+                self._render_catalog_version_list(result)
+        finally:
+            self._update_controls()
+            worker.deleteLater()
+
+    def _render_catalog_version_list(
+        self, result: ThemeSnapshotCatalogResult,
+    ) -> None:
+        self._catalog_entries = result.entries
+        blocker = QSignalBlocker(self.catalog_version_combo)
+        self.catalog_version_combo.clear()
+        if not result.entries:
+            self.catalog_version_combo.addItem("目前沒有可讀版本", None)
+        else:
+            self.catalog_version_combo.addItem(
+                f"選擇版本（{len(result.entries)} 個已核驗）", None
+            )
+            for index, entry in enumerate(result.entries):
+                kind = "價量" if entry.schema == "baldr.theme_research_snapshot.v1" else "法人流向"
+                label = (
+                    f"{entry.data_date.isoformat()}　{kind}　"
+                    f"{entry.identity_sha256[:10]}"
+                )
+                self.catalog_version_combo.addItem(label, index)
+        del blocker
+        if not result.entries:
+            if result.limited:
+                message = (
+                    "版本庫候選超過安全檢查範圍，沒有宣稱清單完整："
+                    + (result.limit_reason or "讀取上限已達")
+                )
+            elif result.candidate_count:
+                message = (
+                    f"找到 {result.candidate_count} 個版本候選，但都未通過讀取驗證；"
+                    "停留查看拒絕原因，或確認版本檔是否完整。"
+                )
+            else:
+                message = "目前版本庫沒有已保存的題材版本。"
+        else:
+            message = f"已核驗 {result.verified_count} 個可讀版本。"
+            rejected = len(result.rejections)
+            if rejected:
+                message += f"另有 {rejected} 個候選未通過驗證（停留查看原因）。"
+            if result.limited:
+                message += "已達安全檢查上限，清單可能不完整。"
+        rejection_details = "\n".join(
+            f"{item.path}：{item.reason}"
+            for item in result.rejections[:8]
+        )
+        if len(result.rejections) > 8:
+            rejection_details += f"\n另有 {len(result.rejections) - 8} 個拒絕原因未顯示。"
+        self.catalog_list_status_label.setToolTip(rejection_details)
+        self.catalog_list_status_label.setAccessibleDescription(
+            message + ("\n" + rejection_details if rejection_details else "")
+        )
+        self.catalog_list_status_label.setText(message)
+
+    def _load_selected_catalog_version(self) -> None:
+        if self._closed or self._busy:
+            return
+        selected = self.catalog_version_combo.currentData(Qt.ItemDataRole.UserRole)
+        if type(selected) is not int or not 0 <= selected < len(self._catalog_entries):
+            self.status_label.setText("先從已核驗版本清單選擇一個版本。")
+            return
+        entry = self._catalog_entries[selected]
+        self.load_snapshot(
+            entry.manifest_path,
+            expected_identity_sha256=entry.identity_sha256,
+        )
 
     def load_latest_snapshot(self) -> bool:
         """在明示的本機目錄尋找最新可讀價量版本；不建立或改寫版本。"""
@@ -1396,7 +1675,7 @@ class IndustryThemeMapView(QWidget):
             return False
         if self._catalog_root is None:
             self.status_label.setText(
-                "尚未設定本機題材版本目錄；請選擇目錄，或明選歷史版本。"
+                "尚未設定題材版本庫；請先設定版本庫位置，或從已核驗清單選擇版本。"
             )
             return False
         return self._start_snapshot_load(
@@ -1573,7 +1852,7 @@ class IndustryThemeMapView(QWidget):
         self._update_controls()
 
     def is_busy(self) -> bool:
-        return self._busy
+        return self._busy or self._catalog_scan_worker is not None
 
     def _notes_editor_context(self) -> tuple[QWidget | None, QPlainTextEdit | None]:
         editor = self.findChild(QPlainTextEdit, "themeResearchNoteEditor")
@@ -1675,11 +1954,14 @@ class IndustryThemeMapView(QWidget):
             return
         self._closed = True
         self._generation += 1
+        self._catalog_scan_generation += 1
         self._invalidate_comparison()
         self._snapshot = None
         self.snapshotChanged.emit(None)
         if self._worker is not None:
             self._worker.cancel(cooperative=True, wait=False)
+        if self._catalog_scan_worker is not None:
+            self._catalog_scan_worker.cancel(cooperative=True, wait=False)
         self._clear_snapshot_view()
         self.status_label.setText("頁面已關閉；背景讀取正在合作式結束。")
         self._update_controls()
@@ -1765,19 +2047,19 @@ class IndustryThemeMapView(QWidget):
                             message = (
                                 "未宣稱最新版本：有界搜尋已停止（"
                                 + reason
-                                + "）。可縮小已選目錄或明選歷史版本。"
+                                + "）。可縮小版本庫，或從已核驗清單選擇其他版本。"
                             )
                         elif result.rejections:
                             rejection = result.rejections[0]
                             message = (
                                 "目前目錄沒有可讀的 price-v1 版本；首項拒絕："
                                 f"{rejection.path.name}（{rejection.reason}）。"
-                                "可檢查來源完整性，或明選其他歷史版本。"
+                                "可檢查來源完整性，或從已核驗清單選擇其他版本。"
                             )
                         else:
                             message = (
                                 "目前目錄沒有可讀的 price-v1 版本；"
-                                "可檢查合法版本，或明選歷史版本。"
+                                "可檢查版本庫，或從已核驗清單選擇版本。"
                             )
                         self.status_label.setText(message)
                         self.snapshotChanged.emit(None)
@@ -1950,11 +2232,16 @@ class IndustryThemeMapView(QWidget):
         self.source_details_button.setChecked(False)
         self.source_details_button.setText("顯示來源與限制")
         self.metrics_table.setRowCount(0)
+        self.metrics_detail_toggle.setChecked(False)
         self._clear_metric_cards()
         self.member_table.setRowCount(0)
         self.member_table.clearSelection()
         self.member_table.setCurrentCell(-1, -1)
         self.member_table.setToolTip("")
+        self.member_view_combo.setCurrentIndex(
+            self.member_view_combo.findData("cards")
+        )
+        self._clear_member_cards()
         self.member_page_status_label.setText("顯示 0 / 0 位成員")
         self.member_page_status_label.setAccessibleDescription(
             self.member_page_status_label.text()
@@ -1991,6 +2278,10 @@ class IndustryThemeMapView(QWidget):
         self.observation_missing_label.show()
         self._arrange_observation_cards()
         self.ranking_table.setRowCount(0)
+        self._clear_ranking_cards()
+        self.ranking_view_combo.setCurrentIndex(
+            self.ranking_view_combo.findData("cards")
+        )
         self.ranking_empty_label.setText("尚未載入題材觀察排行。")
         self.ranking_empty_label.show()
         blockers = [QSignalBlocker(self.chain_filter), QSignalBlocker(self.theme_filter)]
@@ -2519,6 +2810,12 @@ class IndustryThemeMapView(QWidget):
             orientation = Qt.Orientation.Horizontal if self.width() >= 1050 else Qt.Orientation.Vertical
             if self.theme_detail_splitter.orientation() != orientation:
                 self.theme_detail_splitter.setOrientation(orientation)
+            if orientation == Qt.Orientation.Horizontal:
+                splitter_width = max(0, self.theme_detail_splitter.width() - 8)
+                self.theme_detail_splitter.setSizes(
+                    [int(splitter_width * 0.4), int(splitter_width * 0.6)]
+                )
+            else:
                 self.theme_detail_splitter.setSizes([400, 600])
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
@@ -2536,6 +2833,13 @@ class IndustryThemeMapView(QWidget):
             and self._metric_card_widgets
         ):
             self._arrange_metric_cards()
+        if (
+            hasattr(self, "ranking_group")
+            and watched is self.ranking_group
+            and event.type() == QEvent.Type.Resize
+            and self._ranking_card_buttons
+        ):
+            self._arrange_ranking_cards()
         return super().eventFilter(watched, event)
 
     def _arrange_observation_cards(self) -> None:
@@ -3205,6 +3509,7 @@ class IndustryThemeMapView(QWidget):
         presentation = self._presentation
         if presentation is None or self._snapshot is None:
             self.ranking_table.setRowCount(0)
+            self._clear_ranking_cards()
             self.ranking_empty_label.setText("尚未載入題材觀察排行。")
             self.ranking_empty_label.show()
             return
@@ -3219,6 +3524,7 @@ class IndustryThemeMapView(QWidget):
                     )
                 except Exception as exc:
                     self.ranking_table.setRowCount(0)
+                    self._clear_ranking_cards()
                     self.ranking_empty_label.setText(
                         "低值觀察排序無法產生；沒有沿用舊排行。"
                     )
@@ -3257,6 +3563,7 @@ class IndustryThemeMapView(QWidget):
             if len(leaders) == 1:
                 positions = ["單一觀察"]
         self.ranking_table.setRowCount(len(leaders))
+        self._clear_ranking_cards()
         if not leaders:
             self.ranking_empty_label.setText(
                 "此欄資料不足：沒有對應值與成員覆蓋完整的題材可列入排行。"
@@ -3288,7 +3595,136 @@ class IndustryThemeMapView(QWidget):
                         str(ranking_type) in {"return", "institutional"},
                     )
                 self.ranking_table.setItem(rank - 1, column, item)
+            self._add_ranking_card(
+                position=positions[rank - 1],
+                chain_name=row.chain_name,
+                theme_name=row.theme_name,
+                value=value,
+                coverage=self._coverage(available, members),
+                raw_value=self._leader_original_value(str(ranking_type), row),
+                ranking_type=str(ranking_type),
+                row_index=rank - 1,
+            )
         self.ranking_table.resizeRowsToContents()
+
+    def _clear_ranking_cards(self) -> None:
+        self._ranking_card_buttons.clear()
+        self._ranking_card_columns = 0
+        while self.ranking_cards_layout.count():
+            item = self.ranking_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _add_ranking_card(
+        self,
+        *,
+        position: str,
+        chain_name: str,
+        theme_name: str,
+        value: str,
+        coverage: str,
+        raw_value: str,
+        ranking_type: str,
+        row_index: int,
+    ) -> None:
+        card = QFrame(self.ranking_cards_widget)
+        card.setObjectName("industryThemeRankingCard")
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+        card_layout.setSpacing(4)
+        title = QLabel(f"{position}　{chain_name}／{theme_name}", card)
+        title.setAccessibleName(f"排行{position}題材")
+        title.setWordWrap(True)
+        value_label = QLabel(value, card)
+        value_label.setAccessibleName(f"排行{position}觀察值")
+        value_label.setTextFormat(Qt.TextFormat.PlainText)
+        value_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 17px; font-weight: 700;"
+        )
+        coverage_label = QLabel(f"成員覆蓋：{coverage}", card)
+        coverage_label.setAccessibleName(f"排行{position}成員覆蓋")
+        coverage_label.setWordWrap(True)
+        open_button = QPushButton("查看題材")
+        open_button.setObjectName("industryThemeRankingCardOpen")
+        open_button.setAccessibleName(f"查看排行{position}題材 {chain_name}／{theme_name}")
+        open_button.setProperty("themeSnapshotIdentity", self._snapshot.identity_sha256)
+        open_button.setProperty("rankedChainName", chain_name)
+        open_button.setProperty("rankedThemeName", theme_name)
+        open_button.clicked.connect(
+            lambda _checked=False, identity=self._snapshot.identity_sha256,
+            chain=chain_name, theme=theme_name: self._select_ranked_theme(
+                identity, chain, theme
+            )
+        )
+        for widget in (title, value_label, coverage_label, open_button):
+            card_layout.addWidget(widget)
+        card.setToolTip(f"{chain_name}／{theme_name}\n原值：{raw_value}\n覆蓋：{coverage}")
+        color = MIDNIGHT_ANALYST.accent
+        if ranking_type == "return":
+            metric_value = self._rows_by_theme[(chain_name, theme_name)].mean_return_pct
+            if metric_value is not None:
+                color = (
+                    MIDNIGHT_ANALYST.market_up if metric_value > 0 else
+                    MIDNIGHT_ANALYST.market_down if metric_value < 0 else
+                    MIDNIGHT_ANALYST.market_flat
+                )
+        elif ranking_type == "institutional":
+            metric_value = self._rows_by_theme[(chain_name, theme_name)].institutional_net_shares
+            if metric_value is not None:
+                color = (
+                    MIDNIGHT_ANALYST.market_up if metric_value > 0 else
+                    MIDNIGHT_ANALYST.market_down if metric_value < 0 else
+                    MIDNIGHT_ANALYST.market_flat
+                )
+        card.setStyleSheet(
+            f"QFrame#industryThemeRankingCard {{ background-color: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-left: 4px solid {color}; }}"
+        )
+        self.ranking_cards_layout.addWidget(card)
+        self._ranking_card_buttons.append(open_button)
+        open_button.setProperty("rankingRowIndex", row_index)
+        self._arrange_ranking_cards()
+
+    def _arrange_ranking_cards(self) -> None:
+        columns = 2 if self.ranking_group.width() >= 640 else 1
+        if columns == self._ranking_card_columns:
+            return
+        cards = []
+        while self.ranking_cards_layout.count():
+            item = self.ranking_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                cards.append(widget)
+        for index, card in enumerate(cards):
+            self.ranking_cards_layout.addWidget(card, index // columns, index % columns)
+        self._ranking_card_columns = columns
+
+    def _set_ranking_presentation(self, _index: int = -1) -> None:
+        cards = self.ranking_view_combo.currentData() == "cards"
+        self.ranking_cards_widget.setVisible(cards)
+        self.ranking_table.setVisible(not cards)
+
+    def _select_ranked_theme(
+        self, snapshot_identity: str, chain_name: str, theme_name: str,
+    ) -> None:
+        snapshot = self._snapshot
+        if (
+            self._closed or self._busy or snapshot is None
+            or snapshot.identity_sha256 != snapshot_identity
+            or (chain_name, theme_name) not in self._rows_by_theme
+        ):
+            return
+        chain_index = self.chain_filter.findData(chain_name)
+        if chain_index < 0:
+            return
+        self.chain_filter.setCurrentIndex(chain_index)
+        theme_index = self.theme_filter.findText(theme_name)
+        if theme_index < 0:
+            return
+        self.theme_filter.setCurrentIndex(theme_index)
+        self.scroll_area.ensureWidgetVisible(self.members_group)
 
     def _leader_value_and_coverage(
         self, ranking_type: str, row: ThemeDailyRow
@@ -3344,15 +3780,12 @@ class IndustryThemeMapView(QWidget):
         theme_item = self.ranking_table.item(row_index, 2)
         if chain_item is None or theme_item is None:
             return
-        chain_index = self.chain_filter.findData(chain_item.text())
-        if chain_index < 0:
+        snapshot = self._snapshot
+        if snapshot is None:
             return
-        self.chain_filter.setCurrentIndex(chain_index)
-        theme_index = self.theme_filter.findText(theme_item.text())
-        if theme_index < 0:
-            return
-        self.theme_filter.setCurrentIndex(theme_index)
-        self.scroll_area.ensureWidgetVisible(self.members_group)
+        self._select_ranked_theme(
+            snapshot.identity_sha256, chain_item.text(), theme_item.text()
+        )
 
     @Slot(int)
     def _on_chain_changed(self, _index: int) -> None:
@@ -3980,7 +4413,7 @@ class IndustryThemeMapView(QWidget):
                 button.setObjectName("industryThemeClassificationMemberButton")
                 button.setAccessibleName(
                     f"分類成員 {member.stock_id} {stock_name}，位置 {tier}；"
-                    "按下後定位下方題材成員表"
+                    "按下後定位下方題材成員卡片或資料表"
                 )
                 button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
                 button.setProperty(
@@ -4004,7 +4437,7 @@ class IndustryThemeMapView(QWidget):
                     f"映射資料日：{self._classification_value(member.snapshot_date)}\n"
                     f"可得日期：{self._classification_value(member.available_date)}\n"
                     f"版本 SHA-256：{presentation.snapshot_identity_sha256}\n"
-                    "按下只定位下方既有成員表，不會開啟個股研究。"
+                    "按下只定位下方既有題材成員，不會開啟個股研究。"
                 )
                 button.clicked.connect(self._focus_classification_member)
                 tier_layout.addWidget(button, member_index // 3, member_index % 3)
@@ -4065,10 +4498,118 @@ class IndustryThemeMapView(QWidget):
         item = self.member_table.item(self.member_table.currentRow(), 0)
         navigation = self.capture_selected_member_navigation(item.text()) if item else None
         self.open_member_button.setEnabled(navigation is not None)
+        selected_stock_code = item.text() if navigation is not None and item else None
+        for stock_code, button in self._member_card_buttons.items():
+            button.setChecked(stock_code == selected_stock_code)
         self.member_selection_label.setText(
             f"已選 {item.text()}｜沿目前題材版本研究" if navigation is not None and item else
             "先選取一檔成員股票。"
         )
+        for stock_code, button in self._member_card_buttons.items():
+            button.setText("已選" if stock_code == selected_stock_code else "選取")
+            button.setStyleSheet(
+                f"QPushButton:checked {{ background-color: {MIDNIGHT_ANALYST.accent}; "
+                f"color: {MIDNIGHT_ANALYST.text_primary}; }}"
+            )
+
+    def _clear_member_cards(self) -> None:
+        self._member_card_buttons.clear()
+        while self.member_cards_layout.count():
+            item = self.member_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _render_member_cards(self, stock_ids: tuple[str, ...]) -> None:
+        self._clear_member_cards()
+        snapshot = self._snapshot
+        for page_row, stock_code in enumerate(stock_ids):
+            code_item = self.member_table.item(page_row, 0)
+            name_item = self.member_table.item(page_row, 1)
+            tier_item = self.member_table.item(page_row, 2)
+            basis_item = self.member_table.item(page_row, 3)
+            if (
+                code_item is None or name_item is None
+                or tier_item is None or basis_item is None
+            ):
+                continue
+            card = QFrame(self.member_cards_widget)
+            card.setObjectName("industryThemeMemberCard")
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card.setAccessibleName(f"題材成員 {stock_code} {name_item.text()}")
+            card_layout = QHBoxLayout(card)
+            card_layout.setContentsMargins(10, 6, 8, 6)
+            card_layout.setSpacing(8)
+            information = QVBoxLayout()
+            information.setContentsMargins(0, 0, 0, 0)
+            information.setSpacing(2)
+            title = QLabel(f"{stock_code}　{name_item.text()}", card)
+            title.setAccessibleName(f"成員股票 {stock_code} 名稱")
+            title.setWordWrap(True)
+            title.setStyleSheet("font-size: 14px; font-weight: 700;")
+            detail = QLabel(
+                f"鏈別位置：{tier_item.text()}　｜　分類依據：{basis_item.text()}",
+                card,
+            )
+            detail.setAccessibleName(f"成員股票 {stock_code} 分類依據")
+            detail.setWordWrap(True)
+            detail.setTextFormat(Qt.TextFormat.PlainText)
+            detail.setToolTip(basis_item.toolTip())
+            information.addWidget(title)
+            information.addWidget(detail)
+            card_layout.addLayout(information, 1)
+            select_button = QPushButton("選取")
+            select_button.setObjectName("industryThemeSelectMemberCard")
+            select_button.setAccessibleName(f"選取題材成員 {stock_code} {name_item.text()}")
+            select_button.setCheckable(True)
+            identity = snapshot.identity_sha256 if snapshot is not None else ""
+            select_button.setProperty("themeSnapshotIdentity", identity)
+            select_button.setProperty("memberStockCode", stock_code)
+            select_button.clicked.connect(
+                lambda _checked=False, code=stock_code, expected_identity=identity:
+                self._select_member_card(code, expected_identity)
+            )
+            card_layout.addWidget(select_button)
+            card.setStyleSheet(
+                f"QFrame#industryThemeMemberCard {{ background-color: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 5px; }}"
+            )
+            self.member_cards_layout.addWidget(card)
+            self._member_card_buttons[stock_code] = select_button
+        self.member_cards_layout.addStretch(1)
+        self._refresh_member_action()
+
+    def _select_member_card(self, stock_code: str, snapshot_identity: str) -> None:
+        snapshot = self._snapshot
+        visible_stock_ids = self._visible_member_stock_ids()
+        if (
+            self._closed or self._busy or snapshot is None
+            or snapshot.identity_sha256 != snapshot_identity
+            or self._member_snapshot_identity != snapshot_identity
+            or stock_code not in visible_stock_ids
+        ):
+            return
+        button = self._member_card_buttons.get(stock_code)
+        if button is None or button.property("themeSnapshotIdentity") != snapshot_identity:
+            return
+        try:
+            row_index = visible_stock_ids.index(stock_code) - (
+                self._member_page_index * self._MEMBER_PAGE_SIZE
+            )
+        except ValueError:
+            return
+        if not 0 <= row_index < self.member_table.rowCount():
+            return
+        item = self.member_table.item(row_index, 0)
+        if item is None or item.text() != stock_code:
+            return
+        self.member_table.setCurrentCell(row_index, 0)
+        self.member_table.selectRow(row_index)
+
+    def _set_member_presentation(self, _index: int = -1) -> None:
+        cards = self.member_view_combo.currentData() == "cards"
+        self.member_cards_widget.setVisible(cards)
+        self.member_table.setVisible(not cards)
 
     def _open_selected_member(self) -> None:
         item = self.member_table.item(self.member_table.currentRow(), 0)
@@ -4090,6 +4631,7 @@ class IndustryThemeMapView(QWidget):
         self.selected_theme_summary.setToolTip("")
         self._refresh_member_action()
         index = self.theme_filter.currentIndex()
+        self.metrics_detail_toggle.setChecked(False)
         if index <= 0 or index >= len(self._theme_options):
             self.metrics_table.setToolTip("請選擇一個題材以查看指標與成員。")
             return
@@ -4210,6 +4752,7 @@ class IndustryThemeMapView(QWidget):
                 item.setToolTip(value)
                 self.member_table.setItem(page_row, column, item)
         self.member_table.resizeRowsToContents()
+        self._render_member_cards(page_stock_ids)
         self.member_table.clearSelection()
         self.member_table.setCurrentCell(-1, -1)
         del blocker
@@ -4302,7 +4845,12 @@ class IndustryThemeMapView(QWidget):
             item, QAbstractItemView.ScrollHint.PositionAtCenter
         )
         self.scroll_area.ensureWidgetVisible(self.members_group, 0, 0)
-        self.scroll_area.ensureWidgetVisible(self.member_table, 0, 0)
+        if self.member_view_combo.currentData() == "cards":
+            card_button = self._member_card_buttons.get(stock_id)
+            if card_button is not None:
+                self.scroll_area.ensureWidgetVisible(card_button, 0, 0)
+        else:
+            self.scroll_area.ensureWidgetVisible(self.member_table, 0, 0)
         return True
 
     def _clear_metric_cards(self) -> None:
@@ -4318,6 +4866,20 @@ class IndustryThemeMapView(QWidget):
                     widget.deleteLater()
         self._metric_card_widgets.clear()
 
+    def _toggle_metrics_table(self, expanded: bool) -> None:
+        self.metrics_table.setVisible(expanded)
+        self.metrics_detail_toggle.setText(
+            "收合九項指標原表" if expanded else "檢視九項指標原表（展開）"
+        )
+        rows = (len(self._metric_card_widgets) + self._metric_card_columns - 1) // max(
+            self._metric_card_columns, 1
+        )
+        cards_height = rows * 108 + max(0, rows - 1) * 6 + 36
+        table_height = self.metrics_table.minimumHeight() if expanded else 0
+        self.theme_detail_splitter.setMinimumHeight(
+            cards_height + table_height + 60 if self._metric_card_widgets else 0
+        )
+
     def _arrange_metric_cards(self) -> None:
         # 主頁 1280 寬時此欄只約 40% 畫面；三欄會擠掉長名稱與數值。
         columns = 3 if self.metrics_group.width() >= 640 else 2
@@ -4332,9 +4894,8 @@ class IndustryThemeMapView(QWidget):
         rows = (len(self._metric_card_widgets) + columns - 1) // columns
         cards_height = rows * 108 + max(0, rows - 1) * 6 + 36
         self.metrics_cards_group.setMinimumHeight(cards_height)
-        self.theme_detail_splitter.setMinimumHeight(
-            cards_height + self.metrics_table.minimumHeight() + 60
-        )
+        table_height = 0 if self.metrics_table.isHidden() else self.metrics_table.minimumHeight()
+        self.theme_detail_splitter.setMinimumHeight(cards_height + table_height + 60)
         self.metrics_cards_group.updateGeometry()
 
     def _render_metric_cards(
@@ -4458,11 +5019,30 @@ class IndustryThemeMapView(QWidget):
     def _update_controls(self) -> None:
         available = self._snapshot is not None and not self._closed
         lookup_available = available and not self._busy
+        catalog_scanning = self._catalog_scan_worker is not None
         self.latest_snapshot_button.setEnabled(
-            self._catalog_root is not None and not self._busy and not self._closed
+            self._catalog_root is not None and self._catalog_root.is_dir()
+            and not self._busy and not self._closed and not catalog_scanning
         )
-        self.choose_catalog_root_button.setEnabled(not self._busy and not self._closed)
-        self.open_snapshot_button.setEnabled(not self._busy and not self._closed)
+        self.choose_catalog_root_button.setEnabled(
+            not self._busy and not self._closed and not catalog_scanning
+        )
+        self.catalog_version_combo.setEnabled(
+            bool(self._catalog_entries) and not self._busy and not self._closed
+            and not catalog_scanning
+        )
+        selected_catalog_version = self.catalog_version_combo.currentData(
+            Qt.ItemDataRole.UserRole
+        )
+        self.open_snapshot_button.setEnabled(
+            type(selected_catalog_version) is int
+            and 0 <= selected_catalog_version < len(self._catalog_entries)
+            and not self._busy and not self._closed and not catalog_scanning
+        )
+        self.refresh_catalog_button.setEnabled(
+            self._catalog_root is not None and self._catalog_root.is_dir()
+            and not self._busy and not self._closed and not catalog_scanning
+        )
         has_current_load = (
             self._worker is not None
             and self._worker_generation == self._generation
@@ -4473,10 +5053,17 @@ class IndustryThemeMapView(QWidget):
         self.source_details_button.setEnabled(available and not self._busy)
         self.ranking_type_combo.setEnabled(available and not self._busy)
         self.sorting_direction_combo.setEnabled(available and not self._busy)
+        self.ranking_view_combo.setEnabled(available and not self._busy)
+        self.ranking_cards_widget.setEnabled(available and not self._busy)
         self.ranking_table.setEnabled(available and not self._busy)
         self.chain_filter.setEnabled(available and not self._busy)
         self.theme_filter.setEnabled(available and not self._busy)
         self.metrics_table.setEnabled(available and not self._busy)
+        self.metrics_detail_toggle.setEnabled(
+            available and not self._busy and bool(self._metric_card_widgets)
+        )
+        self.member_view_combo.setEnabled(available and not self._busy)
+        self.member_cards_widget.setEnabled(available and not self._busy)
         self.member_table.setEnabled(available and not self._busy)
         selected_theme = (
             0 < self.theme_filter.currentIndex() < len(self._theme_options)

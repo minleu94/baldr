@@ -1200,7 +1200,13 @@ def test_chain_theme_filters_and_member_double_click_emit_stock_id():
     assert view.member_table.rowCount() == 2
     assert view.metrics_table.item(_metric_row(view, "平均日漲跌幅"), 1).text() == "1.23 %"
 
+    assert view.member_view_combo.currentData() == "cards"
+    assert not view.member_cards_widget.isHidden()
+    assert view.member_table.isHidden()
+    assert set(view._member_card_buttons) == {"2330", "2317"}
     view.show()
+    application.processEvents()
+    view.member_view_combo.setCurrentIndex(view.member_view_combo.findData("table"))
     application.processEvents()
     selected_stock_ids = []
     view.stockSelected.connect(selected_stock_ids.append)
@@ -1775,6 +1781,86 @@ def test_first_screen_return_cards_show_leading_and_lagging_themes_with_member_b
     view.close()
 
 
+def test_theme_explorer_and_selected_details_precede_secondary_visualizations():
+    app()
+    view = IndustryThemeMapView()
+    layout = view.content.layout()
+
+    assert layout.itemAt(1).widget() is view.observations_group
+    assert layout.indexOf(view.filter_group) == 2
+    assert layout.indexOf(view.selected_theme_summary) == 3
+    assert layout.indexOf(view.theme_detail_splitter) < layout.indexOf(
+        view.return_tiles_toggle
+    )
+    assert layout.indexOf(view.theme_detail_splitter) < layout.indexOf(
+        view.turnover_treemap_toggle
+    )
+    assert layout.indexOf(view.theme_detail_splitter) < layout.indexOf(
+        view.ranking_group
+    )
+    assert layout.indexOf(view.theme_detail_splitter) < layout.indexOf(
+        view.chain_directory_button
+    )
+    view.shutdown()
+    view.close()
+
+
+def test_topic_details_default_to_cards_and_card_actions_select_records():
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1100, 760)
+    view.set_snapshot(_snapshot())
+    view.ranking_type_combo.setCurrentIndex(
+        view.ranking_type_combo.findData("turnover")
+    )
+    _select_theme(view, "科技鏈", "AI")
+    view.show()
+    application.processEvents()
+
+    assert view.ranking_view_combo.currentData() == "cards"
+    assert not view.ranking_cards_widget.isHidden()
+    assert view.ranking_table.isHidden()
+    assert view.metrics_detail_toggle.isChecked() is False
+    assert view.metrics_table.isHidden()
+    assert view.member_view_combo.currentData() == "cards"
+    assert not view.member_cards_widget.isHidden()
+    assert view.member_table.isHidden()
+    assert set(view._member_card_buttons) == {"2330", "2317"}
+
+    view.metrics_detail_toggle.click()
+    application.processEvents()
+    assert not view.metrics_table.isHidden()
+    assert view.metrics_detail_toggle.text() == "收合九項指標原表"
+    view.metrics_detail_toggle.click()
+    view.member_view_combo.setCurrentIndex(view.member_view_combo.findData("table"))
+    application.processEvents()
+    assert view.member_cards_widget.isHidden()
+    assert not view.member_table.isHidden()
+    view.member_view_combo.setCurrentIndex(view.member_view_combo.findData("cards"))
+    application.processEvents()
+
+    view._member_card_buttons["2317"].click()
+    application.processEvents()
+    assert view.member_table.currentRow() == 1
+    assert view.open_member_button.isEnabled()
+    assert view._member_card_buttons["2317"].isChecked()
+
+    ai_rank_card = next((
+        button for button in view._ranking_card_buttons
+        if button.property("rankedChainName") == "科技鏈"
+        and button.property("rankedThemeName") == "AI"
+    ), None)
+    assert ai_rank_card is not None, [
+        (button.accessibleName(), button.property("rankedChainName"), button.property("rankedThemeName"))
+        for button in view._ranking_card_buttons
+    ]
+    ai_rank_card.click()
+    application.processEvents()
+    assert view.chain_filter.currentData() == "科技鏈"
+    assert view.theme_filter.currentText() == "AI"
+    view.close()
+
+
 def _render_after_invalid_row_injection(
     view: IndustryThemeMapView,
     snapshot: ThemeResearchSnapshot,
@@ -2339,6 +2425,7 @@ def test_clicking_ranked_theme_selects_original_chain_theme_and_members():
     view.ranking_type_combo.setCurrentIndex(
         view.ranking_type_combo.findData("turnover")
     )
+    view.ranking_view_combo.setCurrentIndex(view.ranking_view_combo.findData("table"))
     view.show()
     application.processEvents()
 
@@ -2381,6 +2468,7 @@ def test_low_direction_rank_click_selects_original_theme_and_member():
     view.sorting_direction_combo.setCurrentIndex(
         view.sorting_direction_combo.findData(True)
     )
+    view.ranking_view_combo.setCurrentIndex(view.ranking_view_combo.findData("table"))
     view.show()
     application.processEvents()
 

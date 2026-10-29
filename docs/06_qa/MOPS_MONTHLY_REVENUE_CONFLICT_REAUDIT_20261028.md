@@ -496,6 +496,14 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 
 第三方 MoneyDJ／第一銀行轉載頁將相同金額標為 2026-09-07 23:59 發布（[第一銀行頁面](https://wealth.firstbank.com.tw/investment-tips/trend-insight/news/news-detail?id=%7B184CEDB8-C5E8-4E18-A441-504E87000030%7D)）。此只提供下一個官方查詢日期線索，不是 MOPS 原始公告時間，不用於 availability mapping。針對 2026-09-07 的官方 PUB F22 單日窗口再以 Scrapling 普通 HTTPS POST 查一次，12 秒 timeout、單次請求；本機 DNS 解析逾時、沒有 HTTP response。失敗收據保存在 ignored `.tmp_mops_pub_6884_probe_20261029/failure_receipt.json`。故本輪未新增 mapping、未改正式 DB；網路恢復後應先重試該單日 PUB 窗口，再確認公告詳情中的 issuer、period 與 value，才能裁決 6884／2026-08。
 
+### 2026-10-29 MOPS 6884 官方新站端點補查
+
+使用 Scrapling 對官方 MOPS 新站作普通 HTTPS 唯讀查詢，未使用 Remote Desktop、登入、代理或 challenge 處理。對 `POST https://mops.twse.com.tw/mops/api/t05st01` 查詢 `companyId=6884, year=115, month=all`，HTTP/API 200，但僅回傳最近 20 筆公告（115/02/04 至 115/08/19）；再帶入 `firstDay=115/09/01,lastDay=115/09/30`，仍回同樣 20 筆、相同 5,722 bytes，表示這組日期欄位未形成可用的九月歷史篩選。第二次原件 SHA-256 為 `914277f70994bbaa85619ab2a36fba2075c2547286b2f638c1b3a623de2f185d`。不能把「最新 20 筆未含九月」解讀成九月沒有公告，也不能再用這個端點的空結果裁決 6884。
+
+同日官方 EZSearch `TYPEK=pub, PRO_ITEM=F22, SDATE=EDATE=115/09/07` 以 Scrapling 收到 HTTP 200、API `fail／查無公告資料`、0 列，原件 82 bytes，SHA-256 `416900c0bedd419e17635d2d44d06c1d79200907efbff484987d0296df40f6da`。此是該官方端點、該市場類型與單日窗口的有效負結果，但只排除這個查詢窗口回傳 6884，不能排除其他公告查詢路徑、不同日期或歷史索引結果。MOPS 新站 `t51sb10` 則是「最新財務／營收報表」頁，頁面模組呼叫 `home_page/t51sb10` 並呈現財報報表清單；它不是 issuer-period F22 公告事件查詢，故不把它當作公告時間證據。原始回應及收據留在 ignored `.tmp_mops_6884_t05_20261029/` 與 `.tmp_mops_home_20261029/`。
+
+因此本次來源路徑補查**沒有新增可安全套用的公告時間或 mapping**，沒有改正式 SQLite／availability mapping，`6884／2026-08` 仍 degraded。下一步應尋找可按歷史日期／期別完整查詢並能回傳公告明細的官方路徑，或取得對應 F22 公告原件；不得將這次 t05st01 最近 20 筆結果當成完成歷史查核。
+
 ### 2026-10-29 Weekly MOPS child 實跑：編碼與 output junction 修復
 
 隔離手動執行 Weekly controller 時先重現兩個可修故障：核心 collector 在 Windows `cp1252` stdout 輸出含中文 JSON 時拋 `UnicodeEncodeError`；修正為子程序自行重設 UTF-8 後，core 已能正常完成。接著 `fetch_mops_statement_availability.py` 把已由 output guard 驗證的輸出路徑 `resolve()` 後再檢查是否位於 repo；本機 `repo/output` 是指向 `F:/Min/Python/Project/BaldrStorage/repo-output` 的既定 junction，故被誤判為越界。現在以固定 repo 內預設路徑做詞法範圍驗證，再由既有 output guard 確認解析後位置不在正式 `DATA_ROOT`。

@@ -28,7 +28,7 @@
 | P2 | Research Timeline：本地搜尋呼叫 `_render_entries`，每列最多重建 4 個儲存格；完整 Journal 搜尋另有 250 ms debounce，顯示最多 500 筆。 | **搜尋設定與清單／詳情曾缺少可見分區標題，已補標題及控制分組；回歸 17 passed。** | 原生 GUI 尚待確認不同寬度下 splitter 可讀性；如實測 500 筆鍵入有明顯停頓，再 profile 後決定是否調整模型。回歸入口：`tests/test_ui_qt_research_timeline_view.py`。 |
 | P2 | Smart Money：[`smart_money_flow_view.py`](../../ui_qt/views/smart_money/smart_money_flow_view.py) 摘要卡與控制列原本都使用水平捲動區。 | **已修正版面風險**：摘要卡按寬度排 4／2／1 欄；掃描控制按寬度排單列／雙列／三列；掃描動作與觀察清單在首列，週期／範圍／圖表和搜尋／列數／品質各自成組，移除這兩處水平捲動容器。 | 保留既有市場摘要母體、搜尋範圍、掃描與表格契約；原生 GUI 視覺仍待人工確認。回歸入口：`tests/test_ui_qt_smart_money_flow_view.py`、`tests/test_ui_qt_market_layout.py`。 |
 | P2 | Recommendation 結果表：結果載入先前呼叫 `resizeColumnsToContents()`；長理由會參與整欄寬度估算。 | **已修摘要表欄寬風險**：摘要欄採穩定初始寬度、理由欄初始 260 px，欄寬可拖曳；完整理由由詳情與儲存格提示閱讀，擴展欄位維持原資料。推薦版面／保存讀回測試 16 passed。推薦投資組合結果測試在 Qt WebEngine 建立回測圖表時觸發 Windows fatal exception，該測試未完成。 | 原生 GUI 視覺與 Owner UAT 尚待人工驗收；回歸入口：`tests/test_ui_qt_recommendation_layout.py`、`tests/test_ui_qt_saved_recommendation_compact_layout.py`、`tests/test_ui_qt_recommendation_portfolio_results.py`。 |
-| P2 | Backtest 診斷：[`analyst_diagnostics_widget.py`](../../ui_qt/views/backtest/analyst_diagnostics_widget.py#L271) 更新時清表並逐列插入；年範圍上限可形成最多 1,200 月列、每列 13 欄（`L94–95,303–335`）。 | **上限情境的同步建立成本；不是常見使用量，也未量測。** | 先 profile 實際長區間；只有確認延遲時才改 model／批次更新或調整展示範圍。回歸入口：`tests/test_ui_qt_research_lab_mode_driven_ui.py`。 |
+| P2 | Backtest 診斷：[`analyst_diagnostics_widget.py`](../../ui_qt/views/backtest/analyst_diagnostics_widget.py#L271) 同步重建月度矩陣；`_MAX_MONTHLY_DISPLAY_MONTHS=1200` 是補齊日期缺口的跨度門檻，不是 1,200 個表格列。13 欄矩陣按年作列；連續門檻範圍最多約 100 年列，超過跨度時只列有觀測年份（`L94–95,303–335`）。 | **先前把 1,200 個月誤記為 1,200 個表格列，已依程式修正判讀。**目前可確認是同步重建；尚無證據顯示一般資料量造成可感知延遲。診斷頁本身在既有可捲動結果頁內，沒有必要因這個靜態估算再增加分頁或操作。 | 保留觀察；若 Owner 實際遇到長跨度載入停頓，再以對應 DTO/profile 量測後決定是否優化。回歸入口：`tests/test_ui_qt_research_lab_mode_driven_ui.py`。 |
 | P2 | Storage overview：原兩張表格無區塊標題，欄寬依內容且水平捲軸固定顯示。 | **已調整版面方向**：分為磁碟容量與明示根項目兩區；摘要明示位置／項目數；欄位採掃讀寬度，水平捲軸僅於溢出時顯示，完整文字可由儲存格提示讀取。新增窄窗版面測試通過；worker 測試遇 sandbox 目錄掃描 `WinError 5 Access is denied`。提權重跑在開啟 QA 子程序前被鎖檔讀取權限拒絕。 | 需在可讀取測試目錄且可使用 QA 鎖的環境完成 worker 回歸；原生 GUI 視覺仍待 Owner 驗收。回歸入口：`tests/test_ui_qt_storage_overview.py`。 |
 | P2 | Update 狀態卡 `extra_label` 顯示覆蓋率、期別與狀態補充資訊。 | **已啟用換行並允許標籤收縮；**文字仍由原來來源資訊組成，未改狀態／資格。必要 Update UI 回歸入口：`tests/test_ui_qt_update_view_workbench.py`。 |
 | P3 | 排程成熟分布：圖例、成熟計數及未知訊息。 | **8 pt 提為 9 pt；**既有正負色義、計數、Unknown 語義保留，聚焦回歸 60 passed。 | 原生字型及 DPI 驗收仍待人工確認。 |
@@ -115,3 +115,37 @@ Recommendation 結果載入不再按候選內容逐欄自動量寬。代號、�
 - `tests/test_ui_qt_v2_shell_widgets.py`＋`tests/test_ui_qt_v2_product_shell.py`：**24 passed**；涵蓋 1200／600／280 px 欄數、按鈕容器邊界、route selection 保留及 ProductShell 整合。
 - 本輪 source／test `py_compile` 與 `mypy ui_qt/widgets/workspace_subnav.py` 通過；必要 Update UI **98 passed**，Update validator **25 passed／0 failed／4 skipped**。Repo-wide mypy 仍被未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻止。
 - Offscreen 幾何測試不代替原生 GUI 的字型／DPI視覺與 Owner UAT；其餘主工作區仍沿全程式盤點排序繼續檢查。
+
+## 2026-10-29 第八輪：Gate 1 跨頁回歸重查
+
+依使用者針對 1569／2026-10-28 的實際畫面回報，重新檢查 Advice 判讀、推薦來源詳情、每日來源詳情入口及研究狀態讀回的跨頁連結。既有 Gate 1 調整已把 Advice 摘要拆成理由／限制、證據狀態、執行限制、策略版本說明與逐股證據；來源明細保留摘要與分層追溯欄位；同筆 Advice 可導向來源詳情及研究時間軸。這次只記錄驗證狀態，不更改來源資格或研究決定契約。
+
+- `tests/test_workbench_advice_contract.py`、`tests/test_ui_qt_research_timeline_view.py`、`tests/test_cross_page_decision_journey_mainwindow.py`、`tests/test_ui_qt_workbench_view.py`：**96 passed**。
+- 加入 `tests/test_daily_investment_journey.py` 的 Gate 1 組合回歸：**122 passed、5 errors**。5 項都在 `_scheduled_base_execution` fixture 建立排程推薦時發生；輸出顯示 fixture 的 `companies.csv` 不存在，且推薦 execution artifact 發布失敗。失敗發生於 UI 斷言之前，不能算成 UI 通過，也不能據此判定來源資格。
+- 使用者先前提供的同筆保存與讀回文字確認人工決定=已納入研究；Journal 紀錄=0、下次檢視未設定是當時實際保存值的回讀，不是交易紀錄。原生 GUI 上的層級、文字可讀性與按鈕主次仍須 Owner UAT 確認。
+- 下一步 Owner UAT 依序核對：資料日期與來源摘要、候選篩選／排除、Advice 限制、人工決定、保存後精確讀回、由 Advice 回查來源及由研究時間軸找回同一 `result_id`。完成前不標示 Gate 1 整體接受。
+
+## 2026-10-29 第九輪：Research Console 與綜合選股版面修正
+
+延續全程式 MainWindow 版面盤點，確認兩個可重現的閱讀問題並修正：Research Console 表格原先以內容自動量寬，長來源欄把表格與說明區撐出外層畫面；綜合選股的三個研究線索捷徑原本平均填滿欄位，視覺上比真正的查詢動作更突出。前者改用緊湊初始欄寬、保留拖曳調欄，並讓兩段長說明換行；後者改為內容寬度、靠左排列，依寬度換成 3／2／1 欄。只改版面，不改來源查詢、篩選、推薦或金融邏輯。
+
+- 新增 Research Console 無水平溢出與可調欄寬回歸；該測試 **1 passed**。條件捷徑幾何測試 **1 passed**，確認按鈕緊湊及寬版靠左。WorkBench 真實 MainWindow 定向版面稽核在 scale 1.0、1.5 各檢查 13 子頁，兩者均 **0 failures／0 coverage gaps**。
+- 相關 UI 測試組 **249 passed**；另 1 failure、2 errors 全發生在 pytest 暫存路徑 `Path.resolve(strict=True)`，為 Windows sandbox `WinError 5` 權限拒絕，沒有進入測試斷言。以允許的視覺化暫存根目錄重試仍是相同環境錯誤，不能列為通過或產品缺陷。
+- 必要 Update UI 包含在上述測試組；`scripts/qa_validate_update_tab.py` 本輪重跑 **25 passed／0 failed／4 skipped**。修改檔 `py_compile` 與兩個 source scoped mypy 通過；repo-wide mypy 仍先遇到未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤，無法檢查其餘模組。`git diff --check` 無 whitespace error；Git 回報既有 fsmonitor IPC 訊息與行尾轉換警告。
+- MainWindow 全工作區壓力稽核雖涵蓋 9 個工作區、三種幾何與兩種 scale，但每個 scale 有重複的子頁可見性、標籤／控制項裁切、合成資料還原和水平捲動警告；須逐項區分真缺陷、隱藏子頁與 fixture／量測限制，不把統計總數當成缺陷數。Recommendation 定向稽核仍有已保存推薦、每日快照條件等 widget 幾何警告，待確認是否只在非作用中頁籤出現，再修復確認的問題。
+- 尚未完成全程式 UI 盤點與原生 GUI／Owner UAT；offscreen 幾何結果不代表實際字型、色彩、DPI或閱讀體驗驗收。全工作區後續以跨頁資訊層級、主要動作與長內容可讀性逐一確認，不宣稱 Gate 1 整體接受。
+
+## 2026-10-29 第十輪：排程成熟狀態未知訊息分層
+
+Backtest 的「證據覆盤 → 今日決策 → 排程狀態」在來源缺件時，成熟度小卡會直接放入含完整檔案路徑的診斷字串，實際量測高 30 px、文字需要 45 px。完整來源原因原本已在下方原始明細；現改為長診斷在卡片顯示短提示、滑過提示保留原文，原始明細仍保留全診斷與路徑。沒有改變狀態分類或排程資料。
+
+- `tests/test_ui_qt_evidence_review_dashboards.py`：**60 passed**；回歸確認長檔案診斷在卡片摘要、tooltip 與下方明細間正確分層。
+- Backtest 真實 MainWindow 定向稽核(scale 1.0／1.5)不再回報 `wrapped_label_vertical_clip`；仍因 `backtestDailySignalsPage` 合成資料 fixture restore 的 header tooltip 警告及 7 個 coverage gaps 而整體非綠，需另行釐清工具與頁面覆蓋，不歸因於此 UI 修正。
+- 這次新增 Python 檔 `py_compile` 通過；必要 `tests/test_ui_qt_update_view_workbench.py` **98 passed**；`scripts/qa_validate_update_tab.py` **25 passed／0 failed／4 skipped**；scoped mypy（3 個 UI source）通過。Repo-wide mypy 仍在檢查前被未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻斷。全程式 UI 稽核與原生 GUI／Owner UAT 仍未完成。
+
+## 2026-10-29 第十一輪：複合選股查詢操作主次
+
+離線 MainWindow 畫面顯示複合來源頁把「套用條件並重新全域查詢」橫跨整個內容區，清除與取消各占半列，操作面積打斷條件與結果的連結。現在將三項操作集中在條件下方一列，明確以 primary／ghost／secondary 區分查詢、清除、取消；寬版同列靠左，窄版改直排。控制項仍呼叫原 signals／slots，查詢條件與資料不變。
+
+- `tests/test_ui_qt_technical_official_composite_view_v2.py::test_v2_query_actions_have_primary_hierarchy_and_reflow_without_stretching`：**1 passed**；確認寬版主次樣式與內容寬度、窄版直排且按鈕都在操作區內。
+- 相關測試檔完整執行及必要 Update 驗證、全域檢查在本輪結束前待完成；全程式 UI 盤點與原生 GUI／Owner UAT 仍未完成。

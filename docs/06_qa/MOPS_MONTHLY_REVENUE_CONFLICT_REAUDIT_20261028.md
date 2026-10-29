@@ -221,9 +221,9 @@ Recovery receipt：`C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5c
 
 正式 DB 唯讀讀回確認 `fundamental_monthly_revenues` 的 2026-07／08／09 分別為 1,861／1,862／1,862 列，合計 **5,585 列**；來源版本均為 10/28 MOPS static snapshot，數值 `available_date=2026-10-30`，`announced_date` 空白且品質 `degraded`。同鍵 F22 crosswalk 有 5,584 個唯一公告事件，缺少 6884／2026-08；事件 timestamp 留在 sidecar，正式表沒有 `announced_at` 欄。Crosswalk snapshot lineage 與這 5,584 列 DB source version 的 snapshot lineage 相符，但這不改變 numeric snapshot 於 10/30 才可見的界線；當時 5,585 列仍 degraded 是本次 apply 前基線，後續正式回填結果見下節。
 
-10/27 與 10/28 排程收據顯示，TWSE 1,088 列與 TPEx 893 列 OpenAPI 原件皆 HTTP 200、hash 可讀；候選隨後將 `出表日期` 送入歷史公告日期 builder。該 builder 正確拒絕 TWSE／TPEx 的 report-level date 作為 issuer-period announcement evidence；候選程式卻將此預期拒絕升級為整批失敗，因而沒有保存 normalized snapshot CSV。修正後，daily capture 只保存原件與標準化研究快照；availability CSV 保留空表及明確狀態 `not_emitted_no_issuer_period_announcement_evidence`，manifest 記錄 report-level date 語義及擷取時間，不把它轉成 `announced_date` 或正式可得日。這個修正不會回寫 DB 或解除 7–9 月 `degraded`；須待下一次自然排程成功讀回候選，再核對正式 scheduler 註冊狀態。
+10/27 與 10/28 排程收據顯示，TWSE 1,088 列與 TPEx 893 列 OpenAPI 原件皆 HTTP 200、hash 可讀；候選隨後將 `出表日期` 送入歷史公告日期 builder。該 builder 正確拒絕 TWSE／TPEx 的 report-level date 作為 issuer-period announcement evidence；舊候選程式卻將此預期拒絕升級為整批失敗，因而沒有保存 normalized snapshot CSV。修正後，daily capture 保存原件與標準化研究快照；availability CSV 保留空表及明確狀態 `not_emitted_no_issuer_period_announcement_evidence`，manifest 記錄 report-level date 語義及擷取時間，不把它轉成 `announced_date` 或正式可得日。此修正不回寫正式 DB；10/29 手動 CLI capture 已以新程式成功讀回，結果及 scheduler 現況見下方「10/29 排程與修復後候選實跑」。
 
-回歸收據：歷史公告 builder＋候選／recovery／排程稽核 suite **86 passed、1 skipped**；Update Workbench **98 passed**；資料更新 tab validator **25 passed、0 failed、4 skipped**。本機排程狀態查詢回報 `TASK_NOT_FOUND_OR_SCHEDULER_UNAVAILABLE`，因此尚無法確認 Windows Task Scheduler 註冊是否有效。這一節記錄程式修正與現況讀回，不宣稱下一次排程已執行。
+回歸收據：歷史公告 builder＋候選／recovery／排程稽核 suite **86 passed、1 skipped**；Update Workbench **98 passed**；資料更新 tab validator **25 passed、0 failed、4 skipped**。Task Scheduler 註冊後以其本機 XML 與逐次 capture receipt 重新核實，結果見下方；Task Scheduler Operational event log 權限不足，因此不宣稱已取得 Windows event log 層級的啟動主體證明。
 
 ### 2026-10-29 F22 公告映射 guarded apply 與正式讀回
 
@@ -234,3 +234,17 @@ Recovery receipt：`C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5c
 讀回正式 SQLite 與 mapping 後，7 月 1,861 列、8 月 1,862 列、9 月 1,862 列中 5,584 列為 `observed`，6884／2026-08 1 列仍 `degraded`；全正式月營收表 251,189 `observed`／727 `degraded`。品質 reader 的 7／8／9 月 missing announcement count 為 0／1／0。唯讀 `FundamentalSQLiteProvider` 驗證 2330：decision date 10/29 最新仍是 2026-06；10/30 才選到 2026-09、`available_date=2026-10-30`、announcement date 10/08。故本次確認頁面最早於 10/30 顯示 7–9 月；沒有提前曝光。完整 raw crosswalk、候選與 backup／receipt 均留在被忽略的 `.tmp_mops_recovery_20261029/` 任務 scratch，不納入 Git。
 
 針對剩餘缺口，另以 Scrapling 一般 POST 查 OTC F22 的 2026-09-01..15 視窗；HTTP 200、907 筆，沒有 6884／115 年 8 月事件。原始回應保存在 `.tmp_mops_recovery_20261029/mops_f22_otc_20260901_15_6884_check.json`，SHA-256 `1f55e1b4c4e187bf1ceeb0f76fab725220560af7704e37be96cd971ec5500623`。這是限定半月窗口的抽查；完整 2026 harvest crosswalk 亦沒有 6884／2026-08，只有 2026-07 與 2026-09 兩期事件。由於缺少該期公告 event，不推造公告日；該一列維持 `degraded`，後續若有可核實 MOPS 公告原件可再建立新 mapping revision。
+
+### 2026-10-29 排程與修復後候選實跑
+
+唯讀檢查 `C:\Windows\System32\Tasks\baldr-data-update-quick-daily` XML：task `Enabled=true`，每天 04:20，動作為 repo 的 `scripts/scheduled/run_daily_data_update_quick.cmd`。該 `.cmd` 預設加上 `--capture-monthly-revenue-research-candidate`，僅 `BALDR_CAPTURE_MONTHLY_REVENUE_RESEARCH_CANDIDATE=0` 才關閉；排程註冊及程式接線均存在。正式資料根 `output/scheduled/data_update_quick/research_capture_receipts/` 的最新排程收據為 10/28 run `20261028-36584`：Quick core `passed_with_warnings`，候選子程序 `rejected`，原因是舊版仍把報表層級 `出表日期` 當公告證據；最新排程收據檢查到 10/28 為止。10/29 00:33 PDT（07:33 UTC）在修復後直接執行同一候選 CLI 成功，這是在下一個 04:20 排程觸發前的手動驗收，不冒稱為 scheduler-launched run。
+
+修復後 candidate run ID `20261029T073307505471Z-a444187d09724152bd139d827aacb11d`；manifest SHA-256 `afdb15d2d4fc5c790aa7c54ea76c88e1e385c8d45879d6c7c4c5548e9bded36b`，status `research_observation_only_created`／readback `verified`。TWSE HTTP 200／1,088 rows／607,634 bytes／SHA-256 `a58c04b3bdc2b94632027018ca4f09f6ad053848addb7b9580b372626542fc17`；TPEx HTTP 200／893 rows／496,597 bytes／SHA-256 `a27fea120daa8ef4543bcbf6e31426cad2e0201111ee8d97916fbb5fce2727a6`。標準化現況 snapshot 1,981 rows、hash readback 成功；availability 0 row 且 reason `not_emitted_no_issuer_period_announcement_evidence`。正式 apply、單位接受與 historical PIT 均為 false，無正式 DB 寫入。原件、candidate 與 receipt 位於 `output/fundamental_research_candidates/20261029T073307505471Z-a444187d09724152bd139d827aacb11d/`（repo `output` 本機產物，不納入 Git）。
+
+#### 727 筆 degraded 現況的唯讀逐鍵分類
+
+重新只讀查詢正式 SQLite，總數仍為 251,189 observed／727 degraded。逐列以 `(stock_code, period)` join 本機三批歷史 `sii`／`otc` harvest：**690** 無事件（既有 689 舊缺口加上 6884／2026-08 一筆）；**36** 有事件但 announced date 晚於固定 snapshot `available_date=2026-06-18`；**1** 為 8942／2026-04，事件 timestamp `2026-06-18T14:11:43+08:00` 晚於該列 snapshot capture `2026-06-16T23:02:24Z`。36 late-event keys 分布為 6111×9、3041×6、2392／2608／3712／6776 各×4、3437／3466／4304／5460／8101 各×1。晚期事件 raw 沒有對應時點數值或該版本 detail page；不能把後來公告日套到 6/16 舊數值列。
+
+無事件缺口主要集中於 2867／4130／5371／8183 各 145 期、6806 共 88 期，另 21 個單筆鍵；目前抽到的 2026-04 明細頁三個值與正式 DB 一致、兩碼頁面顯示不再公開發行，但五頁都無公告日期／時間欄。針對 EZSearch 嘗試 `CO_ID=2867` 的 2014-05-12 單日查詢，HTTP 200 回傳全上市 57 列且無 2867，顯示此 JSON endpoint 不採用該 payload 欄位作公司篩選；該 raw SHA-256 `f5a359438729571815e1a6f5c1bb5f38b32b3f928df39b129fa342de73a68265`。另一個上市 2014-05-10..14 窗口 HTTP 200、62 列、無 2867，raw SHA-256 `0f24204adaf7ec8149aaf141f09b907a4a7a1a7e398fbd213584d8415686e450`。這些 bounded queries 不能代替完整月份的歷史 crosswalk；不能從未命中推定公告日或數值錯誤。
+
+原三批歷史 harvest 僅涵蓋 SII／OTC；故另以既有 10 秒限速、raw+SHA+manifest、checkpoint harvester 啟動 `rotc`／`pub` 2014–2026 全期補採，輸出 `output/mops_harvest_rotc_pub_2014_2026/`，dry-run 規劃 1,848 窗。啟動時前兩個 ROTC 視窗 HTTP 200 且 0 rows；整批仍在背景執行中，未完成前不能宣稱剩餘市場無公告。該補採只新增事件原件與候選，不寫正式 SQLite。若四市場補採仍無事件，這 690 筆會保留 degraded；36+1 筆則仍需版本同時點數值證據，當前不會以放寬日期守衛解除。

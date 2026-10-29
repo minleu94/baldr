@@ -420,7 +420,7 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 
 ### 2026-10-29 current degraded 719 keys crosswalk reconciliation
 
-以正式 SQLite 中目前 719 個 `degraded` canonical keys，重新和四批保存的 F22 `events.csv` 以 `(stock_code, period)` 精確交叉比對，並另外對照 37 個 F22 detail revision manifest keys 與既有 `t05st01` 原件線索：**686 keys 沒有精確 F22 event；33 keys 有精確 F22 event，但事件時間晚於 2026-06-16 舊 snapshot row capture**。兩組合計正好 719；市場標籤正規化及事件時間解析沒有額外找回 key。這也解釋舊分類的「681 缺事件」：另有 5 keys 帶不完整 `t05st01` 線索，但不能精確配對到 issuer-period 數值與公告事件，因此仍在 686 個無 F22 精確配對鍵內。
+以正式 SQLite 中目前 719 個 `degraded` canonical keys，重新和四批保存的 F22 `events.csv` 以 `(stock_code, period)` 精確交叉比對，並另外對照 37 個 F22 detail revision manifest keys 與既有 `t05st01` 原件線索：**686 keys 沒有精確 F22 event；33 keys 有精確 F22 event，但事件時間晚於 2026-06-16 舊 snapshot row capture**。兩組合計正好 719；市場標籤正規化及事件時間解析沒有額外找回 key。686 個無 F22 鍵中，5 個另帶不完整 `t05st01` 線索，不能精確配對到 issuer-period 數值與公告事件；其餘 681 個沒有其他已知公告身份。`6884／2026-08` 在這 681 個之內，是特殊待查子集，不是額外一列。故本節以這次 current exact-key crosswalk 為現況口徑，較早段落的分項數不得再加總套用。
 
 這 5 keys 為 `2867／2025-01`、`2867／2025-02`、`2867／2026-01`、`2867／2026-02`（同一 2026-04-14 17:00:38 更正公告標題涵蓋多期，但候選期別空白，無法逐鍵裁決），以及 `8183／2014-07`（清單標題為自願申報，詳情 API 500，未取得可驗證的月營收數值）。它們目前都沒有精確 F22 event candidate，故不能只憑公司年度或標題解除 degraded。
 

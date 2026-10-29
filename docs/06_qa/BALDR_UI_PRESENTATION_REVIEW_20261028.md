@@ -308,6 +308,7 @@ Workbench 原本把「今日優先查看」、額外工作區捷徑、今日行�
 將 Workbench 延伸捷徑／最近研究／持倉追蹤收進單一預設收合區；每日旅程、狀態摘要及 Advice 保留主閱讀流。今日行動卡在寬螢幕四欄、中版雙欄、窄版單欄排列；載入前只保留標題列重新整理，四張卡分別導向資料更新、市場總覽、推薦分析及持倉管理。Portfolio、Recommendation、Backtest Registry 保留前幾輪的空態收合、窄版操作排列與來源限制說明。同步更新首頁導覽、Recommendation 來源按鈕及 Registry 窄版操作手冊。
 
 - `tests/test_ui_qt_workbench_home_single_page.py`：**7 passed**；`tests/test_workbench_advice_contract.py`：**16 passed**；`tests/test_ui_qt_v5_workbench_guided.py`：**4 passed**；首頁四欄／雙欄／單欄、收合區及導覽回歸通過。
+- 補充單檔核對 `tests/test_ui_qt_workbench_view.py`：**60 passed**；受控 Windows Job 限制讀回 8 GiB／12 processes，程序樹及 child handles 正常關閉。
 - `tests/test_ui_qt_portfolio_view.py`：**111 passed**；`tests/test_ui_qt_recommendation_layout.py`：**16 passed**；`tests/test_ui_qt_run_registry_compare.py`：**26 passed、1 deselected**。唯一排除項為先前已記錄會逾時的基本配對 worker 測試，本輪其餘 Registry 比較、收合與窄欄版面測試通過。
 - `tests/test_baldr_b03_market_home.py`：**13 passed**。修正兩個舊斷言：來源缺值摘要實際有三項；檢測失敗會清空技術細節並收合區塊，測試改核對既有失敗契約。
 - 必要 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；`scripts/qa_validate_update_tab.py`：**25 passed／0 failed／4 skipped**。本批 13 個修改 Python source／test `py_compile` 通過；5 個修改 UI source targeted mypy **0 issues**。

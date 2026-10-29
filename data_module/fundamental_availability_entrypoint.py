@@ -101,6 +101,15 @@ def _unsupported_source_diagnostic(
 def _requires_disclosure_window_check(
     override: FundamentalAvailabilityOverride,
 ) -> bool:
+    # 固定的 2026-06 MOPS 靜態快照屬於事後數值基準，只能從快照擷取後使用。
+    # 此例外限於精確版本與保守可得日；回填計畫仍會逐列驗證擷取日。
+    if (
+        override.source == "mops.monthly_revenue_announcement"
+        and override.target_source_version
+        == "mops-static-snapshot-monthly-revenue-2026-06-16"
+        and override.available_date.isoformat() == "2026-06-18"
+    ):
+        return False
     return override.source != RETROACTIVE_BASELINE_SOURCE
 
 

@@ -2,6 +2,8 @@
 
 Owner 已授兩具名OpenData來源全部研究用途；此頁說明新Source的工程入口，不代表既有固定RC已包含，亦不代表全部金融Gate已通。實際範圍看[驗收](../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)，授權／單位／PIT契約看[全用途契約](../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)。Native停止保持，這些CLI不操作桌面或券商，不修改正式SQLite／資金／排程。
 
+依 2026-10-28 Owner 研究取用指示，不能只因 MOPS／TWSE／TPEx 端點條款或自動化授權尚未裁定，就停止明確要求的公開資料研究取用；此為執行流程指示，不代表來源接受或法律裁定。依一般公開存取方式取得原件並記錄 URL、擷取時間、response metadata、bytes 與 SHA。不得繞過登入、CAPTCHA 或其他技術存取限制。取得、公告 timestamp、數值版本橋、PIT 與下游 Gate 是分開狀態，依[全用途契約](../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md#owner-研究取用指示2026-10-28)判讀。
+
 ## 離線規劃歷史範圍
 
 在repo根目錄執行：
@@ -36,7 +38,7 @@ Research Console 的月營收品質摘要也會讀這份 mapping；只有 `forma
 .\.venv\Scripts\python.exe scripts/monthly_revenue_archive.py --report output/monthly-revenue/history-import-01.json import-history-capture --capture-file <absolute_capture_path> --capture-sha256 <capture_artifact_sha256> --archive-root output/monthly-revenue/history-archive-01
 ```
 
-追加同樣明選`--parent-sha256`。歷史HTML仍保持獨立`mops.history.*` source，授權未接受、單位Unknown、PIT=false，不能引用兩具名OpenData的授權包放行。
+追加同樣明選`--parent-sha256`。歷史HTML仍保持獨立`mops.history.*` source，不能引用兩具名OpenData的授權包放行；依 Owner 2026-10-28 指示，條款／授權未裁定不得單獨阻擋明確要求的公開研究取用，狀態須如實記錄。單位Unknown、PIT=false 等資料資格仍各自判定，不因擷取成功改變。
 
 ## 重用已保存的官方OpenData原件
 
@@ -73,3 +75,11 @@ cutoff須有時區。先核index與全部原件再選版；結果保留市場、
 MOPS 完整 HTML 若宣告 Big5 且含 CP950 擴充，transport 只對 exact 官方 MOPS host 提供 strict CP950 相容路徑，不使用 replacement decode；原 bytes、宣告與 SHA 保留。不完整 EOF 仍不能匯入。已有完整三跳而舊解析失敗時，可由工程流程從固定 SHA 原件離線重建、用既有 reader 重驗後再以 `import-history-capture` 匯入新的隔離 archive；不重抓、改原 FAIL 或倒填官方可用時間。2026-06 的新隔離候選及尚未接受的單位／用途界線見 [全用途資料契約](../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)。
 
 六月兩份固定HTML另有獨立scale-only proof，工程API建立／讀回都必須重驗原capture；僅能標示「原報表千元尺度、幣別未知」，不能放入archive既有完整unit proof欄位、改unit_status或直接乘1000換算TWD。它只覆蓋具名產業表與五個金額欄，不影響三個原公布百分率、兩個OpenAPI、既有research-current資格或歷史PIT。空存託憑證表與全市場合計不計公司coverage；精確原件／proof SHA及實際QA見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
+
+## 固定快照公告 mapping 回填（2026-10-29）
+
+2020–2025 固定 MOPS snapshot 已透過 `scripts/apply_monthly_revenue_recovery.py` 的 guarded recovery 流程正式回填。snapshot 數值的 `available_date` 為 2026-06-18；F22 公告事件的 `announced_date`／`announced_at` 另行保留，兩者不可互相替代。reader 依 `available_date` 執行 PIT cutoff，因此公告較早不會令事後取得的 snapshot 提前可見。
+
+同版本數值相同時 recovery writer 只更新 availability／quality 欄位並保留 `created_at`；來源版本或 Decimal 數值不同即中止。此次 126,359 列轉為 observed，540 列因缺事件／市場標籤不一致／事件晚於 snapshot 仍 degraded。執行前備份與候選 readback 收據見[月營收回填 QA](../06_qa/MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md#2026-10-29-正式回填與讀回)。這是固定範圍 recovery，不會由一般 mapping CSV merge 自動更新正式 SQLite，也不代表其他 source versions 可直接沿用此例外。
+
+截至 2026-10-29，同一固定 snapshot recovery 已涵蓋 2014-04..2026-04 共 242,651 列，其中 241,925 observed、726 degraded。5236／8908 共 290 筆原先因 snapshot `market` 與 F22 event market 不同而排除的唯一 code／period 鍵，經 2014-04 MOPS 明細原件核對後已正式映射。仍 degraded 的 726 列由 689 無 harvest event、36 公告晚於 2026-06-18 snapshot available date、1 公告晚於 row capture 組成；應先查缺期事件／申報適用性及晚期版本關係，再決定是否有新 evidence 可用。這些列的數值 snapshot 自 2026-06-18 起仍可顯示，公告完整性 quality 維持 degraded；不得把 capture-only baseline 誤當公告 mapping。完整範圍、收據與剩餘理由見[最終 MOPS QA](../06_qa/MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md#2026-10-29-市場標籤裁決與最終剩餘缺口)。

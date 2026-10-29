@@ -8,7 +8,7 @@ from data_module.fundamental_availability_entrypoint import (
 _HASH = "a" * 64
 _FORMAL_HEADER = (
     "stock_code,period,as_of_date,announced_date,available_date,source,source_version,"
-    "availability_contract_version,evidence_class,source_hash,revision,parent_revision\n"
+    "target_source_version,availability_contract_version,evidence_class,source_hash,revision,parent_revision\n"
 )
 
 
@@ -23,6 +23,7 @@ def _formal_csv_row(
     source_version: str = "announcement-log-2026-06-16",
     evidence_class: str = "official_announcement",
     source_hash: str = f"sha256:{_HASH}",
+    target_source_version: str = "",
     revision: str = "1",
     parent_revision: str = "",
 ) -> str:
@@ -35,6 +36,7 @@ def _formal_csv_row(
             available_date,
             source,
             source_version,
+            target_source_version,
             FORMAL_AVAILABILITY_CONTRACT_VERSION,
             evidence_class,
             source_hash,
@@ -116,6 +118,59 @@ def test_validate_monthly_revenue_availability_file_rejects_unreasonably_late_av
             available_date="2026-06-18",
             source="mops.monthly_revenue_announcement",
             source_version="mops-t05st10-ifrs-2026-06-17",
+            target_source_version="some-other-snapshot-version",
+        ),
+        encoding="utf-8-sig",
+    )
+
+    result = validate_monthly_revenue_availability_file(mapping_file)
+
+    assert result.valid is False
+    assert result.accepted_count == 0
+    assert result.diagnostics[0].code == (
+        "fundamental_availability.available_date_unreasonably_late"
+    )
+
+
+def test_validate_monthly_revenue_availability_file_accepts_pinned_snapshot_capture_date(
+    tmp_path,
+):
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    mapping_file.write_text(
+        _FORMAL_HEADER
+        + _formal_csv_row(
+            period="2020-03",
+            as_of_date="2020-03-31",
+            announced_date="2020-04-10",
+            available_date="2026-06-18",
+            source="mops.monthly_revenue_announcement",
+            source_version="mops-ezsearch-f22-sii-2330-2020-03",
+            target_source_version="mops-static-snapshot-monthly-revenue-2026-06-16",
+        ),
+        encoding="utf-8-sig",
+    )
+
+    result = validate_monthly_revenue_availability_file(mapping_file)
+
+    assert result.valid is True
+    assert result.accepted_count == 1
+    assert result.diagnostics == ()
+
+
+def test_validate_monthly_revenue_availability_file_keeps_other_snapshot_targets_late_guard(
+    tmp_path,
+):
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    mapping_file.write_text(
+        _FORMAL_HEADER
+        + _formal_csv_row(
+            period="2020-03",
+            as_of_date="2020-03-31",
+            announced_date="2020-04-10",
+            available_date="2026-06-18",
+            source="mops.monthly_revenue_announcement",
+            source_version="mops-ezsearch-f22-sii-2330-2020-03",
+            target_source_version="some-other-snapshot-version",
         ),
         encoding="utf-8-sig",
     )

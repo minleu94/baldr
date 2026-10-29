@@ -8,6 +8,12 @@ Owner 已以 `FULL_SCOPE_MONTHLY_REVENUE_OWNER_AUTHORIZATION` 正式撤銷「僅
 
 Owner 授權與來源資格分開：來源身分／授權、每批品質、金額單位、可用時間／修訂、各用途 Gate、模型 Promotion 分別成立。本輪只將核實證據轉為相應資格，不一次將所有用途標成 PASS。
 
+### Owner 研究取用指示（2026-10-28）
+
+Owner 明確指示：其個人研究要取得公開可讀的 MOPS／TWSE／TPEx 資料；Owner 表示相關網站條款不適用於其研究，且不打算遵守。後續工程不得再只因端點條款／自動化授權尚未裁定，就停止 Owner 明確要求的公開資料研究取用；條款狀態記為未裁定並照原樣保存，不得再將它當成本項工作的流程阻擋。此處記錄 Owner 的立場與工作指示，不宣稱已獲來源授權，也不是法律適用性的獨立裁定。
+
+此指示涵蓋 Owner 明確要求、透過一般公開頁面或端點可讀取的資料；不得把它擴張為登入、繞過 CAPTCHA／存取控制或其他技術限制的授權。對取得的資料保留請求 URL、擷取時間、原始回應與 SHA、來源及版本；擷取成功只證明原件已取得，不自動成立來源接受、單位／幣別、修訂橋、歷史 PIT、正式 DB 寫入或任何 Consumer Gate。MOPS 頁面顯示的公告日期／時間依 Owner 既有決定作公告 timestamp；仍須保留公告事件與目標數值 `source_version` 的精確對應證據。
+
 ## 官方身分、授權與顯名
 
 政府開放資料集 [18420：上市公司每月營業收入彙總表](https://data.gov.tw/dataset/18420) 與 [56510：上櫃公司每月營業收入彙總表](https://data.gov.tw/dataset/56510) 列出相應十四欄、金融監督管理委員會證券期貨局、免費、政府資料開放授權條款第1版，並連結 TWSE OpenAPI 文件。兩者資料資源另指向 MOPS 金融 CSV；這個關聯不能自動授權所有其他歷史 HTML／API。
@@ -158,3 +164,25 @@ Scoring投影另外要求單一metric/period/value-kind/unit且股票唯一；�
 完整收據檔案已固化於 `output/tasks/baldr-track-b-six-packages-20261023/wp5_monthly_revenue_history_inventory.json`。
 
 上述用途開發已有全用途授權；尚未合格的原因是來源／批次／時間與 consumer Gate，不是重新等待 Owner 批准相同開發範圍。原 WP4 JSON 的 `variance_amount_thousand_twd` 欄位誤帶幣別，應讀作原單位數值差額 8,132；目前不能授 TWD 或 OpenAPI 全批尺度。兩份原收據保留原貌，由獨立複核收據記錄更正。
+
+## 2026-10-29 固定 MOPS 快照回填雙時鐘規則
+
+Owner 已授權以逐年抽樣驗證後回填此固定的官方數值快照。數值來源與公告事件分開記錄：`mops-static-snapshot-monthly-revenue-2026-06-16` 的數值 `available_date` 固定為快照 session 規則推得的 **2026-06-18**；F22 的 `announced_date`／`announced_at` 保留事件原值。因數值快照在 2026-06-18 前尚未進入本機來源版本，所有回測、篩選與決策 cutoff 必須以 `available_date` 判斷；不可因公告日期較早而讓這個快照提前可見。
+
+此例外只適用於精確的 target source version `mops-static-snapshot-monthly-revenue-2026-06-16` 及 `available_date=2026-06-18`，不改動一般月營收公告的 45 日檢查。回填前必須由 accepted snapshot 的 `fetched_at` 逐列驗證 snapshot capture 不晚於 mapping available date；所有 2020-01 至 2025-12 的數值還必須與同版正式 SQLite 精確相同。相同 `(stock_code, period, source_version)` 若既有來源或 Decimal 數值不一致，writer 必須中止，不覆蓋；一致時只更新日期／品質欄位並保留原 `created_at`。
+
+2026-10-28/29 年度分層抽樣的 18 筆（2020–2025 每年上市、上櫃各一筆）均與目前 MOPS F22 明細頁的公司、期別、本月數值及新台幣仟元標示相符。另有完整靜態 CSV 到正式 SQLite 的 126,899 列數值精確相等檢查。抽樣是頁面解析與單位 sanity check，不宣稱逐列讀取 126,899 張 F22 頁面，也不把晚期頁面當成公告當時封存版。
+
+此次 crosswalk 的 126,899 個正式列中，126,518 個鍵找到唯一 F22 事件；排除公告晚於 snapshot capture 的 15 鍵、來源市場標籤不一致的 144 鍵後，126,359 列可寫入正式公告日期／時間 mapping（其中 9 列只有日期，`announced_at` 留空）。另 540 列只證明數值快照自 2026-06-18 可用，採 capture-only baseline，公告日品質仍維持 degraded（381 無事件、144 市場不一致、15 事件晚於快照）。事件日期晚於期末 45 日不代表 snapshot 在公告日可用；本次仍以 2026-06-18 作數值可得日，並保留真實公告日。此回填不授予 snapshot 在原始公告日的 PIT 資格。
+
+### 正式回填結果（2026-10-29）
+
+已透過既有 guarded recovery writer 寫入正式 SQLite 與 `monthly_revenue_availability.csv`。126,899 列全數將數值快照 `available_date` 校正為 2026-06-18；126,359 列有唯一且符合 target source version 的公告 mapping，品質轉為 `observed`；540 列沒有可安全套用的公告 mapping，保留 `degraded`。這次寫入只更新既有相同來源版本的 availability／quality 欄位，交易內逐列要求來源版本與 Decimal 數值完全相同，保留 `created_at`，不改數值。
+
+寫入後限定期間／來源版本的 SQLite 分組讀回為上述 126,359／540；recovery receipt 為 `applied=true`、無衝突。完整 DB 備份由 writer 建立並通過備份 `quick_check`。完整正式 DB 的 post-write `quick_check` 未完成，不能記為已通過。對應收據、候選與備份路徑記於[具名 QA 報告](../06_qa/MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md#2026-10-29-正式回填與讀回)。
+
+### 全歷史 final readback（2026-10-29）
+
+後續將 2014-04..2019-12 與 2026-01..04 分段加入既有固定 snapshot recovery，並以兩個歷史 F22 詳細頁核實 5236／8908 的 market metadata mismatch。全範圍 2014-04..2026-04 共 242,651 列；目前固定 target version 241,925 observed、726 degraded。後者為 689 無已保存事件、36 公告晚於 snapshot available date、1 公告 timestamp 晚於該 row 的 snapshot capture。兩個已核代碼共 290 期完成公告 mapping；未因事件市場標籤 `sii` 與 snapshot market 欄 `tpex` 不同而拒絕精確、唯一的 stock-code／period 事件鍵。剩餘 726 列與 evidence、備份、最終 SQLite 讀回見[最終 MOPS QA](../06_qa/MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md#2026-10-29-市場標籤裁決與最終剩餘缺口)。
+
+來源 timestamp 與 snapshot `available_date=2026-06-18` 仍是不同時鐘；公告晚於該日或晚於逐列 snapshot capture 的事件仍不會被套用至早期數值版本。無事件列仍保留 capture-only baseline 並維持公告品質 degraded；數值欄位可自 snapshot 可得日起讀取。此批回填完成不代表 689 個無事件列已獲公告完整性證據，也不宣稱 snapshot 中每個歷史數值是公告當時版本。

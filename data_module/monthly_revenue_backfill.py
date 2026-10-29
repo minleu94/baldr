@@ -12,6 +12,7 @@ import sqlite3
 import stat
 from dataclasses import dataclass
 from dataclasses import replace
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
@@ -1360,15 +1361,46 @@ def _insert_monthly_revenue_records(
     conn: sqlite3.Connection,
     records: tuple[MonthlyRevenueRecord, ...],
 ) -> int:
-    # 保留不同 source_version 的歷史內容；相同 source_version 由主鍵上的
-    # INSERT OR REPLACE 維持冪等，provider 再以獨立 mapping 選取可用版本。
+    # 先在同一個寫入交易內確認既有版本的數值與來源完全相同，避免回填
+    # 借由主鍵覆寫不同內容；同版本只更新可得性欄位並保留 created_at。
+    for record in records:
+        existing = conn.execute(
+            """
+            SELECT revenue, source
+            FROM fundamental_monthly_revenues
+            WHERE stock_code = ? AND period = ? AND source_version = ?
+            """,
+            (record.stock_code, record.period, record.source_version),
+        ).fetchone()
+        if existing is None:
+            continue
+        try:
+            existing_revenue = Decimal(str(existing[0]))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError(
+                "existing monthly revenue version has an invalid value; "
+                f"stock_code={record.stock_code}; period={record.period}"
+            ) from exc
+        if existing_revenue != record.revenue or str(existing[1]) != record.source:
+            raise ValueError(
+                "monthly revenue backfill conflicts with an existing source version; "
+                f"stock_code={record.stock_code}; period={record.period}; "
+                f"source_version={record.source_version}"
+            )
     conn.executemany(
         """
-        INSERT OR REPLACE INTO fundamental_monthly_revenues(
+        INSERT INTO fundamental_monthly_revenues(
             stock_code, period, as_of_date, announced_date, available_date,
             revenue, source, source_version, quality
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(stock_code, period, source_version) DO UPDATE SET
+            as_of_date = excluded.as_of_date,
+            announced_date = excluded.announced_date,
+            available_date = excluded.available_date,
+            revenue = excluded.revenue,
+            source = excluded.source,
+            quality = excluded.quality
         """,
         [
             (

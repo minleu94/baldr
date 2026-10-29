@@ -853,6 +853,68 @@ def test_apply_mops_snapshot_preserves_prior_source_version(tmp_path) -> None:
     assert any(row[1] == "prior-capture-2026-06-11" for row in rows)
 
 
+def test_apply_mops_snapshot_updates_matching_version_metadata_without_replacing_value(
+    tmp_path,
+) -> None:
+    snapshot_file = tmp_path / "mops_snapshot.csv"
+    _write_mops_snapshot_csv(snapshot_file)
+    availability_file = tmp_path / "monthly_revenue_availability.csv"
+    _write_availability_csv(availability_file)
+    db_file = tmp_path / "twstock.db"
+    target_version = (
+        "capture-2026-06-11|snapshot=mops-static-2026-06-16"
+    )
+    with sqlite3.connect(db_file) as conn:
+        apply_fundamental_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO fundamental_monthly_revenues(
+                stock_code, period, as_of_date, announced_date, available_date,
+                revenue, source, source_version, quality, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2330",
+                "2026-05",
+                "2026-05-31",
+                None,
+                "2026-06-10",
+                "320000000000",
+                "mops.monthly_revenue_static_snapshot",
+                target_version,
+                "degraded",
+                "2026-06-10 00:00:00",
+            ),
+        )
+
+    result = apply_mops_snapshot_monthly_revenue_backfill(
+        db_file=db_file,
+        backup_dir=tmp_path / "backup",
+        snapshot_file=snapshot_file,
+        availability_file=availability_file,
+        source_version="capture-2026-06-11",
+    )
+
+    assert result.applied is True
+    with sqlite3.connect(db_file) as conn:
+        row = conn.execute(
+            """
+            SELECT announced_date, available_date, revenue, quality, created_at
+            FROM fundamental_monthly_revenues
+            WHERE stock_code = ? AND period = ? AND source_version = ?
+            """,
+            ("2330", "2026-05", target_version),
+        ).fetchone()
+    assert row == (
+        "2026-06-10",
+        "2026-06-11",
+        "320000000000",
+        "observed",
+        "2026-06-10 00:00:00",
+    )
+
+
 def test_apply_mops_snapshot_blocks_research_contract_before_backup_or_db_open(
     tmp_path, monkeypatch
 ) -> None:

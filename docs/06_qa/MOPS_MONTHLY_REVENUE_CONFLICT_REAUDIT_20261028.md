@@ -365,3 +365,19 @@ Recovery planner 對上述 3 列回報 0 conflict／diagnostic、3 normalized、
 - `1528／2025` 換用官方 ezSearch 前端 host 後，結果仍與既有 MOPS `t05st01` 回應相同，未找到月營收標題；因此換 host/Scrapling 解決了入口探測，但沒有補出缺失事件。`2330` 控制組則證明重大訊息與 F22 數值公告時間不同、金額精度亦不同，不能混用公告時間。
 
 本次沒有以 Remote Desktop 操作；讀取使用官方 ezSearch 一般唯讀 HTTPS 前端 API。這輪排查已結束，後續工作應轉向對剩餘 722 列分群判斷缺少的是事件原件、公司／市場範圍、舊值版本或單位證據，再以可驗證的精確證據逐批解除 degraded；不能宣稱一次性抓取已解決所有缺值。
+
+### 2026-10-29 剩餘缺漏集中度與替代市場 F22 探測
+
+正式 SQLite 目前 722 筆 degraded 中，**665 筆（92.1%）集中在五家公司**：4130 健亞 145 期、5371 中光電 145 期、8183 精星 145 期、2867 三商壽 144 期、6806 森崴能源 86 期。這是跨多年的 issuer／事件路徑缺口，不是零散的單月缺列；其餘 57 筆分散於其他公司與期別。這五碼的快照 market 欄分為 TWSE（2867、6806）及 TPEx（4130、5371、8183），所以不能用單一市場 selector 的空結果替代查核。
+
+以 Scrapling 對官方 MOPS `ezsearch_query` 的 F22 市場模式發出 6 個受限窗口：`pub`／`rotc` 各查 2014-05-01..15、2024-04-01..10、2026-05-01..15。6/6 HTTP 200，均為零列、相同 82-byte「查無公告」JSON（SHA-256 `416900c0bedd419e17635d2d44d06c1d79200907efbff484987d0296df40f6da`）。再以 8183 自願申報日 2014-09-10 作正向對照：同日 `pub` F22 回零列；`otc` F22 成功回 327 列但無 8183。這確認該日市場 F22 query 正常，亦表示 8183 的自願「各項產品業務營收統計表申報」不能直接視為 F22 月營收公告或同一筆精確數值。原件、時間及 SHA 收據留在 ignored `.tmp_ezsearch_probe_20261029/market_scope_probe/`。
+
+此探測當時沒有找到新的 issuer-period 公告證據，正式 DB 解鎖數為 0。範圍只覆蓋上述日期窗，不能推出五家公司其餘歷史期間均沒有公告。後續改測官方舊版 `t05st01` 路徑，新增證據與回填見下節。
+
+### 2026-10-29 官方舊版 t05st01 解鎖 6806／2026-04
+
+以 Scrapling POST 官方 MOPS 舊版 `https://mopsov.twse.com.tw/mops/web/ajax_t05st01`，先取得 issuer／年月公告清單，再依清單內 `seq_no=1`、`spoke_date=20260515`、`spoke_time=171551` 取詳細頁。詳情顯示 6806 森崴能源於 **2026-05-15 17:15:51** 更正「採用 IFRSs 後之月營業收入申報資訊」：更正後 2026-03 累計為 **4,189,858 仟元**，2026-04 累計為 **5,242,331 仟元**。兩個同單位、同一更正頁的累計值相減為 **1,052,473 仟元**，與 2026-06-16 固定 snapshot 的 6806／2026-04 當月營收完全一致。該官方頁因此同時提供精確期別、可核對值及可得公告秒數；不使用稍晚的 F22 日期，也沒有從任意現值推測公告日。
+
+原始清單 `legacy_t05_release_windows/6806_115_05.html` SHA-256 `fafee4ef1f1b923a6347e1ec594e2f885d84e750a5037122110f7e5238d6e01a`；詳情 `legacy_t05_release_windows/6806_20260515_171551_detail.html` SHA-256 `610d7eeab592a82527f82ca28adbf6d4cd22d0100b44d00531952e3004658095`。candidate mapping 綁定詳情 hash、`announced_at=2026-05-15T17:15:51+08:00` 與目標 snapshot 版號。Planner 回報 1 列、0 conflict、0 diagnostics、1 normalized，正式套用先備份 mapping／SQLite；交易 journal 一度停在 `mapping_applied`，按同一 operation identity 恢復後完成 DB 寫入。之後以 exact-key guarded transaction 將唯一 observed suffix row 正規化成 canonical row並移除該 suffix duplicate。SQLite readback 為 6806／2026-04、`revenue=1052473`、`announced_date=2026-05-15`、`available_date=2026-06-18`、canonical source version、`quality=observed`；`PRAGMA quick_check=ok`。正式品質數由 251,194 observed／722 degraded 變為 **251,195 observed／721 degraded**。
+
+同一舊版端點亦成功回傳 5371／民國 103 年 5、6 月及 2867／民國 103 年 5、6 月公告清單，但這四個代表月份沒有精確月營收標題；6806／民國 108 年 5 月清單為空，該結果僅是單一月份，不能推論整段歷史。原先「5 碼歷史 issuer 路徑都沒有資料」的判斷需修正：舊版路徑能查回公司公告，但只有逐列核出精確收入值與時間才能解除對應 degraded。此批只新增 6806／2026-04 一列，不表示其他歷史缺口已解決。

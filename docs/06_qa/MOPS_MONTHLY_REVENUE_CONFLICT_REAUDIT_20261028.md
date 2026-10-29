@@ -286,3 +286,21 @@ Recovery receipt：`C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5c
 對上述 36 個公告日晚於舊 snapshot available date 的鍵及 8942／2026-04，再用普通 Scrapling GET 讀取 37 個 MOPS detail URL。`late_event_value_samples/manifest.json` 與 37 份 HTML 原件位於 `C:\Users\archi\.codex\visualizations\2026\10\26\01a176a6-e5cf-7a92-8d1e-e77dc2eba235\mops_quality_tests_20261029\late_event_value_samples\`；唯讀重算確認 **37／37 SHA-256 相符、37／37 HTTP 200**。33 頁同時有可識別公司、期別及新台幣仟元營收值，其中 **32 筆與 2026-06-16 snapshot 數值不同、1 筆相同**；另外 4 頁為 3712 的子公司選擇頁，沒有單一公司／期別／營收值，不能比較。此結果擴大了「晚公告後官方目前頁面可能已更正」的直接反證；即使唯一相同值也不能證明該數值在較早時間已可用。
 
 8942／2026-04 的舊 snapshot 值為 250,438，detail 頁目前本月值為 213,316；事件時間 `2026-06-18T14:11:43+08:00` 晚於該列擷取時間 `2026-06-16T23:02:24Z`。該原件 `raw/8942_2026-04.html` SHA-256 為 `956a95dcd852d385c3553edf4a123a5cec1a1c6455592d194591eedffa2222f0`。因此 36+1 列均不可只靠事件 timestamp 綁定舊數值版本；須取得晚公告對應的數值版本、公告時原件或涵蓋該歷史期別的後續數值 snapshot。此次僅增加唯讀查證，未修改 availability mapping 或正式 SQLite。
+
+## 2026-10-29 t05st01 定向公告核驗與正式解除3筆
+
+使用 Scrapling 一般 HTTP POST 查詢 MOPS 官方 `t05st01` 重大訊息清單及 `t05st01_detail`，以 2867、4130、5371、8183 的 2014–2026 年度窗及 6806 的 2019–2026 年度窗作 60 個定向查詢；原始回應、SHA、manifest 與 checkpoint 保存在 repo ignored scratch `.tmp_mops_t05_2014_2026/`。這不是全市場歷史掃描。另以 2330／2024 公告作正向控制，命中 12 筆月營收公告，證明 endpoint 和欄位可用。
+
+三筆公告的明細原件皆 HTTP 200，身份、期別、仟元本月值與官方公告時間核對通過；且本月值與正式固定 snapshot 完全相同：
+
+| 股票／期別 | 官方公告時間（台北） | snapshot／detail 本月值（仟元） | detail SHA-256 |
+|---|---|---:|---|
+| 2867／2026-03 | 2026-05-13 17:15:03 | -1,997,021 | `aedad9cad174786a110707628268c5fcb54fe048bb2d782b65ff0a1aa4fa09fa` |
+| 6806／2025-09 | 2025-11-10 17:18:14 | 5,902,886 | `f4dee758f7ec870454e5d5e0301b82b915498179bc21d3087cf3f1af1ce71994` |
+| 6806／2026-03 | 2026-05-15 17:15:51 | 2,909,432 | `a604e3f0a1d5039cd537780a4b86da4d04c8fedb61baddf7079c1fc156b1d94` |
+
+Recovery planner 對上述 3 列回報 0 conflict／diagnostic、3 normalized、0 unmatched，候選可正式套用。guarded apply 收據 `.tmp_mops_t05_2014_2026/recovery_applied.json` 顯示 mapping 新增 3 列；其 SQLite writer 把列寫成 `|snapshot=mops-static-2026-06-16` 後綴版本。讀回後發現 canonical source version 仍 degraded，因此沒有把 apply 的 status 當成完成。利用收據所列正式 DB 備份 `F:\Min\Python\Project\FA_Data\meta_data\backup\twstock_mops_monthly_revenue_backfill_20261029T100157Z_37a68ecf309f4a588de0e053a033abfd.db`，以單一 SQLite transaction 逐鍵確認原 canonical degraded 列、精確公告日／值的 observed 後綴列皆唯一後，將公告日與 `quality=observed` 寫回 canonical row，保留原 revenue、`available_date=2026-06-18`、來源版本與 `created_at`，並刪除僅限該三鍵／版本／公告日／值的後綴列。沒有改變數值可得日或歷史 PIT 界線。
+
+最後 readback：3 個 canonical rows 均為 observed、後綴 duplicate 為 0；整表品質由套用前 **251,189 observed／727 degraded** 變為 **251,192 observed／724 degraded**；正式 DB `PRAGMA quick_check=ok`。mapping after SHA-256 為 `2f7fde7bd9a4ece333619dcc065dc3895dfc16bdd1b4806ebf4fc5909e66337e`。歷史 snapshot scope 的 726 degraded 因此降為 723：686 個仍缺可匹配公告事件、36 個公告晚於 snapshot 可得日、1 個公告晚於該列擷取時間；另有 6884／2026-08 一列仍 degraded。8183／2014-07 清單命中「103年7月份…營收…(自願申報)」，但官方 detail API 回 HTTP 500 並稱該公司已不繼續公開發行，未建立候選或解除品質降級。4130／5371 的年度查詢未發現月營收標題命中；這些是有限 t05st01 查詢的結果，不能代表其他官方歷史管道不存在事件。
+
+排程與 Update tab 靜態複核另由兩個只讀 agent 完成：daily Quick 呼叫預期期別的雙市場候選 child；每週路徑寫的是 `fundamental_current_observations`、明確不是 PIT。Update tab 已自動選候選、生成檔名，另提供候選檢查及 guarded formal apply；本次看到的舊截圖設定不是目前 source UI。最新正式排程 `latest_status.json` 仍是 10/28 舊版本，沒有修復後自然排程 receipt；因此只確認程式接線存在，尚未確認修復版自然排程成功。10/29 直接執行候選擷取的第一次 smoke 只留下空 run marker，沒有 receipt／CSV；第二次有完整 receipt，但 TPEx 866 列成功、TWSE 回報遠端強制關閉連線，整體 `status=rejected`、`candidate_csv=null`，未輸出雙市場 CSV，也未寫正式 DB。TPEx 原件為 `.tmp_mops_live_candidate_retry/monthly_revenue_mops_snapshots/captures/run_2026-10-29_454c26676b0b48a8b17ea2ad39c6581a/raw_html/tpex_2026-09.html`，SHA-256 `c343226a97cd8cc3a937d5b69d290901bf7097d334abe6947bbec321df21a13b`；收據 `capture_receipt.json` SHA-256 `df5b5344e72beb8deef617c5621c878d328ef44db925b838a579493373a528a8`。這次確認了 partial-result 守衛，沒有證明完整 live capture 成功。接下來仍須讀取修復版 Daily Quick 自然排程 receipt，並確認它產生的 candidate 被 Update tab selector 顯示。

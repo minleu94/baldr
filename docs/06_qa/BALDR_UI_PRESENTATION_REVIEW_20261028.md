@@ -200,7 +200,25 @@ Workbench 的「查看技術診斷」原占滿 Advice 空狀態卡寬度，讓�
 - 完整 `tests/test_ui_qt_personal_recommendation_choice.py`：**23 passed、11 failed**，不能列為整檔通過。失敗包含 runs 目錄不可讀或 fixture 未產生 replay samples、個人策略歷史讀回與預期不同、以及 `os.link` 暫存 receipt 權限拒絕；這些測試涉及來源／策略保存行為，未判成此次呈現變更的缺陷或通過。須獨立查清後才能將該測試檔列為綠燈。
 - `recommendation_view.py` scoped mypy **0 issues**；修改 Python source／test `py_compile` 通過；全程式多工作區稽核的既有 70 failures／21 coverage gaps 每 scale 仍待分類與重驗。原生 GUI／Owner UAT、全程式 UI 盤點未完成。
 
-## 2026-10-29 第十八輪：合併前 focused QA readback
+## 2026-10-29 第十八輪：Advice 判讀摘要與完整依據收合
+
+Gate 1 Advice 原本把主要理由、成熟度、信心、流動性、可成交性、選填作者說明及來源列全塞在同一張文字卡；完整判讀窗也一開始就占住垂直版面。現在卡片先呈現動作、最多兩項易讀理由、證據成熟度、決策信心和執行限制；未知／不足狀態使用警示色邊線提示，不代表交易許可。完整來源、策略作者選填說明、原始理由與共用證據內容改由「展開完整判讀與原始理由」載入；「展開校準機率來源」也會同步打開完整詳情。資料與政策契約未更動。
+
+- `tests/test_ui_qt_workbench_view.py`＋`tests/test_workbench_advice_contract.py`：**75 passed**；涵蓋 Advice 摘要、完整資料仍可展開、原始理由保留、校準依據展開、來源與研究紀錄路徑。
+- `tests/test_qa_validate_ui_layout.py`：總合執行 **121 passed、2 failed**；2 個失敗在 Windows 沙箱 temp 中 `os.replace` 寫入 JSON 被 `PermissionError` 拒絕，無法列為整檔通過。空白標題還原定向案例 **2 passed**。
+- Portfolio 的持倉／目標／情境三張表加入五列可視高度。MainWindow Portfolio 定向稽核 scale 1.0／1.5、預設幾何：**0 failures／0 coverage gaps**。
+- 全程式稽核修正為使用 Backtest 真正的「結果頁面」扁平選單逐路由走訪；Backtest 定向核對 **110 頁、0 failures／0 coverage gaps**。舊 21 個 `subpage_not_visible` 是稽核器沒有走產品路由造成的假缺口。修正後九工作區完整稽核：每個 scale 都跑 default／compact／actual_max 三種幾何，計 **27 workspace-visits、744 page-visits**；兩個 scale 合計 54／1,488，summary `passed/complete`、0 errors／0 coverage gaps。輸出位於 ignored `.pytest-owned-temp/ui_audit_full_round20_20261029/`；這是 offscreen 幾何與路由覆蓋，不等於原生 GUI／Owner UAT。
+- 舊截圖中的 58 px icon-only sidebar 已由 MainWindow resize breakpoint 調整至 1260 px 以下收合、1340 px 以上恢復文字導航。改後用真實 MainWindow 重跑 1400×800、scale 1.0 的 Workbench／Portfolio targeted audit：`summary.status=passed`、0 errors／0 coverage gaps；側欄寬度讀回 **184 px**，不再 icon-only。Workbench Overview 約 2211 px 長的長頁閱讀仍留待資訊架構調整；Recommendation 與 Workbench 完整畫面仍需按使用者實際流程逐頁視覺覆核。
+- `tests/test_portfolio_research_scenario_widget.py`＋`tests/test_portfolio_research_registry_open_widget.py`：**6 passed**。Portfolio widget `py_compile` 通過，scoped mypy **0 issues**；`scripts/qa_validate_ui_layout.py` `py_compile` 通過，但整檔 mypy 有 **87 個 typing diagnostics**，故不宣稱 validator mypy 通過。`git diff --check` 通過。Owner 原生 GUI UAT 尚未完成。
+
+## 2026-10-29 第十九輪：桌面寬度保留導覽名稱
+
+真實 MainWindow 1400×800 的畫面截圖顯示左側導覽仍是 58 px 純圖示 rail；在常見桌面寬度使用者需要猜圖示或先發現收合箭頭，與跨頁來源入口難找的回報一致。現在只有寬度 1260 px 以下才自動收合，系統自動收合後在 1340 px 以上展開；使用者手動收合仍保留自己的選擇。主頁寬度減少 126 px 後，Workbench 和 Recommendation 仍可讀，沒有幾何失敗。
+
+- 修改後 Workbench＋Recommendation MainWindow 定向稽核，1400×800／scale 1.0：**59 子頁、0 failures／0 coverage gaps**；shell 左側導覽 184 px，工作區及導覽均在中央區域內。
+- 新舊截圖對照確認四個主要工作區文字與系統管理標籤可見。Workbench Overview 仍約 2211 px 長；即使沒有幾何錯誤，首頁資訊密度和長距離閱讀仍是下一輪重整目標。
+
+### 前一批 presentation 變更的 focused QA readback
 
 針對本輪改動的 Workbench、Recommendation 來源詳情、Daily Market 查詢操作與 layout fixture，使用專案 `.venv` 在隔離 basetemp 執行 focused 測試：**79 passed**；修改 Python source／test `py_compile` 通過；3 個產品 UI source scoped mypy **0 issues**，`git diff --check` 通過。修改之 layout QA script 在單檔 mypy 下回報既有檔案內 86 個 typing diagnostics（包含多處 QWidget／QApplication 名稱與 optional 型別），不將該 validator 腳本記為 mypy 通過。
 

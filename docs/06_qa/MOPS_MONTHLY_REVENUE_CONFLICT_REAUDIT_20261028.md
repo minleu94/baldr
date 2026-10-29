@@ -516,7 +516,7 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 
 對 2014–2026-10 PUB F22 批次作程式複核後，補上兩個完整性防線：HTTP 200 JSON 必須明確回 `status=success` 且有資料列，或 `status=fail`、空資料且訊息清單精確只有「查無公告資料」；缺少／空白狀態、`success` 空列、混合錯誤訊息均拒絕落地。續跑跳過既有視窗前，現在會核對 raw SHA／byte count、HTTP/API 狀態、payload row／correction count、唯一 manifest row，並從原始 JSON 重建該窗事件列後與 `events.csv` 比對；checkpoint 前已存在孤立 raw／manifest 時則停止，不覆寫、不重複追加。
 
-修正後受控 Windows Job 的 collector 測試 **15 passed**、兩檔 `py_compile` 通過；Job 限制讀回 8 GiB／12 processes，啟動前可用 RAM 約 26.8 GiB，結束後 Job 與 child handles 已關閉。舊程序停止時有 133 個 checkpoint／manifest／raw 視窗，`events.csv` 0 列，未發現孤立原件；新程序以同一 checkpoint 嚴格續跑。沙盒內 Scrapling DNS 解析逾時後已停止重試，改由獲准的網路執行環境重新連線，官方端點已回 HTTP 200。截至 2026-10-30 01:02 台北時間共 **638／924** 窗（69.0%）：2018–2025 八個完整年度合計 576 窗已掃完，全部為有效官方空結果；2026 年已掃 60/60 窗，2017 年已掃 2 窗。raw／manifest／checkpoint 件數一致，`events.csv` 0 列。全期採集仍在進行，不能外推未掃年份。沒有使用 Remote Desktop；沒有寫正式 DB／availability mapping。
+修正後受控 Windows Job 的 collector 測試 **15 passed**、兩檔 `py_compile` 通過；Job 限制讀回 8 GiB／12 processes，啟動前可用 RAM 約 26.8 GiB，結束後 Job 與 child handles 已關閉。舊程序停止時有 133 個 checkpoint／manifest／raw 視窗，`events.csv` 0 列，未發現孤立原件；新程序以同一 checkpoint 嚴格續跑。沙盒內 Scrapling DNS 解析逾時後已停止重試，改由獲准的網路執行環境重新連線，官方端點已回 HTTP 200。截至 2026-10-30 01:16 台北時間共 **709／924** 窗（76.7%）：2017–2025 九個完整年度共 648 窗已掃完，全部為有效官方空結果；2026 年已掃 60/60 窗，2016 年已掃 1 窗。raw／manifest／checkpoint 件數一致，`events.csv` 0 列。全期採集仍在進行，不能外推未掃年份。沒有使用 Remote Desktop；沒有寫正式 DB／availability mapping。
 
 ### 2026-10-29 Weekly MOPS child 實跑：編碼與 output junction 修復
 

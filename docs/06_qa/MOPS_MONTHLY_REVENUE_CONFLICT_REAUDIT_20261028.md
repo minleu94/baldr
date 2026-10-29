@@ -479,3 +479,11 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 唯讀檢視 `scripts/scheduled/weekly_collection_controller.py` 與正式終端收據，確認 2026-10-26 的 `core_process_timeout` 是 controller 對本機 SQLite／sidecar core 設定 30 秒 `subprocess.run` 硬上限後觸發；該次 stdout/stderr 均為空，無法證實內部哪一步耗時。這個 core 非月營收抓取器，但 timeout 會使月營收 statement 與後續 `current_fundamentals` 子流程跳過。為避免短暫磁碟／SQLite 負載剛超過 30 秒就整週漏跑，將有限 core 上限提高至 90 秒，並同步將 pending watchdog 總界線從 1,170 秒調為 1,230 秒；月營收 statement 每次 30 秒、6 次查詢、不重試，其他子流程界線不變。這是有界容忍度調整，不代表已證實 10/26 根因為資源負載，也不宣稱排程已自然成功；仍需下一次自然 weekly receipt 驗證是否跨過 core 並執行後續子流程。
 
 `tests/test_weekly_collection_controller.py` 使用 repo 內短路徑 `--basetemp=.pytest-owned-temp/wc_timeout90` 驗證 **40 passed、1 deselected**；排除項是具名本機遷移原件 hash 綁定測試，該檢查目前本機返回 False，與 timeout 常數無關。首次使用系統 Temp 有 6 個案例遇 Windows `WinError 206` 路徑長度錯誤，短 basetemp 後受控案例全通過；具名遷移檢查仍是獨立未通過項，不宣稱整個測試檔全通過。`py_compile` 通過。repo-wide mypy 仍被未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻止，不能作為本次檔案的 mypy 結果。
+
+### 2026-10-29 晚間 MOPS PIT cutoff 與 Scrapling PUB 定向重試
+
+依使用者指示使用 Scrapling 普通 HTTPS，沒有使用 Remote Desktop、登入、代理或 challenge 處理。對官方 `https://mopsov.twse.com.tw/mops/web/ezsearch_query` 只送出一次 `TYPEK=pub`、`PRO_ITEM=F22`、`115/09/10` 單日查詢，12 秒 timeout、停用重試；本機 DNS 解析逾時，沒有收到 HTTP status 或 response body。這次只能記為連線未完成，不能推論 PUB 市場當日沒有公告。既有文件所列的 151 個全空視窗是 ROTC 探測；全期 PUB 視窗仍未完成，待官方端點可連線後再跑有界批次並以 manifest/raw hash 驗收。
+
+同時以正式 SQLite 唯讀查詢重核 2026-07..09：5,585 列都在正式表，全部 `available_date=2026-10-30`；2026-10-29 cutoff 可見 **0** 列，2026-10-30 cutoff 可見 **5,585** 列。當中 5,584 列有公告日／`observed`，唯一缺公告日的 `6884／2026-08` 為數值 `184914` 仟元、`degraded`；值已存在，缺的是可核對的官方 F22 公告時間。SQLite inspector 讀回的 source version 綁定 2026-10-29 TPEx 2026-08 靜態快照 raw SHA `4057158db90c002dc521f8b1e28ba32fe38dc0170f7d82a55a75110c038d01a7`。未以搜尋引擎摘要或第三方轉載替代官方公告原件，也沒有因此新增 mapping／寫入。
+
+截至此查核，歷史舊 snapshot 的 719 個 physical degraded rows 與 10/30 PIT cutoff 的 686 個缺公告日 keys 是不同集合、不能相加：前者 crosswalk 為 686 個 no-event 加 33 個 event-after-capture；其中 31 個 late-event keys 已有 10/30 才可用的新明細版本，另外 2 個未形成可讀 revision。7–9 月新資料內另有唯一 `6884／2026-08` degraded key。Weekly 修復後自然成功 receipt 尚未取得，Update Tab 的自動選檔有自然候選收據但原生 UI 真人 UAT 尚未執行。正式 SQLite／availability mapping 本次均唯讀未改。

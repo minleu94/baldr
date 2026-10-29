@@ -4,10 +4,10 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QTimer, Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget
 
-from app_module.storage_overview import StorageArtifact, StorageOverview
+from app_module.storage_overview import StorageArtifact, StorageLocation, StorageOverview
 from ui_qt.views.storage_overview_view import StorageOverviewView
 from ui_qt.workers.task_worker import running_task_workers
 
@@ -62,6 +62,59 @@ def test_success_status_distinguishes_inventory_from_capacity_roots(tmp_path: Pa
     view.close()
 
 
+def test_storage_tables_are_grouped_and_long_cells_scroll_only_when_needed() -> None:
+    app()
+    view = StorageOverviewView({}, None)
+    view.resize(640, 760)
+    overview = StorageOverview(
+        (
+            StorageLocation(
+                "資料位置",
+                r"F:\長路徑\資料根",
+                1024 * 1024 * 1024,
+                400 * 1024 * 1024,
+                "可讀；容量屬整個磁碟",
+            ),
+        ),
+        (
+            StorageArtifact(
+                "保存版本",
+                12 * 1024 * 1024,
+                True,
+                "已量測；引用與保留狀態尚未核對",
+            ),
+            StorageArtifact("不完整版本", 3 * 1024 * 1024, False, "大小不完整，保留"),
+        ),
+        False,
+        r"F:\研究版本",
+        "Trial 根有界盤點完成；含不可讀項目，大小不完整",
+        True,
+    )
+    view._apply(overview)
+    view.show()
+    app().processEvents()
+
+    assert view.locations_group.title() == "磁碟容量｜逐列查看可用空間，不跨位置相加"
+    assert view.artifacts_group.title() == "明示根內盤點項目｜大小完整度與保留狀態"
+    assert "磁碟位置 1 個" in view.locations_summary_label.text()
+    assert "盤點項目 2 個；大小完整 1 個、部分或不完整 1 個" in (
+        view.artifacts_summary_label.text()
+    )
+    assert view.locations_table.horizontalScrollBarPolicy() == (
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    assert view.artifacts_table.horizontalScrollBarPolicy() == (
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    assert view.locations_table.item(0, 1).toolTip() == r"F:\長路徑\資料根"
+    assert view.artifacts_table.item(1, 3).toolTip() == "大小不完整，保留"
+    assert view.locations_table.width() < sum(
+        view.locations_table.columnWidth(index) for index in range(5)
+    )
+    assert view.locations_table.horizontalScrollBar().maximum() > 0
+    view.close()
+
+
 def test_real_worker_refresh_can_repeat_after_native_cleanup(tmp_path: Path) -> None:
     application = app()
     package = tmp_path / "_internal"
@@ -90,13 +143,22 @@ def test_real_worker_refresh_can_repeat_after_native_cleanup(tmp_path: Path) -> 
     try:
         view.refresh_button.click()
         assert wait_until(lambda: view._worker is None and view.refresh_button.isEnabled()
-                          and not running_task_workers())
-        assert view.artifacts_table.rowCount() == 1
+                          and not running_task_workers() and view._loaded), (
+            view.status_label.text()
+        )
+        assert view.artifacts_table.rowCount() == 1, (
+            view.status_label.text(),
+            view.artifacts_summary_label.text(),
+        )
         assert view.artifacts_table.item(0, 1).text() == "1"
         asset.write_bytes(b"b" * (2 * 1024 * 1024))
         view.refresh_button.click()
         assert wait_until(lambda: view._worker is None and view.refresh_button.isEnabled()
-                          and not running_task_workers())
+                          and not running_task_workers()
+                          and view.artifacts_table.rowCount() == 1
+                          and view.artifacts_table.item(0, 1).text() == "2"), (
+            view.status_label.text()
+        )
         assert view.artifacts_table.rowCount() == 1
         assert view.artifacts_table.item(0, 1).text() == "2"
         assert "有界盤點完成" in view.status_label.text()

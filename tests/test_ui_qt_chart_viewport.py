@@ -8,7 +8,7 @@ import time
 import pytest
 from PySide6.QtCore import QPointF, QEvent, Qt
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QPushButton, QTableView, QLabel
+from PySide6.QtWidgets import QPushButton, QTableView, QLabel, QToolButton, QWidget
 from app_module.stock_research_report_dtos import StockPricePointDTO, StockResearchReportDTO
 from app_module.stock_research_report_service import StockResearchReportCancelled
 from ui_qt.views.stock_research_report_view import StockPriceChartWidget, StockResearchReportView
@@ -38,22 +38,22 @@ def test_saved_controls_full_table_hover_repeat_and_reset(app, tmp_path):
         render(view, report)
         chart = view._chart_widget
         table = view.findChild(QTableView, "stockResearchPriceHistoryTable")
-        technical_table = view.findChild(QTableView, "stockResearchTechnicalHistoryTable")
-        full_rows = tuple(table.model().index(i, 4).data() for i in range(20))
+        assert len(view.tabs.widget(1).findChildren(QTableView)) == 1
+        full_rows = tuple(table.model().index(i, 1).data() for i in range(20))
         button(view,"ZoomIn").click()
         assert len(visible(view)) == 10
         first_window = tuple(p.data_date for p in visible(view))
         button(view,"PanNewer").click()
         assert tuple(p.data_date for p in visible(view)) != first_window
-        assert table.model().rowCount() == technical_table.model().rowCount() == 20
-        assert tuple(table.model().index(i,4).data() for i in range(20)) == full_rows
+        assert table.model().rowCount() == 20
+        assert tuple(table.model().index(i,1).data() for i in range(20)) == full_rows
         left,right = chart._plot_x_bounds()
         event = QMouseEvent(QEvent.MouseMove,QPointF(right,70),QPointF(right,70),Qt.NoButton,Qt.NoButton,Qt.NoModifier)
         chart.mouseMoveEvent(event)
         assert visible(view)[-1].data_date in chart.toolTip()
         assert "100.125" in chart.toolTip() and "99.123456" in chart.toolTip()
         assert chart._technical_lines
-        assert table.currentIndex().data() == technical_table.currentIndex().data() == visible(view)[-1].data_date
+        assert table.currentIndex().data() == visible(view)[-1].data_date
         for _ in range(30): button(view,"ZoomIn").click()
         assert len(visible(view)) == 1 and not button(view,"ZoomIn").isEnabled()
         for _ in range(30): button(view,"PanOlder").click()
@@ -217,7 +217,8 @@ def test_b05_keyboard_crosshair_same_date_exact_table_and_focus(app):
         assert chart.focusPolicy()==Qt.StrongFocus
         QTest.keyClick(chart, Qt.Key_Home)
         assert chart._hover_index==0 and table.currentIndex().data()=="2026-05-01"
-        assert "1.123456789" in chart.toolTip() and chart.accessibleDescription()==chart.toolTip()
+        assert "1.123456789" in chart.toolTip()
+        assert "圖表範圍" in chart.accessibleDescription()
         QTest.keyClick(chart, Qt.Key_Right)
         assert chart._hover_index==1 and table.currentIndex().data()=="2026-05-02"
         assert not chart.grab().isNull()
@@ -245,7 +246,13 @@ def test_b05_typed_markers_scope_stale_and_viewport(app):
         render(view,report)
         chart=view._chart_widget
         assert chart._markers==(marker,)
-        assert view.findChild(QTableView,"stockResearchChartMarkerTable").model().index(0,1).data()=="推薦確認（研究）"
+        marker_toggle = view.findChild(QToolButton, "stockResearchChartMarkerDetailsToggle")
+        assert marker_toggle is not None and "1" in marker_toggle.text()
+        marker_details = view.findChild(QWidget, "stockResearchChartMarkerDetails")
+        assert marker_details is not None and marker_details.isHidden()
+        marker_toggle.click()
+        assert not marker_details.isHidden()
+        assert view.findChild(QLabel, "stockResearchPriceTechnicalHelp") is not None
         assert not chart.grab().isNull()
         changed=replace(report,research_context={**report.research_context,"result_id":"other"})
         render(view,changed)
@@ -296,5 +303,7 @@ def test_b05_research_and_actual_markers_same_day_stay_distinct(app):
         chart._select_point(0)
         assert all(marker.label in chart.toolTip() for marker in markers)
         assert not chart.grab().isNull()
-        assert view.findChild(QTableView,"stockResearchChartMarkerTable").model().rowCount()==3
+        marker_toggle = view.findChild(QToolButton, "stockResearchChartMarkerDetailsToggle")
+        assert marker_toggle is not None and "3" in marker_toggle.text()
+        assert len(view.tabs.widget(1).findChildren(QTableView)) == 1
     finally:view.close()

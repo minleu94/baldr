@@ -57,13 +57,16 @@ def _attach_layout_fixture(view: RecommendationView) -> None:
             "證券代號": f"QA-{index:03d}",
             "股票名稱": f"版面測試 {index}",
             "總分": str(index * 10),
-            "推薦理由": "僅供 UI 幾何檢查的合成列",
+            "推薦理由": "僅供 UI 幾何檢查的合成列；" * 24,
         }
         for index in range(1, 13)
     ]
     view.recommendations_model = PandasTableModel(pd.DataFrame(rows))
     view.results_table.setModel(view.recommendations_model)
-    view.results_table.resizeColumnsToContents()
+    view.recommendations_model.setVisibleColumns(
+        ["證券代號", "股票名稱", "總分", "推薦理由"]
+    )
+    view._configure_recommendation_result_columns()
     view._reserve_recommendation_table_rows()
 
 
@@ -347,10 +350,16 @@ def test_recommendation_table_keeps_extended_evidence_expandable() -> None:
             "證券代號", "證券名稱", "收盤價", "漲幅%", "總分", "推薦理由",
         ]
         assert model.getDataFrame().columns.tolist() == columns
+        reason_column = compact_columns.index("推薦理由")
+        assert view.results_table.columnWidth(reason_column) == 260
+        assert model.data(
+            model.index(0, reason_column), Qt.ItemDataRole.ToolTipRole
+        ) == "合成理由"
 
         view.results_table.selectRow(0)
         view.result_columns_toggle.click()
         assert model.getVisibleColumns() == columns
+        assert view.results_table.columnWidth(columns.index("推薦理由")) == 260
         assert view.result_columns_toggle.text() == "收合延伸欄位"
         assert [index.row() for index in view.results_table.selectionModel().selectedRows()] == [0]
 

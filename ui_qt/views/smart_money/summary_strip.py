@@ -4,7 +4,15 @@ Summary Strip
 已中文化標題與狀態呈現，並已調大字體以提升易讀性。
 """
 
-from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame
+from PySide6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QGridLayout,
+    QVBoxLayout,
+    QLabel,
+    QFrame,
+    QSizePolicy,
+)
 from decision_module.flow_contracts import SmartMoneySummaryDTO
 
 class SummaryStrip(QWidget):
@@ -40,9 +48,10 @@ class SummaryStrip(QWidget):
         self._setup_ui()
         
     def _setup_ui(self):
-        layout = QHBoxLayout(self)
+        layout = QGridLayout(self)
         layout.setContentsMargins(15, 8, 15, 8)
-        layout.setSpacing(15)
+        layout.setHorizontalSpacing(10)
+        layout.setVerticalSpacing(8)
         
         # 建立卡片元件 (中文化標題且精簡字詞)
         self.lbl_regime = self._create_card("主力訊號方向")
@@ -50,12 +59,39 @@ class SummaryStrip(QWidget):
         self.lbl_bull_bear = self._create_card("多空訊號家數")
         self.lbl_abnormal = self._create_card("異常訊號數")
         
-        layout.addWidget(self.lbl_regime['card'])
-        layout.addWidget(self.lbl_heat['card'])
-        layout.addWidget(self.lbl_bull_bear['card'])
-        layout.addWidget(self.lbl_abnormal['card'])
-        
-        layout.addStretch()
+        self._summary_cards = (
+            self.lbl_regime["card"],
+            self.lbl_heat["card"],
+            self.lbl_bull_bear["card"],
+            self.lbl_abnormal["card"],
+        )
+        self._summary_grid = layout
+        self._summary_column_count = 0
+        for card in self._summary_cards:
+            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            card.setMinimumWidth(0)
+        self._relayout_summary_cards()
+
+    def resizeEvent(self, event):  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._relayout_summary_cards()
+
+    def _relayout_summary_cards(self) -> None:
+        width = self.width()
+        columns = 4 if width >= 1080 else 2 if width >= 420 else 1
+        if columns == self._summary_column_count:
+            return
+        for card in self._summary_cards:
+            self._summary_grid.removeWidget(card)
+        while self._summary_grid.count():
+            self._summary_grid.takeAt(0)
+        self._summary_column_count = columns
+        for column in range(4):
+            self._summary_grid.setColumnStretch(column, 0)
+        for index, card in enumerate(self._summary_cards):
+            self._summary_grid.addWidget(card, index // columns, index % columns)
+        for column in range(columns):
+            self._summary_grid.setColumnStretch(column, 1)
         
     def _create_card(self, title: str) -> dict:
         card = QFrame()

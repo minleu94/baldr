@@ -3024,6 +3024,36 @@ class RecommendationView(QWidget):
         primary = _recommendation_compact_columns(columns)
         model.setVisibleColumns(primary)
         self.result_columns_toggle.setVisible(len(primary) < len(columns))
+        self._configure_recommendation_result_columns()
+
+    def _configure_recommendation_result_columns(self) -> None:
+        """保持結果表摘要欄可掃讀，長理由由下方詳情呈現全文。"""
+        model = getattr(self, "recommendations_model", None)
+        if not isinstance(model, PandasTableModel):
+            return
+        self.results_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        widths = {
+            "證券代號": 92,
+            "股票代號": 92,
+            "證券名稱": 132,
+            "股票名稱": 132,
+            "收盤價": 88,
+            "價格": 88,
+            "漲幅%": 82,
+            "總分": 76,
+            "推薦分數": 88,
+            "指標分": 76,
+            "圖形分": 76,
+            "成交量分": 88,
+            "推薦理由": 260,
+            "原因": 180,
+        }
+        for column_index, column_name in enumerate(model.getVisibleColumns()):
+            width = widths.get(column_name)
+            if width is not None:
+                self.results_table.setColumnWidth(column_index, width)
 
     def _set_result_columns_expanded(self, expanded: bool) -> None:
         model = getattr(self, "recommendations_model", None)
@@ -3040,6 +3070,7 @@ class RecommendationView(QWidget):
         else:
             model.setVisibleColumns(primary)
             self.result_columns_toggle.setText("顯示延伸欄位")
+        self._configure_recommendation_result_columns()
         self.result_columns_toggle.setVisible(len(primary) < len(columns))
         if 0 <= selected_row < model.rowCount():
             self.results_table.selectRow(selected_row)
@@ -5814,7 +5845,7 @@ class RecommendationView(QWidget):
                     if str(code).strip() == previous_stock_code:
                         self.results_table.selectRow(row_number)
                         break
-            self.results_table.resizeColumnsToContents()
+            self._configure_recommendation_result_columns()
             self._reserve_recommendation_table_rows()
             self.stock_research_btn.setVisible(bool(screening_rows))
             self.stock_research_btn.setText(
@@ -5882,7 +5913,7 @@ class RecommendationView(QWidget):
         self._connect_result_table_interactions()
 
         # 調整列寬
-        self.results_table.resizeColumnsToContents()
+        self._configure_recommendation_result_columns()
         self._reserve_recommendation_table_rows()
 
         # 顯示統計信息

@@ -1064,10 +1064,13 @@ class IndustryThemeMapView(QWidget):
         self.member_cards_widget = QWidget(self.members_group)
         self.member_cards_widget.setObjectName("industryThemeMemberCards")
         self.member_cards_widget.setAccessibleName("題材成員卡片")
-        self.member_cards_layout = QVBoxLayout(self.member_cards_widget)
+        self.member_cards_layout = QGridLayout(self.member_cards_widget)
         self.member_cards_layout.setContentsMargins(0, 0, 0, 0)
         self.member_cards_layout.setSpacing(6)
         self._member_card_buttons: dict[str, QPushButton] = {}
+        self._member_card_frames: list[QFrame] = []
+        self._member_card_columns = 0
+        self.member_cards_widget.installEventFilter(self)
         members_layout.addWidget(self.member_cards_widget)
         member_pagination = QHBoxLayout()
         self.member_page_previous_button = QPushButton("上一頁")
@@ -2840,6 +2843,13 @@ class IndustryThemeMapView(QWidget):
             and self._ranking_card_buttons
         ):
             self._arrange_ranking_cards()
+        if (
+            hasattr(self, "member_cards_widget")
+            and watched is self.member_cards_widget
+            and event.type() == QEvent.Type.Resize
+            and self._member_card_frames
+        ):
+            self._arrange_member_cards()
         return super().eventFilter(watched, event)
 
     def _arrange_observation_cards(self) -> None:
@@ -4514,6 +4524,8 @@ class IndustryThemeMapView(QWidget):
 
     def _clear_member_cards(self) -> None:
         self._member_card_buttons.clear()
+        self._member_card_frames.clear()
+        self._member_card_columns = 0
         while self.member_cards_layout.count():
             item = self.member_cards_layout.takeAt(0)
             widget = item.widget()
@@ -4574,10 +4586,27 @@ class IndustryThemeMapView(QWidget):
                 f"QFrame#industryThemeMemberCard {{ background-color: {MIDNIGHT_ANALYST.surface_2}; "
                 f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 5px; }}"
             )
-            self.member_cards_layout.addWidget(card)
+            self._member_card_frames.append(card)
             self._member_card_buttons[stock_code] = select_button
-        self.member_cards_layout.addStretch(1)
+        self._arrange_member_cards()
         self._refresh_member_action()
+
+    def _arrange_member_cards(self) -> None:
+        if not self._member_card_frames:
+            return
+        width = self.member_cards_widget.width()
+        columns = 1 if width < 600 else 2 if width < 980 else 3
+        if columns == self._member_card_columns and self.member_cards_layout.count() == len(
+            self._member_card_frames
+        ):
+            return
+        while self.member_cards_layout.count():
+            self.member_cards_layout.takeAt(0)
+        for index, card in enumerate(self._member_card_frames):
+            self.member_cards_layout.addWidget(card, index // columns, index % columns)
+        for column in range(3):
+            self.member_cards_layout.setColumnStretch(column, int(column < columns))
+        self._member_card_columns = columns
 
     def _select_member_card(self, stock_code: str, snapshot_identity: str) -> None:
         snapshot = self._snapshot

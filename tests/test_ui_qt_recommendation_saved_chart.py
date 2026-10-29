@@ -36,9 +36,9 @@ def test_recommendation_background_chart_cancel_retry_return_and_stale_callback(
         chart = view.findChild(StockPriceChartWidget)
         assert chart is not None and chart._points[-1].close_price == Decimal("100.125")
         assert chart._technical_lines[0].points[-1].value == Decimal("99.123456")
-        table = view.findChild(QTableView, "stockResearchTechnicalHistoryTable")
-        assert table.model().index(0, 1).data() == "99.123456"
-        assert table.model().index(0, 2).data() == "—（未提供）"
+        table = view.findChild(QTableView, "stockResearchPriceHistoryTable")
+        assert table.model().index(0, 2).data() == "99.12"
+        assert table.model().index(0, 3).data() == "—（未提供）"
         hold[0] = True
         view.reload_button.click()
         _wait(app, started.is_set)

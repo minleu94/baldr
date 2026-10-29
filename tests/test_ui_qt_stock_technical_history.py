@@ -9,15 +9,24 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QTableView
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QTableView
 
 from app_module.stock_research_chart_payload import (
     StockChartTechnicalLineDTO, StockChartTechnicalPointDTO,
     project_stock_chart_payload,
 )
-from app_module.stock_research_report_dtos import StockPricePointDTO, StockResearchReportDTO
+from app_module.stock_research_report_dtos import (
+    StockMetricDTO,
+    StockPricePointDTO,
+    StockResearchReportDTO,
+    StockTechnicalSnapshotDTO,
+)
 from app_module.stock_research_report_service import StockResearchReportReadService
-from ui_qt.views.stock_research_report_view import StockPriceChartWidget, StockResearchReportView
+from ui_qt.views.stock_research_report_view import (
+    StockPriceChartWidget,
+    StockResearchReportView,
+    _chart_grid_tick_values,
+)
 
 
 @pytest.fixture(scope="module")
@@ -37,6 +46,14 @@ def _line():
     ))
 
 
+def test_price_grid_values_match_bottom_up_pixel_positions():
+    assert _chart_grid_tick_values(Decimal("98"), Decimal("122")) == (
+        (Decimal("0.25"), Decimal("104.00")),
+        (Decimal("0.5"), Decimal("110.0")),
+        (Decimal("0.75"), Decimal("116.00")),
+    )
+
+
 def test_native_history_breaks_at_missing_value_and_preserves_geometry(app):
     chart = StockPriceChartWidget()
     chart.resize(700, 220)
@@ -51,7 +68,7 @@ def test_native_history_breaks_at_missing_value_and_preserves_geometry(app):
         ((0, Decimal("1.123456789123456789")),),
         ((2, Decimal("3")), (3, Decimal("4"))),
     )
-    assert "1.123456789123456789" in chart._technical_tooltip("2026-09-01")
+    assert "MA20：1.12" in chart._technical_tooltip("2026-09-01")
     assert "未提供" in chart._technical_tooltip("2026-09-02")
     assert not chart.grab().isNull()
     chart.close()
@@ -86,13 +103,13 @@ def test_history_table_uses_same_exact_projection_even_when_chart_fails(app, mon
     view = StockResearchReportView(SimpleNamespace())
     view._active_code = "2330"
     view._render_price(report)
-    table = view.findChild(QTableView, "stockResearchTechnicalHistoryTable")
+    table = view.findChild(QTableView, "stockResearchPriceHistoryTable")
     assert table is not None
     model = table.model()
     assert model.rowCount() == 4
-    assert model.index(3, 1).data() == "1.123456789123456789"
-    assert model.index(2, 1).data() == "—（未提供）"
-    assert model.index(0, 2).data() == "—（未提供）"
+    assert model.index(3, 2).data() == "1.12"
+    assert model.index(2, 2).data() == "—（未提供）"
+    assert model.index(0, 3).data() == "—（未提供）"
     if fail:
         assert view.findChild(QLabel, "stockResearchPriceChartFallback") is not None
     view.close()
@@ -105,6 +122,49 @@ def test_snapshot_only_does_not_draw_or_construct_history_table(app):
     view._render_price(report)
     assert view.findChild(QTableView, "stockResearchTechnicalHistoryTable") is None
     assert "不以單日快照" in view.findChild(QLabel, "stockResearchTechnicalHistoryStatus").text()
+    view.close()
+
+
+def test_technical_snapshot_uses_metric_cards_with_one_price_table(app):
+    report = StockResearchReportDTO(
+        "2330",
+        as_of="2026-09-04",
+        price_points=_prices(),
+        technical=StockTechnicalSnapshotDTO(
+            data_date="2026-09-04",
+            indicators=(
+                StockMetricDTO(
+                    key="RSI14",
+                    label="RSI（14）",
+                    value=Decimal("48.38"),
+                    unit="點",
+                    data_as_of="2026-09-04",
+                    source_id="sqlite.technical_indicators",
+                    quality="observed",
+                ),
+                StockMetricDTO(
+                    key="MA20",
+                    label="MA20",
+                    value=Decimal("1.005"),
+                    unit="TWD",
+                    data_as_of="2026-09-04",
+                    source_id="sqlite.technical_indicators",
+                    quality="observed",
+                ),
+            ),
+            source_id="sqlite.technical_indicators",
+        ),
+    )
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = "2330"
+    view._render_price(report)
+    page = view.tabs.widget(1)
+    cards = page.findChild(QGroupBox, "stockResearchTechnicalMetricCards")
+    assert cards is not None and "2026-09-04" in cards.title()
+    value_labels = cards.findChildren(QLabel, "stockResearchTechnicalMetricValue")
+    assert [label.text() for label in value_labels] == ["48.38 點", "1.01 TWD"]
+    assert "原始數值：1.005" in value_labels[1].parentWidget().toolTip()
+    assert len(page.findChildren(QTableView)) == 1
     view.close()
 
 
@@ -132,13 +192,14 @@ def test_isolated_sqlite_history_reaches_native_chart_and_exact_table(app, tmp_p
     assert chart is not None and len(chart._technical_lines) == 2
     assert len(chart._technical_segments(chart._technical_lines[0])) == 2
     assert all(point.data_date <= "2026-09-04" for point in chart._points)
-    table = view.findChild(QTableView, "stockResearchTechnicalHistoryTable")
+    table = view.findChild(QTableView, "stockResearchPriceHistoryTable")
     assert table is not None
     model = table.model()
-    assert model.index(3, 1).data() == "1.123456789123456789"
-    assert model.index(2, 1).data() == "—（未提供）"
-    assert "sqlite.technical_indicators" in model.index(3, 1).data(Qt.ToolTipRole)
-    assert report.technical_history[0].source_row_hash in model.index(3, 1).data(Qt.ToolTipRole)
+    assert model.index(3, 2).data() == "1.12"
+    assert model.index(2, 2).data() == "—（未提供）"
+    assert "sqlite.technical_indicators" in model.index(3, 2).data(Qt.ToolTipRole)
+    assert "原始 Decimal 1.123456789123456789" in model.index(3, 2).data(Qt.ToolTipRole)
+    assert report.technical_history[0].source_row_hash in model.index(3, 2).data(Qt.ToolTipRole)
     assert "999" not in chart._technical_tooltip("2026-09-04")
     assert not chart.grab().isNull()
     view.close()

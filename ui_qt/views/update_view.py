@@ -166,8 +166,10 @@ class StatusCard(QFrame):
         self.records_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.records_label)
 
-        # 額外資訊（例如技術指標數量）
+        # 額外來源資訊需能在窄卡片換行，避免期別／覆蓋提示被壓成長橫列。
         self.extra_label = QLabel("")
+        self.extra_label.setWordWrap(True)
+        self.extra_label.setMinimumWidth(0)
         self.extra_label.setStyleSheet(
             f"color:{MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
         )

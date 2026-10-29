@@ -299,10 +299,8 @@ class DailyMarketResearchView(QWidget):
         self.local_stock_filter.setPlaceholderText("在目前名單找股票代碼；不重讀、不更新來源")
         self.local_stock_filter.setMaxLength(16)
         self.local_stock_filter.textChanged.connect(self._render_rows)
-        root.addWidget(self.local_stock_filter)
         self.local_filter_summary_label = QLabel("局部顯示：尚未載入核驗名單。")
         self.local_filter_summary_label.setWordWrap(True)
-        root.addWidget(self.local_filter_summary_label)
 
         self.sample_readiness_label = QLabel("研究樣本：尚未核對完整單批控制組；成熟結果未知。")
         self.sample_readiness_label.setObjectName("dailyMarketRuleSampleReadiness")
@@ -478,9 +476,6 @@ class DailyMarketResearchView(QWidget):
             ("未知", "unknown"),
         ):
             self.filter_state_combo.addItem(label, value)
-        action_row.addStretch(1)
-        action_row.addWidget(QLabel("顯示"))
-        action_row.addWidget(self.filter_state_combo)
         root.addLayout(action_row)
 
         sort_row = QHBoxLayout()
@@ -515,7 +510,6 @@ class DailyMarketResearchView(QWidget):
         self.sort_direction_combo.setEnabled(False)
         sort_row.addWidget(self.sort_direction_combo)
         sort_row.addStretch(1)
-        root.addLayout(sort_row)
 
         original_rank_row = QHBoxLayout()
         original_rank_row.addWidget(QLabel("原排名期間"))
@@ -533,7 +527,6 @@ class DailyMarketResearchView(QWidget):
         self.original_rank_direction_combo.addItem("弱勢", "weak")
         original_rank_row.addWidget(self.original_rank_direction_combo)
         original_rank_row.addStretch(1)
-        root.addLayout(original_rank_row)
 
         self.original_ranking_label = QLabel("原始排名：未知；尚未讀取不可變來源")
         self.original_ranking_label.setObjectName("dailyMarketOriginalRanking")
@@ -542,7 +535,6 @@ class DailyMarketResearchView(QWidget):
         self.original_ranking_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        root.addWidget(self.original_ranking_label)
 
         self.summary_label = QLabel("尚未載入已發布研究快照。")
         self.summary_label.setObjectName("dailyMarketResearchSummary")
@@ -579,6 +571,27 @@ class DailyMarketResearchView(QWidget):
         self.status_label.setWordWrap(True)
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self.status_label)
+
+        self.results_controls_group = QGroupBox("結果清單")
+        self.results_controls_group.setObjectName("dailyMarketResearchResultControls")
+        result_controls = QVBoxLayout(self.results_controls_group)
+        result_controls.setContentsMargins(10, 7, 10, 7)
+        result_controls.setSpacing(5)
+
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(self.local_stock_filter, 3)
+        filter_row.addWidget(QLabel("狀態"))
+        filter_row.addWidget(self.filter_state_combo, 1)
+        result_controls.addLayout(filter_row)
+        result_controls.addWidget(self.local_filter_summary_label)
+
+        sort_label = QLabel("排序")
+        sort_label.setObjectName("dailyMarketResearchSortLabel")
+        sort_row.insertWidget(0, sort_label)
+        result_controls.addLayout(sort_row)
+        result_controls.addLayout(original_rank_row)
+        result_controls.addWidget(self.original_ranking_label)
+        root.addWidget(self.results_controls_group)
 
         self.results_table = QTableWidget(0, 13)
         self.results_table.setObjectName("dailyMarketResearchResults")

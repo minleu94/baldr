@@ -9,6 +9,7 @@ from typing import Any, Callable, Protocol
 from PySide6.QtCore import QSignalBlocker, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -96,24 +97,30 @@ class ResearchTimelineView(QWidget):
         root.setContentsMargins(8, 6, 8, 6)
         root.setSpacing(6)
 
-        controls = QHBoxLayout()
+        controls_group = QGroupBox("查找已保存研究紀錄", self)
+        controls_group.setObjectName("researchTimelineSearchControls")
+        controls = QHBoxLayout(controls_group)
+        controls.setContentsMargins(10, 7, 10, 7)
+        controls.setSpacing(6)
         self.source_filter = QComboBox(self)
         self.source_filter.setObjectName("researchTimelineSourceFilter")
         self.source_filter.setAccessibleName("研究時間軸來源篩選")
         self.source_filter.addItem("所有來源", "all")
         for kind, label in _KIND_LABELS.items():
             self.source_filter.addItem(label, kind)
+        controls.addWidget(QLabel("來源", controls_group))
         controls.addWidget(self.source_filter)
         self.stock_filter = QLineEdit(self)
         self.stock_filter.setObjectName("researchTimelineStockFilter")
         self.stock_filter.setPlaceholderText("股票代號或 result ID")
         self.stock_filter.setAccessibleName("依股票代號或 result ID 篩選研究紀錄")
+        controls.addWidget(QLabel("股票／結果 ID", controls_group))
         controls.addWidget(self.stock_filter, 1)
         self.refresh_button = QPushButton("重新讀取", self)
         self.refresh_button.setObjectName("researchTimelineRefresh")
         self.refresh_button.setAccessibleName("重新讀取研究時間軸")
         controls.addWidget(self.refresh_button)
-        root.addLayout(controls)
+        root.addWidget(controls_group)
 
         self.status_label = QLabel("正在讀取原始研究紀錄…", self)
         self.status_label.setObjectName("researchTimelineStatus")
@@ -123,7 +130,13 @@ class ResearchTimelineView(QWidget):
 
         splitter = QSplitter(Qt.Horizontal, self)
         splitter.setObjectName("researchTimelineSplitter")
-        self.entries_table = QTableWidget(0, 4, splitter)
+        entries_panel = QWidget(splitter)
+        entries_layout = QVBoxLayout(entries_panel)
+        entries_layout.setContentsMargins(0, 0, 0, 0)
+        entries_title = QLabel("研究紀錄清單", entries_panel)
+        entries_title.setObjectName("researchTimelineEntriesHeading")
+        entries_layout.addWidget(entries_title)
+        self.entries_table = QTableWidget(0, 4, entries_panel)
         self.entries_table.setObjectName("researchTimelineEntries")
         self.entries_table.setHorizontalHeaderLabels(("來源", "股票", "保存時間", "原文摘要"))
         self.entries_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -136,9 +149,13 @@ class ResearchTimelineView(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.entries_table.setColumnWidth(2, 175)
         header.setStretchLastSection(True)
+        entries_layout.addWidget(self.entries_table, 1)
         detail = QWidget(splitter)
         detail_layout = QVBoxLayout(detail)
         detail_layout.setContentsMargins(6, 0, 0, 0)
+        detail_title = QLabel("所選紀錄與延伸操作", detail)
+        detail_title.setObjectName("researchTimelineDetailHeading")
+        detail_layout.addWidget(detail_title)
         self.detail_label = QLabel("選取一筆研究紀錄", detail)
         self.detail_label.setObjectName("researchTimelineDetailMetadata")
         self.detail_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -187,7 +204,7 @@ class ResearchTimelineView(QWidget):
             self.journey_widget.readyToClose.connect(self._journey_ready_to_close)
             detail_layout.addWidget(self.journey_widget, 1)
             self.journey_widget.hide()
-        splitter.addWidget(self.entries_table)
+        splitter.addWidget(entries_panel)
         splitter.addWidget(detail)
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 3)

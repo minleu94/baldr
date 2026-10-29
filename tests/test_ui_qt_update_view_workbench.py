@@ -1734,6 +1734,7 @@ def test_all_data_view_has_monthly_revenue_status_card():
     assert "最新可用日：" in view.monthly_revenue_status_text.date_label.text()
     assert "2026-06-17" in view.monthly_revenue_status_text.date_label.text()
     assert "2026-06" in view.monthly_revenue_status_text.extra_label.text()
+    assert view.monthly_revenue_status_text.extra_label.wordWrap()
     assert "目前可用期別：2026-05" in view.monthly_revenue_status_text.extra_label.text()
     assert "待生效：1 個期別（2026-07-15 起可用）" in view.monthly_revenue_status_text.extra_label.text()
     assert "最新" in view.monthly_revenue_status_text.indicator_label.text()

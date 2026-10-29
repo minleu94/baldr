@@ -175,6 +175,21 @@ def test_first_open_is_read_only_unknown_stays_visible_and_drilldown_is_pinned()
     app = _app()
     service = _FakeScreener()
     view = DailyMarketResearchView(service)
+    assert view.results_controls_group.title() == "結果清單"
+    for widget in (
+        view.local_stock_filter,
+        view.filter_state_combo,
+        view.local_filter_summary_label,
+        view.sort_key_combo,
+        view.sort_direction_combo,
+        view.original_rank_period_combo,
+        view.original_rank_direction_combo,
+        view.original_ranking_label,
+    ):
+        assert widget.parentWidget() is view.results_controls_group
+    assert view.refresh_button.parentWidget() is view.snapshot_page
+    assert view.reload_button.parentWidget() is view.snapshot_page
+    assert view.results_table.parentWidget() is view.snapshot_page
     emitted: list[ResearchStockContextDTO] = []
     view.stockResearchRequested.connect(emitted.append)
 

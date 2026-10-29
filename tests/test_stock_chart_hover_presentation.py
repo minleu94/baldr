@@ -13,7 +13,11 @@ from app_module.stock_research_chart_payload import (
 from app_module.stock_research_report_dtos import StockPricePointDTO
 from tests.test_baldr_b05_chart_markers import evidence
 from tests.test_saved_stock_technical_chart import _produce, _reader, DAY
-from ui_qt.views.stock_research_report_view import StockPriceChartWidget, _price_point_source_tooltip
+from ui_qt.views.stock_research_report_view import (
+    StockPriceChartWidget,
+    _chart_moving_average_text,
+    _price_point_source_tooltip,
+)
 
 
 @pytest.fixture(scope="module")
@@ -24,6 +28,19 @@ def app():
 def _assert_no_audit(text):
     for token in ("來源：", "可得時間", "SHA-256", "SHA256", "source_id", "available_at"):
         assert token not in text
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (Decimal("101.125"), "101.13"),
+        (Decimal("101.1249"), "101.12"),
+        (Decimal("0.005"), "0.01"),
+        (None, "—（未提供）"),
+    ],
+)
+def test_moving_average_display_rounds_only_at_presentation_boundary(value, expected):
+    assert _chart_moving_average_text(value) == expected
 
 
 def test_hover_exact_date_price_volume_ma_and_marker_meaning(app):
@@ -56,7 +73,7 @@ def test_hover_exact_date_price_volume_ma_and_marker_meaning(app):
         assert f"資料日：{day}" in text
         assert "開：100.123456789｜高：104｜低：99｜收：102" in text
         assert "成交量：1,234,567" in text
-        assert "MA20：101.123456789" in text
+        assert "MA20：101.12" in text
         assert marker.label in text and f"帳本：{marker.account_id}" in text
         _assert_no_audit(text)
         assert text in chart.accessibleDescription()
@@ -88,7 +105,7 @@ def test_saved_snapshot_readback_hover_keeps_pins_and_gaps(app, tmp_path):
         chart.set_points(payload.price_points)
         chart.set_technical_lines(payload.technical_lines)
         chart._select_point(len(payload.price_points) - 1)
-        assert "收：100.125" in chart.toolTip() and "MA20：24" in chart.toolTip()
+        assert "收：100.125" in chart.toolTip() and "MA20：24.00" in chart.toolTip()
         _assert_no_audit(chart.toolTip())
         assert payload.table_rows == report.price_points
         assert payload.historical_pit_eligible is False

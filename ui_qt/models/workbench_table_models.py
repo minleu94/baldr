@@ -298,12 +298,12 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
         if row is None:
             return "未提供", "未提供"
         support = tuple(
-            _public_advice_reason(item)
+            public_advice_reason(item)
             for item in row.why_reasons
             if str(item).strip()
         )
         restrictions = tuple(
-            _public_advice_reason(item)
+            public_advice_reason(item)
             for item in row.why_not_reasons
             if str(item).strip() and str(item).strip() not in self.common_restrictions
         )
@@ -321,12 +321,12 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
         if row is None:
             return (), 0, (), 0
         support = tuple(
-            _compact_advice_text(_public_advice_reason(item), limit=96)
+            _compact_advice_text(public_advice_reason(item), limit=96)
             for item in row.why_reasons
             if str(item).strip()
         )
         restrictions = tuple(
-            _compact_advice_text(_public_advice_reason(item), limit=96)
+            _compact_advice_text(public_advice_reason(item), limit=96)
             for item in row.why_not_reasons
             if str(item).strip() and str(item).strip() not in self.common_restrictions
         )
@@ -456,9 +456,9 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
     """在建議列展示短摘要，完整欄位仍可由提示與選列詳情核對。"""
 
     if field_name == "quick_reasons":
-        support = tuple(_public_advice_reason(item) for item in row.why_reasons if str(item).strip())
+        support = tuple(public_advice_reason(item) for item in row.why_reasons if str(item).strip())
         restrictions = tuple(
-            _public_advice_reason(item)
+            public_advice_reason(item)
             for item in row.why_not_reasons
             if str(item).strip()
         )
@@ -477,7 +477,7 @@ def _advice_quick_read(row: RecommendationAdviceDTO, field_name: str) -> tuple[s
         return display, detail
 
     if field_name == "primary_risk":
-        risks = tuple(_public_advice_reason(item) for item in row.risk_reasons if str(item).strip())
+        risks = tuple(public_advice_reason(item) for item in row.risk_reasons if str(item).strip())
         display = _compact_advice_text(risks[0]) if risks else "未提供額外逐股風險資料"
         detail = "逐股風險判讀：" + ("；".join(risks) if risks else "未提供額外逐股風險資料；不能據此推定沒有風險")
         if len(risks) > 1:
@@ -540,7 +540,7 @@ def _compact_advice_text(value: str, *, limit: int = 34) -> str:
     return normalized[: limit - 1].rstrip() + "…"
 
 
-def _public_advice_reason(value: object) -> str:
+def public_advice_reason(value: object) -> str:
     """將常見 Advice 診斷碼改成使用者語句；保留未知文字但隱去底線格式。"""
 
     raw = " ".join(str(value or "").split())

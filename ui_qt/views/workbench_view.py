@@ -96,6 +96,7 @@ from ui_qt.models.workbench_table_models import (
     PositionHealthTableModel,
     advice_evidence_tier_label,
     display_workbench_value,
+    public_advice_reason,
 )
 from ui_qt.views.advice_contract_backtest_context import AdviceContractBacktestNavigation
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -703,6 +704,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_detail_layout.setSpacing(6)
         self.advice_selection_card = self._make_state_label()
         self.advice_selection_card.setObjectName("adviceSelectionCard")
+        self.advice_selection_card.setStyleSheet(
+            f"QLabel#adviceSelectionCard {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 10px; }}"
+        )
         self.advice_selection_card.setTextFormat(Qt.PlainText)
         self.advice_selection_card.setText("所選 Advice 判讀：選取建議列後顯示。")
         self.advice_selection_card.setVisible(False)
@@ -5109,10 +5117,21 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self._selected_advice_original_reasons = original_reasons
         full_reasons_text = "；".join(original_reasons) if original_reasons else "未提供"
-        compact_reasons_text = full_reasons_text
-        if len(compact_reasons_text) > 150:
-            compact_reasons_text = compact_reasons_text[:147] + "…（完整理由見下方共用證據詳情）"
+        reason_preview = [
+            f"• {_compact_advice_text(public_advice_reason(reason), max_length=82)}"
+            for reason in original_reasons[:3]
+        ]
+        if not reason_preview:
+            reason_preview.append("• 未提供")
+        if len(original_reasons) > len(reason_preview):
+            reason_preview.append(
+                f"• 另有 {len(original_reasons) - len(reason_preview)} 項，完整理由見下方共用證據詳情"
+            )
         contract_completeness = _advice_contract_completeness(item)
+        contract_preview = [
+            f"• {_compact_advice_text(line, max_length=150)}"
+            for line in contract_completeness.splitlines()
+        ]
         evidence_tier_raw = str(getattr(item, "evidence_tier", "") or "").strip()
         evidence_tier_label = advice_evidence_tier_label(evidence_tier_raw)
         source_evidence = tuple(getattr(item, "source_evidence", ()) or ())
@@ -5121,23 +5140,50 @@ class UnifiedDecisionWorkbenchView(QWidget):
         liquidity_label = {"GATE_FAIL": "未通過", "UNKNOWN": "未知"}.get(
             liquidity_raw, liquidity_raw or "未知"
         )
+        confidence_label = (
+            "不可用（不可解讀為勝率）"
+            if _has_explicit_unavailable_confidence(item)
+            else {
+                "high": "高",
+                "medium": "中",
+                "low": "低",
+            }.get(
+                str(getattr(item, "confidence_tier", "") or "").strip().casefold(),
+                str(getattr(item, "confidence_tier", "") or "未提供"),
+            )
+        )
+        explicit_unknown = _explicit_unknown_advice_source_fields(item)
+        unknown_summary = "、".join(explicit_unknown) if explicit_unknown else "未提供額外明示未知欄位"
         card_text = (
             "所選建議判讀\n"
-            f"層級：{'策略 Advice（人工判斷與採納）' if is_candidate else '配置研究列' if is_portfolio_row else '策略 Advice（人工判斷與採納）'}｜"
-            f"動作：{action_label}（原碼：{action_raw or '未提供'}）\n"
-            f"{contract_completeness}\n"
-            f"Advice 原始理由（含資格限制）：{compact_reasons_text}\n"
-            f"校準適用期間：{presentation.horizon or '未提供'}｜"
-            f"策略持有期間：{presentation.holding_horizon or '未提供'}｜"
-            f"策略檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}｜"
-            f"證據成熟度：{evidence_tier_label}（原始值：{evidence_tier_raw or '未提供'}）｜"
-            f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）｜"
-            f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供額外逐股風險資料'}\n"
-            f"失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}"
-            f"\n保存來源逐股證據：{_compact_advice_text(source_evidence_text)}"
+            f"{'配置研究列' if is_portfolio_row else '策略 Advice（人工判斷與採納）'}｜"
+            f"動作：{action_label}（原碼：{action_raw or '未提供'}）\n\n"
+            "主要理由／限制\n"
+            + "\n".join(reason_preview)
+            + "\n\n證據狀態\n"
+            + f"• 證據成熟度：{evidence_tier_label}（原始值：{evidence_tier_raw or '未提供'}）"
+            + f"｜決策信心：{confidence_label}\n"
+            + f"• 校準適用期間：{presentation.horizon or '未提供'}"
+            + f"｜持有期間：{presentation.holding_horizon or '未提供'}"
+            + f"｜檢視頻率：{getattr(item, 'review_cadence', '') or '未提供'}\n\n"
+            + "執行限制\n"
+            + f"• 流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）"
+            + f"｜可成交性：{getattr(item, 'execution_feasibility', None) or '未提供'}\n"
+            + f"• 明示未知／未提供：{unknown_summary}\n"
+            + f"• 風險：{'；'.join(public_advice_reason(value) for value in presentation.risks) if presentation.risks else '未提供額外逐股風險資料'}\n"
+            + f"• 失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}\n\n"
+            + "策略版本說明（選填；缺漏不阻擋 Advice）\n"
+            + ("\n".join(contract_preview) if contract_preview else "• 未提供")
+            + f"\n\n保存來源逐股證據\n• {_compact_advice_text(source_evidence_text)}"
+            + "\n完整理由見下方共用證據詳情。"
         )
         full_risks_text = (
             "；".join(presentation.risks)
+            if presentation.risks
+            else "未提供額外逐股風險資料；不能據此推定沒有風險"
+        )
+        display_risks_text = (
+            "；".join(public_advice_reason(value) for value in presentation.risks)
             if presentation.risks
             else "未提供額外逐股風險資料；不能據此推定沒有風險"
         )
@@ -5146,11 +5192,21 @@ class UnifiedDecisionWorkbenchView(QWidget):
             if presentation.invalidation_conditions
             else "未提供"
         )
-        compact_risks_text = _compact_advice_text(full_risks_text)
-        compact_invalidation_text = _compact_advice_text(full_invalidation_text)
-        card_text = card_text.replace(f"風險：{full_risks_text}", f"風險：{compact_risks_text}")
+        display_invalidation_text = (
+            "；".join(
+                public_advice_reason(value)
+                for value in presentation.invalidation_conditions
+            )
+            if presentation.invalidation_conditions
+            else "未提供"
+        )
+        compact_risks_text = _compact_advice_text(display_risks_text)
+        compact_invalidation_text = _compact_advice_text(display_invalidation_text)
         card_text = card_text.replace(
-            f"失效條件：{full_invalidation_text}",
+            f"風險：{display_risks_text}", f"風險：{compact_risks_text}"
+        )
+        card_text = card_text.replace(
+            f"失效條件：{display_invalidation_text}",
             f"失效條件：{compact_invalidation_text}",
         )
         self.advice_selection_card.setText(card_text)

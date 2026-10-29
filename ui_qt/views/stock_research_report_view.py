@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping, Sequence
 import csv
 from dataclasses import replace
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from html import escape as html_escape
 import inspect
 import hashlib
@@ -85,6 +85,7 @@ from app_module.stock_research_report_dtos import (
     StockPositionSnapshotDTO,
     StockPricePointDTO,
     StockResearchReportDTO,
+    StockTechnicalSnapshotDTO,
     StockTradingRestrictionDTO,
     technical_history_saved_scope_limitation,
 )
@@ -107,6 +108,7 @@ from app_module.stock_research_report_service import StockResearchReportReadServ
 from app_module.portfolio_research_stock_projection import PortfolioScenarioStockProjection
 from app_module.stock_research_chart_payload import (
     StockChartTechnicalLineDTO,
+    StockChartTechnicalPointDTO,
     StockChartPayloadDTO,
     project_stock_chart_payload,
 )
@@ -267,9 +269,9 @@ class StockPriceChartWidget(QWidget):
         self.setMinimumHeight(188)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMouseTracking(True)
-        self.setAccessibleName("個股收盤價走勢圖")
+        self.setAccessibleName("個股價格與均線圖")
         self.setAccessibleDescription(
-            "最近有限交易日的價格圖；下方價格表提供可選取的日期與數值。"
+            "最近有限交易日的價格與技術均線圖；下方價格表提供同日收盤、均線與成交資料。"
         )
 
     def set_points(self, points: Sequence[StockPricePointDTO]) -> None:
@@ -307,7 +309,7 @@ class StockPriceChartWidget(QWidget):
                 description_parts.append(f"{volume_scale}；")
             description_parts.extend((
                 "將游標移到各資料點查看該日日期、開高低收與成交量；",
-                "下方價格表提供可選取的日期與數值。",
+                "下方單一摘要表提供可選取的日期、收盤、MA20、MA60、漲跌與成交量。",
             ))
             self.setAccessibleDescription("".join(description_parts))
         else:
@@ -319,7 +321,37 @@ class StockPriceChartWidget(QWidget):
     def set_technical_lines(self, lines: Sequence[StockChartTechnicalLineDTO]) -> None:
         """只更新同源投影線；保留價格日期、模式、游標與 widget 幾何。"""
         self._technical_lines = tuple(lines)
+        if self._technical_lines:
+            summary = self._technical_display_summary()
+            self.setToolTip(f"{self._base_tooltip}\n{summary}")
+            self.setAccessibleDescription(f"{self._base_tooltip}\n{summary}")
         self.update()
+
+    def _visible_line_observation(
+        self, line: StockChartTechnicalLineDTO
+    ) -> StockChartTechnicalPointDTO | None:
+        visible_dates = {point.data_date for point in self._points}
+        return next(
+            (
+                point
+                for point in reversed(line.points)
+                if point.data_date in visible_dates and point.value is not None
+            ),
+            None,
+        )
+
+    def _technical_display_summary(self) -> str:
+        values = []
+        for line in self._technical_lines:
+            point = self._visible_line_observation(line)
+            value = (
+                _chart_moving_average_text(point.value)
+                if point is not None
+                else "—（未提供）"
+            )
+            data_date = f"，資料日 {point.data_date}" if point is not None else ""
+            values.append(f"{line.key} {value}{data_date}")
+        return "均線圖例：" + "；".join(values)
 
     def set_markers(self, markers: Sequence[StockChartMarkerDTO]) -> None:
         """僅接純投影已驗證標記；viewport 外日期不畫。"""
@@ -395,14 +427,20 @@ class StockPriceChartWidget(QWidget):
         rows: list[str] = []
         for line in self._technical_lines:
             point = next((point for point in line.points if point.data_date == data_date), None)
-            rows.append(f"{line.label}：{_chart_exact_decimal_text(point.value if point else None)}")
+            value = point.value if point else None
+            formatted = (
+                _chart_moving_average_text(value)
+                if line.key.upper() in {"MA20", "MA60"}
+                else _chart_exact_decimal_text(value)
+            )
+            rows.append(f"{line.label}：{formatted}")
         return "\n".join(rows)
 
     def _drawable_points(self) -> tuple[StockPricePointDTO, ...]:
         return tuple(point for point in self._points if point.close_price is not None)
 
     def _plot_x_bounds(self) -> tuple[int, int]:
-        left = 58
+        left = 76
         return left, max(left + 40, self.width() - 18)
 
     def _nearest_point_index(self, x: int) -> int | None:
@@ -430,9 +468,11 @@ class StockPriceChartWidget(QWidget):
                         f"高：{_chart_exact_decimal_text(point.high_price)}",
                         f"低：{_chart_exact_decimal_text(point.low_price)}",
                         f"收：{_chart_exact_decimal_text(point.close_price)}",
+                        f"漲跌：{_chart_exact_decimal_text(point.change)}",
                     )
                 ),
                 f"成交量：{_chart_integer_text(point.volume)}",
+                f"成交額：{_chart_exact_decimal_text(point.turnover)}",
             )
         )
 
@@ -494,7 +534,8 @@ class StockPriceChartWidget(QWidget):
                 return
 
             left, right = self._plot_x_bounds()
-            top = 25
+            show_technical_legend = bool(self._technical_lines) and self.height() >= 280
+            top = 48 if show_technical_legend else 25
             volume_enabled = self._mode == "ohlc_volume"
             volume_top = max(top + 70, self.height() - 48)
             bottom = max(top + 50, volume_top - 24 if volume_enabled else self.height() - 32)
@@ -525,6 +566,12 @@ class StockPriceChartWidget(QWidget):
             painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border)))
             painter.drawLine(left, bottom, right, bottom)
             painter.drawLine(left, top, left, bottom)
+            for ratio, value in _chart_grid_tick_values(low, high):
+                y = bottom - int(Decimal(bottom - top) * ratio)
+                painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border), 1, Qt.DotLine))
+                painter.drawLine(left, y, right, y)
+                painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_secondary)))
+                painter.drawText(6, y + 4, _decimal_text(value))
             painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_secondary)))
             painter.drawText(
                 6,
@@ -540,6 +587,24 @@ class StockPriceChartWidget(QWidget):
             painter.drawText(max(left, right - 88), self.height() - 8, last_date)
             painter.drawText(6, top + 22, _decimal_text(high))
             painter.drawText(6, bottom - 5, _decimal_text(low))
+
+            if show_technical_legend:
+                legend_x = left + 12
+                legend_y = 24
+                for line in self._technical_lines:
+                    color = "#fbbf24" if line.key.upper() == "MA20" else "#60a5fa"
+                    observation = self._visible_line_observation(line)
+                    value = (
+                        _chart_moving_average_text(observation.value)
+                        if observation is not None
+                        else "—"
+                    )
+                    legend_text = f"{line.key} {value}"
+                    painter.setPen(QPen(QColor(color), 3))
+                    painter.drawLine(legend_x, legend_y - 4, legend_x + 10, legend_y - 4)
+                    painter.setPen(QPen(QColor(color)))
+                    painter.drawText(legend_x + 15, legend_y, legend_text)
+                    legend_x += painter.fontMetrics().horizontalAdvance(legend_text) + 38
 
             denominator = max(1, len(points) - 1)
             if self._mode in {"ohlc", "ohlc_volume"}:
@@ -645,7 +710,7 @@ class StockPriceChartWidget(QWidget):
                     if segment:
                         painter.drawEllipse(segment[-1], 3, 3)
             for line in self._technical_lines:
-                color = "#fbbf24" if line.key == "MA20" else "#60a5fa"
+                color = "#fbbf24" if line.key.upper() == "MA20" else "#60a5fa"
                 painter.setPen(QPen(QColor(color), 2))
                 painter.setBrush(QBrush(QColor(color)))
                 for segment in self._technical_segments(line):
@@ -3666,7 +3731,7 @@ class StockResearchReportView(QWidget):
         page = self._page_layouts["price"].parentWidget()
         if page is None:
             return
-        for name in ("stockResearchPriceHistoryTable", "stockResearchTechnicalHistoryTable"):
+        for name in ("stockResearchPriceHistoryTable",):
             tables = page.findChildren(QTableView, name)
             table = tables[-1] if tables else None
             if table is None or table.model() is None:
@@ -3697,7 +3762,7 @@ class StockResearchReportView(QWidget):
                                      tuple((key, value) for key, value in payload.source_context if value.strip()))
 
     def _add_chart_viewport_controls(self, layout: QVBoxLayout, chart: StockPriceChartWidget, payload: StockChartPayloadDTO) -> None:
-        """按鈕只切原 DTO；原全量價格／MA表不跟著縮放。"""
+        """按鈕只切原 DTO；下方完整日期範圍表不跟著縮放。"""
         row = QHBoxLayout()
         controls: dict[str, QPushButton] = {}
         label = QLabel()
@@ -3744,7 +3809,7 @@ class StockResearchReportView(QWidget):
             button.setObjectName("stockResearchChart" + action)
             button.setFocusPolicy(Qt.StrongFocus)
             button.setAccessibleName("圖表" + text)
-            button.setToolTip("只調整圖表可見日期槽；不查新行情、不改精確表。")
+            button.setToolTip("只調整圖表可見日期槽；不查新行情、不改下方完整日期範圍表。")
             button.clicked.connect(lambda checked=False, key=action: change(key))
             controls[action] = button
             row.addWidget(button)
@@ -3823,14 +3888,15 @@ class StockResearchReportView(QWidget):
             chart.set_points(self._chart_viewport.slice_points(payload.price_points))
             chart.set_technical_lines(payload.technical_lines)
             chart.set_markers(payload.verified_markers)
+            chart.setFixedHeight(360)
             chart.dateSelected.connect(lambda day, current=chart: self._sync_chart_date_to_tables(current, day))
             self._chart_widget = chart
             layout.addWidget(chart)
             self._add_chart_viewport_controls(layout, chart, payload)
             chart_mode_text = {
-                "ohlc_volume": "原生圖表：OHLC K 線與成交量；下方表格保留來源精度。",
-                "ohlc": "原生圖表：OHLC K 線；成交量缺值會保留。",
-                "close": "原生圖表：收盤線；不完整 OHLC 不補值。",
+                "ohlc_volume": "原生圖表：OHLC K 線與成交量；均線以圖例與游標讀值，逐日數據集中在一張摘要表。",
+                "ohlc": "原生圖表：OHLC K 線；成交量缺值會保留，逐日數據集中在一張摘要表。",
+                "close": "原生圖表：收盤線；不完整 OHLC 不補值，逐日數據集中在一張摘要表。",
             }[chart.display_mode]
         except Exception as exc:
             self._chart_widget = None
@@ -3863,10 +3929,7 @@ class StockResearchReportView(QWidget):
             external_button.clicked.connect(lambda checked=False, serial=render_serial, code=payload.stock_code, target=url: QDesktopServices.openUrl(QUrl(target)) if self._chart_render_serial == serial and self._active_code == code and not self._closing else False)
         layout.addWidget(external_button)
         layout.addWidget(self._wrapped_label("原生圖為預設；外部圖只作獨立參考，不共用行情、截止日或歷史 PIT 資格。"))
-        if payload.verified_markers:
-            marker_rows = tuple((marker.event_date, marker.label, marker.account_id, marker.account_kind, marker.source_id, marker.source_row_hash) for marker in payload.verified_markers)
-            self._add_table(layout, ("記錄日", "標記類型", "帳本", "帳本種類", "來源", "記錄 SHA-256"), marker_rows, 180, object_name="stockResearchChartMarkerTable")
-        layout.addWidget(self._wrapped_label("研＝推薦確認（研究）；買／賣＝已核帳本的實際記錄；身份缺件不畫，沒有標記不代表沒有交易。"))
+        self._add_chart_marker_details(layout, payload.verified_markers)
 
         chart_mode_label = QLabel(chart_mode_text)
         chart_mode_label.setObjectName("stockResearchPriceChartMode")
@@ -3900,42 +3963,6 @@ class StockResearchReportView(QWidget):
         )
         layout.addWidget(chart_range_label)
 
-        if payload.price_points:
-            table_points = tuple(reversed(payload.table_rows))
-            rows = tuple(
-                (
-                    point.data_date,
-                    _chart_exact_decimal_text(point.open_price),
-                    _chart_exact_decimal_text(point.high_price),
-                    _chart_exact_decimal_text(point.low_price),
-                    _chart_exact_decimal_text(point.close_price),
-                    _chart_exact_decimal_text(point.change),
-                    _chart_integer_text(point.volume),
-                    _chart_exact_decimal_text(point.turnover),
-                )
-                for point in table_points
-            )
-            row_tooltips = tuple(
-                tuple(_price_point_source_tooltip(point) for _ in range(8))
-                for point in table_points
-            )
-            self._add_table(
-                layout,
-                ("資料日", "開盤", "最高", "最低", "收盤", "漲跌", "成交量", "成交額"),
-                rows,
-                310,
-                tooltips=row_tooltips,
-                object_name="stockResearchPriceHistoryTable",
-            )
-            layout.addWidget(self._wrapped_label(
-                "「漲跌」須有價差與可確認方向；原資料缺件時顯示未提供，不代表 0。"
-                "無號價差不直接當上漲，也不由相鄰收盤價補成官方漲跌。"
-            ))
-        else:
-            layout.addWidget(
-                self._missing_panel("沒有可顯示的價格資料；每日行情欄位未提供。")
-            )
-
         technical = payload.technical_snapshot
         history_label = QLabel(
             "MA20（金色）／MA60（藍色）：既存歷史值，空值或缺列處斷線；暖機與可得時間未確認，不代表歷史 PIT。"
@@ -3947,51 +3974,211 @@ class StockResearchReportView(QWidget):
         history_label.setProperty("role", "muted")
         history_label.setToolTip("\n".join(payload.limitations))
         layout.addWidget(history_label)
-        if payload.technical_lines:
-            values_by_key = {
-                line.key: {point.data_date: point.value for point in line.points}
-                for line in payload.technical_lines
-            }
-            history_rows = tuple(
-                (
-                    point.data_date,
-                    _chart_exact_decimal_text(values_by_key.get("MA20", {}).get(point.data_date)),
-                    _chart_exact_decimal_text(values_by_key.get("MA60", {}).get(point.data_date)),
-                )
-                for point in reversed(payload.price_points)
-            )
-            history_tooltips = tuple(
-                tuple(
-                    "\n".join(
-                        f"{line.label}；來源：{item.source_id or '未知'}；"
-                        f"可得時間：{item.available_at or '未知'}；"
-                        f"列 SHA-256：{item.source_row_hash or '未知'}"
-                        for line in payload.technical_lines
-                        for item in line.points if item.data_date == point.data_date
-                    ) for _column in range(3)
-                ) for point in reversed(payload.price_points)
-            )
-            self._add_table(
-                layout, ("資料日", "MA20", "MA60"), history_rows, 240,
-                tooltips=history_tooltips,
-                object_name="stockResearchTechnicalHistoryTable",
-            )
-        if technical is not None:
-            group = QGroupBox(f"技術指標快照｜資料日 {technical.data_date or '未知'}")
-            group_layout = QVBoxLayout(group)
-            rows = tuple(
-                (metric.label, _metric_text(metric), metric.data_as_of or "-", metric.quality)
-                for metric in technical.indicators
-            )
-            self._add_table(group_layout, ("指標", "數值", "資料日", "品質"), rows, 240)
-            if technical.limitations:
-                group_layout.addWidget(
-                    self._wrapped_label(_join_or_missing(technical.limitations, ""))
-                )
-            layout.addWidget(group)
+        if payload.price_points:
+            self._add_price_technical_table(layout, payload)
         else:
-            layout.addWidget(self._missing_panel("截至日期沒有可核對的技術指標快照。"))
+            layout.addWidget(self._missing_panel("沒有可顯示的價格資料；每日行情欄位未提供。"))
+        self._add_technical_metric_cards(layout, technical)
         layout.addStretch()
+
+    def _add_price_technical_table(
+        self, layout: QVBoxLayout, payload: StockChartPayloadDTO
+    ) -> None:
+        """以一張窄表對齊每日收盤、均線與成交；精確欄位留在提示中。"""
+        values_by_key: dict[str, dict[str, StockChartTechnicalPointDTO]] = {
+            line.key.upper(): {point.data_date: point for point in line.points}
+            for line in payload.technical_lines
+        }
+
+        def moving_average(key: str, data_date: str) -> str:
+            point = values_by_key.get(key, {}).get(data_date)
+            return _chart_moving_average_text(point.value if point is not None else None)
+
+        table_points = tuple(reversed(payload.table_rows))
+        rows = tuple(
+            (
+                point.data_date,
+                _chart_exact_decimal_text(point.close_price),
+                moving_average("MA20", point.data_date),
+                moving_average("MA60", point.data_date),
+                _chart_exact_decimal_text(point.change),
+                _chart_integer_text(point.volume),
+            )
+            for point in table_points
+        )
+        row_tooltips = []
+        for point in table_points:
+            details = [
+                f"精確價量原值：開 {_chart_exact_decimal_text(point.open_price)}；"
+                f"高 {_chart_exact_decimal_text(point.high_price)}；"
+                f"低 {_chart_exact_decimal_text(point.low_price)}；"
+                f"收 {_chart_exact_decimal_text(point.close_price)}；"
+                f"漲跌 {_chart_exact_decimal_text(point.change)}；"
+                f"成交量 {_chart_integer_text(point.volume)}；"
+                f"成交額 {_chart_exact_decimal_text(point.turnover)}。",
+                _price_point_source_tooltip(point),
+            ]
+            for key in ("MA20", "MA60"):
+                line_point = values_by_key.get(key, {}).get(point.data_date)
+                if line_point is not None:
+                    details.append(
+                        f"{key} 顯示 {_chart_moving_average_text(line_point.value)}；"
+                        f"原始 Decimal {_chart_exact_decimal_text(line_point.value)}；"
+                        f"來源 {line_point.source_id or '未知'}；"
+                        f"可得時間 {line_point.available_at or '未知'}；"
+                        f"列 SHA-256 {line_point.source_row_hash or '未知'}。"
+                    )
+            row_tooltips.append(tuple("\n".join(details) for _ in range(6)))
+
+        group = QGroupBox("近期價格與均線")
+        group.setObjectName("stockResearchPriceTechnicalGroup")
+        group.setAccessibleName("近期價格與 MA20、MA60 明細")
+        group_layout = QVBoxLayout(group)
+        group_layout.setContentsMargins(8, 8, 8, 8)
+        group_layout.setSpacing(6)
+        description = self._wrapped_label(
+            "以同一資料日對照收盤、MA20、MA60、漲跌與成交量；"
+            "滑過圖表或表格可查完整 OHLC、成交額與來源。均線只在畫面顯示時四捨五入至兩位；"
+            "漲跌缺值或方向不明時保留未提供，不補成 0 或推測漲跌方向。"
+        )
+        description.setObjectName("stockResearchPriceTechnicalHelp")
+        group_layout.addWidget(description)
+        table = self._add_table(
+            group_layout,
+            ("資料日", "收盤", "MA20", "MA60", "漲跌", "成交量"),
+            rows,
+            390,
+            tooltips=tuple(row_tooltips),
+            object_name="stockResearchPriceHistoryTable",
+            numeric_columns=(1, 2, 3, 4, 5),
+            max_visible_rows=12,
+            balanced_columns=True,
+        )
+        table.setMaximumHeight(420)
+        layout.addWidget(group)
+
+    def _add_technical_metric_cards(
+        self, layout: QVBoxLayout, technical: StockTechnicalSnapshotDTO | None
+    ) -> None:
+        if technical is None:
+            layout.addWidget(self._missing_panel("截至日期沒有可核對的技術指標快照。"))
+            return
+        indicators = tuple(getattr(technical, "indicators", ()) or ())
+        group = QGroupBox(
+            f"最新技術指標快覽｜資料日 {technical.data_date or '未知'}"
+        )
+        group.setObjectName("stockResearchTechnicalMetricCards")
+        group.setToolTip(
+            "單日快照，只表示原來源提供的該日指標，不補成歷史序列。\n"
+            f"來源：{technical.source_id or '未知'}；"
+            f"可得時間：{technical.available_at or '未知'}；"
+            f"品質：{technical.quality or '未知'}。"
+        )
+        cards_layout = QGridLayout(group)
+        cards_layout.setContentsMargins(8, 8, 8, 8)
+        cards_layout.setHorizontalSpacing(8)
+        cards_layout.setVerticalSpacing(8)
+        columns = 2 if self.width() < 840 else 3
+        for index, metric in enumerate(indicators):
+            card = QFrame(group)
+            card.setObjectName("stockResearchTechnicalMetricCard")
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card.setStyleSheet(
+                f"QFrame#stockResearchTechnicalMetricCard {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 6px; }}"
+            )
+            card.setAccessibleName(f"技術指標 {metric.label} 卡片")
+            card.setToolTip(
+                f"指標代碼：{metric.key or '未提供'}；來源：{metric.source_id or technical.source_id or '未知'}；"
+                f"資料日：{metric.data_as_of or technical.data_date or '未知'}；"
+                f"可得時間：{metric.available_at or technical.available_at or '未知'}；"
+                f"品質：{metric.quality or '未知'}；"
+                f"原始數值：{_chart_exact_decimal_text(metric.value)}。"
+            )
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(10, 7, 10, 7)
+            card_layout.setSpacing(3)
+            name_label = QLabel(metric.label or metric.key)
+            name_label.setObjectName("stockResearchTechnicalMetricName")
+            name_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+            value_label = QLabel(_technical_metric_text(metric))
+            value_label.setObjectName("stockResearchTechnicalMetricValue")
+            value_label.setWordWrap(True)
+            value_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
+            )
+            status_label = QLabel(
+                f"{metric.data_as_of or technical.data_date or '日期未提供'}  ·  "
+                f"{_quality_label(metric.quality)}"
+            )
+            status_label.setObjectName("stockResearchTechnicalMetricStatus")
+            status_label.setWordWrap(True)
+            status_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_muted};")
+            card_layout.addWidget(name_label)
+            card_layout.addWidget(value_label)
+            card_layout.addWidget(status_label)
+            cards_layout.addWidget(card, index // columns, index % columns)
+        if not indicators:
+            empty = self._wrapped_label("本次快照未提供可顯示的指標列。")
+            empty.setObjectName("stockResearchTechnicalMetricCardsEmpty")
+            cards_layout.addWidget(empty, 0, 0)
+        limitations = technical.limitations
+        if limitations:
+            cards_layout.addWidget(
+                self._wrapped_label(_join_or_missing(limitations, "")),
+                max(1, (len(indicators) + columns - 1) // columns),
+                0,
+                1,
+                columns,
+            )
+        layout.addWidget(group)
+
+    def _add_chart_marker_details(
+        self, layout: QVBoxLayout, markers: Sequence[StockChartMarkerDTO]
+    ) -> None:
+        if not markers:
+            return
+        toggle = QToolButton()
+        toggle.setObjectName("stockResearchChartMarkerDetailsToggle")
+        toggle.setText(f"圖上已核驗標記（{len(markers)}）展開")
+        toggle.setCheckable(True)
+        toggle.setAccessibleName(f"展開圖上已核驗標記，共 {len(markers)} 筆")
+        details = QWidget()
+        details.setObjectName("stockResearchChartMarkerDetails")
+        details.setVisible(False)
+        details_layout = QGridLayout(details)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setHorizontalSpacing(8)
+        details_layout.setVerticalSpacing(6)
+        columns = 2 if self.width() < 840 else 3
+        for index, marker in enumerate(markers):
+            card = QFrame(details)
+            card.setObjectName("stockResearchChartMarkerCard")
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card.setStyleSheet(
+                f"QFrame#stockResearchChartMarkerCard {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 6px; }}"
+            )
+            card.setAccessibleName(f"{marker.event_date} {marker.label} 標記")
+            card.setToolTip(
+                f"類型：{marker.label}；帳本：{marker.account_id or '未知'}；"
+                f"帳本種類：{marker.account_kind or '未知'}；來源：{marker.source_id or '未知'}；"
+                f"列 SHA-256：{marker.source_row_hash or '未知'}。"
+            )
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(8, 6, 8, 6)
+            label = QLabel(f"{marker.event_date}  ·  {marker.label}  ·  {marker.account_id or '帳本未知'}")
+            label.setWordWrap(True)
+            card_layout.addWidget(label)
+            details_layout.addWidget(card, index // columns, index % columns)
+        toggle.toggled.connect(details.setVisible)
+        toggle.toggled.connect(
+            lambda checked, button=toggle, count=len(markers): button.setText(
+                f"圖上已核驗標記（{count}）{'收合' if checked else '展開'}"
+            )
+        )
+        layout.addWidget(toggle)
+        layout.addWidget(details)
 
     def _render_fundamental(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("fundamental")
@@ -5852,6 +6039,43 @@ def _chart_exact_decimal_text(value: Decimal | None) -> str:
     return format(value, ",f")
 
 
+def _chart_moving_average_text(value: Decimal | None) -> str:
+    """均線只在顯示邊界以 Decimal 四捨五入至小數點後兩位。"""
+
+    if value is None:
+        return "—（未提供）"
+    if not value.is_finite():
+        return "—（非有限數值）"
+    precision = max(28, value.adjusted() + 4, len(value.as_tuple().digits) + 3)
+    try:
+        with localcontext() as context:
+            context.prec = precision
+            rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return "—（無法顯示）"
+    return format(rounded, ",.2f")
+
+
+def _chart_grid_tick_values(
+    low: Decimal, high: Decimal
+) -> tuple[tuple[Decimal, Decimal], ...]:
+    """Return bottom-up positions with matching low-to-high price values."""
+    span = high - low
+    return tuple(
+        (ratio, low + span * ratio)
+        for ratio in (Decimal(tick) / Decimal(4) for tick in range(1, 4))
+    )
+
+
+def _technical_metric_text(metric: StockMetricDTO) -> str:
+    if metric.key.upper() not in {"MA20", "MA60"} or metric.value is None:
+        return _metric_text(metric)
+    number = _chart_moving_average_text(metric.value)
+    value = number + (f" {metric.unit}" if metric.unit else "")
+    note = str(metric.value_text or "").strip()
+    return f"{value}（{note}）" if note else value
+
+
 def _chart_integer_text(value: int | None) -> str:
     return _integer_text(value) if value is not None else "—（未提供）"
 
@@ -6310,7 +6534,11 @@ def _report_evidence_text(report: StockResearchReportDTO) -> str:
     if report.shared_daily_features:
         for key in ("MA20", "MA60"):
             relation, value, reason = _shared_ma_observation(report, key)
-            facts.append(f"收盤{relation} {key} {_decimal_text(value)}" if relation else f"{key} 尚無法判讀（{reason}）")
+            facts.append(
+                f"收盤{relation} {key} {_chart_moving_average_text(value)}"
+                if relation
+                else f"{key} 尚無法判讀（{reason}）"
+            )
         return "；".join(facts)
     if report.technical is not None:
         metrics = {metric.key: metric.value for metric in report.technical.indicators}
@@ -6319,9 +6547,9 @@ def _report_evidence_text(report: StockResearchReportDTO) -> str:
             if value is not None:
                 if report.technical.data_date == point.data_date:
                     relation = "高於" if point.close_price > value else "低於" if point.close_price < value else "等於"
-                    facts.append(f"收盤{relation} {key} {_decimal_text(value)}")
+                    facts.append(f"收盤{relation} {key} {_chart_moving_average_text(value)}")
                 else:
-                    facts.append(f"{key} {_decimal_text(value)}（{report.technical.data_date}；日期不同，不直接比較）")
+                    facts.append(f"{key} {_chart_moving_average_text(value)}（{report.technical.data_date}；日期不同，不直接比較）")
     return "；".join(facts[:3])
 
 

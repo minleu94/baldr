@@ -606,12 +606,16 @@ def test_scheduled_status_maturity_chart_shows_each_valid_horizon_separately() -
     assert "本次有界摘要（非完整歷史）" in distribution._title.text()
     assert "綠色就緒、黃色待成熟、灰色缺失" in distribution._legend.accessibleName()
     assert "不代表績效或交易訊號" in distribution._legend.accessibleName()
+    assert "font-size: 9pt" in distribution._legend.styleSheet()
     count_labels = {
         row.findChild(QLabel, "maturityCounts_5d").text(): row
         for row in distribution._rows
         if row.findChild(QLabel, "maturityCounts_5d") is not None
     }
     assert "2 / 5 / 1" in count_labels
+    counts_label = count_labels["2 / 5 / 1"].findChild(QLabel, "maturityCounts_5d")
+    assert counts_label is not None
+    assert "font-size: 9pt" in counts_label.styleSheet()
     assert "4 / 0 / 3" in [
         row.findChild(QLabel, "maturityCounts_20d").text()
         for row in distribution._rows

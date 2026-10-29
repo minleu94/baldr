@@ -431,10 +431,10 @@ def test_smart_money_summary_titles_have_font_glyphs_and_natural_height(
     view = SmartMoneyFlowView(MagicMock())
     try:
         expected_titles = {
-            "lbl_regime": "市場趨勢",
-            "lbl_heat": "熱度",
-            "lbl_bull_bear": "多空個股數",
-            "lbl_abnormal": "異常警示",
+            "lbl_regime": "主力訊號方向",
+            "lbl_heat": "偏多訊號占比",
+            "lbl_bull_bear": "多空訊號家數",
+            "lbl_abnormal": "異常訊號數",
         }
         for key, expected_title in expected_titles.items():
             card = getattr(view.summary_strip, key)
@@ -505,15 +505,25 @@ def test_smart_money_reflows_and_keeps_each_table_readable(
     assert view.splitter.orientation() == expected_orientation
     assert view.scanner_table.minimumWidth() == 0
     assert view.page_scroll_area.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
-    assert view.summary_scroll_area.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
-    assert view.controls_scroll_area.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
-    assert view.summary_scroll_area.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Minimum
-    assert view.controls_scroll_area.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Minimum
-    if size[0] < 700:
-        if view.summary_strip.minimumWidth() > view.summary_scroll_area.viewport().width():
-            assert view.summary_scroll_area.horizontalScrollBar().maximum() > 0
-        if view.controls_scroll_area.widget().minimumWidth() > view.controls_scroll_area.viewport().width():
-            assert view.controls_scroll_area.horizontalScrollBar().maximum() > 0
+    expected_columns = (
+        4 if view.summary_strip.width() >= 1080
+        else 2 if view.summary_strip.width() >= 420
+        else 1
+    )
+    assert view.summary_strip._summary_column_count == expected_columns
+    expected_control_mode = (
+        "wide" if view.width() >= 1450
+        else "medium" if view.width() >= 1050
+        else "compact"
+    )
+    assert view._control_layout_mode == expected_control_mode
+    control_rect = view.control_widget.rect()
+    for control in view._control_layout_widgets:
+        geometry = control.geometry()
+        assert geometry.left() >= 0
+        assert geometry.right() <= control_rect.right()
+        assert geometry.top() >= 0
+        assert geometry.bottom() <= control_rect.bottom()
     if size[1] < 600:
         assert view.page_scroll_area.verticalScrollBar().maximum() > 0
 

@@ -11,7 +11,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel
 
 from app_module.dtos.decision_continuity_dtos import (
     ACTION_ACCEPTED,
@@ -159,6 +159,13 @@ def test_view_preserves_full_original_and_emits_only_selected_saved_entry():
     view = ResearchTimelineView(
         _Reader(ResearchTimelineReadResult((report, manual))),
     )
+    controls_group = view.findChild(QGroupBox, "researchTimelineSearchControls")
+    assert controls_group is not None
+    assert controls_group.title() == "查找已保存研究紀錄"
+    entries_heading = view.findChild(QLabel, "researchTimelineEntriesHeading")
+    detail_heading = view.findChild(QLabel, "researchTimelineDetailHeading")
+    assert entries_heading is not None and entries_heading.text() == "研究紀錄清單"
+    assert detail_heading is not None and detail_heading.text() == "所選紀錄與延伸操作"
     _wait(application, lambda: view._entries == (report, manual) and _timeline_idle(view))
 
     assert view.original_text.toPlainText() == original

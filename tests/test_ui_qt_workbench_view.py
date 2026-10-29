@@ -1497,8 +1497,12 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     view.advice_recommendation_table.setCurrentIndex(
         view.advice_recommendation_model.index(0, 0)
     )
+    assert "主要理由／限制" in view.advice_selection_card.text()
+    assert "證據狀態" in view.advice_selection_card.text()
+    assert "執行限制" in view.advice_selection_card.text()
+    assert "策略版本說明（選填；缺漏不阻擋 Advice）" in view.advice_selection_card.text()
     assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
-    assert "evidence_quality_missing" in view.advice_selection_card.text()
+    assert "缺少合格證據" in view.advice_selection_card.text()
     assert "證據成熟度：證據不足（原始值：insufficient）" in view.advice_selection_card.text()
     assert "決策信心不可用" in view.advice_selection_card.text()
     assert "證據層級" not in view.advice_selection_card.text()
@@ -1622,8 +1626,8 @@ def test_workbench_advice_quick_read_separates_policy_restrictions_from_source_e
     )
     assert "不能據此推定沒有反證或風險" not in model.data(quick_index, Qt.ToolTipRole)
     view.advice_recommendation_table.setCurrentIndex(model.index(0, 0))
-    assert "Advice 原始理由（含資格限制）" in view.advice_selection_card.text()
-    assert "保存來源逐股證據：Why Not：結果=未通過" in view.advice_selection_card.text()
+    assert "主要理由／限制" in view.advice_selection_card.text()
+    assert "保存來源逐股證據\n• Why Not：結果=未通過" in view.advice_selection_card.text()
     assert model.data(risk_index) == "持倉限制待覆核（另 1 項）"
     assert model.data(status_index) == (
         "部分資料｜證據成熟度：未知／未對齊｜流動性 Gate：未知｜成交：未知｜資料日：2026-07-03"
@@ -1837,7 +1841,7 @@ def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknow
     assert "策略持有期間：swing" in detail_text
     assert "資料日：2026-07-06" in detail_text
     assert "來源追溯：fixture:advice" in detail_text
-    assert "保存來源逐股證據：篩選：階段=legacy:technical_gate" in view.advice_selection_card.text()
+    assert "保存來源逐股證據\n• 篩選：階段=legacy:technical_gate" in view.advice_selection_card.text()
     assert "保存來源逐股證據：篩選：階段=legacy:technical_gate" in view.advice_selection_card.toolTip()
 
 

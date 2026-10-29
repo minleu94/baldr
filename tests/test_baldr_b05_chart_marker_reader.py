@@ -8,7 +8,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QTableView
+from PySide6.QtWidgets import QToolButton
 
 from app_module.decision_outcome_journey import JsonlJournalReadAdapter, JsonlPortfolioTradeReadAdapter
 from app_module.dtos.decision_continuity_dtos import DecisionIdentity
@@ -74,7 +74,8 @@ def assert_visible(reader, request):
         view._active_code = "2330"
         view._render_price(_report(*POINTS, context=CONTEXT))
         assert len(view._chart_widget._markers) == 1
-        assert view.findChild(QTableView, "stockResearchChartMarkerTable").model().rowCount() == 1
+        marker_toggle = view.findChild(QToolButton, "stockResearchChartMarkerDetailsToggle")
+        assert marker_toggle is not None and "1" in marker_toggle.text()
         view._chart_widget._select_point(0)
         assert view._chart_widget._markers[0].label in view._chart_widget.toolTip()
         assert not view._chart_widget.grab().isNull()

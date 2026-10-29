@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTableView, QMessageBox, QLineEdit,
     QTabWidget, QSplitter, QComboBox, QHeaderView, QFrame, QSizePolicy,
+    QGridLayout,
 )
 from PySide6.QtCore import (
     QEvent, QItemSelectionModel, QModelIndex, QSortFilterProxyModel, QTimer, Qt,
@@ -194,45 +195,33 @@ class SmartMoneyFlowView(QWidget):
 
         # --- Top: Summary Strip ---
         self.summary_strip = SummaryStrip(self)
-        self.summary_scroll_area = create_scroll_area(
-            self.summary_strip,
-            object_name="smartMoneySummaryScrollArea",
-            horizontal_scroll=True,
-        )
-        self.summary_scroll_area.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum,
-        )
-        self.summary_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        main_layout.addWidget(self.summary_scroll_area)
+        main_layout.addWidget(self.summary_strip)
 
         # --- Controls Bar ---
         control_widget = QWidget()
+        self.control_widget = control_widget
         control_widget.setStyleSheet("background-color: #0f172a; border-bottom: 1px solid #1e293b;")
-        control_layout = QHBoxLayout(control_widget)
-        control_layout.setContentsMargins(20, 12, 20, 12)
+        control_layout = QGridLayout(control_widget)
+        self.control_layout = control_layout
+        control_layout.setContentsMargins(14, 8, 14, 8)
+        control_layout.setHorizontalSpacing(8)
+        control_layout.setVerticalSpacing(6)
 
-        title_lbl = QLabel("主力流向掃描器 (SMART MONEY FLOW)")
-        title_lbl.setStyleSheet("color: #f1f5f9; font-weight: bold; font-size: 14px; letter-spacing: 0.5px;")
-        control_layout.addWidget(title_lbl)
+        self.control_title_label = QLabel("主力流向掃描器")
+        self.control_title_label.setStyleSheet(
+            "color: #f1f5f9; font-weight: bold; font-size: 14px;"
+        )
 
-        info_btn = InfoButton("smart_money_flow", self)
-        control_layout.addWidget(info_btn)
+        self.control_info_button = InfoButton("smart_money_flow", self)
 
-        control_layout.addStretch()
-
-        # 週期選擇
-        control_layout.addWidget(QLabel("掃描週期:", styleSheet="color: #94a3b8; font-weight: bold; margin-right: 4px;"))
+        self.period_label = QLabel("週期")
+        self.period_label.setStyleSheet("color: #94a3b8; font-weight: bold;")
         self.period_combo = QComboBox()
         self.period_combo.addItems(["日線 (DAY)", "週線 (WEEK)", "月線 (MONTH)"])
         self.period_combo.setCurrentIndex(1)
         self.period_combo.currentIndexChanged.connect(self._on_period_changed)
-        control_layout.addWidget(self.period_combo)
-
-        # 顯示範圍
-        control_layout.addWidget(QLabel(" 顯示範圍:", styleSheet="color: #94a3b8; font-weight: bold; margin-right: 4px;"))
+        self.scope_label = QLabel("顯示範圍")
+        self.scope_label.setStyleSheet("color: #94a3b8; font-weight: bold;")
         self.scope_combo = QComboBox()
         self.scope_combo.addItem("Top / Bottom 50", "top_bottom_50")
         self.scope_combo.addItem("Top 50 買超", "top50")
@@ -240,8 +229,8 @@ class SmartMoneyFlowView(QWidget):
         self.scope_combo.addItem("全部", "all")
         self.scope_combo.setToolTip("主表預設顯示買超前 50 與賣超前 50；Summary Strip 仍以全市場訊號為統計母體。")
         self.scope_combo.currentIndexChanged.connect(lambda _idx=False: self._on_scope_changed())
-        control_layout.addWidget(self.scope_combo)
-        control_layout.addWidget(QLabel("搜尋:", styleSheet="color: #94a3b8; font-weight: bold;"))
+        self.search_label = QLabel("搜尋")
+        self.search_label.setStyleSheet("color: #94a3b8; font-weight: bold;")
         self.scanner_search_input = QLineEdit()
         self.scanner_search_input.setPlaceholderText("代號或名稱")
         self.scanner_search_input.setAccessibleName("搜尋目前主表")
@@ -252,9 +241,9 @@ class SmartMoneyFlowView(QWidget):
             "只搜尋目前主表範圍內的股票代號或名稱；不會搜尋全市場或重新讀取資料。"
         )
         self.scanner_search_input.setClearButtonEnabled(True)
-        self.scanner_search_input.setMaximumWidth(220)
+        self.scanner_search_input.setMinimumWidth(110)
+        self.scanner_search_input.setMaximumWidth(190)
         self.scanner_search_input.textChanged.connect(self._on_scanner_search_changed)
-        control_layout.addWidget(self.scanner_search_input)
         self.scanner_row_count_label = QLabel("尚未載入")
         self.scanner_row_count_label.setAccessibleName("主表顯示筆數")
         self.scanner_row_count_label.setAccessibleDescription(
@@ -264,7 +253,6 @@ class SmartMoneyFlowView(QWidget):
             "只計算目前所選主表範圍與搜尋條件的符合列，不代表市場完整母體。"
         )
         self.scanner_row_count_label.setStyleSheet("color: #94a3b8; margin-left: 4px;")
-        control_layout.addWidget(self.scanner_row_count_label)
         self.scanner_quality_label = QLabel("品質：尚未載入")
         self.scanner_quality_label.setAccessibleName("主表顯示列品質分類筆數")
         self.scanner_quality_label.setAccessibleDescription(
@@ -277,16 +265,15 @@ class SmartMoneyFlowView(QWidget):
             "這些數字不代表市場完整母體。"
         )
         self.scanner_quality_label.setStyleSheet("color: #94a3b8; margin-left: 6px;")
-        control_layout.addWidget(self.scanner_quality_label)
+        self.scanner_quality_label.setWordWrap(True)
+        self.scanner_quality_label.setMaximumWidth(240)
 
-        # Sparkline 圖表類型
-        control_layout.addWidget(QLabel(" 趨勢圖樣:", styleSheet="color: #94a3b8; font-weight: bold; margin-right: 4px;"))
+        self.chart_label = QLabel("趨勢圖")
+        self.chart_label.setStyleSheet("color: #94a3b8; font-weight: bold;")
         self.chart_combo = QComboBox()
         self.chart_combo.addItems(["直方 (BAR)", "折線 (LINE)", "面積 (AREA)"])
         self.chart_combo.setCurrentIndex(0)
         self.chart_combo.currentIndexChanged.connect(self._on_chart_changed)
-        control_layout.addWidget(self.chart_combo)
-
         # 按鈕美化
         self.refresh_btn = QPushButton("開始掃描")
         self.refresh_btn.setStyleSheet("""
@@ -296,7 +283,7 @@ class SmartMoneyFlowView(QWidget):
                 font-weight: bold;
                 border: none;
                 border-radius: 6px;
-                padding: 6px 18px;
+                padding: 5px 10px;
             }
             QPushButton:hover {
                 background-color: #3b82f6;
@@ -306,7 +293,7 @@ class SmartMoneyFlowView(QWidget):
             }
         """)
         self.refresh_btn.clicked.connect(self._refresh_data)
-        control_layout.addWidget(self.refresh_btn)
+        self.refresh_btn.setAccessibleName("依目前週期與範圍開始掃描")
 
         self.load_status_label = QLabel("就緒")
         self.load_status_label.setAccessibleName("主力掃描狀態")
@@ -326,7 +313,7 @@ class SmartMoneyFlowView(QWidget):
                     font-weight: bold;
                     border: none;
                     border-radius: 6px;
-                    padding: 6px 18px;
+                    padding: 5px 10px;
                 }
                 QPushButton:hover {
                     background-color: #10b981;
@@ -336,22 +323,26 @@ class SmartMoneyFlowView(QWidget):
                 }
             """)
             self.add_watchlist_btn.clicked.connect(self._add_to_watchlist)
-            control_layout.addWidget(self.add_watchlist_btn)
-
-        self.controls_scroll_area = create_scroll_area(
-            control_widget,
-            object_name="smartMoneyControlsScrollArea",
-            horizontal_scroll=True,
-        )
-        self.controls_scroll_area.setAccessibleName("主力資金流向控制列水平捲動區")
-        self.controls_scroll_area.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum,
-        )
-        self.controls_scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        main_layout.addWidget(self.controls_scroll_area)
+        self._control_layout_widgets = [
+            self.control_title_label,
+            self.control_info_button,
+            self.period_label,
+            self.period_combo,
+            self.scope_label,
+            self.scope_combo,
+            self.search_label,
+            self.scanner_search_input,
+            self.scanner_row_count_label,
+            self.scanner_quality_label,
+            self.chart_label,
+            self.chart_combo,
+            self.refresh_btn,
+        ]
+        if self.watchlist_service:
+            self._control_layout_widgets.append(self.add_watchlist_btn)
+        self._control_layout_mode: str | None = None
+        self._apply_control_layout(force=True)
+        main_layout.addWidget(control_widget)
         main_layout.addWidget(self.load_status_label)
 
         # --- Body: Tabs ---
@@ -601,6 +592,7 @@ class SmartMoneyFlowView(QWidget):
         return super().eventFilter(watched, event)
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
+        self._apply_control_layout()
         if not hasattr(self, "splitter"):
             return
         narrow = self.width() < self.RESPONSIVE_BREAKPOINT
@@ -611,6 +603,71 @@ class SmartMoneyFlowView(QWidget):
         )
         self.splitter.setSizes([560, 360] if narrow else [980, 360])
         self._smart_money_narrow = narrow
+
+    def _apply_control_layout(self, *, force: bool = False) -> None:
+        layout = getattr(self, "control_layout", None)
+        if layout is None or not hasattr(self, "control_title_label"):
+            return
+        width = self.width()
+        mode = "wide" if width >= 1450 else "medium" if width >= 1050 else "compact"
+        if not force and mode == self._control_layout_mode:
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget() is not None:
+                layout.removeWidget(item.widget())
+        for column in range(14):
+            layout.setColumnStretch(column, 0)
+
+        title = self.control_title_label
+        info = self.control_info_button
+        period_label, period = self.period_label, self.period_combo
+        scope_label, scope = self.scope_label, self.scope_combo
+        search_label, search = self.search_label, self.scanner_search_input
+        row_count, quality = self.scanner_row_count_label, self.scanner_quality_label
+        chart_label, chart = self.chart_label, self.chart_combo
+        refresh = self.refresh_btn
+        watchlist = getattr(self, "add_watchlist_btn", None)
+
+        if mode == "wide":
+            row = 0
+            controls = (
+                title, info, period_label, period, scope_label, scope,
+                search_label, search, row_count, quality,
+                chart_label, chart, refresh, watchlist,
+            )
+            column = 0
+            for widget in controls:
+                if widget is not None:
+                    layout.addWidget(widget, row, column)
+                    column += 1
+        elif mode == "medium":
+            layout.addWidget(title, 0, 0)
+            layout.addWidget(info, 0, 1)
+            layout.setColumnStretch(2, 1)
+            layout.addWidget(refresh, 0, 3)
+            if watchlist is not None:
+                layout.addWidget(watchlist, 0, 4)
+            for column, widget in enumerate(
+                (period_label, period, scope_label, scope, search_label,
+                 search, chart_label, chart, row_count, quality)
+            ):
+                layout.addWidget(widget, 1, column)
+        else:
+            layout.addWidget(title, 0, 0)
+            layout.addWidget(info, 0, 1)
+            layout.setColumnStretch(2, 1)
+            layout.addWidget(refresh, 0, 3)
+            if watchlist is not None:
+                layout.addWidget(watchlist, 0, 4)
+            for column, widget in enumerate(
+                (period_label, period, scope_label, scope, chart_label, chart)
+            ):
+                layout.addWidget(widget, 1, column)
+            for column, widget in enumerate((search_label, search, row_count, quality)):
+                layout.addWidget(widget, 2, column)
+
+        self._control_layout_mode = mode
 
     def _get_current_period_val(self) -> str:
         idx = self.period_combo.currentIndex()

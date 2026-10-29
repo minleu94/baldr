@@ -1861,6 +1861,41 @@ def test_topic_details_default_to_cards_and_card_actions_select_records():
     view.close()
 
 
+def test_member_cards_reflow_by_available_width_and_keep_page_members():
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1280, 900)
+    view.set_snapshot(_classification_snapshot(member_count=50))
+    _select_theme(view, "科技鏈", "AI")
+    view.show()
+    application.processEvents()
+
+    assert view.member_table.rowCount() == 50
+    assert view.member_cards_layout.count() == 50
+
+    view.member_cards_widget.resize(550, 500)
+    view._arrange_member_cards()
+    positions = [view.member_cards_layout.getItemPosition(index) for index in range(50)]
+    assert max(column for _row, column, _row_span, _column_span in positions) == 0
+    assert max(row for row, _column, _row_span, _column_span in positions) == 49
+
+    view.member_cards_widget.resize(760, 500)
+    view._arrange_member_cards()
+    positions = [view.member_cards_layout.getItemPosition(index) for index in range(50)]
+    assert max(column for _row, column, _row_span, _column_span in positions) == 1
+    assert max(row for row, _column, _row_span, _column_span in positions) == 24
+
+    view.member_cards_widget.resize(1100, 500)
+    view._arrange_member_cards()
+    positions = [view.member_cards_layout.getItemPosition(index) for index in range(50)]
+    assert max(column for _row, column, _row_span, _column_span in positions) == 2
+    assert max(row for row, _column, _row_span, _column_span in positions) == 16
+    assert len(view._member_card_buttons) == 50
+    assert view.member_page_status_label.text().startswith("顯示 1–50 / 50 位成員")
+    view.shutdown()
+    view.close()
+
+
 def _render_after_invalid_row_injection(
     view: IndustryThemeMapView,
     snapshot: ThemeResearchSnapshot,

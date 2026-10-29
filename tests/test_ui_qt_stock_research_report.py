@@ -618,7 +618,8 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     app.processEvents()
     chart = view.findChild(StockPriceChartWidget)
     assert chart is not None
-    assert chart.accessibleName() == "個股收盤價走勢圖"
+    assert chart.minimumHeight() == chart.maximumHeight() == 360
+    assert chart.accessibleName() == "個股價格與均線圖"
     assert "2026-09-08" in chart.toolTip()
     chart_range = view.findChild(QLabel, "stockResearchPriceChartRange")
     assert chart_range is not None
@@ -627,10 +628,11 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     price_table = view.findChild(QTableView, "stockResearchPriceHistoryTable")
     assert price_table is not None
     assert price_table.model() is not None
+    assert len(view.tabs.widget(1).findChildren(QTableView)) == 1
     assert price_table.model().rowCount() == 1
-    assert price_table.model().columnCount() == 8
+    assert price_table.model().columnCount() == 6
     assert price_table.model().index(0, 0).data() == "2026-09-08"
-    assert price_table.model().index(0, 4).data() == "100"
+    assert price_table.model().index(0, 1).data() == "100"
     assert chart.grab().isNull() is False
     view.tabs.setCurrentIndex(0)
     view.resize(1280, 760)
@@ -1273,11 +1275,16 @@ def _price_page_table(view: StockResearchReportView) -> QTableView | None:
     layout = view._page_layouts["price"]
     for index in range(layout.count()):
         widget = layout.itemAt(index).widget()
+        if widget is None:
+            continue
         if (
             isinstance(widget, QTableView)
             and widget.objectName() == "stockResearchPriceHistoryTable"
         ):
             return widget
+        table = widget.findChild(QTableView, "stockResearchPriceHistoryTable")
+        if table is not None:
+            return table
     return None
 
 
@@ -1314,14 +1321,17 @@ def test_price_projection_drives_exact_table_and_native_chart_at_cutoff() -> Non
     assert table is not None and table.model() is not None
     model = table.model()
     assert model.rowCount() == 2
-    assert model.columnCount() == 8
+    assert model.columnCount() == 6
     assert model.index(0, 0).data() == "2026-09-07"
-    assert model.index(0, 1).data() == "11.123456789123456789"
-    assert model.index(0, 2).data() == "11.987654321987654321"
-    assert model.index(0, 3).data() == "11.111111111111111111"
-    assert model.index(0, 4).data() == "11.456789123456789123"
-    assert model.index(0, 6).data() == "9,876,543,211"
-    assert model.index(0, 7).data() == "123,456,790.123456789"
+    assert model.index(0, 1).data() == "11.456789123456789123"
+    assert model.index(0, 2).data() == "—（未提供）"
+    assert model.index(0, 3).data() == "—（未提供）"
+    assert model.index(0, 5).data() == "9,876,543,211"
+    exact_details = model.index(0, 1).data(Qt.ToolTipRole)
+    assert "開 11.123456789123456789" in exact_details
+    assert "高 11.987654321987654321" in exact_details
+    assert "低 11.111111111111111111" in exact_details
+    assert "成交額 123,456,790.123456789" in exact_details
     assert model.index(1, 0).data() == "2026-09-06"
 
     tooltip = chart._point_tooltip(chart._points[-1])
@@ -1388,7 +1398,7 @@ def test_native_chart_failure_keeps_projected_exact_price_table(
     table = _price_page_table(view)
     assert table is not None and table.model() is not None
     assert table.model().rowCount() == 1
-    assert table.model().index(0, 4).data() == "10.456789123456789123"
+    assert table.model().index(0, 1).data() == "10.456789123456789123"
     view.close()
 
 

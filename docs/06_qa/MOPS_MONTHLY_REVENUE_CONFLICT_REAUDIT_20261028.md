@@ -187,6 +187,14 @@ Recovery receipt：`C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5c
 
 ## 2026-10-29 市場標籤裁決與最終剩餘缺口
 
+### 2014–2019 官方明細年度／市場抽樣補驗（2026-10-29）
+
+為補上舊版 QA 所列的年度值頁抽查缺口，從 2014–2019 SII／OTC F22 harvest 中每年各選一筆上市、一筆上櫃明細，共 **12 頁**；以 Scrapling `Fetcher.get` 普通 GET 取得。11 頁首取 HTTP 200，2018／9960 首次逾時後只重試一次並 HTTP 200；沒有使用 Remote Desktop、代理或 challenge 處理。12 頁都核對公司名稱／代碼、民國期別、單位「新台幣仟元」及「本月」欄；**12/12 本月值與固定 MOPS snapshot 完全相同**，原始 HTML SHA-256 讀回一致，無拒絕頁或數值差異。
+
+樣本：1762／2014-05=94,471、6175／2014-10=154,956；1707／2015-02=463,368、3581／2015-02=43,491；2547／2016-11=338,413、3594／2016-02=86,094；2477／2017-06=277,316、3272／2017-04=261,784；1516／2018-12=30,343、9960／2018-11=44,574；2029／2019-04=892,533、4580／2019-06=171,611（單位均為新台幣仟元）。原件、逐列 SHA／manifest 與 readback receipt 保存在 repo ignored scratch：`.tmp_mops_historical_spotcheck_2014_2019/`。
+
+此抽樣補足 2014–2019 的 F22 公司／期別、單位與目前頁面值解析 sanity check；不外推為 108,360 列逐頁驗證，也不證明目前明細頁是原公告當時版本。固定 snapshot 與正式 DB 全列同鍵數值相等、該範圍 108,072 `observed`／288 `degraded` 的 guarded recovery 已另行完成；剩餘 288 列沒有已保存的精確公告事件，不能由值頁抽樣替代公告時間證據。舊段落記錄的是當時尚未完成抽樣／回填的歷史狀態，現況以本補驗及本節後續 guarded apply／readback 收據為準。
+
 後續 Scrapling ordinary `Fetcher.get` 成功取得 5236 凌陽創新與 8908 欣雄的 2014-04 MOPS F22 明細原始 HTML。兩頁均為 HTTP 200，明示「上市公司」、單位「新台幣仟元」；本月值分別為 89,869／490,546，與同鍵固定 snapshot、正式 SQLite 數值完全相同。保存原件及 manifest：`C:\Users\archi\.codex\visualizations\2026\10\26\01a176a6-e5cf-7a92-8d1e-e77dc2eba235\mops_market_label_adjudication_5236_8908_20261029\raw_f22_samples\`。兩個代碼的唯一 F22 事件鍵在 2014-04..2026-04 共 145 期／檔，事件市場均為 `sii`；靜態數值 CSV 的 market 欄卻標成 `tpex`。抽查頁與 event key 支持這是市場 metadata mismatch，不是公司／期別鍵不明，因此不再因該欄位不同而排除公告 mapping。
 
 將 5236／8908 的 290 個唯一 `(stock_code, period)` mapping 候選從三個分段整合為一個 partial-scope batch。候選值與正式同版 SQLite 逐列相等，事件鍵唯一，公告皆不晚於 2026-06-18 snapshot 可得日，0 diagnostics／0 conflicts／0 unmatched，`formal_apply_eligible=true`。正式 apply 後兩家公司各 145 列 canonical target version 均為 `observed`，公告日期範圍分別為 2014-05-09..2026-05-06 及 2014-05-09..2026-05-08；兩組原營收值未變。

@@ -107,7 +107,11 @@ def _requires_disclosure_window_check(
     if (
         override.source == "mops.monthly_revenue_announcement"
         and override.target_source_version
-        == "mops-static-snapshot-monthly-revenue-2026-06-16"
+        in {
+            "mops-static-snapshot-monthly-revenue-2026-06-16",
+            "mops-static-snapshot-monthly-revenue-2026-06-16"
+            "|snapshot=mops-static-2026-06-16",
+        }
         and override.available_date.isoformat() == "2026-06-18"
     ):
         return False

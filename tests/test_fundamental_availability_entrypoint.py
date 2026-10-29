@@ -157,6 +157,34 @@ def test_validate_monthly_revenue_availability_file_accepts_pinned_snapshot_capt
     assert result.diagnostics == ()
 
 
+def test_validate_monthly_revenue_availability_file_accepts_pinned_snapshot_writer_version(
+    tmp_path,
+):
+    mapping_file = tmp_path / "monthly_revenue_availability.csv"
+    mapping_file.write_text(
+        _FORMAL_HEADER
+        + _formal_csv_row(
+            period="2026-01",
+            as_of_date="2026-01-31",
+            announced_date="2026-04-14",
+            available_date="2026-06-18",
+            source="mops.monthly_revenue_announcement",
+            source_version="mops-t05st01-list-2867-1150414-170038-0caeb29085e28dd3",
+            target_source_version=(
+                "mops-static-snapshot-monthly-revenue-2026-06-16"
+                "|snapshot=mops-static-2026-06-16"
+            ),
+        ),
+        encoding="utf-8-sig",
+    )
+
+    result = validate_monthly_revenue_availability_file(mapping_file)
+
+    assert result.valid is True
+    assert result.accepted_count == 1
+    assert result.diagnostics == ()
+
+
 def test_validate_monthly_revenue_availability_file_keeps_other_snapshot_targets_late_guard(
     tmp_path,
 ):

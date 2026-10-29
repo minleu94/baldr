@@ -223,3 +223,93 @@ Gate 1 Advice 原本把主要理由、成熟度、信心、流動性、可成交
 針對本輪改動的 Workbench、Recommendation 來源詳情、Daily Market 查詢操作與 layout fixture，使用專案 `.venv` 在隔離 basetemp 執行 focused 測試：**79 passed**；修改 Python source／test `py_compile` 通過；3 個產品 UI source scoped mypy **0 issues**，`git diff --check` 通過。修改之 layout QA script 在單檔 mypy 下回報既有檔案內 86 個 typing diagnostics（包含多處 QWidget／QApplication 名稱與 optional 型別），不將該 validator 腳本記為 mypy 通過。
 
 另執行五個受影響測試檔的廣泛回歸：**149 passed、14 failed、5 errors**。5 個 setup errors 及多個寫檔失敗指向 Windows sandbox 的系統 Temp 解析／原子替換／hardlink 權限；另有候選 inventory 測試在 sandbox 指定的 learning root 回報 unsafe-or-unreadable，未能驗證其預期樣本。此結果不是整檔通過；相關完整保存／來源行為尚需在可讀寫的受控 Windows Job 環境重跑。更新頁既有 98／25 測試收據另見第十六輪，不代表本次 5 檔廣泛回歸全綠。全九工作區稽核、原生 GUI 與 Owner UAT 仍未完成。
+
+## 2026-10-29 第二十輪：Gate 1 首頁閱讀順序與全工作區截圖盤點
+
+使用者回報 Advice、來源詳情與研究狀態散落在多個區塊。重排 Workbench 首頁為每日結論／資料日／候選摘要 → 警示與待處理摘要 → Advice → 一般研究捷徑 → 行動與持倉管理。這使資料脈絡先於建議，Advice 的同源捷徑也更明確標示「查看本次來源與篩選排除」；每日詳情入口改為「展開本次來源、篩選與排除」。保存、來源驗證及策略計算均未更動。
+
+- Workbench 首頁與 Advice 定向測試：**22 passed**；含首頁 widget 順序、每日來源按鈕名稱、Advice 詳情契約與行動卡三種寬度重排。
+- 真實 MainWindow Workbench 稽核，1400×800／scale 1.0：**13 子頁、0 failures／0 coverage gaps**；今日行動中心四張卡在桌面寬度排成一列、中等寬度兩欄、窄版一欄；預設桌面內容高度由 2211 px 降到 2077 px（減少 134 px）。重排改善閱讀順序並縮短次要操作區，但首頁仍約為視窗高度的 3 倍，長頁問題未解決。
+- 檢視九個工作區既有 1400×800 offscreen 截圖：常見待整理項目包括空資料表佔據大片空白、同一頁多組主次不明的動作入口、資料來源與操作步驟混排。這是視覺初步盤點，不代表九個工作區已完成重新設計；後續優先逐頁整理 Recommendation 的空結果狀態與操作分組，再處理 Portfolio 空表與 Backtest 的設定／結果分區。
+- `scripts/qa_validate_ui_layout.py` 在系統 Python 初次啟動缺少 pandas；改用專案 `.venv` 重跑成功。新報告位於 ignored `.pytest-owned-temp/ui_audit_workbench_round25_20261029/`。offscreen 幾何與截圖不能代替原生 GUI 或 Owner UAT。`git diff --check` 通過。
+
+## 2026-10-29 第二十一輪：Recommendation 結果表空狀態
+
+Recommendation 結果表原本在零列時只留下空白表面，上方狀態文字雖有原因，使用者仍難看出下方空區域的用途。現在空表格中央會顯示「目前沒有可顯示的列」及下一步提示，文字疊在既有表格內、不額外占用版面；有推薦列或同次篩選紀錄時提示隨列數自動消失。明確保留「未執行、有效空結果、歷史保存結果無推薦列」由上方摘要區分，不新增或推定結果狀態。
+
+- `tests/test_ui_qt_recommendation_layout.py`＋`tests/test_ui_qt_recommendation_exact_saved_entry.py`：使用預設系統 Temp 首跑為 **28 passed、1 failed**，失敗發生在空結果 fixture 的 artifact `os.rename`；改以 repo ignored `.pytest-owned-temp/pytest_rec_ui_basetemp_round21/` 為 basetemp 後重跑 **29 passed**。空表提示模型切換定向測試亦在完整套件中。
+- Recommendation MainWindow offscreen 稽核：**46 子頁、0 failures／0 coverage gaps**，scale 1.0／1400×800；報告 `.pytest-owned-temp/ui_audit_recommendation_round21_20261029/`。另外檢視空表 viewport 截圖 `.pytest-owned-temp/recommendation_empty_state_viewport.png`，可讀提示顯示於原表格中間，無額外版面高度。
+- 此次只改結果表空狀態呈現，未改推薦計算、保存或來源契約。完整互動視覺與 Owner UAT 仍待原生 GUI 核對；全工作區操作分組、空狀態和頁高調整仍在盤點中。
+
+## 2026-10-29 第二十二輪：Portfolio 首次讀取時收起空持倉表
+
+Portfolio offscreen 首頁在背景持倉讀取完成前先顯示了可伸展、但尚無列的空表，形成大片無用途的空白；畫面其他狀態已表示資料尚未載入。現在持倉表在建立時先收起，待 `_load_positions_table` 取得有持倉 DTO 後才顯示；零筆或讀取失敗時維持收起，避免空白表切斷首屏內容。資料、帳本與 Advice 邏輯未變。
+
+- `tests/test_ui_qt_portfolio_view.py`：**110 passed、1 failed**。失敗是既有 `test_stress_splitter_default_keeps_vertical_ratio_and_position_selection` 比例讀值 0.303 未達 0.35；單獨重跑仍相同。該測試建構同步讀取並在顯示前已完成持倉表載入，與「首次背景讀取時隱藏」變更無關；不列整檔通過。
+- Portfolio MainWindow offscreen 稽核，1400×800／scale 1.0：`summary.status=passed`，13 頁、0 errors／0 coverage gaps；截圖確認首次資料尚未抵達時空表不再佔據版面。報告在 ignored `.pytest-owned-temp/ui_audit_portfolio_round22_20261029/`。
+- 修改 Python source／test `py_compile`：通過；`tests/test_ui_qt_update_view_workbench.py`：**98 passed**。Update validator：**25 passed／0 failed／4 skipped**；首次預設輸出目錄因 `PermissionError` 不可寫，改用 ignored `.pytest-owned-temp/update_tab_round22/` 後通過，且實際下載／合併案例仍按腳本設計略過。
+- 修補後 Portfolio MainWindow offscreen 稽核，1400×800／scale 1.0：**13 頁、0 errors／0 coverage gaps**；重看首頁截圖，首次讀取期間原 190 px 空表已收起。完整 `tests/test_ui_qt_portfolio_view.py` 為 **110 passed、1 failed**；單獨重跑失敗的既有 stress splitter 比例斷言仍讀得 0.303，門檻 0.35，該測試同步載入 DTO 後才開窗，與首次背景讀取收表無關。
+- Portfolio view scoped mypy：**1 source、0 issues**。指定全程式 mypy 未完成：在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因語法錯誤停止。原生 GUI 與 Owner UAT 未執行。此次是 Portfolio 首次載入空白的局部修正，不代表整體 UI 盤點完成。
+
+## 2026-10-29 第二十三輪：窄版 Portfolio 分頁高度隔離
+
+窄版切到「情境壓力」時，QTabWidget 會把未選取的「配置研究封存」內容最小高度（1,212 px）套到整個 splitter；在 390×844 的視窗下，情境頁自身需要 489 px，但 splitter 被撐至 1,768 px，上方健康區比例落到 30%。現在配置研究封存放入可獨立捲動的分頁容器，讓長內容維持可達，但不再支配其他分頁的最小高度；資料與配置研究計算未變。
+
+- `tests/test_ui_qt_portfolio_view.py`：**111 passed**；新增／修正後的窄版 stress splitter 比例及配置研究內部捲動案例通過，持倉選取仍保留。
+- Portfolio compact MainWindow offscreen 稽核，scale 1.0：**13 頁、0 failures／0 coverage gaps**；390×844 情境壓力 split ratio 由 **0.303** 回到 **0.430**，配置研究內容 1,236 px 高時在分頁捲動區可捲動 649 px。報告位於 ignored `.pytest-owned-temp/ui_audit_portfolio_compact_round23_20261029/`。
+- `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。修改 Python source／test `py_compile` 通過，Portfolio view scoped mypy **1 source、0 issues**。
+- 指定全程式 mypy 仍被未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻斷。原生 GUI／Owner UAT 尚未執行；全程式其餘工作區仍需依盤點排序逐步檢視。
+
+## 2026-10-29 第二十四輪：Backtest Registry 窄版篩選與比較操作
+
+Backtest Registry 原先把類型、策略、標籤、刷新狀態、分頁及三個比較動作塞在同一排；在 1400×800 下右側結果區的 Registry viewport 寬 627 px、內容寬 662 px，水平捲動被關閉，造成篩選與按鈕被裁切。現在篩選分為兩列，翻頁與比較動作分列；狀態欄改用可換行剩餘空間。相鄰的 Registry 目的說明原本重複，現只留下升級限制，完整比較範圍及不可補算邊界留在 Registry 自身說明。未改回測、Registry、比較或升級邏輯。
+
+- `tests/test_ui_qt_backtest_product_layout.py`、Registry 分頁用途與窄欄回歸：**13 passed**。`tests/test_ui_qt_run_registry_compare.py` 完整檔案：**26 passed、1 failed**；失敗是基本策略對照測試的 `_basic_pair_worker` 超出測試自身 10 秒等待，單獨重跑仍未收尾；該檔不列全通過。
+- Backtest MainWindow default／compact 首輪合併稽核：**110 頁、0 page errors／0 coverage gaps**；後續 banner 文案更新後，合併 runner 的 compact child 以 3221225477 非正常退出，default 頁面本身 0 error。compact 獨立重跑為 **110 頁、0 failures／0 coverage gaps**。最後截圖確認 Registry 篩選和比較動作不再裁切，內容水平 range 0；報告 `.pytest-owned-temp/ui_audit_backtest_compact_round24_retry/`。
+- 共用 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。三個修改 Python source／test `py_compile` 通過；兩個產品 UI source scoped mypy **0 issues**；`git diff --check` 無空白錯誤。指定全程式 mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇到語法錯誤而停止。原生 GUI／Owner UAT 尚未執行；全程式 UI 盤點仍在進行。
+
+## 2026-10-29 第二十五輪：Registry 初始閱讀高度與選用區
+
+Registry 初次開啟時，逐日訊號、兩個基本策略的對照明細，以及尚未比較前的績效說明都同時佔用垂直閱讀空間，主清單與下一步容易被分隔。現在逐日訊號及基本策略結果／來源改為清楚命名的預設收合區；基本策略操作後會自動展開其結果區。績效摘要與標準化權益只在按下比較後顯示，選擇 run 與讀取保存資料的行為不變。
+
+- `tests/test_ui_qt_run_registry_compare.py` 排除基本策略 worker 逾時案例後：**26 passed、1 deselected**；新增畫面狀態斷言確認結果初始收起、比較後顯示、選用區可展開。該 worker 逾時案例本輪重跑仍超過測試自己的 10 秒等待，不能列為通過。
+- Backtest MainWindow default 尺寸 offscreen 稽核：**110 子頁、0 failures／0 coverage gaps**；輸出位於 ignored `.pytest-owned-temp/ui_audit_backtest_registry_layout_round25/`。本輪只完成 default 尺寸，compact 幾何因 QA runner 的 process lock 權限錯誤未完成。
+- 使用者手冊已補充收合區位置、展開方式與比較結果出現時機。原生 GUI／Owner UAT 尚未執行；其餘 Registry 比較資料契約未改。
+
+## 2026-10-29 第二十六輪：Workbench 行動中心去重與入口分組
+
+Workbench 的每日行動中心在 Dashboard 尚未載入時，四張卡都顯示同一個「重新整理狀態」，標題列另有重新整理及主要按鈕；卡片內的目的地操作又被做成整列寬按鈕，擠壓狀態文字。現在刷新只保留標題列的單一入口，卡片改顯示各自狀態與右側目的地：資料更新、市場總覽、推薦分析、持倉管理；載入完成後頂部主要動作回到建議下一步。沒有改 DTO、工作台刷新或策略邏輯。
+
+- Workbench 今日行動中心與首頁可視頁定向測試：**4 passed**；檢查載入前只有單一刷新入口、四個路由各自明確、卡片按鈕受限為 148 px 並保留 28 px 可點高度，以及桌面至窄版網格重排。
+- Workbench MainWindow default 尺寸 offscreen 稽核：**13 子頁、0 failures／0 coverage gaps**；檢視首頁滾動末端截圖，卡片內容／目的地按鈕左右分區，重複刷新按鈕已移除。整張今日總覽仍是長頁，本輪沒有宣稱已解決全頁捲動量。報告 `.pytest-owned-temp/ui_audit_workbench_actions_round26/`。
+- `tests/test_ui_qt_workbench_home_single_page.py`、`tests/test_ui_qt_workbench_view.py`、`tests/test_workbench_advice_contract.py`：**82 passed**；必要 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**。Update validator：**25 passed／0 failed／4 skipped**。修改 source／test `py_compile` 通過，Workbench view scoped mypy **0 issues**，`git diff --check` 通過。指定全程式 mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因語法錯誤停止。
+- Owner 原生 GUI／UAT 與 Workbench 長頁下一階段盤點仍待完成。
+
+## 2026-10-29 第二十七輪：Workbench 首頁主旅程與延伸區分層
+
+Workbench 原本把「今日優先查看」、額外工作區捷徑、今日行動中心與 Paper 持倉健康一併放在每日來源及 Advice 後方，使用者必須沿同一長頁經過所有區塊。現在每日日期／來源脈絡、警示摘要、狀態計數與 Advice 保留在主閱讀流；「其他工作區捷徑、最近研究與持倉追蹤」收合為單一延伸區，包含原有捷徑、行動狀態、持倉健康；優先事項動作會先展開該區再定位原件。資料和回呼不變。
+
+- Workbench 首頁、Advice 與 guided navigation 回歸：`tests/test_ui_qt_workbench_home_single_page.py`、`tests/test_ui_qt_workbench_view.py`、`tests/test_ui_qt_v5_workbench_guided.py`、`tests/test_workbench_advice_contract.py`：**87 passed**。候選原始理由只在其逐股詳情可用時顯示的測試斷言已對齊現行摘要契約：彙總顯示候選數，逐股代碼與來源說明由候選預覽檢視。
+- `tests/test_baldr_b03_market_home.py` 獨立重跑：**10 passed、3 failed**。3 個失敗都在未修改的 `MarketRegimeView` 層級條件／折疊狀態斷言，不涉及 Workbench 延伸區；該檔不列全通過。
+- Workbench MainWindow default offscreen 稽核：**13 子頁、0 failures／0 coverage gaps**；首頁與滾動末端截圖核對延伸區收合，Advice 與同源入口留在主要旅程。報告 `.pytest-owned-temp/ui_audit_workbench_section_round27/`。此項降低主畫面區塊數；未宣稱全頁閱讀已完成或原生 GUI／Owner UAT 通過。
+- 必要 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。本輪 5 個修改 Python source/test `py_compile` 通過；Workbench view scoped mypy **0 issues**，`git diff --check` 無 whitespace error。指定全程式 mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因語法錯誤停止，無法檢查其餘模組。
+
+## 2026-10-29 第二十八輪：Workbench 等待狀態摘要去重
+
+窄版首頁在 Dashboard DTO 尚未載入時，上方每日旅程已顯示五項狀態為等待／未知；下方四張 Dashboard 摘要卡又重複顯示同一組等待資訊，延後 Advice 出現。現在尚無可信 DTO（初次等待或沒有 last-good 資料的讀取失敗）時收起重複摘要列；取得 Dashboard 後顯示摘要，stale refresh 保留最後可信摘要。Advice 與資料狀態的呈現未改，沒有變更資料或策略邏輯。
+
+- `tests/test_ui_qt_workbench_home_single_page.py`、`tests/test_ui_qt_workbench_view.py`、`tests/test_ui_qt_v5_workbench_guided.py`、`tests/test_workbench_advice_contract.py`：**88 passed**；必要 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。
+- Workbench compact／scale 1.5 MainWindow offscreen 稽核：**13 子頁、0 failures／0 coverage gaps**；首頁截圖確認重複摘要列收起，Advice 提前進入閱讀流。報告 `.pytest-owned-temp/ui_audit_workbench_compact_summary_round28/`。
+- 修改 Python source／test `py_compile` 通過；Workbench view scoped mypy **1 source、0 issues**；依硬規則的完整模組 mypy 在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇語法錯誤，未能檢查其餘模組。文件同步後執行 `git diff --check`。
+- 原生 GUI／Owner UAT 未執行；這輪只處理初次等待時重複摘要，Workbench 全頁資訊架構與其他工作區盤點仍未完成。
+
+## 2026-10-29 第二十九輪：首頁延伸區與多工作區版面複驗
+
+將 Workbench 延伸捷徑／最近研究／持倉追蹤收進單一預設收合區；每日旅程、狀態摘要及 Advice 保留主閱讀流。今日行動卡在寬螢幕四欄、中版雙欄、窄版單欄排列；載入前只保留標題列重新整理，四張卡分別導向資料更新、市場總覽、推薦分析及持倉管理。Portfolio、Recommendation、Backtest Registry 保留前幾輪的空態收合、窄版操作排列與來源限制說明。同步更新首頁導覽、Recommendation 來源按鈕及 Registry 窄版操作手冊。
+
+- `tests/test_ui_qt_workbench_home_single_page.py`：**7 passed**；`tests/test_workbench_advice_contract.py`：**16 passed**；`tests/test_ui_qt_v5_workbench_guided.py`：**4 passed**；首頁四欄／雙欄／單欄、收合區及導覽回歸通過。
+- `tests/test_ui_qt_portfolio_view.py`：**111 passed**；`tests/test_ui_qt_recommendation_layout.py`：**16 passed**；`tests/test_ui_qt_run_registry_compare.py`：**26 passed、1 deselected**。唯一排除項為先前已記錄會逾時的基本配對 worker 測試，本輪其餘 Registry 比較、收合與窄欄版面測試通過。
+- `tests/test_baldr_b03_market_home.py`：**13 passed**。修正兩個舊斷言：來源缺值摘要實際有三項；檢測失敗會清空技術細節並收合區塊，測試改核對既有失敗契約。
+- 必要 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；`scripts/qa_validate_update_tab.py`：**25 passed／0 failed／4 skipped**。本批 13 個修改 Python source／test `py_compile` 通過；5 個修改 UI source targeted mypy **0 issues**。
+- 合併上述 UI 檔案的一次 pytest 執行在 **300 秒** runner 上限逾時（進度輸出 36%，未完成摘要）；後續依檔案分別執行並取得上述結果。repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 報語法錯誤，未能檢查其餘模組。受控結果及 Job readback 保存在 ignored `.tmp_ui_finish_20261029/`。
+- `document_control check` 的 MOPS QA 子集合已通過；Snapshot 廣域 check 仍受既存 output Junction `WinError 5` 與舊 anchor 問題影響，不記為通過。原生 GUI／Owner UAT 未執行；本輪只完成目前 source／offscreen 測試範圍。

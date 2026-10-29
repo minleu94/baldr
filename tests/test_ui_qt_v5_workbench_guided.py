@@ -5,7 +5,7 @@ from datetime import date
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from app_module.workbench_dtos import (
     WorkbenchActionItem,
@@ -138,13 +138,18 @@ def test_guided_home_keeps_mixed_sources_separate_and_advanced_collapsed() -> No
     assert "持倉或風險事項" in rows["portfolio"].conclusion
     assert "市場判讀待處理" not in rows["market"].conclusion
 
+    view.home_secondary_panel.set_collapsed(False)
     view.guided_priority_action_buttons["candidates"].click()
     assert not view.advanced_workbench_panel.is_collapsed()
     assert view._selected_detail_item.item_id == "candidate_trigger_2330"
     assert "強勢但需確認量價" in view.detail_summary_box.text()
-    assert "2330" in view.daily_candidate_detail_label.text()
-    assert "2603" in view.daily_candidate_detail_label.text()
-    assert "強勢但需確認量價" in view.daily_candidate_detail_label.text()
+    candidate_preview = " ".join(
+        label.text() for label in view.home_candidate_preview.findChildren(QLabel)
+    )
+    assert "2330" in candidate_preview
+    assert "2603" in candidate_preview
+    assert "原來源說明：未提供個別說明" in candidate_preview
+    assert "個股研究候選：2 檔" in view.daily_candidate_detail_label.text()
     assert "下一步：先查看資料與候選來源" in view.daily_candidate_detail_label.text()
 
     view.guided_priority_action_buttons["data"].click()
@@ -185,6 +190,7 @@ def test_guided_candidates_selects_action_item_when_review_row_is_absent() -> No
         navigate_to_watchlist_callback=lambda: None,
     )
 
+    view.home_secondary_panel.set_collapsed(False)
     view.guided_priority_action_buttons["candidates"].click()
     assert view._selected_detail_item.item_id == "candidate_action_2603"
     assert "2603" in view.detail_summary_box.text()

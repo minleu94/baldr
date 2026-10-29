@@ -1390,6 +1390,15 @@ def test_stress_splitter_default_keeps_vertical_ratio_and_position_selection(tmp
     assert 0.35 <= vertical_ratio <= 0.50
     assert view.positions_table.currentIndex().data(Qt.DisplayRole) == selected_value
 
+    assert view._activate_v2_section(
+        "paper", account="paper", preferred_tab="allocation"
+    )
+    app().processEvents()
+    assert view.portfolio_research_scenario_scroll.widget() is (
+        view.portfolio_research_scenario_widget
+    )
+    assert view.portfolio_research_scenario_scroll.verticalScrollBar().maximum() > 0
+
     assert view._activate_v2_section("paper", account="paper", preferred_tab="paper")
     app().processEvents()
     returned_sizes = view.main_splitter.sizes()
@@ -1753,6 +1762,7 @@ def test_portfolio_async_refresh_cancels_older_generation_and_uses_one_dto(tmp_p
     )
 
     assert _wait_until(service.read_started.is_set)
+    assert view.positions_table.isHidden()
     first_generation = view._refresh_generation
     view.refresh_all()
     assert view._refresh_generation == first_generation + 1

@@ -274,6 +274,10 @@ def test_workbench_advice_loading_empty_and_error_states_keep_plain_language_and
     assert "WAITING_FOR_ADVICE_DTO" not in waiting_text
     assert "AdviceDashboardDTO" not in view.advice_summary.text()
     assert "重新整理狀態" in waiting_text
+    assert view.advice_summary.isHidden()
+    assert view.advice_warning_status.isHidden()
+    assert view.nav_to_update_btn.isHidden()
+    assert view.nav_to_recommend_btn.isHidden()
     assert not view.advice_technical_diagnostics_button.isHidden()
     assert view.advice_technical_diagnostics_text.isHidden()
 
@@ -326,6 +330,25 @@ def test_workbench_advice_loading_empty_and_error_states_keep_plain_language_and
     assert raw_error in error_diagnostics
     assert "收合本次 Advice 狀態" in view.advice_technical_diagnostics_button.accessibleDescription()
     view.close()
+
+
+def test_home_summary_cards_do_not_repeat_unknown_dto_wait_state() -> None:
+    app()
+    view = UnifiedDecisionWorkbenchView(auto_refresh=False)
+    try:
+        assert view.summary_row.isHidden()
+        assert not view.advice_panel.isHidden()
+        assert view.daily_conclusion_label.text() == "今日結論：等待工作台資料載入。"
+        assert "WorkbenchDashboardDTO" not in view.daily_conclusion_label.text()
+
+        view.render_dashboard(_empty_dashboard())
+        assert not view.summary_row.isHidden()
+
+        view._display_exception_dashboard("synthetic refresh failure")
+        assert not view.summary_row.isHidden()
+        assert view._dashboard_stale
+    finally:
+        _dispose_workbench_view(view)
 
 
 def test_advice_technical_diagnostics_action_stays_compact_and_left_aligned() -> None:
@@ -759,6 +782,7 @@ def test_home_cards_reflow_without_reading_sources_or_losing_unknown_state() -> 
         source_service=service, dashboard=dashboard, auto_refresh=False,
         navigate_to_stock_research_callback=contexts.append,
     )
+    view.home_secondary_panel.set_collapsed(False)
     view.resize(1200, 900)
     view.show()
     try:
@@ -776,6 +800,7 @@ def test_home_cards_reflow_without_reading_sources_or_losing_unknown_state() -> 
         assert portfolio.geometry().x() == market.geometry().x()
         assert portfolio.geometry().y() < market.geometry().y()
         assert view.guided_priority_reason_labels["data"].text() == original_text
+        view.home_secondary_panel.set_collapsed(False)
         view.home_stock_input.setText("2330")
         view.home_stock_search_button.click()
         assert contexts[0].stock_code == "2330"
@@ -2141,6 +2166,7 @@ def test_workbench_today_action_center_prioritizes_data_and_uses_navigation_only
     assert view.primary_action_button.text() == "先確認資料狀態"
     assert "不會自動更新資料" in view.today_action_hint_label.text()
 
+    view.home_secondary_panel.set_collapsed(False)
     view.primary_action_button.click()
     view.today_action_buttons["advice"].click()
 
@@ -2163,6 +2189,7 @@ def test_workbench_today_action_center_prioritizes_existing_portfolio_review() -
     assert view.primary_action_button.text() == "先檢查持倉事項"
     assert "只導覽" in view.today_action_hint_label.text()
 
+    view.home_secondary_panel.set_collapsed(False)
     view.primary_action_button.click()
     view.today_action_buttons["market"].click()
 

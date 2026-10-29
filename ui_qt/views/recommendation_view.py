@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QStyle, QLayout,
 )
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QKeyEvent, QResizeEvent, QTextOption
+from PySide6.QtGui import QColor, QFont, QKeyEvent, QPainter, QResizeEvent, QTextOption
 from math import ceil
 import pandas as pd
 from copy import deepcopy
@@ -4506,7 +4506,7 @@ class RecommendationView(QWidget):
         self.result_splitter = result_splitter
 
         # 結果表格
-        self.results_table = QTableView()
+        self.results_table = _RecommendationResultsTableView()
         apply_financial_table_style(self.results_table)
         self.results_table.setMinimumWidth(0)
         self.results_table.setSizePolicy(
@@ -9533,6 +9533,62 @@ class RecommendationView(QWidget):
         """關閉事件"""
         if not self.request_cooperative_shutdown():
             event.ignore()
+
+
+class _RecommendationResultsTableView(QTableView):
+    """在空表格原位說明結果區用途，不另佔一段版面。"""
+
+    EMPTY_TITLE = "目前沒有可顯示的列"
+    EMPTY_BODY = (
+        "此處會顯示推薦列或同次篩選紀錄。請先看上方執行／讀回摘要；"
+        "若尚未執行，設定條件後按「執行推薦」。"
+    )
+
+    def has_empty_rows(self) -> bool:
+        model = self.model()
+        return model is None or model.rowCount() == 0
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().paintEvent(event)
+        if not self.has_empty_rows():
+            return
+
+        viewport = self.viewport()
+        if viewport.width() < 80 or viewport.height() < 60:
+            return
+        painter = QPainter(viewport)
+        try:
+            bounds = viewport.rect().adjusted(20, 12, -20, -12)
+            center_y = bounds.center().y()
+            title_font = QFont(self.font())
+            title_font.setBold(True)
+            title_font.setPointSize(max(title_font.pointSize(), 11))
+            painter.setFont(title_font)
+            painter.setPen(QColor(MIDNIGHT_ANALYST.text_primary))
+            painter.drawText(
+                bounds.left(),
+                center_y - 20,
+                bounds.width(),
+                30,
+                Qt.AlignmentFlag.AlignCenter,
+                self.EMPTY_TITLE,
+            )
+            body_font = QFont(self.font())
+            body_font.setPointSize(max(9, body_font.pointSize() - 1))
+            painter.setFont(body_font)
+            painter.setPen(QColor(MIDNIGHT_ANALYST.text_secondary))
+            painter.drawText(
+                bounds.left(),
+                center_y + 8,
+                bounds.width(),
+                52,
+                Qt.AlignmentFlag.AlignHCenter
+                | Qt.AlignmentFlag.AlignTop
+                | Qt.TextFlag.TextWordWrap,
+                self.EMPTY_BODY,
+            )
+        finally:
+            painter.end()
             return
         self._responsive_layout_timer.stop()
         event.accept()

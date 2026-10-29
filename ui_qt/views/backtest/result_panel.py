@@ -1435,11 +1435,10 @@ class BacktestResultPanel(QWidget):
             configuration_error=getattr(self.parent_view, "calendar_daily_acceptance_error", ""),
         )
         registry_banner = QLabel(
-            "研究 Registry：正式研究 run 比較與 promotion evidence 入口；"
-            "比較不等於可 promote，仍需通過既有驗證與升級條件。"
+            "升級策略仍須通過版本驗證；Registry 的比較結果不會自動升級策略。"
         )
         registry_banner.setWordWrap(True)
-        registry_banner.setAccessibleName("研究 Registry 說明")
+        registry_banner.setAccessibleName("研究 Registry 升級限制")
         registry_banner.setToolTip("Research Registry comparison and promotion evidence boundary")
         registry_banner.setStyleSheet(
             f"padding: 8px; color: {MIDNIGHT_ANALYST.text_secondary}; background: {MIDNIGHT_ANALYST.surface_2}; "

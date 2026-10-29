@@ -339,6 +339,27 @@ def _new_view() -> RecommendationView:
     )
 
 
+def test_empty_result_table_guides_first_action_and_tracks_row_changes() -> None:
+    _app()
+    view = _new_view()
+    try:
+        table = view.results_table
+        assert table.has_empty_rows()
+        assert table.EMPTY_TITLE == "目前沒有可顯示的列"
+        assert "執行／讀回摘要" in table.EMPTY_BODY
+        assert "執行推薦" in table.EMPTY_BODY
+
+        populated = PandasTableModel(pd.DataFrame([{"證券代號": "2330"}]))
+        table.setModel(populated)
+        assert not table.has_empty_rows()
+
+        empty = PandasTableModel(pd.DataFrame(columns=["證券代號"]))
+        table.setModel(empty)
+        assert table.has_empty_rows()
+    finally:
+        view.close()
+
+
 def test_recommendation_table_keeps_extended_evidence_expandable() -> None:
     _app()
     view = _new_view()

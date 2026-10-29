@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 
@@ -147,6 +147,13 @@ def test_backtest_view_mounts_registry_compare_subtab(qt_app):
 
     assert "研究 Registry" in labels
     assert widget is view.run_registry_compare_widget
+    promotion_note = next(
+        label
+        for label in view.result_panel.findChildren(QLabel)
+        if label.accessibleName() == "研究 Registry 升級限制"
+    )
+    assert "不會自動升級策略" in promotion_note.text()
+    assert "只讀原保存數值" in widget.purpose_banner.text()
 
 
 def test_basic_pair_return_disappears_when_registry_selection_changes(qt_app):
@@ -420,11 +427,15 @@ def test_registry_compare_maps_batch_and_fixed_basket_run_types(qt_app):
 def test_registry_compare_widget_renders_badge_diff_metrics_and_saved_benchmark(qt_app):
     widget = RunRegistryCompareWidget(FakeResearchRunService(), page_size=10)
     widget.refresh_runs()
+    assert widget.comparison_results_container.isHidden()
+    assert widget.signal_comparison_section.is_collapsed()
+    assert widget.basic_pair_group.is_collapsed()
     widget.run_list.item(0).setSelected(True)
     widget.run_list.item(1).setSelected(True)
 
     widget.compare_selected_runs()
 
+    assert not widget.comparison_results_container.isHidden()
     assert "保存條件相同（績效資格另核）" in widget.comparability_badge.text()
     assert widget.params_diff_table.model().rowCount() >= 1
     assert widget.metrics_table.model().rowCount() == 2
@@ -532,6 +543,32 @@ def test_registry_compare_widget_refreshes_on_first_show(qt_app):
     widget.showEvent(None)
 
     assert widget.refresh_runs_async.call_count == 1
+
+
+def test_registry_compare_widget_fits_narrow_result_panel_without_horizontal_overflow(
+    qt_app,
+):
+    widget = RunRegistryCompareWidget(FakeResearchRunService(), page_size=10)
+    widget.resize(575, 520)
+    widget.show()
+    _wait_for_run_list(widget, qt_app)
+    qt_app.processEvents()
+
+    assert widget.minimumSizeHint().width() <= widget.width()
+    for control in (
+        widget.run_type_filter,
+        widget.strategy_filter,
+        widget.tag_filter,
+        widget.refresh_button,
+        widget.run_list_status_label,
+        widget.compare_button,
+        widget.open_recommendation_button,
+        widget.rule_result_button,
+    ):
+        assert not control.geometry().isEmpty()
+        assert control.geometry().right() <= widget.width()
+
+    widget.close()
 
 
 def _wait_for_run_list(widget, qt_app, timeout=5):

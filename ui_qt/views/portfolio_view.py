@@ -1978,6 +1978,9 @@ class PortfolioView(QWidget):
 
         self.positions_table = QTableView()
         apply_financial_table_style(self.positions_table, minimum_visible_rows=2)
+        # 首次背景讀取完成前不顯示尚無資料的空表，避免被 splitter 拉成大片空白。
+        # 有持倉時由 _load_positions_table 明確顯示；零筆或讀取失敗則保持收起。
+        self.positions_table.setVisible(False)
         self.positions_table.setSelectionBehavior(QTableView.SelectRows)
         self.positions_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.positions_table.setSortingEnabled(True)
@@ -2293,7 +2296,22 @@ class PortfolioView(QWidget):
             parent=self,
         )
         self.portfolio_research_scenario_widget.stockResearchRequested.connect(self._open_scenario_stock_research)
-        right_widget.addTab(self.portfolio_research_scenario_widget, "配置研究封存")
+        self.portfolio_research_scenario_scroll = QScrollArea()
+        self.portfolio_research_scenario_scroll.setWidgetResizable(True)
+        self.portfolio_research_scenario_scroll.setFrameShape(QFrame.NoFrame)
+        self.portfolio_research_scenario_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded
+        )
+        self.portfolio_research_scenario_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded
+        )
+        self.portfolio_research_scenario_scroll.setAccessibleName(
+            "配置研究封存內容捲動區"
+        )
+        self.portfolio_research_scenario_scroll.setWidget(
+            self.portfolio_research_scenario_widget
+        )
+        right_widget.addTab(self.portfolio_research_scenario_scroll, "配置研究封存")
 
         # Right Tab 4: 情境與壓力測試（唯讀研究投影）
         stress_tab = QWidget()
@@ -2686,7 +2704,7 @@ class PortfolioView(QWidget):
             "journal": journal_tab,
             "declared": user_declared_tab,
             "paper": paper_tab,
-            "allocation": self.portfolio_research_scenario_widget,
+            "allocation": self.portfolio_research_scenario_scroll,
             "stress": stress_tab,
             "monitor": monitor_tab,
             "lifecycle": lifecycle_tab,

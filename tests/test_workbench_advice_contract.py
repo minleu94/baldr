@@ -694,7 +694,7 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
     assert not view.advice_source_result_button.isHidden()
     assert not view.advice_daily_source_button.isHidden()
-    assert view.advice_daily_source_button.text() == "今日總覽：來源與排除"
+    assert view.advice_daily_source_button.text() == "查看本次來源與篩選排除"
     assert "result_id=" + result_id in view.advice_daily_source_button.toolTip()
     assert not view.advice_research_history_link.isHidden()
     assert "研究紀錄與覆盤" in view.advice_research_history_link.text()

@@ -210,8 +210,10 @@ class RunRegistryCompareWidget(QWidget):
         self.open_basic_momentum_button.setEnabled(False)
         layout.addLayout(basic_pair_row)
 
-        filter_row = QHBoxLayout()
-        filter_row.addWidget(QLabel("類型"))
+        filter_grid = QGridLayout()
+        filter_grid.setColumnStretch(1, 1)
+        filter_grid.setColumnStretch(3, 1)
+        filter_grid.addWidget(QLabel("類型"), 0, 0)
         self.run_type_filter = QComboBox()
         self.run_type_filter.addItem("全部", "")
         self.run_type_filter.addItem(RUN_TYPE_LABELS["single_backtest"], "single_backtest")
@@ -226,23 +228,23 @@ class RunRegistryCompareWidget(QWidget):
             "recommendation_portfolio",
         )
         self.run_type_filter.currentTextChanged.connect(self._on_run_filter_changed)
-        filter_row.addWidget(self.run_type_filter)
+        filter_grid.addWidget(self.run_type_filter, 0, 1)
 
-        filter_row.addWidget(QLabel("策略"))
+        filter_grid.addWidget(QLabel("策略"), 0, 2)
         self.strategy_filter = QLineEdit()
         self.strategy_filter.setPlaceholderText("strategy_id")
         self.strategy_filter.textChanged.connect(self._on_run_filter_changed)
-        filter_row.addWidget(self.strategy_filter)
+        filter_grid.addWidget(self.strategy_filter, 0, 3)
 
-        filter_row.addWidget(QLabel("標籤"))
+        filter_grid.addWidget(QLabel("標籤"), 1, 0)
         self.tag_filter = QLineEdit()
         self.tag_filter.setPlaceholderText("tag")
         self.tag_filter.textChanged.connect(self._on_run_filter_changed)
-        filter_row.addWidget(self.tag_filter)
+        filter_grid.addWidget(self.tag_filter, 1, 1)
 
         self.refresh_button = QPushButton("重新整理")
         self.refresh_button.clicked.connect(self.refresh_runs_async)
-        filter_row.addWidget(self.refresh_button)
+        filter_grid.addWidget(self.refresh_button, 1, 2)
         self.run_list_status_label = QLabel("尚未載入")
         self.run_list_status_label.setAccessibleName("Research Runs 清單狀態")
         self.run_list_status_label.setAccessibleDescription(
@@ -251,10 +253,9 @@ class RunRegistryCompareWidget(QWidget):
         self.run_list_status_label.setToolTip(
             "類型、策略與標籤只篩選已載入的清單；按重新整理才重新讀取 Registry。"
         )
-        self.run_list_status_label.setMinimumWidth(210)
         self.run_list_status_label.setWordWrap(True)
-        filter_row.addWidget(self.run_list_status_label, stretch=1)
-        layout.addLayout(filter_row)
+        filter_grid.addWidget(self.run_list_status_label, 1, 3)
+        layout.addLayout(filter_grid)
 
         list_group = QGroupBox("Research Runs 清單")
         list_layout = QVBoxLayout(list_group)
@@ -271,7 +272,7 @@ class RunRegistryCompareWidget(QWidget):
 
         selection_row = QHBoxLayout()
         self.selection_hint_label = QLabel(
-            "已選 0 / 5；上方比較績效／權益，下方另有原保存逐日訊號對照；兩者各自核對保存條件。"
+            "已選 0 / 5；比較績效／權益後顯示結果。逐日訊號與基本策略對照在下方選用區。"
         )
         self.selection_hint_label.setWordWrap(True)
         self.selection_hint_label.setStyleSheet(
@@ -294,16 +295,16 @@ class RunRegistryCompareWidget(QWidget):
         self.selection_preview_label.hide()
         list_layout.addWidget(self.selection_preview_label)
 
-        page_row = QHBoxLayout()
+        page_row = QGridLayout()
+        page_row.setColumnStretch(1, 1)
         self.prev_page_btn = QPushButton("上一頁")
         self.prev_page_btn.clicked.connect(self.previous_page)
-        page_row.addWidget(self.prev_page_btn)
+        page_row.addWidget(self.prev_page_btn, 0, 0)
         self.page_label = QLabel("第 0 / 0 頁")
-        page_row.addWidget(self.page_label)
+        page_row.addWidget(self.page_label, 0, 1)
         self.next_page_btn = QPushButton("下一頁")
         self.next_page_btn.clicked.connect(self.next_page)
-        page_row.addWidget(self.next_page_btn)
-        page_row.addStretch()
+        page_row.addWidget(self.next_page_btn, 0, 2)
         self.compare_button = QPushButton("比較績效／權益")
         self.compare_button.setToolTip(
             "選 2 至 5 筆已保存 run，比較績效摘要與標準化權益。需有完整研究及可讀權益；"
@@ -312,7 +313,7 @@ class RunRegistryCompareWidget(QWidget):
         )
         self.compare_button.clicked.connect(self.compare_selected_runs)
         self.compare_button.setEnabled(False)
-        page_row.addWidget(self.compare_button)
+        page_row.addWidget(self.compare_button, 1, 0)
         self.open_recommendation_button = QPushButton("開啟推薦回放")
         self.open_recommendation_button.setToolTip(
             "只開啟一筆已保存的推薦回放 DTO；不會重新執行回測。"
@@ -321,12 +322,12 @@ class RunRegistryCompareWidget(QWidget):
             self.open_selected_recommendation_run
         )
         self.open_recommendation_button.setEnabled(False)
-        page_row.addWidget(self.open_recommendation_button)
+        page_row.addWidget(self.open_recommendation_button, 1, 1)
         self.rule_result_button = QPushButton("查看單筆結果與規則")
         self.rule_result_button.setToolTip("背景核對已保存來源；不重跑回測或替來源補版本／成本。")
         self.rule_result_button.clicked.connect(self.open_selected_rule_result)
         self.rule_result_button.setEnabled(False)
-        page_row.addWidget(self.rule_result_button)
+        page_row.addWidget(self.rule_result_button, 1, 2)
         list_layout.addLayout(page_row)
         period_pair_row = QHBoxLayout()
         self.compare_period_pair_button = QPushButton("比較完整期間")
@@ -347,10 +348,16 @@ class RunRegistryCompareWidget(QWidget):
         layout.addWidget(list_group, stretch=1)
         from ui_qt.widgets.saved_strategy_signal_compare_widget import SavedStrategySignalCompareWidget
         self.signal_comparison = SavedStrategySignalCompareWidget(self.research_run_service, self)
-        layout.addWidget(self.signal_comparison)
+        self.signal_comparison_section = CollapsibleSectionPanel(
+            "逐日策略訊號對照（選用；原保存訊號只讀）", collapsed=True
+        )
+        self.signal_comparison_section.content_layout.addWidget(self.signal_comparison)
+        layout.addWidget(self.signal_comparison_section)
 
-        self.basic_pair_group = QGroupBox("兩個基本策略：原保存研究對照")
-        basic_layout = QVBoxLayout(self.basic_pair_group)
+        self.basic_pair_group = CollapsibleSectionPanel(
+            "兩個基本策略｜對照結果與來源明細（選用）", collapsed=True
+        )
+        basic_layout = self.basic_pair_group.content_layout
         self.basic_pair_status = QLabel("各選一筆穩健與積極策略，按「對照兩個基本策略」。")
         self.basic_pair_status.setWordWrap(True)
         self.basic_pair_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -494,6 +501,11 @@ class RunRegistryCompareWidget(QWidget):
         ):
             table.hide()
 
+        comparison_results_container = QWidget()
+        comparison_results_layout = QVBoxLayout(comparison_results_container)
+        comparison_results_layout.setContentsMargins(0, 0, 0, 0)
+        comparison_results_layout.setSpacing(8)
+
         summary_grid = QGridLayout()
         summary_grid.setSpacing(10)
         self.params_summary_label = self._new_summary_label("尚未比較。選擇 2 至 5 筆 run 後，這裡會只列出有差異的參數。")
@@ -514,7 +526,7 @@ class RunRegistryCompareWidget(QWidget):
         summary_grid.addWidget(self._wrap_summary("市場 Regime", self.regime_summary_label), 2, 0, 1, 2)
         summary_grid.setColumnStretch(0, 1)
         summary_grid.setColumnStretch(1, 1)
-        layout.addLayout(summary_grid, stretch=2)
+        comparison_results_layout.addLayout(summary_grid, stretch=2)
 
         hidden_tables = QWidget()
         hidden_layout = QHBoxLayout(hidden_tables)
@@ -546,7 +558,10 @@ class RunRegistryCompareWidget(QWidget):
         normalized_layout.addWidget(self.normalized_equity_empty_label)
         normalized_layout.addWidget(self.normalized_equity_table)
         self.normalized_equity_table.hide()
-        layout.addWidget(normalized_group, stretch=1)
+        comparison_results_layout.addWidget(normalized_group, stretch=1)
+        self.comparison_results_container = comparison_results_container
+        self.comparison_results_container.hide()
+        layout.addWidget(self.comparison_results_container)
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt override
         if event is not None:
@@ -739,6 +754,8 @@ class RunRegistryCompareWidget(QWidget):
         if len(run_ids) < 2 or len(run_ids) > 5:
             QMessageBox.warning(self, "提示", "請選擇 2 至 5 個 research run")
             return
+
+        self.comparison_results_container.show()
 
         try:
             run_data = [self.research_run_service.load_run_data(run_id) for run_id in run_ids]
@@ -950,7 +967,7 @@ class RunRegistryCompareWidget(QWidget):
             )
         else:
             hint = (
-                f"已選 {selected_count} / 5；可跨頁多選。上方比較績效／權益，下方另有原保存逐日訊號對照。"
+                f"已選 {selected_count} / 5；可跨頁多選。比較績效／權益後顯示結果；逐日訊號與基本策略對照在下方選用區。"
                 + (" 已達上限。" if selected_count >= 5 else "")
             )
         self.selection_hint_label.setText(hint)
@@ -1070,6 +1087,7 @@ class RunRegistryCompareWidget(QWidget):
         reader = self._basic_pair_reader
         if selected is None or reader is None or self._basic_pair_worker is not None:
             return
+        self.basic_pair_group.set_collapsed(False)
         self._clear_basic_pair_result()
         expected = (deepcopy(selected[0]), deepcopy(selected[1]))
         self._basic_pair_selection = tuple((run.run_id, metadata_sha256(run)) for run in expected)

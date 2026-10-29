@@ -67,7 +67,7 @@ def test_detect_refresh_preserves_disclosure_choice(qapp, expanded):
 def test_missing_conditions_and_date_remain_unknown(qapp):
     view = MarketRegimeView(RegimeFixture(details={}))
     view._detect_regime()
-    assert view.layer2_label.text().count("未知（來源未提供）") == 2
+    assert view.layer2_label.text().count("未知（來源未提供）") == 3
     assert "價格未在中長期均線之上" not in view.layer2_label.text()
     assert "資料日未知" in view.market_risk_label.text()
     assert "適合順勢操作" not in view.layer1_description.text()
@@ -86,7 +86,8 @@ def test_failure_does_not_publish_default_trend(qapp, details, fail):
     assert view.layer1_status.text() == "檢測失敗"
     assert view.layer1_confidence.text() == ""
     assert view.layer3_layout.count() == 0
-    assert view.layer3_group.isChecked()
+    assert not view.layer3_group.isChecked()
+    assert view.layer3_group.isHidden()
     assert "不能使用市場分類" in view.market_risk_label.text()
     view.close()
 
@@ -101,6 +102,7 @@ def test_four_purposes_use_existing_callbacks_without_expanding_details(qapp):
         navigate_to_recommendation_callback=lambda: calls.append("selection"),
         navigate_to_stock_research_callback=calls.append,
     )
+    view.home_secondary_panel.set_collapsed(False)
     for key in ("market", "portfolio", "selection"):
         view.home_purpose_buttons[key].click()
     view.home_purpose_buttons["stock"].click()
@@ -124,6 +126,7 @@ def test_explicit_search_does_not_borrow_saved_candidate_identity(qapp):
         dashboard=replace(_dashboard_with_replay(), daily_evidence=daily),
         auto_refresh=False, navigate_to_stock_research_callback=calls.append,
     )
+    view.home_secondary_panel.set_collapsed(False)
     view.home_stock_input.setText(" 2382 ")
     view.home_stock_search_button.click()
     current = calls[-1]
@@ -144,6 +147,7 @@ def test_explicit_search_does_not_borrow_saved_candidate_identity(qapp):
 def test_invalid_search_keeps_context_unchanged(qapp, code):
     calls = []
     view = UnifiedDecisionWorkbenchView(auto_refresh=False, navigate_to_stock_research_callback=calls.append)
+    view.home_secondary_panel.set_collapsed(False)
     view.home_stock_input.setText(code)
     assert not view._open_home_stock_search()
     assert not calls

@@ -248,6 +248,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._dashboard_stale = False
         self._viewed_review_item_ids: set[str] = set()
         self._workbench_narrow = False
+        self._workbench_action_columns = 0
         self._workbench_advice_compact: bool | None = None
         self._workbench_advice_compact = None
         self.presentation_service = DecisionPresentationService()
@@ -419,6 +420,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         self._build_guided_home(root_content_layout)
         home_research_actions = QHBoxLayout()
+        self.home_research_actions_layout = home_research_actions
         home_research_actions.setContentsMargins(0, 0, 0, 0)
         self.home_research_evidence_button = QPushButton("開啟研究證據")
         self.home_research_evidence_button.setObjectName("workbenchHomeResearchEvidence")
@@ -778,7 +780,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         source_actions = QHBoxLayout()
         source_actions.setContentsMargins(0, 0, 0, 0)
         source_actions.setSpacing(6)
-        self.advice_daily_source_button = QPushButton("今日總覽：來源與排除")
+        self.advice_daily_source_button = QPushButton("查看本次來源與篩選排除")
         self.advice_daily_source_button.setObjectName("adviceDailySourceButton")
         self.advice_daily_source_button.setProperty("variant", "secondary")
         self.advice_daily_source_button.setToolTip(
@@ -1302,22 +1304,50 @@ class UnifiedDecisionWorkbenchView(QWidget):
         root_content_layout.addStretch()
 
         # 將已建立的唯讀摘要元件提升到同一個首頁捲動區，沿用原 DTO 與回呼。
+        # 首屏保留每日資料脈絡與 Advice；導覽、行動中心及持倉健康屬延伸入口，預設收合。
+        # 原本 Advice 排在來源摘要之前，使用者必須往下找推薦是哪個資料日、來源和候選。
         for widget in (
+            self.guided_home_panel,
+            self.advanced_workbench_panel,
             self.priority_banner,
             self.summary_row,
             self.position_health_panel,
             self.today_action_panel,
             self.daily_investment_journey_panel,
+            self.advice_panel,
         ):
-            self.advanced_overview_layout.removeWidget(widget)
-        self.advanced_overview_layout.removeWidget(self.advice_panel)
-        self.advanced_overview_layout.removeItem(root_content_layout.itemAt(root_content_layout.count() - 1))
-        root_content_layout.insertWidget(1, self.advice_panel)
-        root_content_layout.insertWidget(3, self.priority_banner)
-        root_content_layout.insertWidget(4, self.summary_row)
-        root_content_layout.insertWidget(5, self.position_health_panel)
-        root_content_layout.insertWidget(6, self.today_action_panel)
-        root_content_layout.insertWidget(7, self.daily_investment_journey_panel)
+            root_content_layout.removeWidget(widget)
+        root_content_layout.removeItem(self.home_research_actions_layout)
+        while root_content_layout.count():
+            item = root_content_layout.itemAt(root_content_layout.count() - 1)
+            if item.spacerItem() is None:
+                break
+            root_content_layout.removeItem(item)
+        self.home_secondary_panel = CollapsibleSectionPanel(
+            "其他工作區捷徑、最近研究與持倉追蹤", collapsed=True
+        )
+        self.home_secondary_panel.setObjectName("workbenchSecondaryHomeActions")
+        self.home_secondary_panel.toggle_button.setAccessibleName(
+            "展開其他工作區捷徑、最近研究與持倉追蹤"
+        )
+        secondary_layout = self.home_secondary_panel.content_layout
+        for widget in (
+            self.guided_home_panel,
+        ):
+            secondary_layout.addWidget(widget)
+        secondary_layout.addLayout(self.home_research_actions_layout)
+        for widget in (self.today_action_panel, self.position_health_panel):
+            secondary_layout.addWidget(widget)
+
+        for widget in (
+            self.daily_investment_journey_panel,
+            self.priority_banner,
+            self.summary_row,
+            self.advice_panel,
+        ):
+            root_content_layout.addWidget(widget)
+        root_content_layout.addWidget(self.home_secondary_panel)
+        root_content_layout.addWidget(self.advanced_workbench_panel)
         root_content_layout.addStretch()
 
         set_scroll_content_constraints(scroll_content)
@@ -1414,6 +1444,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.auxiliary_page_title.setText(self.subtabs.tabText(index))
 
     def _open_home_advanced(self) -> None:
+        self.home_secondary_panel.set_collapsed(False)
         self.advanced_workbench_panel.set_collapsed(False)
         self.overview_scroll_area.ensureWidgetVisible(self.advanced_workbench_panel)
 
@@ -2127,6 +2158,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         row = self.guided_summary_model.row_at(index) if index is not None else None
         if row is None:
             return False
+        self.home_secondary_panel.set_collapsed(False)
         if key == "market" and self.navigate_to_market_explore_callback is not None:
             return self.navigate_to_drilldown_target("market_explore")
         if key == "portfolio" and self.navigate_to_portfolio_callback is not None:
@@ -2228,13 +2260,19 @@ class UnifiedDecisionWorkbenchView(QWidget):
             return
         self._apply_advice_table_width_mode()
         narrow = self.width() < 820
+        action_columns = 1 if narrow else (4 if self.width() >= 1180 else 2)
         if hasattr(self, "_advice_candidate_card_frames"):
             self._layout_advice_candidate_cards(
                 self._advice_candidate_columns_for_width(self.width())
             )
-        if not force and narrow == self._workbench_narrow:
+        if (
+            not force
+            and narrow == self._workbench_narrow
+            and action_columns == self._workbench_action_columns
+        ):
             return
         self._workbench_narrow = narrow
+        self._workbench_action_columns = action_columns
 
         # 重排同一組圖卡，保留所有選列、來源身份與既有訊號連線。
         for index, (key, card) in enumerate(self.guided_priority_rows.items()):
@@ -2263,11 +2301,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         for index, key in enumerate(self.today_action_cards):
             card = self.today_action_cards[key]
             cards_layout.removeWidget(card)
-            row = index if narrow else index // 2
-            column = 0 if narrow else index % 2
+            row = index // action_columns
+            column = index % action_columns
             cards_layout.addWidget(card, row, column)
-        cards_layout.setColumnStretch(0, 1)
-        cards_layout.setColumnStretch(1, 0 if narrow else 1)
+        for column in range(4):
+            cards_layout.setColumnStretch(column, 1 if column < action_columns else 0)
         self._resize_tables()
 
     def _apply_advice_table_width_mode(self) -> None:
@@ -2498,7 +2536,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "切到既有證據頁查看範圍、身份與各成熟度窗口；不執行重算。"
         )
         self.daily_evidence_button.clicked.connect(lambda: self.select_subtab("Evidence"))
-        self.daily_detail_button = QPushButton("每日來源／篩選／排除")
+        self.daily_detail_button = QPushButton("展開本次來源、篩選與排除")
         self.daily_detail_button.setProperty("variant", "secondary")
         self.daily_detail_button.setCheckable(True)
         self.daily_detail_button.setAccessibleName("查看每日來源與排除詳情")
@@ -2558,9 +2596,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_trace_advanced_panel.setVisible(False)
         self.daily_trace_advanced_panel.set_collapsed(True)
         if daily is None:
-            self.daily_conclusion_label.setText("今日結論：等待 WorkbenchDashboardDTO。")
+            self.daily_conclusion_label.setText("今日結論：等待工作台資料載入。")
             self.daily_state_label.setText(
-                "狀態：未知｜決策日：未知｜資料日：未知；沒有可信 DTO 時不推定沒有候選或風險。"
+                "狀態：未知｜決策日：未知｜資料日：未知；尚未取得可用資料，不推定沒有候選或風險。"
             )
             self._style_daily_state("unknown")
             for card in (
@@ -2950,7 +2988,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_trace_label.setVisible(bool(expanded))
         self.daily_trace_advanced_panel.setVisible(bool(expanded))
         self.daily_detail_button.setText(
-            "收合每日來源詳情" if expanded else "每日來源／篩選／排除"
+            "收合每日來源詳情" if expanded else "展開本次來源、篩選與排除"
         )
 
     def _daily_saved_result_id(self) -> str | None:
@@ -3208,10 +3246,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
     ) -> QFrame:
         card = QFrame()
         card.setObjectName(f"todayActionCard_{key}")
-        card.setMinimumHeight(128)
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(5)
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(10)
+        details_layout = QVBoxLayout()
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(2)
         title_label = QLabel(title)
         title_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 12px; font-weight: 800;"
@@ -3226,13 +3266,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
         button = QPushButton(button_text)
         button.setProperty("variant", "secondary")
         button.setMinimumHeight(28)
+        button.setMaximumWidth(148)
+        button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         button.clicked.connect(
             lambda _checked=False, action_key=key: self._open_today_action(action_key)
         )
-        layout.addWidget(title_label)
-        layout.addWidget(status_label)
-        layout.addWidget(body_label, 1)
-        layout.addWidget(button)
+        details_layout.addWidget(title_label)
+        details_layout.addWidget(status_label)
+        details_layout.addWidget(body_label)
+        layout.addLayout(details_layout, 1)
+        layout.addWidget(button, 0, Qt.AlignVCenter)
         self.today_action_cards[key] = card
         self.today_action_status_labels[key] = status_label
         self.today_action_body_labels[key] = body_label
@@ -3283,20 +3326,33 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             self.primary_action_button.setText("重新整理目前狀態")
             self.primary_action_button.setEnabled(self._today_action_available("refresh"))
+            self.primary_action_button.hide()
             self._primary_action_target = "refresh"
-            for key, status, body in (
-                ("data", "等待狀態", "尚未取得資料狀態；可重新整理或前往數據更新確認。"),
-                ("market", "等待狀態", "尚未取得市場判讀；資料載入後會顯示今日待判讀數。"),
-                ("advice", "等待狀態", "尚未取得 Advice DTO；不把缺資料解讀為沒有風險。"),
-                ("portfolio", "等待狀態", "尚未取得持倉覆盤項目；不會自行假定沒有持倉風險。"),
+            for key, status, body, button_text, target in (
+                (
+                    "data", "等待狀態", "尚未取得資料狀態；檢查資料日期與品質。",
+                    "查看數據更新", "update",
+                ),
+                (
+                    "market", "等待狀態", "尚未取得市場判讀與今日待判讀數。",
+                    "開啟市場總覽", "daily_decision",
+                ),
+                (
+                    "advice", "等待狀態", "尚未取得 Advice；不把缺資料解讀為沒有風險。",
+                    "前往推薦分析", "recommendation",
+                ),
+                (
+                    "portfolio", "等待狀態", "尚未取得持倉覆盤項目；不假定沒有持倉風險。",
+                    "開啟持倉管理", "portfolio_review",
+                ),
             ):
                 self._set_today_action_card(
                     key,
                     status=status,
                     body=body,
                     tone="neutral",
-                    button_text="重新整理狀態",
-                    target="refresh",
+                    button_text=button_text,
+                    target=target,
                 )
             return
 
@@ -3454,6 +3510,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self.primary_action_button.setText(primary_label)
         self.primary_action_button.setEnabled(self._today_action_available(primary_target))
+        self.primary_action_button.show()
         self._primary_action_target = primary_target
 
     def _today_action_available(self, target: str) -> bool:
@@ -3811,6 +3868,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def render_dashboard(self, dashboard: WorkbenchDashboardDTO) -> None:
         self._dashboard = dashboard
+        self.summary_row.show()
         self._selected_advice_source_result_id = None
         self._selected_advice_source_stock_code = None
         self._selected_advice_daily_source_result_id = None
@@ -4091,6 +4149,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_card.setText("所選建議判讀：尚未選取；欄位未提供。")
         self.advice_selection_card.setVisible(False)
         self.advice_warning_status.setText("")
+        self.advice_summary.setVisible(True)
+        self.advice_warning_status.setVisible(True)
+        self.nav_to_update_btn.setVisible(True)
+        self.nav_to_recommend_btn.setVisible(True)
         self.advice_recommendation_table.setVisible(False)
         self.advice_summary_metrics.setVisible(False)
         self.advice_candidate_label.setVisible(False)
@@ -4121,14 +4183,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_technical_diagnostics_text.setVisible(False)
         if state == "WAITING_FOR_ADVICE_DTO":
             self.advice_empty_label.setText(
-                "<b>【尚未載入今日策略建議】</b><br/>"
-                "可按右上角「重新整理狀態」讀取目前可用的建議。若尚未保存推薦結果，請前往「推薦分析工作區」執行策略篩選並保存，再回來重新整理。"
+                "<b>【尚未載入今日策略建議】</b>　先按頁面上方「重新整理狀態」；若尚未保存推薦，前往「推薦分析」完成篩選並保存後再回來讀取。"
             )
             self.advice_empty_label.setAccessibleName("尚未載入今日策略建議")
             self.advice_empty_label.setAccessibleDescription(
                 "重新整理工作台可讀取目前可用的建議；尚未保存推薦結果時，請先到推薦分析工作區執行並保存。"
             )
             self.advice_empty_widget.setVisible(True)
+            self.advice_summary.setVisible(False)
+            self.advice_warning_status.setVisible(False)
+            self.nav_to_update_btn.setVisible(False)
+            self.nav_to_recommend_btn.setVisible(False)
             self.advice_recommendation_table.setVisible(False)
             self.advice_candidate_label.setVisible(False)
             self.advice_candidate_table.setVisible(False)
@@ -6039,6 +6104,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _display_pending_dashboard(self) -> None:
         self.refresh_button.setEnabled(self.source_service is not None)
+        self.summary_row.hide()
         self._render_guided_home(None)
         self._render_daily_investment_journey(None)
         self._render_position_health(None)
@@ -6194,6 +6260,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         self._dashboard = None
         self._dashboard_stale = False
+        self.summary_row.hide()
         self._selected_advice_source_result_id = None
         self._selected_advice_source_stock_code = None
         self.advice_source_result_button.hide()

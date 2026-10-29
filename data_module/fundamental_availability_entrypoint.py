@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
+import re
 
 from data_module.contracts.fundamental import SourceDiagnostic
 from data_module.fundamental_availability import RETROACTIVE_BASELINE_SOURCE
@@ -121,6 +122,31 @@ def _requires_disclosure_window_check(
         and override.available_date.isoformat() == "2026-10-30"
     ):
         return False
+    # 新版 MOPS 詳頁若在公告後才首次保存，只能從實際保存日之後使用。
+    # target version 綁定保存日與詳頁 hash 前綴；availability 必須正好是
+    # 保存日的次日，避免把晚到的更正版套回公告日或放寬一般 45 日期限。
+    late_detail = re.fullmatch(
+        r"mops-f22-detail-(?P<captured>\d{8})-(?P<digest>[0-9a-f]{16})",
+        str(override.target_source_version or ""),
+    )
+    if (
+        override.source == "mops.monthly_revenue_announcement"
+        and override.evidence_class == "official_announcement"
+        and override.source_hash
+        and late_detail is not None
+        and str(override.source_hash).removeprefix("sha256:").lower().startswith(
+            late_detail.group("digest")
+        )
+    ):
+        try:
+            captured_date = date(
+                int(late_detail.group("captured")[:4]),
+                int(late_detail.group("captured")[4:6]),
+                int(late_detail.group("captured")[6:8]),
+            )
+        except ValueError:
+            return True
+        return override.available_date != captured_date + timedelta(days=1)
     return override.source != RETROACTIVE_BASELINE_SOURCE
 
 

@@ -395,3 +395,13 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 對官方 `t05st01` 年度清單中 8101／2026-05-19、更正 2025-12 至 2026-04 累計營收的公告取 MOPS 明細（`companyId=8101`、`marketKind=sii`、`enterDate=1150519`、`serialNumber=2`）。HTTP 200 原件 SHA-256 `e3fe8c1f91d786454ea213c32e34000b02ac14a662d5929570f8054e3929fd82`。明細當期／累計表列 2026-04 當期 **30,409 仟元**、截至 4 月累計 **112,511 仟元**；這與固定 snapshot 8101／2026-04 的 `current_month_revenue=30409`、`cumulative_revenue=112511` 逐欄完全一致，公告時間 **2026-05-19 17:20:59** 早於 snapshot capture。Recovery planner 1 列、0 conflict、0 diagnostics，正式回填後 canonical row 為 `announced_date=2026-05-19`、`revenue=30409`、`available_date=2026-06-18`、`quality=observed`，`PRAGMA quick_check=ok`。
 
 時間版本守衛仍有效：8101／2026-08-07 的官方後續更正將 2026-04 當期改為 **34,038 仟元**，其 F22 時間晚於 2026-06-16 snapshot；因此保留舊 snapshot 在 2026-05-19 可知的 30,409，不把 8 月修訂覆寫到舊值或舊公告時間。加上 3712／2026-04 與 6806／2026-04，正式表由 251,196 observed／720 degraded 變為 **251,197 observed／719 degraded**。剩餘分類為 681 無可配對事件、36 晚於 snapshot 可得日、1 晚於 row capture、另 6884／2026-08 一列缺公告；五家主要集中仍為 664 列（92.4%）。
+
+### 2026-10-29 MOPS 晚公告明細新版本寫入與 PIT 讀回
+
+37 個保存的官方 F22 明細頁原件再次驗證後，33 頁具有可核對公司、期別、單位及本月值；4 頁是 3712 子公司選擇頁，不能當單一公司營收值。對 33 個可讀值逐鍵比較正式表，2 鍵已由既有正式資料涵蓋，故本次只新增 **31 個**數值版本。每筆明細頁 HTML SHA、對應 F22 事件原始檔 SHA、公司／期別／新台幣仟元與本月值均通過核對。
+
+這批頁面是在 2026-10-29 才實際擷取，不能證明目前頁面上的數值在原 F22 公告秒數已經存在。故新版本以 `mops.monthly_revenue_f22_detail_revision` 寫入，`available_date=2026-10-30`；每筆使用綁定明細 SHA 的獨立 `source_version`，並在 availability mapping 綁定官方 F22 事件身分與來源 hash。舊 `mops-static-snapshot-monthly-revenue-2026-06-16` 值、品質與歷史可得日皆未覆寫。
+
+正式寫入收據及讀回：新增 31 列、mapping 新增 31 列；SQLite `PRAGMA quick_check=ok`。PIT provider cutoff 驗證為 **2026-10-29 不可見、2026-10-30 31/31 精確值可見**。SQLite 物理列品質目前為 **251,228 observed／719 degraded**：observed 增加 31，但舊 snapshot 的 degraded 標記仍保留，因而底層 degraded 計數不變。這 31 個鍵於 10/30 之後有可用的新觀察版本；不能稱舊 snapshot 被回填，也不能把其更正值回寫到更早時間。DB 與 mapping 備份、逐筆寫入／provider 驗證收據保存在正式資料根目錄 `meta_data/backup/` 及本次 ignored scratch `.tmp_mops_late_revision_20261029/`。
+
+此處置將 36 個晚於舊 snapshot 可得日事件及 1 個晚於原列擷取時間事件中的 31 個鍵，補成「目前頁面值、於本次實際觀察後可用」的新版本；其餘晚公告鍵仍需可識別的單一公司營收明細，尤其 3712 的選擇頁不能代替子公司資料。原分類的 681 個缺少已配對事件、未解的晚公告鍵及 6884／2026-08 特殊缺口仍須繼續逐類處理。這不是 719 個 degraded 全數解除，也不代表歷史公告版本都已還原。

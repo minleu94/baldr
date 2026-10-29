@@ -36,6 +36,7 @@ from app_module.portfolio_research_initial_source import (
     InitialPortfolioAccountIdentity,
 )
 from ui_qt.workers.task_worker import TaskWorker
+from ui_qt.widgets.layout_helpers import ensure_visible_rows
 
 
 class PortfolioResearchScenarioWidget(QWidget):
@@ -225,6 +226,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.positions_table.setAccessibleName("已保存帳本原持倉")
         self.positions_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.positions_table)
+        ensure_visible_rows(self.positions_table, 5)
 
         target_group = QGroupBox("明示新的研究 target（bp）", self)
         target_layout = QVBoxLayout(target_group)
@@ -233,6 +235,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.target_table.setAccessibleName("人選研究明示目標權重")
         self.target_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         target_layout.addWidget(self.target_table)
+        ensure_visible_rows(self.target_table, 5)
         cash_row = QHBoxLayout()
         cash_row.addWidget(QLabel("現金目標權重 bp", target_group))
         self.cash_weight_spin = QSpinBox(target_group)
@@ -259,6 +262,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.scenario_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.scenario_table.itemSelectionChanged.connect(self._on_scenario_selection_changed)
         layout.addWidget(self.scenario_table, 1)
+        ensure_visible_rows(self.scenario_table, 5)
         self.scenario_summary_label = QLabel("尚無情境出口與診斷。", self)
         self.scenario_summary_label.setWordWrap(True)
         self.scenario_summary_label.setTextFormat(Qt.TextFormat.PlainText)

@@ -107,6 +107,8 @@ def test_home_is_one_visible_page_with_existing_summary_widgets() -> None:
             view.daily_source_details_row
         )
         assert journey_layout.indexOf(view.daily_source_details_row) < journey_layout.indexOf(
+            view.home_candidate_selector_row
+        ) < journey_layout.indexOf(view.daily_saved_result_row) < journey_layout.indexOf(
             view.daily_action_row
         )
         market_row = view.guided_priority_rows["market"]

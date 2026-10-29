@@ -735,7 +735,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_presentation_toggle.toggled.connect(
             self._toggle_advice_presentation_detail
         )
-        self.advice_lineage_button = QPushButton("展開校準機率來源")
+        self.advice_lineage_button = QPushButton("查看機率依據")
         self.advice_lineage_button.setObjectName("adviceLineageButton")
         self.advice_lineage_button.setProperty("variant", "ghost")
         self.advice_lineage_button.setCheckable(True)
@@ -743,10 +743,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
         self.advice_lineage_button.setEnabled(False)
-        self.advice_lineage_button.setAccessibleName("展開校準機率來源")
+        self.advice_lineage_button.setAccessibleName("查看機率依據")
         self.advice_lineage_button.setToolTip(
-            "查看目前選取列的校準機率／模型／資料集來源。沒有校準資料時會明示未提供；"
-            "不會由排名分數計算機率。"
+            "唯讀查看這筆建議已有的校準機率、模型與資料集來源。沒有校準資料時會明示未提供；"
+            "不會由排名分數推算機率，也不會在此重新計算。"
         )
         self.advice_lineage_button.toggled.connect(self._toggle_advice_lineage)
         advice_evidence_actions = QBoxLayout(QBoxLayout.LeftToRight)
@@ -822,18 +822,21 @@ class UnifiedDecisionWorkbenchView(QWidget):
         source_actions.addStretch(1)
         self.advice_selection_detail_layout.addLayout(source_actions)
 
-        self.advice_author_heading = QLabel("3｜策略作者說明（選填）")
+        self.advice_author_heading = QLabel("3｜作者填寫的策略版本說明（選填）")
         self.advice_author_heading.setObjectName("adviceAuthorHeading")
         self.advice_author_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; font-weight: 600; padding-top: 2px;"
         )
         self.advice_selection_detail_layout.addWidget(self.advice_author_heading)
-        self.advice_contract_backtest_button = QPushButton("選填補充策略版本說明")
+        self.advice_contract_backtest_button = QPushButton("前往策略回測建立新版本")
         self.advice_contract_backtest_button.setObjectName("adviceContractBacktestButton")
         self.advice_contract_backtest_button.setProperty("variant", "secondary")
         self.advice_contract_backtest_button.setToolTip(
             "進場論點、失效條件、持有期間與檢視頻率是策略版本的選填說明，不阻擋系統提供 Advice。"
-            "若要保存，需從新的回測結果建立新版本；此按鈕不會自動執行回測或升版。"
+            "按下後只會前往回測頁核對候選與待填欄位，不會替你填寫、執行回測或升版。"
+        )
+        self.advice_contract_backtest_button.setAccessibleName(
+            "前往策略回測查看建立新版本所需的作者欄位"
         )
         self.advice_contract_backtest_button.hide()
         self.advice_contract_backtest_button.clicked.connect(
@@ -842,7 +845,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_contract_backtest_button.setProperty("variant", "ghost")
         self.advice_selection_detail_layout.addWidget(self.advice_contract_backtest_button)
 
-        self.advice_decision_heading = QLabel("4｜保存研究決定與後續追蹤")
+        self.advice_decision_heading = QLabel("4｜記錄人工研究決定")
         self.advice_decision_heading.setObjectName("adviceDecisionHeading")
         self.advice_decision_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.accent}; font-weight: 700; padding-top: 6px;"
@@ -870,9 +873,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._open_selected_advice_research_history
         )
         self.advice_research_history_link.hide()
-        self.advice_selection_detail_layout.addWidget(
-            self.advice_research_history_link
-        )
         decision_actions = QHBoxLayout()
         decision_actions.setContentsMargins(0, 0, 0, 0)
         decision_actions.setSpacing(8)
@@ -901,6 +901,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             lambda: self._save_selected_advice_research_decision("accepted")
         )
         self.advice_accept_decision_button.setProperty("variant", "primary")
+        self.advice_accept_decision_button.setToolTip(
+            "記錄你決定把這筆 Advice 納入研究；不會建立交易或成交紀錄。"
+        )
         self.advice_skip_decision_button.setToolTip(
             "記錄你決定暫不納入研究；不會建立交易或成交紀錄。"
         )
@@ -913,17 +916,44 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_readback_decision_button.clicked.connect(
             lambda: self._request_selected_advice_research_readback()
         )
+        self.advice_note_decision_button.setToolTip(
+            "為這筆 result ID 追加文字註記；不會改寫已納入／略過決定，也不會建立交易。"
+        )
         self.advice_schedule_review_button = QPushButton("設定下次檢視")
         self.advice_schedule_review_button.setProperty("variant", "secondary")
         self.advice_schedule_review_button.setAccessibleName("設定下次檢視")
         self.advice_schedule_review_button.setToolTip(
-            "為目前核對完成的 Advice candidate 指定台北時間；保存後會讀回核對。"
+            "手動指定你要回來檢視這筆 Advice 的台北時間；保存後會讀回核對，不會依策略頻率自動排程。"
         )
         self.advice_schedule_review_button.setEnabled(False)
         self.advice_schedule_review_button.clicked.connect(
             self._schedule_selected_advice_review
         )
         self.advice_selection_detail_layout.addLayout(decision_actions)
+        self.advice_selection_detail_layout.addWidget(
+            self.advice_research_history_link
+        )
+        self.advice_follow_up_heading = QLabel(
+            "後續追蹤（不改變納入／略過決定）",
+            self.advice_selection_detail_panel,
+        )
+        self.advice_follow_up_heading.setObjectName("adviceFollowUpHeading")
+        self.advice_follow_up_heading.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-weight: 600; padding-top: 4px;"
+        )
+        self.advice_selection_detail_layout.addWidget(self.advice_follow_up_heading)
+        self.advice_follow_up_hint = QLabel(
+            "註記會追加文字；下次檢視記錄你手動選的時間；重新讀取只刷新狀態。"
+            "已保存紀錄可在「研究紀錄與覆盤」依 result ID 找回。",
+            self.advice_selection_detail_panel,
+        )
+        self.advice_follow_up_hint.setObjectName("adviceFollowUpHint")
+        self.advice_follow_up_hint.setWordWrap(True)
+        self.advice_follow_up_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.advice_follow_up_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 0 2px 2px 2px;"
+        )
+        self.advice_selection_detail_layout.addWidget(self.advice_follow_up_hint)
         follow_up_actions = QGridLayout()
         self.advice_follow_up_actions_layout = follow_up_actions
         follow_up_actions.setContentsMargins(0, 0, 0, 0)
@@ -1882,22 +1912,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             text.setWordWrap(True)
             text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+            text.setAccessibleName(f"候選 {symbol} 的來源說明與資料日")
             row.addWidget(text, 1)
-            button = QPushButton("開啟研究")
-            button.setObjectName(f"homeCandidateOpen_{symbol}")
-            button.setProperty("variant", "secondary")
-            button.setAccessibleName(f"開啟候選 {symbol} 個股研究")
-            button.setEnabled(self.navigate_to_stock_research_callback is not None)
-            button.setStyleSheet(
-                f"QPushButton:disabled {{ background: {MIDNIGHT_ANALYST.surface_2}; "
-                f"color: {MIDNIGHT_ANALYST.text_muted}; border-color: {MIDNIGHT_ANALYST.border}; }}"
-            )
-            identity = self._daily_candidate_source_identity(daily)
-            button.clicked.connect(
-                lambda checked=False, code=symbol, source_identity=identity:
-                    self._open_daily_candidate_symbol(code, source_identity)
-            )
-            row.addWidget(button)
             layout.addWidget(line)
         if len(options) > 5:
             more = QLabel(f"另有 {len(options) - 5} 檔；完整清單可在下方明選。")
@@ -2572,7 +2588,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         candidate_selector_layout.addWidget(candidate_selector_label)
         candidate_selector_layout.addWidget(self.daily_candidate_selector, 1)
-        self.home_candidate_controls_layout.addWidget(candidate_selector_row)
+        panel.layout.addWidget(candidate_selector_row)
 
         actions_row = QWidget()
         self.daily_action_row = actions_row
@@ -2592,6 +2608,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_candidate_button.clicked.connect(self._open_daily_candidate_research)
         candidate_selector_layout.addWidget(self.daily_candidate_button)
         self.daily_saved_result_button = QPushButton("讀回這筆保存的推薦結果")
+        self.daily_saved_result_button.setProperty("variant", "secondary")
         self.daily_saved_result_button.setEnabled(False)
         self.daily_saved_result_button.setStyleSheet(
             f"QPushButton:disabled {{ background: {MIDNIGHT_ANALYST.surface_2}; "
@@ -2602,7 +2619,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "只按原結果ID讀回保存時的候選與日期；不是今日推薦，不重跑分析或補齊缺資料。"
         )
         self.daily_saved_result_button.clicked.connect(self._open_daily_saved_result)
-        self.home_candidate_controls_layout.addWidget(self.daily_saved_result_button)
+        self.daily_saved_result_row = QWidget(panel)
+        self.daily_saved_result_row.setObjectName("dailySavedRecommendationRow")
+        saved_result_layout = QHBoxLayout(self.daily_saved_result_row)
+        saved_result_layout.setContentsMargins(0, 0, 0, 0)
+        saved_result_layout.setSpacing(8)
+        saved_result_label = QLabel("回訪原保存結果")
+        saved_result_label.setAccessibleName("回訪原保存推薦結果入口")
+        saved_result_layout.addWidget(saved_result_label)
+        saved_result_layout.addWidget(self.daily_saved_result_button)
+        saved_result_layout.addStretch(1)
+        self.daily_saved_result_row.hide()
+        panel.layout.addWidget(self.daily_saved_result_row)
         self.daily_watchlist_button = QPushButton("查看既有觀察清單")
         self.daily_watchlist_button.setProperty("variant", "secondary")
         self.daily_watchlist_button.setAccessibleName("查看既有觀察清單")
@@ -2872,7 +2900,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_candidate_button.setText(button_text)
         self.daily_candidate_button.setEnabled(can_open)
         self._sync_daily_candidate_advice_control()
-        # 缺件原因留在候選圖卡，沒有可明選股票時不占用兩排停用控制。
+        # 選股入口留在今日流程；缺候選時收起選擇列，不佔用停用控制。
         self.home_candidate_selector_row.setVisible(bool(options))
         self.daily_saved_result_button.setText(
             "讀回上次保存的推薦結果"
@@ -2880,7 +2908,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             else "讀回這筆保存的推薦結果"
         )
         self.daily_saved_result_button.setEnabled(self._daily_saved_result_id() is not None)
-        self.daily_saved_result_button.setVisible(self.daily_saved_result_button.isEnabled())
+        self.daily_saved_result_row.setVisible(self.daily_saved_result_button.isEnabled())
 
         for key, target in getattr(self, "_today_action_targets", {}).items():
             if target == "stock_research":
@@ -5749,9 +5777,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         ):
             self._advice_research_readback_identity = None
             self.advice_research_decision_status.setText(
-                "目前 Advice 尚未具備可核對的 exact result／股票／決策日／snapshot ID；不會保存。"
+                "研究決定未啟用：保存服務、每日來源或此列的 exact 身分尚未核對。"
+                "請確認 result ID、股票、決策日、資料日與來源 snapshot，並重新整理來源。"
             )
-            self.advice_research_decision_status.hide()
+            self.advice_research_decision_status.show()
             return
         result_id = getattr(item, "source_result_id", None)
         stock_code = getattr(item, "stock_code", None)
@@ -5770,9 +5799,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         ):
             self._advice_research_readback_identity = None
             self.advice_research_decision_status.setText(
-                "目前 Advice 尚未具備可核對的 exact result／股票／決策日／snapshot ID；不會保存。"
+                "研究決定未啟用：保存服務、每日來源或此列的 exact 身分尚未核對。"
+                "請確認 result ID、股票、決策日、資料日與來源 snapshot，並重新整理來源。"
             )
-            self.advice_research_decision_status.hide()
+            self.advice_research_decision_status.show()
             return
         identity = {
             "result_id": result_id,
@@ -5900,6 +5930,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
             return False
         current_worker = self._advice_research_readback_worker
         if current_worker is not None and current_worker.isRunning():
+            current_identity = self._advice_research_readback_identities.get(
+                current_worker
+            )
+            if current_identity == identity:
+                return True
             current_worker.cancel(wait=False)
 
         self._set_advice_research_decision_enabled(False)

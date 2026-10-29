@@ -8,6 +8,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtTest import QTest
 
 from app_module.advice_dtos import (
     AdviceAction,
@@ -219,6 +220,10 @@ def test_selecting_exact_advice_candidate_reads_research_state_without_writing()
         view.advice_candidate_table.clicked.emit(view.advice_candidate_model.index(0, 0))
         application.processEvents()
 
+        for _ in range(120):
+            if "目前人工決定=" in view.advice_research_decision_status.text():
+                break
+            QTest.qWait(25)
         assert [action for action, _identity, _note in calls] == ["readback"]
         assert calls[0][1] == {
             "result_id": "result-1",
@@ -234,6 +239,30 @@ def test_selecting_exact_advice_candidate_reads_research_state_without_writing()
         assert "下次檢視=2026-10-27T09:00:00+08:00" in status
         assert view.advice_accept_decision_button.isEnabled()
         assert view.advice_research_decision_status.isVisible()
+    finally:
+        view.close()
+
+
+def test_unavailable_research_decision_shows_identity_reason_beside_disabled_actions() -> None:
+    application = _app()
+    daily = replace(_daily(("2603",)), candidate_status="stale")
+    calls: list[str] = []
+    view, _contexts = _view(
+        daily,
+        _advice_dashboard(_advice_row("2603")),
+        decision_callback=lambda action, _identity, _note="": calls.append(action),
+    )
+    try:
+        view.show()
+        application.processEvents()
+        view._show_advice_row_presentation(view.advice_candidate_model, 0)
+        application.processEvents()
+
+        assert not view.advice_accept_decision_button.isEnabled()
+        assert view.advice_research_decision_status.isVisible()
+        assert "研究決定未啟用" in view.advice_research_decision_status.text()
+        assert "來源 snapshot" in view.advice_research_decision_status.text()
+        assert calls == []
     finally:
         view.close()
 
@@ -299,7 +328,7 @@ def test_candidate_card_keeps_original_reason_while_market_gap_stays_inspectable
         view.close()
 
 
-def test_home_candidate_rows_match_only_explicit_symbol_reasons_and_open_original_context() -> None:
+def test_home_candidate_rows_are_read_only_and_selector_opens_original_context() -> None:
     _app()
     daily = replace(
         _daily(("2330", "2603", "1101")),
@@ -318,9 +347,17 @@ def test_home_candidate_rows_match_only_explicit_symbol_reasons_and_open_origina
         assert "這是2603的原始說明" not in view.daily_candidate_detail_label.text()
         assert "逐股原始理由請看上方候選列" in view.daily_candidate_detail_label.text()
 
-        button = view.home_candidate_preview.findChild(QPushButton, "homeCandidateOpen_2603")
-        assert button is not None and button.isEnabled()
-        button.click()
+        assert view.home_candidate_preview.findChild(
+            QPushButton, "homeCandidateOpen_2603"
+        ) is None
+        assert view.home_candidate_selector_row.parentWidget() is (
+            view.daily_investment_journey_panel
+        )
+        view.daily_candidate_selector.setCurrentIndex(
+            view.daily_candidate_selector.findData("2603")
+        )
+        assert view.daily_candidate_button.isEnabled()
+        view.daily_candidate_button.click()
         assert len(contexts) == 1
         assert contexts[0].stock_code == "2603"
         assert contexts[0].source_snapshot_id == "snapshot-1"
@@ -600,6 +637,7 @@ def test_stale_source_can_open_only_its_explicit_saved_result() -> None:
     view._sync_daily_candidate_open_controls()
     assert not view.daily_candidate_button.isEnabled()
     assert view.home_candidate_selector_row.isHidden()
+    assert not view.daily_saved_result_row.isHidden()
     assert not view.daily_saved_result_button.isHidden()
     assert view.daily_candidate_selector.count() == 1
     assert view.daily_saved_result_button.isEnabled()
@@ -625,7 +663,7 @@ def test_unknown_or_future_candidate_does_not_offer_saved_source_fallback(status
         assert view.home_candidate_selector_row.isHidden()
     else:
         assert not view.home_candidate_selector_row.isHidden()
-    assert view.daily_saved_result_button.isHidden()
+    assert view.daily_saved_result_row.isHidden()
     assert not view._open_daily_saved_result()
     assert opened == []
     view.close()
@@ -638,7 +676,7 @@ def test_missing_candidate_controls_return_after_verified_refresh_without_implic
     application.processEvents()
     try:
         assert view.home_candidate_selector_row.isHidden()
-        assert view.daily_saved_result_button.isHidden()
+        assert view.daily_saved_result_row.isHidden()
         view._render_daily_investment_journey(_daily(("2330", "2603")))
         application.processEvents()
         assert view.daily_candidate_selector.isVisible()

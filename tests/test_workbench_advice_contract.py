@@ -446,6 +446,12 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     assert view.advice_selection_card.isHidden()
     assert view.advice_presentation_toggle.parentWidget() is view.advice_selection_detail_panel
     assert view.advice_lineage_button.parentWidget() is view.advice_selection_detail_panel
+    assert view.advice_lineage_button.text() == "查看機率依據"
+    assert view.advice_decision_heading.text() == "4｜記錄人工研究決定"
+    assert view.advice_follow_up_heading.text() == "後續追蹤（不改變納入／略過決定）"
+    assert "重新讀取只刷新狀態" in view.advice_follow_up_hint.text()
+    assert "result ID 找回" in view.advice_follow_up_hint.text()
+    assert view.advice_contract_backtest_button.text() == "前往策略回測建立新版本"
     assert view.advice_presentation_toggle.sizePolicy().horizontalPolicy() == (
         QSizePolicy.Policy.Fixed
     )

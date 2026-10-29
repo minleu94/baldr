@@ -654,3 +654,18 @@ Backtest 設定欄最上方原以整列寬按鈕「收合左側設定」開頭�
 - 必要 Update UI **102 passed**；Update validator **25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round67_update_validator_logs/VALIDATION_REPORT.md`。修改的 source／test `py_compile` 通過，`recommendation_view.py` scoped mypy **1 source／0 issues**，`git diff --check` 通過。
 - QA 文件 document-control：**12 features／1 link source／0 errors**。推薦操作手冊覆核仍有 9 個既有 `output/trial/` junction 連結因 `WinError 5` 無法讀取；主操作手冊另有 2 個既有相同權限錯誤，本輪未新增或改動這些引用。受影響的文件檢查合計 **12 features／2 link sources**，錯誤只來自無法讀取的既有 junction 目標。
 - 指定 repo-wide mypy 在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇既有語法錯誤後停止；其餘模組未檢查。原生 GUI／Owner UAT、Recommendation 真實保存來源旅程及整體 UI 盤點仍未完成。本輪不改來源資格、資料或金融邏輯。
+
+## 2026-10-29 第六十七輪：Advice 研究決定與後續追蹤區隔
+
+Workbench 的 Advice 詳情把「人工納入／略過決定」與註記、手動下次檢視、狀態讀回分成兩區，加入每個操作的唯讀／不建交易提示；校準來源入口改為「查看機率依據」，策略作者欄位明確說明需前往回測頁建立版本。無法核對 result／股票／決策日／來源 snapshot 時，現在顯示原因與重查指引，不再隱藏狀態。相關操作仍沿用既有服務與身分核驗。
+
+- 最後一次合併執行 `tests/test_workbench_advice_contract.py`、`tests/test_ui_qt_workbench_candidate_selection.py`、`tests/test_ui_qt_workbench_home_single_page.py`：**54 passed**。背景讀回案例以有限事件輪詢等待結果；非有效保存 ID 的狀態斷言改核對外層入口列是否隱藏。`workbench_view.py` scoped mypy **1 source／0 issues**，修改的 Python source／test `py_compile` 通過，`git diff --check` 通過。
+- Update UI **102 passed**、Update validator **25 passed／0 failed／4 skipped**；repo-wide mypy 仍由未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻斷。`APPLICATION_MANUAL.md` document-control 重核仍有 2 個既有 `output/trial/` Junction 連結因 `WinError 5` 無法讀取；UI QA 文件的 document-control 為 12 features／1 link source／0 errors。
+- Update UI **102 passed**、Update validator **25 passed／0 failed／4 skipped**；repo-wide mypy 仍由未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻斷。`APPLICATION_MANUAL.md` document-control 仍有 2 個既有 `output/trial/` Junction 引用遇 `WinError 5`。
+
+## 2026-10-29 第六十八輪：Advice 操作分組與每日候選入口連續性
+
+Advice 詳情把「查看機率依據」、前往策略回測建立新版本、記錄人工納入／略過決定，以及註記／手動檢視／讀回拆成目的明確的區塊，並在操作旁說明唯讀及不建立交易；身份或來源不足時將停用原因直接顯示。每日候選摘要中的逐股預覽改為唯讀，唯一選股入口移到每日來源詳情旁，原保存結果回訪另列為次要入口，避免主操作被收合卡片藏住或同頁重複。另合併同一 Advice 身分的併發讀回，避免重複選取事件取消第一筆查詢後留下「背景讀取中」。只調整操作呈現及重複讀回控制，不更改保存契約、來源判定、Advice、篩選或金融邏輯。
+
+- 變更範圍：`workbench_view.py`、Recommendation 來源詳情顯示、對應 Advice／候選選取／每日單頁測試與操作手冊。合併回歸測試及其餘必要驗證尚待本輪完成後填列；不得把待測項目視為通過。
+- 原生 GUI／Owner UAT 尚未執行；自動化檢查不會證明資料來源已合格，也不代表全程式 UI 盤點已完成。

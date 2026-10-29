@@ -13,7 +13,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication, QEvent, QThread, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QAbstractItemView, QBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QAbstractItemView,
+    QBoxLayout,
+    QSizePolicy,
+    QWidget,
+)
 import shiboken6
 
 from app_module.workbench_dtos import (
@@ -320,6 +326,27 @@ def test_workbench_advice_loading_empty_and_error_states_keep_plain_language_and
     assert raw_error in error_diagnostics
     assert "收合本次 Advice 狀態" in view.advice_technical_diagnostics_button.accessibleDescription()
     view.close()
+
+
+def test_advice_technical_diagnostics_action_stays_compact_and_left_aligned() -> None:
+    app()
+    view = UnifiedDecisionWorkbenchView(auto_refresh=False)
+    try:
+        view._set_advice_state("WAITING_FOR_ADVICE_DTO")
+        view.show()
+        for width, height in ((1366, 768), (760, 600)):
+            view.resize(width, height)
+            app().processEvents()
+            button = view.advice_technical_diagnostics_button
+            card = view.advice_empty_widget
+
+            assert button.isVisible()
+            assert button.property("variant") == "ghost"
+            assert button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+            assert button.width() <= button.sizeHint().width() + 2
+            assert button.geometry().right() < card.width() - 40
+    finally:
+        view.close()
 
 
 def _dashboard_with_replay() -> WorkbenchDashboardDTO:
@@ -1497,17 +1524,19 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     view.advice_recommendation_table.setCurrentIndex(
         view.advice_recommendation_model.index(0, 0)
     )
-    assert "主要理由／限制" in view.advice_selection_card.text()
-    assert "證據狀態" in view.advice_selection_card.text()
-    assert "執行限制" in view.advice_selection_card.text()
-    assert "策略版本說明（選填；缺漏不阻擋 Advice）" in view.advice_selection_card.text()
-    assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
+    assert "策略 Advice｜暫不新增部位" in view.advice_selection_card.text()
+    assert "證據成熟度：證據不足" in view.advice_selection_card.text()
+    assert "決策信心：不可用" in view.advice_selection_card.text()
+    assert "執行限制：流動性 未知" in view.advice_selection_card.text()
+    assert view.advice_presentation_detail.isHidden()
+    view.advice_presentation_toggle.click()
+    expanded = view.advice_presentation_detail.toPlainText()
+    assert "策略版本說明（選填；缺漏不阻擋 Advice）" in expanded
+    assert "動作適合度：不新增部位" in expanded
     assert "缺少合格證據" in view.advice_selection_card.text()
-    assert "證據成熟度：證據不足（原始值：insufficient）" in view.advice_selection_card.text()
-    assert "決策信心不可用" in view.advice_selection_card.text()
-    assert "證據層級" not in view.advice_selection_card.text()
-    assert "失效條件：未提供" in view.advice_selection_card.text()
-    assert "流動性 Gate：未知（原始值：UNKNOWN）" in view.advice_selection_card.text()
+    assert "決策信心不可用" in expanded
+    assert "失效條件：未提供" in expanded
+    assert "明確未知／未提供欄位仍是限制：流動性狀態" in expanded
     assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.toPlainText()
     assert view.advice_recommendation_model.rowCount() == 1
 
@@ -1626,8 +1655,9 @@ def test_workbench_advice_quick_read_separates_policy_restrictions_from_source_e
     )
     assert "不能據此推定沒有反證或風險" not in model.data(quick_index, Qt.ToolTipRole)
     view.advice_recommendation_table.setCurrentIndex(model.index(0, 0))
-    assert "主要理由／限制" in view.advice_selection_card.text()
-    assert "保存來源逐股證據\n• Why Not：結果=未通過" in view.advice_selection_card.text()
+    assert "理由：符合研究條件" in view.advice_selection_card.text()
+    view.advice_presentation_toggle.click()
+    assert "保存來源逐股證據\n• Why Not：結果=未通過" in view.advice_presentation_detail.toPlainText()
     assert model.data(risk_index) == "持倉限制待覆核（另 1 項）"
     assert model.data(status_index) == (
         "部分資料｜證據成熟度：未知／未對齊｜流動性 Gate：未知｜成交：未知｜資料日：2026-07-03"
@@ -1841,7 +1871,8 @@ def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknow
     assert "策略持有期間：swing" in detail_text
     assert "資料日：2026-07-06" in detail_text
     assert "來源追溯：fixture:advice" in detail_text
-    assert "保存來源逐股證據\n• 篩選：階段=legacy:technical_gate" in view.advice_selection_card.text()
+    view.advice_presentation_toggle.click()
+    assert "保存來源逐股證據\n• 篩選：階段=legacy:technical_gate" in view.advice_presentation_detail.toPlainText()
     assert "保存來源逐股證據：篩選：階段=legacy:technical_gate" in view.advice_selection_card.toolTip()
 
 

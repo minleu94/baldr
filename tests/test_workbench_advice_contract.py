@@ -226,12 +226,15 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     assert not view.advice_candidate_cards.isHidden()
     assert len(view._advice_candidate_card_buttons) == 1
     view._show_advice_row_presentation(view.advice_candidate_model, 0)
-    assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
-    assert "動作：研究（原碼：RESEARCH）" in view.advice_selection_card.text()
-    assert "適用期間：未提供" in view.advice_selection_card.text()
-    assert "風險：未提供" in view.advice_selection_card.text()
-    assert "失效條件：未提供" in view.advice_selection_card.text()
-    assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.toPlainText()
+    assert "策略 Advice｜研究" in view.advice_selection_card.text()
+    assert "動作適合度：研究" in view.advice_presentation_detail.toPlainText()
+    assert view.advice_presentation_detail.isHidden()
+    view.advice_presentation_toggle.click()
+    detail = view.advice_presentation_detail.toPlainText()
+    assert "適用期間：未提供" in detail
+    assert "風險：未提供" in detail
+    assert "失效條件：未提供" in detail
+    assert "共用證據詳情（唯讀）" in detail
 
 
 def test_advice_cards_show_saved_comparison_fields_and_centralize_shared_notices() -> None:
@@ -407,7 +410,7 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     assert view._advice_candidate_detail_hosts[0].isAncestorOf(
         view.advice_selection_detail_panel
     )
-    assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
+    assert "策略 Advice｜研究" in view.advice_selection_card.text()
     candidate_card = view._advice_candidate_card_frames[0]
     summary_texts = tuple(
         label.text() for label in candidate_card.findChildren(QLabel)
@@ -420,6 +423,8 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     assert not any(text.startswith("支持理由：") for text in summary_texts)
     assert "同筆來源證據 Alpha" in view.advice_selection_card.toolTip()
     assert not view.advice_selection_card.isHidden()
+    assert view.advice_presentation_detail.isHidden()
+    view.advice_presentation_toggle.click()
     assert not view.advice_presentation_detail.isHidden()
     assert view._advice_candidate_detail_hosts[0].isAncestorOf(
         view.advice_accept_decision_button
@@ -552,9 +557,10 @@ def test_advice_selection_card_bounds_height_and_keeps_full_text_reachable() -> 
 
     assert view.advice_selection_card.maximumHeight() > 160
     assert view.advice_selection_card.wordWrap()
-    assert "完整理由見下方共用證據詳情" in view.advice_selection_card.text()
+    assert "完整判讀" in view.advice_selection_card.text()
     assert long_reason in view.advice_selection_card.toolTip()
-    assert "風險：" in view.advice_selection_card.text()
+    view.advice_presentation_toggle.click()
+    assert "風險：" in view.advice_presentation_detail.toPlainText()
     assert long_risk not in view.advice_selection_card.text()
     assert long_reason in view.advice_selection_card.accessibleDescription()
     assert long_reason in view.advice_presentation_detail.toPlainText()
@@ -671,6 +677,8 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
         candidate_result_id=result_id,
         candidate_source_snapshot_id="snapshot-composed-e2e",
         candidate_data_date="2026-07-11",
+        evidence_event_ids=("daily-event-for-ui-test",),
+        source_trace=("industry source contract pending",),
     )
     opened: list[str] = []
     history_searches: list[str] = []
@@ -686,13 +694,23 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
     assert not view.advice_source_result_button.isHidden()
     assert not view.advice_daily_source_button.isHidden()
+    assert view.advice_daily_source_button.text() == "今日總覽：來源與排除"
     assert "result_id=" + result_id in view.advice_daily_source_button.toolTip()
     assert not view.advice_research_history_link.isHidden()
-    assert view._open_selected_advice_research_history()
+    assert "研究紀錄與覆盤" in view.advice_research_history_link.text()
+    assert view.advice_research_history_link.width() <= (
+        view.advice_research_history_link.sizeHint().width() + 2
+    )
+    view.advice_research_history_link.click()
     assert history_searches == [result_id]
     view.advice_daily_source_button.click()
     assert view.daily_detail_button.isChecked()
     assert not view.daily_trace_label.isHidden()
+    assert "本次每日來源（唯讀）" in view.daily_trace_label.text()
+    assert "daily-event-for-ui-test" not in view.daily_trace_label.text()
+    assert view.daily_trace_advanced_panel.is_collapsed()
+    assert "daily-event-for-ui-test" in view.daily_trace_advanced_text.text()
+    assert "industry source contract pending" in view.daily_trace_advanced_text.text()
     assert _wait_for_qt(view.advice_accept_decision_button.isEnabled)
     assert view.advice_accept_decision_button.isEnabled()
     assert view._selected_advice_decision_identity == {
@@ -824,6 +842,7 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
         lambda: "同筆狀態已讀回" in view.advice_research_decision_status.text()
     )
     assert "同筆狀態已讀回" in view.advice_research_decision_status.text()
+    assert "回查位置：研究紀錄與覆盤" in view.advice_research_decision_status.text()
     assert "目前人工決定=已略過" in view.advice_research_decision_status.text()
     assert "研究註記=2 筆" in view.advice_research_decision_status.text()
     assert "下次檢視=2026-07-20T09:30:00+08:00" in view.advice_research_decision_status.text()

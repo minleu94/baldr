@@ -389,3 +389,9 @@ Recovery planner 對上述 3 列回報 0 conflict／diagnostic、3 normalized、
 Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1 normalized；正式 apply 先備份 mapping／SQLite。canonical row exact-key readback 後為 `revenue=1641570`、`announced_date=2026-05-15`、`available_date=2026-06-18`、`quality=observed`，`PRAGMA quick_check=ok`。加上本節上一筆 6806／2026-04，正式數由 251,194 observed／722 degraded 變為 **251,196 observed／720 degraded**；目前五家集中數為 664/720（92.2%），其餘分類為 682 無已配對事件、36 晚於 snapshot 可得日、1 晚於 row capture、1 筆 6884／2026-08 缺公告。
 
 反例也一併記錄：同一批官方 2392／2026-05-15 明細的 3 月與 4 月累計差為 6,222,375 仟元，但固定 snapshot 4 月值是 6,222,374 仟元，差 1 仟元。此列沒有精確相等，不納入 mapping、不解除 degraded。這證明累計差額只在與目標 snapshot 完全一致時才可回填，不能以近似或四捨五入替代逐列核對。
+
+### 2026-10-29 官方明細累計值擴展解鎖 8101／2026-04
+
+對官方 `t05st01` 年度清單中 8101／2026-05-19、更正 2025-12 至 2026-04 累計營收的公告取 MOPS 明細（`companyId=8101`、`marketKind=sii`、`enterDate=1150519`、`serialNumber=2`）。HTTP 200 原件 SHA-256 `e3fe8c1f91d786454ea213c32e34000b02ac14a662d5929570f8054e3929fd82`。明細當期／累計表列 2026-04 當期 **30,409 仟元**、截至 4 月累計 **112,511 仟元**；這與固定 snapshot 8101／2026-04 的 `current_month_revenue=30409`、`cumulative_revenue=112511` 逐欄完全一致，公告時間 **2026-05-19 17:20:59** 早於 snapshot capture。Recovery planner 1 列、0 conflict、0 diagnostics，正式回填後 canonical row 為 `announced_date=2026-05-19`、`revenue=30409`、`available_date=2026-06-18`、`quality=observed`，`PRAGMA quick_check=ok`。
+
+時間版本守衛仍有效：8101／2026-08-07 的官方後續更正將 2026-04 當期改為 **34,038 仟元**，其 F22 時間晚於 2026-06-16 snapshot；因此保留舊 snapshot 在 2026-05-19 可知的 30,409，不把 8 月修訂覆寫到舊值或舊公告時間。加上 3712／2026-04 與 6806／2026-04，正式表由 251,196 observed／720 degraded 變為 **251,197 observed／719 degraded**。剩餘分類為 681 無可配對事件、36 晚於 snapshot 可得日、1 晚於 row capture、另 6884／2026-08 一列缺公告；五家主要集中仍為 664 列（92.4%）。

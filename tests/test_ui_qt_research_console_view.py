@@ -16,7 +16,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication, QEvent, QThread, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QHeaderView,
+    QPushButton,
+    QScrollArea,
+    QTableWidget,
+    QWidget,
+)
 import shiboken6
 
 from app_module.research_console_dtos import (
@@ -814,6 +821,46 @@ def test_missing_console_opens_and_shows_fail_closed_boundary() -> None:
     assert "Downstream eligible：0" in text
     assert view.control_center_table.rowCount() == 13
     assert view.control_center_table.horizontalHeaderItem(5).text() == "PIT / 解析通過率"
+
+
+def test_research_console_tables_keep_parent_width_and_allow_column_adjustment() -> None:
+    qt_app = app()
+    view = ResearchConsoleView(console=_console(), auto_refresh=False)
+    view.resize(960, 640)
+    view.show()
+    qt_app.processEvents()
+
+    scroll = view.findChild(QScrollArea)
+    assert scroll is not None
+    overflowing = tuple(
+        (
+            widget.objectName() or widget.accessibleName() or widget.metaObject().className(),
+            widget.sizeHint().width(),
+            widget.minimumSizeHint().width(),
+            widget.width(),
+            str(widget.text())[:160] if callable(getattr(widget, "text", None)) else "",
+        )
+        for widget in scroll.widget().findChildren(QWidget)
+        if widget.sizeHint().width() > scroll.viewport().width()
+    ) if scroll.widget() is not None else ()
+    assert scroll.horizontalScrollBar().maximum() == 0, (
+        f"range={scroll.horizontalScrollBar().maximum()}, "
+        f"viewport={scroll.viewport().size()}, content="
+        f"{scroll.widget().size() if scroll.widget() is not None else None}, "
+        f"overflowing={overflowing[:20]}"
+    )
+    assert scroll.widget() is not None
+    assert scroll.widget().width() <= scroll.viewport().width()
+
+    table = view.control_center_table
+    header = table.horizontalHeader()
+    assert header.sectionResizeMode(0) == QHeaderView.ResizeMode.Interactive
+    assert all(table.columnWidth(index) <= 120 for index in range(table.columnCount()))
+    assert all(
+        table.horizontalHeaderItem(index).toolTip() == table.horizontalHeaderItem(index).text()
+        for index in range(table.columnCount())
+    )
+    view.close()
 
 
 def test_research_console_shows_selected_p0_owner_decision_and_evidence_gaps() -> None:

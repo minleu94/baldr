@@ -704,13 +704,13 @@ class ResearchConsoleView(QWidget):
             self.quarterly_formal_impact_boundary_label
         )
         announcement_panel.layout.addWidget(self.quarterly_announcement_crosswalk_table)
-        announcement_panel.layout.addWidget(
-            QLabel(
-                "同鍵表示市場、公司、報表種類與期別一致；依 Owner 授權，明確匹配的 MOPS 顯示日期與時間可作公告時間戳。"
-                "若有多筆公告，保留版本歧義。此候選對照不會回寫正式財報資料，也不證明 CSV 數值版本、首次可得時間或來源資格。"
-                "選取窗口未觀測不等於未申報；本區不授歷史 PIT／Gate credit。"
-            )
+        announcement_note = QLabel(
+            "同鍵表示市場、公司、報表種類與期別一致；依 Owner 授權，明確匹配的 MOPS 顯示日期與時間可作公告時間戳。"
+            "若有多筆公告，保留版本歧義。此候選對照不會回寫正式財報資料，也不證明 CSV 數值版本、首次可得時間或來源資格。"
+            "選取窗口未觀測不等於未申報；本區不授歷史 PIT／Gate credit。"
         )
+        announcement_note.setWordWrap(True)
+        announcement_panel.layout.addWidget(announcement_note)
         announcement_panel.layout.addWidget(
             self.quarterly_announcement_crosswalk_detail_label
         )
@@ -803,14 +803,14 @@ class ResearchConsoleView(QWidget):
         monthly_quality_panel.layout.addWidget(
             self.formal_monthly_revenue_quality_detail_table
         )
-        monthly_quality_panel.layout.addWidget(
-            QLabel(
-                "公告日期非空只代表欄位有值；靜態報表來源日期只有與精確 MOPS 公告日期一致才從待核實計數扣除，"
-                "不等同公司別公告事件。只計正式月營收列與識別資訊，不讀取營收值，"
-                "明選月份後每頁最多 100 列。精確 mapping 依公司、月份與 target source version 對照；"
-                "mapping 缺失、無法讀取或含診斷時顯示未知。此對照不回填日期，也不判定 Gate／PIT 資格。"
-            )
+        monthly_quality_note = QLabel(
+            "公告日期非空只代表欄位有值；靜態報表來源日期只有與精確 MOPS 公告日期一致才從待核實計數扣除，"
+            "不等同公司別公告事件。只計正式月營收列與識別資訊，不讀取營收值，"
+            "明選月份後每頁最多 100 列。精確 mapping 依公司、月份與 target source version 對照；"
+            "mapping 缺失、無法讀取或含診斷時顯示未知。此對照不回填日期，也不判定 Gate／PIT 資格。"
         )
+        monthly_quality_note.setWordWrap(True)
+        monthly_quality_panel.layout.addWidget(monthly_quality_note)
         gates_panel.layout.addWidget(monthly_quality_panel)
         gates_panel.layout.addWidget(QLabel("Artifact Inspector"))
         gates_panel.layout.addWidget(self.artifact_table)
@@ -2622,7 +2622,20 @@ def _table(headers: tuple[str, ...]) -> QTableWidget:
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
     table.setAlternatingRowColors(True)
     table.verticalHeader().setVisible(False)
-    table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+    header = table.horizontalHeader()
+    header.setSectionResizeMode(QHeaderView.Interactive)
+    header.setMinimumSectionSize(72)
+    column_count = table.columnCount()
+    initial_width = (
+        220 if column_count == 1
+        else 180 if column_count == 2
+        else 150 if column_count <= 4
+        else 128 if column_count <= 6
+        else 112 if column_count <= 8
+        else 104
+    )
+    for column in range(column_count):
+        table.setColumnWidth(column, initial_width)
     table.horizontalHeader().setStretchLastSection(True)
     for column in range(table.columnCount()):
         header_item = table.horizontalHeaderItem(column)

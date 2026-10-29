@@ -426,9 +426,13 @@ class _MaturityDistributionView(QWidget):
         self._rows.clear()
 
     def _add_message(self, message: str) -> None:
-        label = QLabel(message)
+        # 卡片先呈現短摘要；完整錯誤路徑留在下方原始明細與提示中，避免診斷字串撐高卡片。
+        display_message = "完整診斷見下方原始明細" if len(message) > 80 else message
+        label = QLabel(display_message)
         label.setObjectName("maturityDistributionUnknown")
         label.setWordWrap(True)
+        label.setToolTip(message)
+        label.setAccessibleDescription(message)
         label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
         self._rows_layout.addWidget(label)
         self._rows.append(label)

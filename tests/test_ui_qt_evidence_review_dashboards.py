@@ -732,16 +732,24 @@ def test_scheduled_status_maturity_chart_clears_for_initial_error_and_unknown_pa
     unknown_status = ScheduledEvidenceStatus(
         load_state="unknown",
         load_checked_at="2026-10-23T12:00:00+00:00",
-        diagnostics=("latest_status_missing",),
+        diagnostics=(
+            "status_missing:C:\\scheduled\\latest_status\\very_long_source_location\\"
+            "daily_research_snapshot_output.json",
+        ),
         forward_health_horizons={"H5": {"ready": 5, "pending": 0, "missing": 0}},
     )
     unknown_view = ScheduledEvidenceStatusView(
         FakeScheduledStatus(), auto_refresh=False, async_refresh=False
     )
     unknown_view._on_status_loaded(unknown_status)
-    assert "latest_status_missing" in " ".join(
-        row.text() for row in unknown_view.maturity_distribution._rows if isinstance(row, QLabel)
+    unknown_message = next(
+        row
+        for row in unknown_view.maturity_distribution._rows
+        if isinstance(row, QLabel)
     )
+    assert unknown_message.text() == "完整診斷見下方原始明細"
+    assert "status_missing:C:\\scheduled\\latest_status" in unknown_message.toolTip()
+    assert "daily_research_snapshot_output.json" in unknown_view.detail_panel.toPlainText()
     assert not any(row.findChild(QWidget, "maturityBar_H5") for row in unknown_view.maturity_distribution._rows)
 
 

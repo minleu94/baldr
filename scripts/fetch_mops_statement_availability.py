@@ -165,9 +165,7 @@ def main(argv: list[str] | None = None) -> int:
         formal_db=data_root / "sqlite" / "twstock.db",
     )
     if weekly_mode:
-        try:
-            safe_root.relative_to(ROOT.resolve())
-        except ValueError:
+        if not _is_repository_scoped_path(requested_output_root, ROOT):
             parser.error("weekly research output-root 必須位於 repository 內")
         safe_root.mkdir(parents=True, exist_ok=True)
         assert observed_now is not None
@@ -415,6 +413,18 @@ def _configure_utf8_stdio() -> None:
         except (OSError, ValueError):
             # pytest capture streams 或 host-managed stream 可能不可重設編碼。
             continue
+
+
+def _is_repository_scoped_path(path: Path, repository_root: Path) -> bool:
+    """用呼叫端路徑驗證 repo 範圍，避免 output junction 被 resolve 後誤拒。"""
+
+    candidate = Path(os.path.abspath(os.fspath(path)))
+    root = Path(os.path.abspath(os.fspath(repository_root)))
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _last_complete_taipei_7_day_window(observed_at: datetime) -> tuple[date, date]:

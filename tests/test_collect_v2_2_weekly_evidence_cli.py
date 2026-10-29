@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -74,6 +75,8 @@ def test_collect_cli_includes_iso_date_rows_in_same_period(tmp_path: Path) -> No
             ("2026-07-06", "2330", 100, 102, 99, 101, 100, 10, 10000),
         )
 
+    child_env = dict(os.environ)
+    child_env["PYTHONIOENCODING"] = "cp1252"
     completed = subprocess.run(
         [
             sys.executable,
@@ -92,9 +95,12 @@ def test_collect_cli_includes_iso_date_rows_in_same_period(tmp_path: Path) -> No
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        env=child_env,
     )
 
     assert completed.returncode == 0, completed.stderr
+    assert "開盤價" in completed.stdout
     coverage = json.loads(completed.stdout)["source_coverage"]
     assert coverage["trading_day_count"] == 3
     assert coverage["trading_days"][0]["date"] == "2026-07-06"

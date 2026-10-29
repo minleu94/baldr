@@ -554,6 +554,13 @@ def _base_payload(*, period_start: str, period_end: str, source_db_path: Path) -
 
 
 def main() -> int:
+    # Task Scheduler may launch Python with a Windows code page that cannot
+    # encode the Chinese fields in the JSON receipt written to stdout.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
     args = parse_args()
     source_db_path = Path(args.source_db_path)
     output_root = Path(args.output_root)

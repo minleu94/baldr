@@ -13,6 +13,24 @@ from tests.test_mops_success_response_custody import _Response, _response_payloa
 from scripts import fetch_mops_statement_availability as fetch_cli
 
 
+def test_weekly_output_root_accepts_repository_path_through_output_junction(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "technical_analysis"
+    requested = (
+        repository_root
+        / "output"
+        / "research"
+        / "mops_statement_availability"
+    )
+
+    assert fetch_cli._is_repository_scoped_path(requested, repository_root)
+    assert not fetch_cli._is_repository_scoped_path(
+        repository_root / ".." / "outside" / "mops_statement_availability",
+        repository_root,
+    )
+
+
 def test_weekly_window_is_the_last_seven_complete_taipei_calendar_days() -> None:
     observed_at = datetime.fromisoformat("2026-10-04T10:00:00+00:00")
 

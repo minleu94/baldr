@@ -493,3 +493,11 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 重新解析官方 harvest 原件 `output/mops_harvest_2026/raw/ezsearch_F22_otc_1150906_1150908.json`：payload 329 列、HTTP/API `success`，原件 SHA-256 `864b1de8fbc09df54ba203d9923a122be9a34001712b4721db2979d54e395018` 與 manifest 一致；329 列中 `COMPANY_ID=6884` 為 **0**。因此 6884／2026-08 的缺事件已存在於官方 OTC EZSearch 原始回應，不是 `events.csv` parser 漏列。該期 6884 的 `mopsfin`／MOPS 現況值仍是 184,914 仟元。
 
 第三方 MoneyDJ／第一銀行轉載頁將相同金額標為 2026-09-07 23:59 發布（[第一銀行頁面](https://wealth.firstbank.com.tw/investment-tips/trend-insight/news/news-detail?id=%7B184CEDB8-C5E8-4E18-A441-504E87000030%7D)）。此只提供下一個官方查詢日期線索，不是 MOPS 原始公告時間，不用於 availability mapping。針對 2026-09-07 的官方 PUB F22 單日窗口再以 Scrapling 普通 HTTPS POST 查一次，12 秒 timeout、單次請求；本機 DNS 解析逾時、沒有 HTTP response。失敗收據保存在 ignored `.tmp_mops_pub_6884_probe_20261029/failure_receipt.json`。故本輪未新增 mapping、未改正式 DB；網路恢復後應先重試該單日 PUB 窗口，再確認公告詳情中的 issuer、period 與 value，才能裁決 6884／2026-08。
+
+### 2026-10-29 Weekly MOPS child 實跑：編碼與 output junction 修復
+
+隔離手動執行 Weekly controller 時先重現兩個可修故障：核心 collector 在 Windows `cp1252` stdout 輸出含中文 JSON 時拋 `UnicodeEncodeError`；修正為子程序自行重設 UTF-8 後，core 已能正常完成。接著 `fetch_mops_statement_availability.py` 把已由 output guard 驗證的輸出路徑 `resolve()` 後再檢查是否位於 repo；本機 `repo/output` 是指向 `F:/Min/Python/Project/BaldrStorage/repo-output` 的既定 junction，故被誤判為越界。現在以固定 repo 內預設路徑做詞法範圍驗證，再由既有 output guard 確認解析後位置不在正式 `DATA_ROOT`。
+
+修正後以隔離 controller receipt 實跑成功：core `exit_code=0`、sidecar readback verified、未逾時；MOPS 財報公告研究 child `captured_research`，6/6 查詢成功、失敗 0、無效事件 0，成功回應 custody 6 件且 source readback verified。研究 run `run_20261029T142745954121Z`，artifact SHA-256 `1ae1a1cfce9a9f143311dc12a5f786a7d7c91a928292da0de5a45891475f5058`。本次明確停用無關的 quarterly OpenAPI child，只執行 controller，未呼叫外層 `current_fundamentals` writer；`formal_database_write_performed_by_controller=false`。注意這個 child 查詢的是財報公告 F26–F28，與月營收 F22 歷史缺口不同；此為手動隔離驗證，不代表 Task Scheduler 自然週排程已成功。
+
+修改的週核心 CLI 在 `PYTHONIOENCODING=cp1252` 下回歸測試通過；CLI／output-path focused checks **8 passed**，Weekly controller **40 passed／1 個具名遷移測試 deselected**，py_compile 通過。較大的三檔合併測試另有 8 個環境失敗（MOPS custody fixture 輸出目錄問題與 `cmd.exe` wrapper 執行結果 99）；因此不宣稱三檔測試全通過。此修復沒有解除任何月營收 `degraded` mapping。

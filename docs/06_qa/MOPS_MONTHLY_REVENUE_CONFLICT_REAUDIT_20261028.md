@@ -381,3 +381,11 @@ Recovery planner 對上述 3 列回報 0 conflict／diagnostic、3 normalized、
 原始清單 `legacy_t05_release_windows/6806_115_05.html` SHA-256 `fafee4ef1f1b923a6347e1ec594e2f885d84e750a5037122110f7e5238d6e01a`；詳情 `legacy_t05_release_windows/6806_20260515_171551_detail.html` SHA-256 `610d7eeab592a82527f82ca28adbf6d4cd22d0100b44d00531952e3004658095`。candidate mapping 綁定詳情 hash、`announced_at=2026-05-15T17:15:51+08:00` 與目標 snapshot 版號。Planner 回報 1 列、0 conflict、0 diagnostics、1 normalized，正式套用先備份 mapping／SQLite；交易 journal 一度停在 `mapping_applied`，按同一 operation identity 恢復後完成 DB 寫入。之後以 exact-key guarded transaction 將唯一 observed suffix row 正規化成 canonical row並移除該 suffix duplicate。SQLite readback 為 6806／2026-04、`revenue=1052473`、`announced_date=2026-05-15`、`available_date=2026-06-18`、canonical source version、`quality=observed`；`PRAGMA quick_check=ok`。正式品質數由 251,194 observed／722 degraded 變為 **251,195 observed／721 degraded**。
 
 同一舊版端點亦成功回傳 5371／民國 103 年 5、6 月及 2867／民國 103 年 5、6 月公告清單，但這四個代表月份沒有精確月營收標題；6806／民國 108 年 5 月清單為空，該結果僅是單一月份，不能推論整段歷史。原先「5 碼歷史 issuer 路徑都沒有資料」的判斷需修正：舊版路徑能查回公司公告，但只有逐列核出精確收入值與時間才能解除對應 degraded。此批只新增 6806／2026-04 一列，不表示其他歷史缺口已解決。
+
+### 2026-10-29 利用更正明細累計值再解鎖 3712／2026-04
+
+檢視已保存、SHA 已核對的 MOPS 官方 3712／2026-05-15 詳情頁（原始 API JSON SHA-256 `00a4b4fa92765cec12eb8ec24ff42e72c5901d00f0fbcf603d63055061eb6792`），發現標題雖寫「更正 3 月營收及 3 月及 4 月累計營收」，先前 parser 只將 3 月列為候選，漏掉可由詳情精確還原的 4 月。更正後 3 月累計 **5,952,952 仟元**、4 月累計 **7,594,522 仟元**，差額 **1,641,570 仟元**與固定 snapshot 3712／2026-04 `current_month_revenue` 完全一致。公告時間為 **2026-05-15 17:35:01**，早於該 snapshot capture；因此以同一公告作為 4 月值的時間證據成立。
+
+Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1 normalized；正式 apply 先備份 mapping／SQLite。canonical row exact-key readback 後為 `revenue=1641570`、`announced_date=2026-05-15`、`available_date=2026-06-18`、`quality=observed`，`PRAGMA quick_check=ok`。加上本節上一筆 6806／2026-04，正式數由 251,194 observed／722 degraded 變為 **251,196 observed／720 degraded**；目前五家集中數為 664/720（92.2%），其餘分類為 682 無已配對事件、36 晚於 snapshot 可得日、1 晚於 row capture、1 筆 6884／2026-08 缺公告。
+
+反例也一併記錄：同一批官方 2392／2026-05-15 明細的 3 月與 4 月累計差為 6,222,375 仟元，但固定 snapshot 4 月值是 6,222,374 仟元，差 1 仟元。此列沒有精確相等，不納入 mapping、不解除 degraded。這證明累計差額只在與目標 snapshot 完全一致時才可回填，不能以近似或四捨五入替代逐列核對。

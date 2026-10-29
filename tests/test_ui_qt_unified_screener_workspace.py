@@ -756,6 +756,14 @@ def test_condition_recipe_shortcuts_reflow_at_three_widths(qtbot):
             (index // expected_columns, index % expected_columns)
             for index in range(len(workspace.condition_recipe_buttons))
         ]
+        assert all(
+            button.width() <= 300
+            and button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+            for button in workspace.condition_recipe_buttons.values()
+        )
+        if expected_columns == 3:
+            first_button = next(iter(workspace.condition_recipe_buttons.values()))
+            assert first_button.x() <= 80
 
 
 def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot):

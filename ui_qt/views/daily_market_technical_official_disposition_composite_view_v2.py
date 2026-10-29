@@ -14,6 +14,7 @@ from PySide6.QtCore import QModelIndex, QTimer, Qt, Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QBoxLayout,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -439,6 +440,22 @@ class DailyMarketTechnicalOfficialDispositionCompositeViewV2(QWidget):
             else "請更新保存來源清單，再明確選取版本。"
         )
 
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._arrange_query_actions()
+
+    def _arrange_query_actions(self) -> None:
+        layout = getattr(self, "query_action_layout", None)
+        if layout is None:
+            return
+        direction = (
+            QBoxLayout.Direction.LeftToRight
+            if self.width() >= 620
+            else QBoxLayout.Direction.TopToBottom
+        )
+        if layout.direction() != direction:
+            layout.setDirection(direction)
+
     @property
     def current_result(self) -> DailyMarketTechnicalOfficialDispositionCompositeVerifiedQueryResultV2 | None:
         return self._result
@@ -510,17 +527,33 @@ class DailyMarketTechnicalOfficialDispositionCompositeViewV2(QWidget):
 
         self.filter_panel = self._build_filter_panel()
         body.addWidget(self.filter_panel)
-        action_row = QGridLayout()
+        action_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        action_row.setObjectName("technicalOfficialCompositeV2QueryActions")
+        action_row.setSpacing(6)
+        self.query_action_layout = action_row
         self.apply_query_button = QPushButton("套用條件並重新全域查詢")
+        self.apply_query_button.setProperty("variant", "primary")
         self.apply_query_button.clicked.connect(self.apply_filters)
         self.clear_filters_button = QPushButton("清除條件")
+        self.clear_filters_button.setProperty("variant", "ghost")
         self.clear_filters_button.clicked.connect(self.clear_filters)
         self.cancel_button = QPushButton("取消背景工作")
+        self.cancel_button.setProperty("variant", "secondary")
         self.cancel_button.clicked.connect(self.cancel_current_operation)
-        action_row.addWidget(self.apply_query_button, 0, 0, 1, 2)
-        action_row.addWidget(self.clear_filters_button, 1, 0)
-        action_row.addWidget(self.cancel_button, 1, 1)
+        for button in (
+            self.apply_query_button,
+            self.clear_filters_button,
+            self.cancel_button,
+        ):
+            button.setMinimumHeight(36)
+            button.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Fixed,
+            )
+            action_row.addWidget(button)
+        action_row.addStretch(1)
         body.addLayout(action_row)
+        self._arrange_query_actions()
 
         self.results_stack = QStackedWidget()
         result_panel = QWidget()

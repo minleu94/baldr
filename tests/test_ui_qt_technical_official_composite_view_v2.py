@@ -20,7 +20,7 @@ for _import_path in (str(_REPO), str(_REPO / "tests")):
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QBoxLayout, QLabel, QSizePolicy
 import app_module.daily_market_technical_official_disposition_composite_bookmark_v2 as bookmark_v2
 import app_module.daily_market_technical_official_disposition_query_reader_v1 as query_reader
 from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
@@ -196,6 +196,46 @@ def test_v2_price_controls_are_decimal_and_separate_from_four_group_unknown_poli
                 page_size=1,
                 cancel_callback=lambda: False,
             )
+    finally:
+        _close_view_and_wait_for_native_workers(app, view)
+
+
+def test_v2_query_actions_have_primary_hierarchy_and_reflow_without_stretching(
+    app: QApplication,
+) -> None:
+    view = DailyMarketTechnicalOfficialDispositionCompositeViewV2()
+    try:
+        view.resize(1200, 800)
+        view.show()
+        app.processEvents()
+
+        assert view.query_action_layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert view.apply_query_button.property("variant") == "primary"
+        assert view.clear_filters_button.property("variant") == "ghost"
+        assert view.cancel_button.property("variant") == "secondary"
+        assert all(
+            button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+            and button.width() <= 280
+            for button in (
+                view.apply_query_button,
+                view.clear_filters_button,
+                view.cancel_button,
+            )
+        )
+        assert view.apply_query_button.geometry().left() <= 20
+
+        view.resize(390, 800)
+        app.processEvents()
+        assert view.query_action_layout.direction() == QBoxLayout.Direction.TopToBottom
+        action_bounds = view.query_action_layout.geometry()
+        assert all(
+            button.geometry().right() <= action_bounds.right()
+            for button in (
+                view.apply_query_button,
+                view.clear_filters_button,
+                view.cancel_button,
+            )
+        )
     finally:
         _close_view_and_wait_for_native_workers(app, view)
 

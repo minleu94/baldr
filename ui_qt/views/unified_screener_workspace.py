@@ -481,6 +481,7 @@ class UnifiedScreenerWorkspace:
         self.condition_recipe_layout.setContentsMargins(0, 0, 0, 0)
         self.condition_recipe_layout.setHorizontalSpacing(6)
         self.condition_recipe_layout.setVerticalSpacing(4)
+        self.condition_recipe_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.condition_recipe_buttons: dict[str, QPushButton] = {}
         for key, label in (
             ("ma5_20_golden_cross", "MA5／MA20 金叉符合"),
@@ -490,6 +491,7 @@ class UnifiedScreenerWorkspace:
             button = QPushButton(label)
             button.setObjectName(f"unifiedScreenerCondition_{key}")
             button.setMinimumHeight(28)
+            button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             button.setToolTip(
                 "只替換已保存技術來源的規則篩選；其他條件保留。"
                 "需再按來源頁「套用全域查詢」；不代表資料資格或投資建議。"
@@ -571,7 +573,7 @@ class UnifiedScreenerWorkspace:
         self._timer.start()
 
     def _arrange_condition_recipe_buttons(self, width: int) -> None:
-        """依來源工作區寬度重排研究捷徑，避免窄版把按鈕擠成一列。"""
+        """依來源工作區寬度換列，保持研究捷徑緊湊並靠左排列。"""
 
         columns = 3 if width >= 1080 else 2 if width >= 620 else 1
         if columns == self._condition_recipe_columns:
@@ -582,8 +584,6 @@ class UnifiedScreenerWorkspace:
         for index, button in enumerate(self.condition_recipe_buttons.values()):
             row, column = divmod(index, columns)
             layout.addWidget(button, row, column)
-        for column in range(columns):
-            layout.setColumnStretch(column, 1)
         self._condition_recipe_columns = columns
 
     @staticmethod

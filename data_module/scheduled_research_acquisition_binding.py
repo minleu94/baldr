@@ -19,8 +19,8 @@ WEEKLY_RECEIPT_SCHEMA = "scheduled-weekly-collection-controller-receipt.v2"
 WEEKLY_START_SCHEMA = "scheduled-weekly-collection-controller-start.v2"
 WEEKLY_CONTROLLER_DIRECTORY = Path("scheduled") / "v2_2_weekly_collection" / "controller_runs"
 WEEKLY_LOCATOR_RELATIVE_PATH = Path("scheduled") / "v2_2_weekly_collection" / "latest_status.json"
-# core 僅作本機 SQLite 讀取與 sidecar append，設 30 秒硬上限；每週月營收 preset 固定六次、每次 30 秒且不重試。
-WEEKLY_CORE_TIMEOUT_SECONDS = 30
+# core 僅作本機 SQLite 讀取與 sidecar append；保留有限上限並給磁碟／SQLite 短暫負載較寬裕的 90 秒。每週月營收 preset 固定六次、每次 30 秒且不重試。
+WEEKLY_CORE_TIMEOUT_SECONDS = 90
 WEEKLY_MONTHLY_QUERY_COUNT = 6
 WEEKLY_MONTHLY_QUERY_TIMEOUT_SECONDS = 30
 WEEKLY_MONTHLY_TIMEOUT_SECONDS = WEEKLY_MONTHLY_QUERY_COUNT * WEEKLY_MONTHLY_QUERY_TIMEOUT_SECONDS

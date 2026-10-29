@@ -106,7 +106,7 @@ def test_locator_running_boundary_uses_exact_receipt_and_clock(tmp_path):
         + binding.WEEKLY_SINGLE_BLOCKING_MARGIN_SECONDS
         + binding.WEEKLY_CONTROLLER_PUBLICATION_GRACE_SECONDS
     )
-    assert binding.WEEKLY_MAX_PENDING_SECONDS == 1170
+    assert binding.WEEKLY_MAX_PENDING_SECONDS == 1230
     started = datetime(2026, 10, 3, 8, 0, tzinfo=timezone.utc)
     receipt_path, receipt_sha = _publish_start(tmp_path, run_id="run_boundary", started_at=started)
     at_boundary = binding.verify_weekly_acquisition(

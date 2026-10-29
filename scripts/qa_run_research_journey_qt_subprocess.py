@@ -31,6 +31,9 @@ from uuid import uuid4
 DEFAULT_TIMEOUT_SECONDS = 120.0
 DEFAULT_TERMINATE_GRACE_SECONDS = 5.0
 DEFAULT_TIMEOUT_EXIT_CODE = 124
+MAX_JOB_COMMITTED_MEMORY_BYTES = 8 * 1024 * 1024 * 1024
+MAX_JOB_PROCESS_COUNT = 12
+MIN_AVAILABLE_PHYSICAL_MEMORY_BYTES = 8 * 1024 * 1024 * 1024
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -202,6 +205,14 @@ class _OwnedProcessTree:
         self.management_mode = "owned_popen_pid"
         self._job_handle: Any = None
         self._kernel32: Any = None
+        self._extended_limit_information_type: Any = None
+        self.resource_limits: dict[str, Any] = {
+            "readback_verified": False,
+            "max_job_committed_memory_bytes": MAX_JOB_COMMITTED_MEMORY_BYTES,
+            "max_job_process_count": MAX_JOB_PROCESS_COUNT,
+            "available_physical_memory_before_start_bytes": None,
+            "peak_job_committed_memory_bytes": None,
+        }
         if os.name != "nt":
             return
 
@@ -240,7 +251,22 @@ class _OwnedProcessTree:
                 ("PeakJobMemoryUsed", ctypes.c_size_t),
             ]
 
+        class _MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_uint32),
+                ("dwMemoryLoad", ctypes.c_uint32),
+                ("ullTotalPhys", ctypes.c_uint64),
+                ("ullAvailPhys", ctypes.c_uint64),
+                ("ullTotalPageFile", ctypes.c_uint64),
+                ("ullAvailPageFile", ctypes.c_uint64),
+                ("ullTotalVirtual", ctypes.c_uint64),
+                ("ullAvailVirtual", ctypes.c_uint64),
+                ("ullAvailExtendedVirtual", ctypes.c_uint64),
+            ]
+
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GlobalMemoryStatusEx.argtypes = [ctypes.POINTER(_MemoryStatusEx)]
+        kernel32.GlobalMemoryStatusEx.restype = ctypes.c_int
         kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
         kernel32.CreateJobObjectW.restype = ctypes.c_void_p
         kernel32.SetInformationJobObject.argtypes = [
@@ -250,6 +276,14 @@ class _OwnedProcessTree:
             ctypes.c_uint32,
         ]
         kernel32.SetInformationJobObject.restype = ctypes.c_int
+        kernel32.QueryInformationJobObject.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
+        kernel32.QueryInformationJobObject.restype = ctypes.c_int
         kernel32.AssignProcessToJobObject.argtypes = [
             ctypes.c_void_p,
             ctypes.c_void_p,
@@ -258,14 +292,33 @@ class _OwnedProcessTree:
         kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
         kernel32.CloseHandle.restype = ctypes.c_int
 
+        memory_status = _MemoryStatusEx()
+        memory_status.dwLength = ctypes.sizeof(memory_status)
+        if not kernel32.GlobalMemoryStatusEx(ctypes.byref(memory_status)):
+            error_code = ctypes.get_last_error()
+            raise OSError(error_code, "GlobalMemoryStatusEx failed")
+        available_memory = int(memory_status.ullAvailPhys)
+        self.resource_limits["available_physical_memory_before_start_bytes"] = available_memory
+        if available_memory < MIN_AVAILABLE_PHYSICAL_MEMORY_BYTES:
+            raise RuntimeError(
+                "可用實體記憶體低於 8 GiB；已拒絕啟動受控 QA 子程序。"
+            )
+
         job_handle = kernel32.CreateJobObjectW(None, None)
         if not job_handle:
             error_code = ctypes.get_last_error()
             raise OSError(error_code, "CreateJobObjectW failed")
         self._kernel32 = kernel32
         self._job_handle = job_handle
+        self._extended_limit_information_type = _ExtendedLimitInformation
         information = _ExtendedLimitInformation()
-        information.BasicLimitInformation.LimitFlags = 0x2000  # KILL_ON_JOB_CLOSE
+        information.BasicLimitInformation.LimitFlags = (
+            0x2000  # KILL_ON_JOB_CLOSE
+            | 0x0008  # ACTIVE_PROCESS
+            | 0x0200  # JOB_MEMORY
+        )
+        information.BasicLimitInformation.ActiveProcessLimit = MAX_JOB_PROCESS_COUNT
+        information.JobMemoryLimit = MAX_JOB_COMMITTED_MEMORY_BYTES
         configured = kernel32.SetInformationJobObject(
             job_handle,
             9,  # JobObjectExtendedLimitInformation
@@ -277,7 +330,64 @@ class _OwnedProcessTree:
             kernel32.CloseHandle(job_handle)
             self._job_handle = None
             raise OSError(error_code, "SetInformationJobObject failed")
+
+        readback = _ExtendedLimitInformation()
+        returned = ctypes.c_uint32()
+        queried = kernel32.QueryInformationJobObject(
+            job_handle,
+            9,  # JobObjectExtendedLimitInformation
+            ctypes.byref(readback),
+            ctypes.sizeof(readback),
+            ctypes.byref(returned),
+        )
+        expected_flags = 0x2000 | 0x0008 | 0x0200
+        actual_flags = int(readback.BasicLimitInformation.LimitFlags)
+        if (
+            not queried
+            or actual_flags & expected_flags != expected_flags
+            or int(readback.BasicLimitInformation.ActiveProcessLimit)
+            != MAX_JOB_PROCESS_COUNT
+            or int(readback.JobMemoryLimit) != MAX_JOB_COMMITTED_MEMORY_BYTES
+        ):
+            error_code = ctypes.get_last_error()
+            kernel32.CloseHandle(job_handle)
+            self._job_handle = None
+            raise OSError(
+                error_code,
+                "Windows Job Object 資源限制讀回不符，已拒絕啟動 QA 子程序。",
+            )
+        self.resource_limits["readback_verified"] = True
+        self.resource_limits["limit_flags"] = actual_flags
         self.management_mode = "windows_job_object_kill_on_close"
+
+    def capture_resource_usage(self) -> None:
+        """在關閉 Job 前讀回本輪全 Job committed-memory peak。"""
+
+        if (
+            os.name != "nt"
+            or self._job_handle is None
+            or self._kernel32 is None
+            or self._extended_limit_information_type is None
+        ):
+            return
+        import ctypes
+
+        information = self._extended_limit_information_type()
+        returned = ctypes.c_uint32()
+        queried = self._kernel32.QueryInformationJobObject(
+            self._job_handle,
+            9,
+            ctypes.byref(information),
+            ctypes.sizeof(information),
+            ctypes.byref(returned),
+        )
+        if queried:
+            self.resource_limits["peak_job_committed_memory_bytes"] = int(
+                information.PeakJobMemoryUsed
+            )
+            return
+        error_code = ctypes.get_last_error()
+        raise OSError(error_code, "QueryInformationJobObject peak memory readback failed")
 
     def attach_suspended(self, process_handle: Any) -> None:
         """在 child 尚未執行第一個 user instruction 前加入 Job Object。"""
@@ -689,7 +799,7 @@ def run(argv: list[str] | None = None) -> int:
     lock_path = (
         Path(args.lock_path).expanduser().resolve()
         if args.lock_path
-        else repo_root / "output" / "qa" / ".research_journey_qt.lock"
+        else repo_root / ".pytest-owned-temp" / "baldr-gate-qa.lock"
     )
     environment = os.environ.copy()
     environment.update(

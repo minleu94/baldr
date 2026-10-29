@@ -47,6 +47,25 @@ from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
 DEFAULT_EVENT_TYPE = "recommendation_included"
 DEFAULT_WINDOWS = (5, 10, 20, 60)
 DEFAULT_MAX_EVENTS = 2500
+DEFAULT_MAX_CANDIDATE_EXCLUSION_EVENTS = 2500
+_CANDIDATE_EXCLUSION_EVENT_TYPES = (
+    "liquidity_gate_excluded",
+    "screening_matrix_degraded",
+    "screening_matrix_fail",
+    "screening_matrix_missing",
+    "screening_matrix_pass",
+    "screening_matrix_skipped",
+    "why_not_excluded",
+)
+_CANDIDATE_EXCLUSION_EVENT_LABELS = {
+    "liquidity_gate_excluded": "流動性排除",
+    "screening_matrix_degraded": "篩選降級",
+    "screening_matrix_fail": "篩選失敗",
+    "screening_matrix_missing": "篩選缺資料",
+    "screening_matrix_pass": "篩選通過",
+    "screening_matrix_skipped": "篩選略過",
+    "why_not_excluded": "why-not 排除理由",
+}
 
 
 @dataclass(frozen=True)
@@ -59,6 +78,7 @@ class _CandidateRead:
     quality: str = "missing"
     symbols: tuple[str, ...] = ()
     reasons: tuple[str, ...] = ()
+    exclusion_summaries: tuple[str, ...] = ()
     requested_count: int | None = None
     degraded_count: int | None = None
     missing_count: int | None = None
@@ -94,6 +114,7 @@ class _EvidenceRead:
     daily_event_count: int = 0
     skipped_incomplete_identity: int = 0
     event_ids: tuple[str, ...] = ()
+    source_ids: tuple[str, ...] = ()
     source_snapshot_ids: tuple[str, ...] = ()
     outcome_total: int = 0
     outcome_ready: int = 0
@@ -300,6 +321,7 @@ class DailyInvestmentJourneyService:
             candidate_degraded_count=candidate.degraded_count,
             candidate_missing_count=candidate.missing_count,
             candidate_reasons=candidate.reasons,
+            candidate_exclusion_summaries=candidate.exclusion_summaries,
             candidate_identity=candidate.identity,
             evidence_event_type=evidence.event_type,
             evidence_scope_start=evidence.scope_start,
@@ -725,6 +747,41 @@ class DailyInvestmentJourneyService:
         if legacy_identity_conflict:
             source_id = None
             source_snapshot_id = None
+        elif (
+            not source_snapshot_id
+            and saved_read is not None
+            and payload_date
+            and result_id
+            and source_id
+        ):
+            source_snapshot_id = self._source_snapshot_id_from_included_events(
+                decision_date=payload_date,
+                result_id=result_id,
+                source_id=source_id,
+                symbols=symbols,
+                candidate_identity=identity,
+            )
+            if source_snapshot_id:
+                diagnostics.append(
+                    "candidate_source_snapshot_id_bound_from_exact_included_events"
+                )
+        exclusion_summaries: tuple[str, ...] = ()
+        if (
+            saved_read is not None
+            and rows
+            and result_id
+            and status in {"candidate", "candidate_degraded"}
+            and not legacy_identity_conflict
+        ):
+            exclusion_summaries, exclusion_diagnostics = (
+                self._read_candidate_exclusion_summaries(
+                    decision_date=payload_date or requested_date,
+                    result_id=result_id,
+                    source_id=source_id or result_id,
+                    source_snapshot_id=source_snapshot_id,
+                )
+            )
+            diagnostics.extend(exclusion_diagnostics)
         trace = [
             f"recommendation_snapshot.result_id={result_id or 'unknown'}",
             f"recommendation_snapshot.decision_date={payload_date or 'unknown'}",
@@ -732,6 +789,8 @@ class DailyInvestmentJourneyService:
         ]
         if cohort.get("cohort_hash"):
             trace.append(f"recommendation_snapshot.cohort_hash={_text(cohort.get('cohort_hash'))}")
+        if source_snapshot_id:
+            trace.append(f"recommendation_snapshot.source_snapshot_id={source_snapshot_id}")
         if saved_read is not None:
             trace.append(f"recommendation_run.result_id={saved_read.result_id}")
             trace.append(f"recommendation_run.integrity_basis={saved_read.integrity_basis}")
@@ -796,6 +855,7 @@ class DailyInvestmentJourneyService:
             quality=quality,
             symbols=symbols,
             reasons=reasons[:20],
+            exclusion_summaries=exclusion_summaries,
             requested_count=requested_count,
             degraded_count=degraded_count,
             missing_count=missing_count,
@@ -810,6 +870,222 @@ class DailyInvestmentJourneyService:
                 else None
             ),
         )
+
+    def _read_candidate_exclusion_summaries(
+        self,
+        *,
+        decision_date: str,
+        result_id: str,
+        source_id: str,
+        source_snapshot_id: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """只讀彙整精確同日、同結果與同 snapshot 的排除／篩選事件。"""
+
+        if not source_snapshot_id:
+            return (
+                (
+                    f"result_id={result_id} 缺少可核對的 source_snapshot_id；"
+                    "未列出排除／篩選事件，也不把缺少事件解讀成沒有排除。",
+                ),
+                ("candidate_exclusion_source_snapshot_id_missing",),
+            )
+        diagnostics: list[str] = []
+        try:
+            repository = EvidenceEventRepository(
+                self.config,
+                db_path=self.evidence_db_path,
+                read_only=True,
+            )
+            events = repository.list_events(
+                decision_date=decision_date,
+                source_id=source_id,
+                limit=DEFAULT_MAX_CANDIDATE_EXCLUSION_EVENTS + 1,
+            )
+        except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+            return (), (
+                f"candidate_exclusion_read_failure:{type(exc).__name__}",
+            )
+
+        relevant = [
+            event
+            for event in events
+            if getattr(event.event_type, "value", event.event_type)
+            in _CANDIDATE_EXCLUSION_EVENT_TYPES
+        ]
+        matched = [
+            event
+            for event in relevant
+            if event.source_id == source_id
+            and event.source_snapshot_id == source_snapshot_id
+        ]
+        mismatched = len(relevant) - len(matched)
+        if len(events) > DEFAULT_MAX_CANDIDATE_EXCLUSION_EVENTS:
+            diagnostics.append("candidate_exclusion_events_truncated")
+            summaries_note = (
+                f"事件讀取達 {DEFAULT_MAX_CANDIDATE_EXCLUSION_EVENTS} 筆上限；"
+                "以下摘要可能不完整。"
+            )
+        else:
+            summaries_note = ""
+        if mismatched:
+            diagnostics.append(
+                f"candidate_exclusion_snapshot_identity_mismatch:{mismatched}"
+            )
+        if not matched:
+            if mismatched:
+                message = (
+                    f"排除／篩選事件來源 result_id={result_id} 有 {mismatched} 筆，"
+                    f"但 source_snapshot_id 未能核對為 {source_snapshot_id}；未列為同快照證據。"
+                )
+            else:
+                message = (
+                    f"同一決策日與 result_id={result_id} 未找到可核對的排除／篩選事件；"
+                    "未把缺少事件解讀成沒有排除。"
+                )
+            return (message,), tuple(diagnostics)
+
+        summaries = [
+            f"排除／篩選事件已核對決策日={decision_date}、result_id={result_id}、"
+            f"source_id={source_id}、source_snapshot_id={source_snapshot_id}；"
+            "以下為事件數（同一股票可能有多筆事件，不等同唯一股票數）。"
+        ]
+        if summaries_note:
+            summaries.append(summaries_note)
+        for event_type in _CANDIDATE_EXCLUSION_EVENT_TYPES:
+            rows = [
+                event
+                for event in matched
+                if getattr(event.event_type, "value", event.event_type) == event_type
+            ]
+            if not rows:
+                continue
+            symbols = {event.symbol for event in rows if event.symbol}
+            qualities: dict[str, int] = {}
+            reasons: dict[str, int] = {}
+            for event in rows:
+                quality = str(getattr(event.data_quality, "value", event.data_quality))
+                qualities[quality] = qualities.get(quality, 0) + 1
+                metadata = event.metadata if isinstance(event.metadata, Mapping) else {}
+                raw_reason_codes = [*event.reason_codes, *event.why_not_codes]
+                metadata_reason_codes = metadata.get("exclusion_reason_codes", ())
+                if isinstance(metadata_reason_codes, str):
+                    metadata_reason_codes = (metadata_reason_codes,)
+                elif not isinstance(metadata_reason_codes, (tuple, list, set)):
+                    metadata_reason_codes = ()
+                raw_reason_codes.extend(
+                    _text(value)
+                    for value in metadata_reason_codes
+                    if _text(value)
+                )
+                observations = _mapping(metadata.get("observations"))
+                observation_reason_codes = observations.get("reason_codes", ())
+                if isinstance(observation_reason_codes, str):
+                    observation_reason_codes = (observation_reason_codes,)
+                elif not isinstance(observation_reason_codes, (tuple, list, set)):
+                    observation_reason_codes = ()
+                raw_reason_codes.extend(
+                    _text(value)
+                    for value in observation_reason_codes
+                    if _text(value)
+                )
+                for code in set(raw_reason_codes):
+                    reasons[code] = reasons.get(code, 0) + 1
+            quality_text = "、".join(
+                f"{quality} {count}"
+                for quality, count in sorted(qualities.items())
+            ) or "未知"
+            reason_text = "、".join(
+                f"{code} {count}"
+                for code, count in sorted(
+                    reasons.items(), key=lambda item: (-item[1], item[0])
+                )[:5]
+            ) or "未提供理由碼"
+            summaries.append(
+                f"{_CANDIDATE_EXCLUSION_EVENT_LABELS[event_type]}："
+                f"{len(rows)} 筆／{len(symbols)} 檔；品質 {quality_text}；"
+                f"理由碼 {reason_text}。"
+            )
+        return tuple(summaries), tuple(diagnostics)
+
+    def _source_snapshot_id_from_included_events(
+        self,
+        *,
+        decision_date: str,
+        result_id: str,
+        source_id: str,
+        symbols: tuple[str, ...],
+        candidate_identity: tuple[str, ...],
+    ) -> str | None:
+        """Recover one missing wrapper snapshot id only from an exact included cohort.
+
+        The result is an event-source binding, not a source/PIT quality acceptance.
+        It is allowed only when the canonical result id is itself the event source id,
+        every candidate symbol appears exactly once, all rows share one snapshot id,
+        and the saved event identity agrees with the canonical candidate identity.
+        """
+
+        if (
+            not decision_date
+            or not result_id
+            or source_id != result_id
+            or not symbols
+            or len(set(symbols)) != len(symbols)
+        ):
+            return None
+        try:
+            repository = EvidenceEventRepository(
+                self.config,
+                db_path=self.evidence_db_path,
+                read_only=True,
+            )
+            events = repository.list_events(
+                event_type=DEFAULT_EVENT_TYPE,
+                decision_date=decision_date,
+                source_id=source_id,
+                limit=len(symbols) + 1,
+            )
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            return None
+        if (
+            len(events) != len(symbols)
+            or {str(event.symbol or "").strip() for event in events} != set(symbols)
+            or any(
+                event.decision_date != decision_date
+                or event.source_id != result_id
+                or not str(event.source_snapshot_id or "").strip()
+                for event in events
+            )
+        ):
+            return None
+        snapshot_ids = {
+            str(event.source_snapshot_id).strip()
+            for event in events
+        }
+        if len(snapshot_ids) != 1:
+            return None
+
+        expected_identity = _candidate_identity_map(
+            _CandidateRead(
+                result_id=result_id,
+                source_id=source_id,
+                identity=candidate_identity,
+            )
+        )
+        for event in events:
+            actual_identity = dict(_event_identity_pairs(event))
+            for key, expected in expected_identity.items():
+                actual_key = "result_id" if key == "run.result_id" else key
+                actual = actual_identity.get(actual_key)
+                if actual is None and key == "run.result_id" and source_id == result_id:
+                    continue
+                # Cohort hashes are not present on all legacy included-event rows;
+                # the exact result id, symbols, snapshot id and remaining typed
+                # strategy/universe identity fields still have to agree.
+                if actual is None and key == "cohort_hash":
+                    continue
+                if actual is None or actual != expected:
+                    return None
+        return next(iter(snapshot_ids))
 
     def _queries_for_runs_dir(self, runs_dir: Path) -> Any:
         """依 wrapper 已保存且通過 output-root 邊界的 runs_dir 取得 query view。"""
@@ -986,6 +1262,14 @@ class DailyInvestmentJourneyService:
                 if str(value or "").strip()
             )
         )
+        source_ids = tuple(
+            dict.fromkeys(
+                str(value)
+                for event in events
+                for value in (event.source_id,)
+                if str(value or "").strip()
+            )
+        )
         receipt_summary = _mapping(payload.get("summary"))
         receipt_scanned = _int_or_none(receipt_summary.get("events_scanned"))
         if receipt_scanned is not None and receipt_scanned != len(events):
@@ -1018,6 +1302,7 @@ class DailyInvestmentJourneyService:
             daily_event_count=len(daily_events),
             skipped_incomplete_identity=skipped,
             event_ids=event_ids,
+            source_ids=source_ids,
             source_snapshot_ids=source_snapshot_ids,
             outcome_total=total,
             outcome_ready=ready,
@@ -1180,12 +1465,10 @@ class DailyInvestmentJourneyService:
     ) -> None:
         if not candidate.result_id or not evidence.event_ids:
             return
-        matching = False
-        for trace in evidence.source_trace:
-            if ".source_snapshot_id=" in trace or ".source_id=" in trace:
-                if trace.endswith(f"={candidate.result_id}"):
-                    matching = True
-                    break
+        matching = (
+            candidate.result_id in evidence.source_ids
+            or candidate.result_id in evidence.source_snapshot_ids
+        )
         if not matching:
             diagnostics.append("daily_candidate_event_identity_mismatch")
             warnings.append("候選 result_id 與每日 recommendation event identity 未對上")
@@ -1823,6 +2106,7 @@ def _event_identity_pairs(event: EvidenceEvent) -> tuple[tuple[str, str], ...]:
         ("universe_snapshot_hash", (), ("universe_snapshot_hash",)),
         ("cohort_hash", (), ("cohort_hash",)),
         ("horizon_days", (), ("horizon_days", "expected_horizon_days")),
+        ("return_basis", (), ("return_basis",)),
         ("learning_candidate_id", (), ("learning_candidate_id", "candidate_id")),
         ("run_context.as_of_date", ("as_of_date",), ("as_of_date",)),
         ("run_context.data_as_of_date", (), ("data_as_of_date", "data_as_of")),
@@ -2265,16 +2549,16 @@ def _next_action(
         )
     if status == "read_failure":
         return (
-            "本次唯讀來源讀取失敗；按「查看每日來源詳情」核對來源與錯誤，再按「重新整理狀態」重讀。"
+            "本次唯讀來源讀取失敗；按「查看來源與排除」核對來源與錯誤，再按「重新整理狀態」重讀。"
         )
     if status == "stale":
         return (
-            "決策日與來源日不一致，或證據快照已過期；按「查看每日來源詳情」確認過期項目，"
+            "決策日與來源日不一致，或證據快照已過期；按「查看來源與排除」確認過期項目，"
             "更新來源後再按「重新整理狀態」。舊結果只作歷史參考。"
         )
     if candidate.status in {"missing", "degraded"}:
         return (
-            "今日推薦快照缺失或資料不完整；按「查看每日來源詳情」核對決策日、來源與缺件原因。"
+            "今日推薦快照缺失或資料不完整；按「查看來源與排除」核對決策日、來源與缺件原因。"
             "若沒有今日有效快照，可到「市場探索」明選來源與日期做個股研究；舊保存推薦不代表今日候選。"
         )
     if evidence.status == "waiting_for_time":

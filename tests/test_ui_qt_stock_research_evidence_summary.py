@@ -79,6 +79,10 @@ def test_final_summary_keeps_market_facts_and_separates_holding_relation():
     try:
         expected_facts = module._report_evidence_text(report)
         holding = module.build_stock_research_product_summary(report).holding_relation
+        collapsed = view.summary_focus.evidence_label.text()
+        assert "展開可讀全文" in collapsed
+        view.summary_questions_toggle.click()
+        _app().processEvents()
         rendered = view.summary_focus.evidence_label.text()
 
         assert expected_facts in rendered
@@ -232,6 +236,32 @@ def test_missing_counter_reason_is_not_support_and_full_advice_stays_in_tooltip(
         assert "缺少反對證據不代表支持" in summary
         assert original_reason not in summary
         assert original_reason in tooltip
+    finally:
+        view.close()
+
+
+def test_saved_advice_summary_expands_in_narrow_view_without_clipping():
+    report = _report_with_saved_advice()
+    recommendation = replace(
+        report.advice.recommendation,
+        why_reasons=("支持理由資料" * 12,),
+        why_not_reasons=("反對與限制資料" * 12,),
+    )
+    report = replace(
+        report,
+        advice=replace(report.advice, recommendation=recommendation),
+    )
+    view = _view_for(report, _context())
+    try:
+        view.resize(460, 720)
+        view.show()
+        _app().processEvents()
+
+        label = view.summary_saved_advice_label
+        assert label.wordWrap()
+        assert label.maximumHeight() > 72
+        assert label.height() > 72
+        assert "反對／限制：" in label.text()
     finally:
         view.close()
 

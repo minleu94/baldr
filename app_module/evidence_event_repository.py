@@ -90,6 +90,8 @@ class EvidenceEventRepository:
         symbol: str | None = None,
         event_type: EvidenceEventType | str | None = None,
         decision_date: str | None = None,
+        source_id: str | None = None,
+        source_snapshot_id: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         event_ids: Iterable[str] | None = None,
@@ -109,6 +111,12 @@ class EvidenceEventRepository:
         if decision_date is not None:
             where.append("decision_date = ?")
             params.append(decision_date)
+        if source_id is not None:
+            where.append("source_id = ?")
+            params.append(source_id)
+        if source_snapshot_id is not None:
+            where.append("source_snapshot_id = ?")
+            params.append(source_snapshot_id)
         if start_date is not None:
             where.append("decision_date >= ?")
             params.append(start_date)

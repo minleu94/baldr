@@ -6,7 +6,7 @@ from ui_qt.research_display import research_saved_time
 
 from typing import Any, Callable, Protocol
 
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QSignalBlocker, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app_module.dtos.decision_continuity_dtos import DecisionContinuityRevision
 from app_module.research_session.session_dtos import ResearchStockContextDTO
 from app_module.research_evidence_comparison_dtos import ResearchEvidenceComparison
 from app_module.research_timeline_dtos import ResearchTimelineEntry, ResearchTimelineReadResult
@@ -35,6 +36,7 @@ from ui_qt.workers.task_worker import TaskWorker
 
 _KIND_LABELS = {
     "manual": "手動筆記",
+    "decision": "研究決定",
     "price": "價格研究",
     "report": "報告判斷",
     "theme": "題材研究",
@@ -45,6 +47,8 @@ class ResearchTimelineReadPort(Protocol):
     def read(
         self,
         cancel_callback: Callable[[], bool] | None = None,
+        *,
+        search_query: str = "",
     ) -> ResearchTimelineReadResult: ...
 
 
@@ -78,6 +82,8 @@ class ResearchTimelineView(QWidget):
         self._comparison_loading = False
         self._evidence_comparison_revision = 0
         self.last_result: ResearchTimelineReadResult | None = None
+        self._full_history_limited = False
+        self._pending_search_query = ""
         self._setup_ui(journey_service)
         if auto_refresh:
             self.refresh()
@@ -100,8 +106,8 @@ class ResearchTimelineView(QWidget):
         controls.addWidget(self.source_filter)
         self.stock_filter = QLineEdit(self)
         self.stock_filter.setObjectName("researchTimelineStockFilter")
-        self.stock_filter.setPlaceholderText("股票代號")
-        self.stock_filter.setAccessibleName("依股票代號篩選研究紀錄")
+        self.stock_filter.setPlaceholderText("股票代號或 result ID")
+        self.stock_filter.setAccessibleName("依股票代號或 result ID 篩選研究紀錄")
         controls.addWidget(self.stock_filter, 1)
         self.refresh_button = QPushButton("重新讀取", self)
         self.refresh_button.setObjectName("researchTimelineRefresh")
@@ -124,7 +130,7 @@ class ResearchTimelineView(QWidget):
         self.entries_table.setSelectionMode(QTableWidget.SingleSelection)
         self.entries_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.entries_table.setAlternatingRowColors(True)
-        self.entries_table.setAccessibleName("研究筆記時間軸")
+        self.entries_table.setAccessibleName("研究紀錄時間軸")
         header = self.entries_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -133,14 +139,14 @@ class ResearchTimelineView(QWidget):
         detail = QWidget(splitter)
         detail_layout = QVBoxLayout(detail)
         detail_layout.setContentsMargins(6, 0, 0, 0)
-        self.detail_label = QLabel("選取一筆原始研究紀錄", detail)
+        self.detail_label = QLabel("選取一筆研究紀錄", detail)
         self.detail_label.setObjectName("researchTimelineDetailMetadata")
         self.detail_label.setTextFormat(Qt.TextFormat.PlainText)
         self.detail_label.setWordWrap(True)
         self.original_text = QTextEdit(detail)
         self.original_text.setObjectName("researchTimelineOriginalText")
         self.original_text.setReadOnly(True)
-        self.original_text.setAccessibleName("保存當時的完整原文")
+        self.original_text.setAccessibleName("所選研究紀錄內容（唯讀）")
         self.open_original_button = QPushButton("回訪原版本", detail)
         self.open_original_button.setObjectName("researchTimelineOpenOriginal")
         self.open_original_button.setAccessibleName("回訪所選筆記保存時的原版本")
@@ -189,16 +195,26 @@ class ResearchTimelineView(QWidget):
         root.addWidget(splitter, 1)
 
         self.source_filter.currentIndexChanged.connect(self._apply_filters)
-        self.stock_filter.textChanged.connect(self._apply_filters)
+        self.stock_filter.textChanged.connect(self._stock_filter_changed)
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(self._search_full_history)
         self.refresh_button.clicked.connect(self.refresh)
         self.entries_table.itemSelectionChanged.connect(self._selection_changed)
         self.open_original_button.clicked.connect(self._open_original)
         self.compare_evidence_button.clicked.connect(self._request_evidence_comparison)
         self.paper_prerequisites_button.clicked.connect(self._request_paper_prerequisites)
 
-    def refresh(self) -> None:
+    def refresh(self, *, search_query: str | None = None) -> None:
         if self._closing:
             return
+        query = (
+            self.stock_filter.text().strip()
+            if search_query is None and self._full_history_limited
+            else str(search_query or "").strip()
+        )
+        self._pending_search_query = query
         self._clear_evidence_comparison("重新讀取後需重新選取並對照資料。")
         self.compare_evidence_button.setEnabled(False)
         self.paper_prerequisites_button.setEnabled(False)
@@ -207,15 +223,33 @@ class ResearchTimelineView(QWidget):
         previous = self._active_worker
         if previous is not None and previous.isRunning():
             previous.cancel(cooperative=True, wait=False)
-        worker = TaskWorker(self.timeline_service.read)
+        worker = (
+            TaskWorker(self.timeline_service.read, search_query=query)
+            if query
+            else TaskWorker(self.timeline_service.read)
+        )
         self._workers.add(worker)
         self._active_worker = worker
-        self.status_label.setText("正在背景讀取既有研究紀錄…")
+        self.status_label.setText(
+            "正在完整 Journal 歷史中搜尋…" if query else "正在背景讀取既有研究紀錄…"
+        )
         worker.finished.connect(lambda result, current=generation: self._receive(current, result))
         worker.error.connect(lambda message, current=generation: self._receive_error(current, message))
         worker.cancelled.connect(lambda current=generation: self._receive_cancelled(current))
         worker.native_thread_finished.connect(lambda current=worker: self._worker_finished(current))
         worker.start()
+
+    def search_result_id(self, result_id: str) -> bool:
+        """在研究時間軸以 Advice 的保存結果 ID 篩選／搜尋完整歷史。"""
+
+        query = str(result_id or "").strip()
+        if self._closing or not query:
+            return False
+        self._search_timer.stop()
+        self.stock_filter.setText(query)
+        if self._full_history_limited:
+            self.refresh(search_query=query)
+        return True
 
     def _receive(self, generation: int, result: object) -> None:
         if self._closing or generation != self._generation:
@@ -225,12 +259,25 @@ class ResearchTimelineView(QWidget):
             return
         self._entries = result.entries
         self.last_result = result
+        if not self._pending_search_query:
+            self._full_history_limited = result.limited
+            if self._full_history_limited and self.stock_filter.text().strip():
+                self._search_timer.start()
         self._render_entries()
         warning = "；".join(result.warnings)
         if result.limited:
-            warning = "已達最多 500 筆的顯示上限。" + (" " + warning if warning else "")
+            limit_message = (
+                "搜尋命中超過 500 筆，顯示最新 500 筆；可用完整 result ID 縮小範圍。"
+                if self._pending_search_query
+                else "已達 500 筆清單上限；輸入股票代號或 result ID 可搜尋完整 Journal 歷史。"
+            )
+            warning = limit_message + (" " + warning if warning else "")
         if not self._entries:
-            message = "目前沒有可查看的研究紀錄。"
+            message = (
+                "完整 Journal 歷史中沒有符合的研究紀錄。"
+                if self._pending_search_query
+                else "目前沒有可查看的研究紀錄。"
+            )
         else:
             message = f"已讀取 {len(self._entries)} 筆唯讀研究紀錄。"
         if self._selected is not None and not self._selected.result_id:
@@ -256,16 +303,22 @@ class ResearchTimelineView(QWidget):
             return
         status = f"讀取失敗；保留原畫面：{message}"
         self.status_label.setText(status)
-        self.compare_evidence_button.setEnabled(self._selected is not None)
-        self.paper_prerequisites_button.setEnabled(self._selected is not None)
+        selected_is_comparable = (
+            self._selected is not None and self._selected.kind != "decision"
+        )
+        self.compare_evidence_button.setEnabled(selected_is_comparable)
+        self.paper_prerequisites_button.setEnabled(selected_is_comparable)
         self.readUnavailable.emit(status)
 
     def _receive_cancelled(self, generation: int) -> None:
         if not self._closing and generation == self._generation:
             status = "讀取已安全取消；保留目前可用紀錄。"
             self.status_label.setText(status)
-            self.compare_evidence_button.setEnabled(self._selected is not None)
-            self.paper_prerequisites_button.setEnabled(self._selected is not None)
+            selected_is_comparable = (
+                self._selected is not None and self._selected.kind != "decision"
+            )
+            self.compare_evidence_button.setEnabled(selected_is_comparable)
+            self.paper_prerequisites_button.setEnabled(selected_is_comparable)
             self.readUnavailable.emit(status)
 
     def _render_entries(self) -> None:
@@ -295,15 +348,29 @@ class ResearchTimelineView(QWidget):
 
     def _filtered_entries(self) -> tuple[ResearchTimelineEntry, ...]:
         kind = self.source_filter.currentData()
-        stock = self.stock_filter.text().strip()
+        query = self.stock_filter.text().strip()
         return tuple(
             entry for entry in self._entries
             if (kind == "all" or entry.kind == kind)
-            and (not stock or stock in entry.stock_code)
+            and (
+                not query
+                or query in entry.stock_code
+                or query in entry.result_id
+            )
         )
 
     def _apply_filters(self, *_args: object) -> None:
         self._render_entries()
+
+    def _stock_filter_changed(self, *_args: object) -> None:
+        self._render_entries()
+        if self._full_history_limited:
+            self._search_timer.start()
+
+    def _search_full_history(self) -> None:
+        if self._closing or not self._full_history_limited:
+            return
+        self.refresh(search_query=self.stock_filter.text().strip())
 
     def _selection_changed(self) -> None:
         row = self.entries_table.currentRow()
@@ -311,17 +378,27 @@ class ResearchTimelineView(QWidget):
         self._show_entry(visible[row] if 0 <= row < len(visible) else None)
 
     def _show_entry(self, entry: ResearchTimelineEntry | None) -> None:
+        is_decision = entry is not None and entry.kind == "decision"
         self._clear_evidence_comparison(
             "選取研究紀錄後可對照當時固定證據與目前可讀資料。"
-            if entry is None else "按「對照目前可讀資料」讀取此筆紀錄的雙欄證據。"
+            if entry is None
+            else (
+                "研究決定歷史是 Journal 中的動作紀錄；沒有可對照的筆記原件。"
+                if is_decision
+                else "按「對照目前可讀資料」讀取此筆紀錄的雙欄證據。"
+            )
         )
         self._selected = entry
         self._selected_identity = None if entry is None else (entry.kind, entry.record_id)
         self.original_text.setPlainText("" if entry is None else entry.text)
-        self.compare_evidence_button.setEnabled(entry is not None and not self._closing)
-        self.paper_prerequisites_button.setEnabled(entry is not None and not self._closing)
+        self.compare_evidence_button.setEnabled(
+            entry is not None and entry.kind != "decision" and not self._closing
+        )
+        self.paper_prerequisites_button.setEnabled(
+            entry is not None and entry.kind != "decision" and not self._closing
+        )
         if entry is None:
-            self.detail_label.setText("選取一筆原始研究紀錄")
+            self.detail_label.setText("選取一筆研究紀錄")
             self.open_original_button.setEnabled(False)
             if self.journey_widget is not None:
                 self.journey_widget.set_context(None)
@@ -341,6 +418,47 @@ class ResearchTimelineView(QWidget):
         )
         self.detail_label.setToolTip(f"完整來源版本：{source_identity}")
         self.open_original_button.setEnabled(entry.kind in {"price", "report", "theme"})
+        if entry.kind == "decision" and isinstance(
+            entry.reference, DecisionContinuityRevision
+        ):
+            revision = entry.reference
+            identity = revision.decision_identity
+            action = _KIND_LABELS.get(entry.kind, entry.kind)
+            self.detail_label.setText(
+                f"{action}｜{entry.stock_code or '股票未知'}｜保存時間 "
+                f"{revision.created_at or '未知'}\n"
+                f"決策日 {identity.decision_date or '未知'}｜"
+                f"result ID {identity.result_id or '未知'}｜"
+                f"來源 snapshot {identity.source_snapshot_id or '未提供'}"
+            )
+            self.detail_label.setToolTip(
+                f"revision ID：{revision.revision_id}\n"
+                f"來源 snapshot ID：{identity.source_snapshot_id or '未提供'}\n"
+                f"來源 snapshot hash：{identity.source_snapshot_hash or '未提供'}\n"
+                f"決策日：{identity.decision_date or '未知'}"
+            )
+            details = [
+                entry.text,
+                f"動作：{revision.action}",
+                f"股票：{identity.stock_code or '未知'}",
+                f"result ID：{identity.result_id or '未知'}",
+                f"決策日：{identity.decision_date or '未知'}",
+                f"來源 snapshot ID：{identity.source_snapshot_id or '未提供'}",
+                f"來源 snapshot hash：{identity.source_snapshot_hash or '未提供'}",
+                f"revision ID：{revision.revision_id}",
+            ]
+            if revision.next_review_at:
+                details.append(f"下次檢視：{revision.next_review_at}")
+            self.original_text.setPlainText("\n".join(details))
+            if self.journey_widget is not None:
+                self.journey_widget.set_context(None)
+                self.journey_widget.hide()
+            if self.journey_placeholder is not None:
+                self.journey_placeholder.setText(
+                    "此為研究決定歷史；可在此查找，不依賴候選再次出現在 Advice。"
+                )
+                self.journey_placeholder.show()
+            return
         if self.journey_widget is not None:
             if entry.result_id and entry.stock_code:
                 self.journey_widget.show()
@@ -456,6 +574,7 @@ class ResearchTimelineView(QWidget):
 
     def request_close(self) -> bool:
         self._closing = True
+        self._search_timer.stop()
         self._clear_evidence_comparison("時間軸已關閉；不再套用延遲到達的對照結果。")
         self.paper_prerequisites_button.setEnabled(False)
         self._generation += 1

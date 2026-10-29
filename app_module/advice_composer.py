@@ -336,6 +336,9 @@ class AdviceComposer:
             calibration if calibration is not None else recommendation,
             expected_stock_code=recommendation.stock_code,
         )
+        # 缺少校準分級時明示不可用；不以規則分數推導信心或勝率。
+        if not str(calibration_fields.get("confidence_tier") or "").strip():
+            calibration_fields["confidence_tier"] = "unavailable"
         # 校準觀察期間不是策略作者聲明的持有期間。
         calibration_fields.pop("holding_horizon", None)
         source_trace = (
@@ -375,12 +378,13 @@ class AdviceComposer:
             why_reasons=tuple(self._split_reasons(recommendation.recommendation_reasons)),
             why_not_reasons=decision.reasons,
             risk_reasons=risk_reasons,
+            evidence_tier="insufficient",
             data_quality=evidence_quality or "",
             warnings=warnings,
             strategy_version=strategy_version,
             decision_date=decision_date,
             data_as_of_date=data_as_of_date,
-            market_regime=market_regime,
+            market_regime=str(market_regime or "unknown"),
             holding_horizon=contract.holding_horizon if contract is not None else "",
             entry_thesis=contract.thesis if contract is not None else "",
             invalidation_conditions=(
@@ -573,8 +577,13 @@ class AdviceComposer:
         return RecommendationAdviceDTO(
             stock_code="",
             advice_action=AdviceAction.NO_NEW_POSITION,
+            confidence_tier="unavailable",
+            evidence_tier="insufficient",
             data_quality="MISSING",
+            strategy_version="unknown",
+            market_regime="unknown",
             liquidity_state="UNKNOWN",
+            execution_feasibility="UNKNOWN",
             warnings=warnings,
             decision_date=decision_date,
             data_as_of_date=data_as_of_date,

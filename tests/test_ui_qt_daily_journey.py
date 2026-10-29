@@ -51,6 +51,9 @@ def _dashboard() -> WorkbenchDashboardDTO:
         candidate_degraded_count=2,
         candidate_missing_count=1,
         candidate_reasons=("1528 恩德｜產業 電機機械｜理由 圖形模式分數+",),
+        candidate_exclusion_summaries=(
+            "篩選缺資料：197 筆／197 檔；品質 missing 197；理由碼 source_data_missing 197。",
+        ),
         candidate_identity=("cohort_hash=sha256:cohort-1",),
         evidence_event_type="recommendation_included",
         evidence_scope_start="2026-09-10",
@@ -153,8 +156,9 @@ def test_daily_journey_details_are_collapsed_until_requested_and_evidence_tab_is
     view.daily_detail_button.click()
     assert view.daily_trace_label.isHidden() is False
     assert "sha256:event-1" in view.daily_trace_label.text()
-    assert "candidate natural=0" in view.daily_trace_label.text()
-    assert "active natural=0" in view.daily_trace_label.text()
+    assert "自然成熟樣本：回執 0；候選 0；啟用版本 0" in view.daily_trace_label.text()
+    assert "篩選缺資料：197 筆／197 檔" in view.daily_trace_label.text()
+    assert "品質 missing 197" in view.daily_trace_label.text()
     view.daily_detail_button.click()
     assert view.daily_trace_label.isHidden() is True
 

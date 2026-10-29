@@ -4,17 +4,24 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
+from app_module.dtos.decision_continuity_dtos import DecisionContinuityRevision
 from app_module.pinned_stock_research_notes import PinnedStockResearchNote
 from app_module.stock_research_report_notes import StockResearchReportNote
 from app_module.theme_research_notes import ThemeResearchNote
 
 
-TimelineReference = JournalEntryDTO | PinnedStockResearchNote | StockResearchReportNote | ThemeResearchNote
+TimelineReference = (
+    JournalEntryDTO
+    | DecisionContinuityRevision
+    | PinnedStockResearchNote
+    | StockResearchReportNote
+    | ThemeResearchNote
+)
 
 
 @dataclass(frozen=True)
 class ResearchTimelineEntry:
-    kind: Literal["manual", "price", "report", "theme"]
+    kind: Literal["manual", "decision", "price", "report", "theme"]
     record_id: str
     recorded_at: str
     text: str

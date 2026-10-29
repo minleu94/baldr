@@ -92,6 +92,7 @@ def _run_case(
             else "process_group_created_before_child_execution"
         ),
         "process_tree_management": tree.management_mode,
+        "resource_limits": dict(tree.resource_limits),
         "owned_process_tree_attached": False,
         "owned_process_tree_closed": False,
         "root_pid": None,
@@ -155,6 +156,12 @@ def _run_case(
                     error = f"cleanup {type(exc).__name__}: {exc}"
 
         try:
+            tree.capture_resource_usage()
+        except BaseException as exc:  # noqa: BLE001 - preserve usage evidence
+            if error is None:
+                error = f"resource usage readback {type(exc).__name__}: {exc}"
+
+        try:
             tree.close()
         except BaseException as exc:  # noqa: BLE001 - preserve cleanup evidence
             tree_close_error = f"{type(exc).__name__}: {exc}"
@@ -182,6 +189,14 @@ def _run_case(
             and tree_close_error is None
             and child_close_error is None
             and root_running_after_tree_close is not True
+            and tree.resource_limits.get("readback_verified") is True
+            and isinstance(
+                tree.resource_limits.get("peak_job_committed_memory_bytes"), int
+            )
+            and int(
+                tree.resource_limits.get("peak_job_committed_memory_bytes", -1)
+            )
+            <= owned_runner.MAX_JOB_COMMITTED_MEMORY_BYTES
         )
         metadata.update(
             {
@@ -196,6 +211,7 @@ def _run_case(
                 "owned_child_handles_closed": child_close_error is None,
                 "owned_child_handle_close_error": child_close_error,
                 "root_running_after_tree_close": root_running_after_tree_close,
+                "resource_limits": dict(tree.resource_limits),
             }
         )
         _write_json(process_path, metadata)
@@ -269,6 +285,17 @@ def main(argv: list[str] | None = None) -> int:
         "addopts=",
         "--tb=short",
     ]
+    advice_manual_decision_command = [
+        sys.executable,
+        "-u",
+        "-m",
+        "pytest",
+        "tests\\test_workbench_advice_contract.py::test_advice_manual_decision_persists_and_reads_back_from_fresh_journal",
+        "-q",
+        "-o",
+        "addopts=",
+        "--tb=short",
+    ]
     busy_command = [
         sys.executable,
         "-u",
@@ -294,21 +321,29 @@ def main(argv: list[str] | None = None) -> int:
     }
     _write_json(summary_path, summary)
 
-    for name, command, environment in (
-        ("readback_writer_reader", readback_command, readback_environment),
-        ("busy_close", busy_command, base_environment),
-    ):
-        case = _run_case(
-            repo_root=repo_root,
-            run_dir=run_dir,
-            name=name,
-            command=command,
-            environment=environment,
-            timeout_seconds=args.timeout_seconds,
-            terminate_grace_seconds=args.terminate_grace_seconds,
+    lock_path = repo_root / ".pytest-owned-temp" / "baldr-gate-qa.lock"
+    with owned_runner._SingleQtProcessLock(lock_path):
+        cases = (
+            ("readback_writer_reader", readback_command, readback_environment),
+            (
+                "advice_manual_decision_readback",
+                advice_manual_decision_command,
+                base_environment,
+            ),
+            ("busy_close", busy_command, base_environment),
         )
-        summary["cases"][name] = case
-        _write_json(summary_path, summary)
+        for name, command, environment in cases:
+            case = _run_case(
+                repo_root=repo_root,
+                run_dir=run_dir,
+                name=name,
+                command=command,
+                environment=environment,
+                timeout_seconds=args.timeout_seconds,
+                terminate_grace_seconds=args.terminate_grace_seconds,
+            )
+            summary["cases"][name] = case
+            _write_json(summary_path, summary)
 
     all_passed = all(case.get("status") == "passed" for case in summary["cases"].values())
     process_exit_code = 0 if all_passed else 1

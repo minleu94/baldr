@@ -321,12 +321,12 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
         if row is None:
             return (), 0, (), 0
         support = tuple(
-            _compact_advice_text(_public_advice_reason(item), limit=42)
+            _compact_advice_text(_public_advice_reason(item), limit=96)
             for item in row.why_reasons
             if str(item).strip()
         )
         restrictions = tuple(
-            _compact_advice_text(_public_advice_reason(item), limit=42)
+            _compact_advice_text(_public_advice_reason(item), limit=96)
             for item in row.why_not_reasons
             if str(item).strip() and str(item).strip() not in self.common_restrictions
         )

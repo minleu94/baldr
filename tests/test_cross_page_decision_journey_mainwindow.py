@@ -31,7 +31,10 @@ from app_module.continuity_review_projection import ContinuityReviewProjectionSe
 from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
-from app_module.dtos.decision_continuity_dtos import DecisionIdentity
+from app_module.dtos.decision_continuity_dtos import (
+    DecisionContinuityRevision,
+    DecisionIdentity,
+)
 from app_module.evidence_event_dtos import (
     EvidenceDataQuality,
     EvidenceEvent,
@@ -1170,6 +1173,38 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert controls.state.next_review_at == second_review.isoformat()
         assert journal_path.read_bytes() != journal_before_review
         assert _hash_paths(read_only_paths) == before_read_only
+
+        # Advice's research-history link opens the actual MainWindow route and
+        # carries the exact saved result ID into the full-history search.
+        assert window._open_workbench_advice_research_history(saved_id)
+        assert window.product_shell.route_id == "journal"
+        timeline = window.research_timeline_view
+        assert timeline.stock_filter.text() == saved_id
+        timeline.refresh()
+        _wait_for(
+            lambda: not timeline.is_busy() and timeline._active_worker is None
+        )
+        timeline.source_filter.setCurrentIndex(
+            timeline.source_filter.findData("decision")
+        )
+        timeline.stock_filter.setText(saved_id)
+        saved_decision_entries = tuple(
+            entry
+            for entry in timeline._entries
+            if entry.kind == "decision" and entry.result_id == saved_id
+        )
+        assert all(
+            isinstance(entry.reference, DecisionContinuityRevision)
+            for entry in saved_decision_entries
+        )
+        assert {
+            entry.reference.action
+            for entry in saved_decision_entries
+            if isinstance(entry.reference, DecisionContinuityRevision)
+        } >= {"accepted", "review_scheduled"}
+        assert timeline.entries_table.rowCount() >= 2
+        assert saved_id in timeline.original_text.toPlainText()
+        assert "來源 snapshot ID" in timeline.original_text.toPlainText()
 
         readback_receipt_path = Path(
             os.environ.get(

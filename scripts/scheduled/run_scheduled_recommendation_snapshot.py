@@ -1892,6 +1892,10 @@ def main(argv: list[str] | None = None) -> int:
                 "status": terminal_status,
                 "exit_code": terminal_exit_code,
                 "result_id": result_id,
+                # EvidenceEvent importer uses this exact scheduled result as
+                # its source snapshot identity; persist the same typed binding
+                # for Daily Journey instead of asking the reader to infer it.
+                "source_snapshot_id": result_id,
                 "result_name": result_name,
                 "recommendations_count": len(recommendations),
                 "screening_matrix_rows": len(capture_summary["screening_matrix"]),

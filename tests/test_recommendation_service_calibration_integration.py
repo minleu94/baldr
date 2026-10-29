@@ -579,7 +579,7 @@ def test_isolated_producer_consumer_advice_workbench_ui_path(tmp_path: Path) -> 
     )
     view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
-    rendered = view.advice_presentation_detail.text()
+    rendered = view.advice_presentation_detail.toPlainText()
 
     assert "排名分數：7200（僅作排序，不等於機率）" in rendered
     assert "校準機率：58.00%（研究中／shadow）" in rendered
@@ -811,7 +811,7 @@ def test_real_consumer_producer_advice_workbench_ui_path(
     )
     view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
-    rendered = view.advice_presentation_detail.text()
+    rendered = view.advice_presentation_detail.toPlainText()
 
     assert "研究中／shadow" in rendered
     assert "適用期間：20 trading days" in rendered

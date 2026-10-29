@@ -59,6 +59,24 @@ def _configure_console_streams() -> None:
             continue
 
 
+def _default_theme_catalog_root(output_root: Path) -> Path:
+    """選標準版本庫；不存在時只回退到已知的開發版 snapshots 位置。"""
+
+    default = Path(output_root) / "theme_research_snapshots"
+    if default.is_dir():
+        return default
+    known_snapshot_root = (
+        Path(__file__).resolve().parents[1]
+        / "output"
+        / "tasks"
+        / "baldr-post-completion-execution"
+        / "snapshots"
+    )
+    if known_snapshot_root.is_dir():
+        return known_snapshot_root
+    return default
+
+
 # 直接啟動桌面 App 時，在載入 Qt 與各服務前先裝上 crash hooks；單元測試匯入
 # ui_qt.main 時不會碰觸正式 DATA_ROOT。
 _crash_diagnostics_log_path: Path | None = None
@@ -2028,6 +2046,19 @@ class MainWindow(QMainWindow):
     def _open_workbench_daily_decision(self) -> None:
         self._open_workbench_market_explore()
 
+    def _open_workbench_advice_research_history(self, result_id: str) -> bool:
+        query = str(result_id or "").strip()
+        timeline = getattr(self, "research_timeline_view", None)
+        shell = getattr(self, "product_shell", None)
+        search = getattr(timeline, "search_result_id", None)
+        if not query or timeline is None or shell is None or not callable(search):
+            return False
+        shell.activate_route("journal")
+        if not search(query):
+            return False
+        timeline.stock_filter.setFocus()
+        return True
+
     def _open_workbench_market_explore(self) -> None:
         self._select_main_workspace("market_explore")
         market_tabs = getattr(self, "market_tabs", None)
@@ -2504,6 +2535,7 @@ class MainWindow(QMainWindow):
                     ),
                     navigate_to_backtest_callback=self._open_backtest_for_workbench_advice_contract,
                     navigate_to_saved_recommendation_callback=self._open_workbench_saved_recommendation,
+                    navigate_to_research_history_callback=self._open_workbench_advice_research_history,
                     save_advice_research_decision_callback=self._save_workbench_advice_research_decision,
                     auto_refresh=True,
                     async_refresh=True,
@@ -3506,9 +3538,7 @@ class MainWindow(QMainWindow):
             except (OSError, ValueError) as exc:
                 error = f"題材目錄偏好無法讀取；請重新明選目錄：{exc}"
         if selected is None:
-            default = Path(self.config.output_root) / "theme_research_snapshots"
-            if default.is_dir():
-                selected = default.resolve()
+            selected = _default_theme_catalog_root(Path(self.config.output_root)).resolve()
         view.configure_catalog_root(selected.resolve() if selected is not None else None)
         view.catalogRootSelected.connect(self._save_product_theme_catalog)
         if error:

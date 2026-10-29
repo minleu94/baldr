@@ -648,6 +648,7 @@ class WorkbenchDailyEvidence:
     source_trace: tuple[str, ...] = ()
     # 追加在 DTO 尾端，以保留舊 positional caller 的相容性。
     research_fallback: ResearchFallbackPacket | None = None
+    candidate_exclusion_summaries: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", str(self.status or "unknown"))
@@ -687,6 +688,11 @@ class WorkbenchDailyEvidence:
         object.__setattr__(self, "warnings", _normalize_strings(self.warnings))
         object.__setattr__(self, "diagnostics", _normalize_strings(self.diagnostics))
         object.__setattr__(self, "source_trace", _normalize_strings(self.source_trace))
+        object.__setattr__(
+            self,
+            "candidate_exclusion_summaries",
+            _normalize_strings(self.candidate_exclusion_summaries),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -738,6 +744,9 @@ class WorkbenchDailyEvidence:
                 self.research_fallback.to_dict()
                 if self.research_fallback is not None
                 else None
+            ),
+            "candidate_exclusion_summaries": list(
+                self.candidate_exclusion_summaries
             ),
             "journey_steps": [item.to_dict() for item in self.journey_steps],
             "warnings": list(self.warnings),

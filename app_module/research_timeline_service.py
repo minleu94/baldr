@@ -8,6 +8,14 @@ from datetime import datetime
 from typing import Any, Callable
 
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
+from app_module.dtos.decision_continuity_dtos import (
+    ACTION_ACCEPTED,
+    ACTION_CLEARED,
+    ACTION_REMOVED,
+    ACTION_REVIEW_SCHEDULED,
+    ACTION_SKIPPED,
+    DecisionContinuityRevision,
+)
 from app_module.journal_service import JournalService
 from app_module.pinned_stock_research_notes import (
     PINNED_STOCK_RESEARCH_NOTE_SOURCE_TYPE,
@@ -41,6 +49,13 @@ _SPECIAL_SOURCE_TYPES = frozenset(
 _MAX_ENTRIES = 500
 _SHARED_HISTORY_UNSET = object()
 _SHARED_HISTORY_UNAVAILABLE = object()
+_DECISION_ACTION_LABELS = {
+    ACTION_ACCEPTED: "已納入研究",
+    ACTION_SKIPPED: "已略過",
+    ACTION_REVIEW_SCHEDULED: "設定下次檢視",
+    ACTION_CLEARED: "清除研究決定／檢視",
+    ACTION_REMOVED: "移除研究決定",
+}
 
 
 class ResearchTimelineService:
@@ -62,8 +77,10 @@ class ResearchTimelineService:
     def read(
         self,
         cancel_callback: Callable[[], bool] | None = None,
+        *,
+        search_query: str = "",
     ) -> ResearchTimelineReadResult:
-        """讀取各個已驗證 lane；單一 reader 失敗時保留其餘紀錄。"""
+        """讀取各個已驗證 lane；受限清單可按身份搜尋完整 Journal。"""
 
         entries: list[ResearchTimelineEntry] = []
         warnings: list[str] = []
@@ -121,6 +138,7 @@ class ResearchTimelineService:
 
         lanes = (
             ("manual", with_shared_history(self._read_manual_from_history, self._read_manual)),
+            ("decision", with_shared_history(self._read_decisions_from_history, self._read_decisions)),
             ("price", with_shared_history(self._read_price_from_history, self._read_price)),
             ("report", with_shared_history(self._read_reports_from_history, self._read_reports)),
             ("theme", with_shared_history(self._read_themes_from_history, self._read_themes)),
@@ -141,6 +159,12 @@ class ResearchTimelineService:
             except Exception as exc:
                 warnings.append(f"{lane_name} lane 讀取失敗（{type(exc).__name__}）；其他 lane 已保留。")
 
+        query = str(search_query or "").strip()
+        if query:
+            entries = [
+                item for item in entries
+                if query in item.stock_code or query in item.result_id
+            ]
         ordered = _sort_by_recorded_at(entries)
         limited = len(ordered) > _MAX_ENTRIES
         return ResearchTimelineReadResult(
@@ -228,6 +252,56 @@ class ResearchTimelineService:
     ) -> tuple[ResearchTimelineEntry, ...]:
         records = self._journal.list_journal_entries_from_history(history)
         return self._project_manual_records(records)
+
+    def _read_decisions(self) -> tuple[ResearchTimelineEntry, ...]:
+        reader = getattr(self._journal, "list_decision_revisions", None)
+        if not callable(reader):
+            return ()
+        return self._project_decision_revisions(reader())
+
+    def _read_decisions_from_history(
+        self, history: Sequence[Mapping[str, Any]],
+    ) -> tuple[ResearchTimelineEntry, ...]:
+        revisions = JournalService.list_decision_revisions_from_history(history)
+        return self._project_decision_revisions(revisions)
+
+    @staticmethod
+    def _project_decision_revisions(
+        revisions: Sequence[DecisionContinuityRevision],
+    ) -> tuple[ResearchTimelineEntry, ...]:
+        entries: list[ResearchTimelineEntry] = []
+        for revision in revisions:
+            if (
+                type(revision) is not DecisionContinuityRevision
+                or revision.entity_type != "decision"
+                or revision.action not in _DECISION_ACTION_LABELS
+            ):
+                continue
+            identity = revision.decision_identity
+            action_label = _DECISION_ACTION_LABELS[revision.action]
+            details = [
+                action_label,
+                f"result_id={identity.result_id or '未知'}",
+                f"決策日={identity.decision_date or '未知'}",
+            ]
+            if revision.next_review_at:
+                details.append(f"下次檢視={revision.next_review_at}")
+            entries.append(
+                ResearchTimelineEntry(
+                    kind="decision",
+                    record_id=revision.revision_id,
+                    recorded_at=revision.created_at,
+                    text="｜".join(details),
+                    reference=revision,
+                    stock_code=identity.stock_code,
+                    data_date="",
+                    source_identity=(
+                        identity.source_snapshot_id or identity.source_snapshot_hash
+                    ),
+                    result_id=identity.result_id,
+                )
+            )
+        return tuple(entries)
 
     @staticmethod
     def _project_manual_records(

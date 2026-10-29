@@ -96,9 +96,11 @@ class DecisionIdentity:
     """Explicit recommendation/candidate identity carried by a user action.
 
     ``result_id`` and ``stock_code`` are the candidate identity. Snapshot
-    fields are independent optional provenance; they are never filled from
-    ``result_id``.  Empty result identity is valid for legacy input and is
-    classified as ``unknown`` rather than guessed.
+    fields are independent optional provenance; they are never inferred from
+    ``result_id``. A source may explicitly bind its snapshot ID to the same
+    value as ``result_id``; preserve that typed binding for exact readback.
+    Empty result identity is valid for legacy input and is classified as
+    ``unknown`` rather than guessed.
     """
 
     result_id: str = ""
@@ -132,8 +134,6 @@ class DecisionIdentity:
         ):
             raise ValueError("linked decision identity requires result_id and stock_code")
         result_id = values["result_id"]
-        if result_id and values["source_snapshot_id"] == result_id:
-            raise ValueError("source_snapshot_id must not reuse result_id")
         if result_id and values["source_snapshot_hash"] == result_id:
             raise ValueError("source_snapshot_hash must not reuse result_id")
         for name, value in values.items():

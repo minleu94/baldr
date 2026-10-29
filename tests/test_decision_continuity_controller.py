@@ -90,6 +90,30 @@ def test_accept_review_note_reopen_preserves_intent_and_review(tmp_path: Path) -
     assert reopened.read_state(identity).decision_status == "skipped"
 
 
+def test_explicit_snapshot_id_equal_to_result_id_survives_journal_reopen(
+    tmp_path: Path,
+) -> None:
+    identity = DecisionIdentity(
+        result_id="rec_candidate-001",
+        stock_code="1569",
+        decision_date="2026-10-28",
+        source_snapshot_id="rec_candidate-001",
+        source_snapshot_hash="",
+    )
+    controller = DecisionContinuityController(JournalService(_config(tmp_path)))
+
+    saved = controller.accept(identity, request_id="accept-explicit-snapshot")
+    reopened = DecisionContinuityController(JournalService(_config(tmp_path)))
+    state = reopened.read_state(identity)
+
+    assert saved.success and saved.readback_verified
+    assert state.decision_status == "accepted"
+    assert len(state.history) == 1
+    assert state.history[0].decision_identity.result_id == "rec_candidate-001"
+    assert state.history[0].decision_identity.source_snapshot_id == "rec_candidate-001"
+    assert state.history[0].decision_identity.source_snapshot_hash == ""
+
+
 def test_same_request_is_idempotent_after_new_action_and_snapshot_mismatch_rejected(
     tmp_path: Path,
 ) -> None:

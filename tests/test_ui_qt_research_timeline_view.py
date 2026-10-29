@@ -13,6 +13,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
 
+from app_module.dtos.decision_continuity_dtos import (
+    ACTION_ACCEPTED,
+    DecisionContinuityRevision,
+    DecisionIdentity,
+)
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
 from app_module.decision_outcome_journey import DecisionOutcomeJourney
 from app_module.research_evidence_comparison_dtos import (
@@ -98,15 +103,23 @@ def _entry(kind: str, record_id: str, text: str, *, stock: str = "2330", result_
 
 
 class _Reader:
-    def __init__(self, result: ResearchTimelineReadResult):
+    def __init__(
+        self,
+        result: ResearchTimelineReadResult,
+        *,
+        search_results: dict[str, ResearchTimelineReadResult] | None = None,
+    ):
         self.result = result
+        self.search_results = dict(search_results or {})
         self.calls = 0
+        self.search_queries: list[str] = []
 
-    def read(self, cancel_callback=None):
+    def read(self, cancel_callback=None, *, search_query=""):
         self.calls += 1
+        self.search_queries.append(search_query)
         if cancel_callback is not None and cancel_callback():
             return ResearchTimelineReadResult((), ("已取消",))
-        return self.result
+        return self.search_results.get(search_query, self.result)
 
 
 class _JourneyReader:
@@ -168,6 +181,76 @@ def test_view_preserves_full_original_and_emits_only_selected_saved_entry():
     view.stock_filter.setText("2454")
     assert view.entries_table.rowCount() == 0
     assert not view.open_original_button.isEnabled()
+    view.close()
+
+
+def test_historical_decision_can_be_found_by_result_id_after_advice_changes():
+    _app()
+    revision = DecisionContinuityRevision(
+        revision_id="decision-revision-1",
+        continuity_event_id="decision-event-1",
+        action=ACTION_ACCEPTED,
+        entity_type="decision",
+        entity_id="decision-entity-1",
+        decision_identity=DecisionIdentity(
+            result_id="rec_old_recommendation",
+            stock_code="1569",
+            decision_date="2026-10-28",
+            source_snapshot_id="snapshot-1",
+        ),
+        created_at="2026-10-28T08:00:00+00:00",
+    )
+    entry = ResearchTimelineEntry(
+        kind="decision",
+        record_id=revision.revision_id,
+        recorded_at=revision.created_at,
+        text="已納入研究｜result_id=rec_old_recommendation｜決策日=2026-10-28",
+        reference=revision,
+        stock_code="1569",
+        data_date="",
+        source_identity="snapshot-1",
+        result_id="rec_old_recommendation",
+    )
+    result = ResearchTimelineReadResult((entry,))
+    view = ResearchTimelineView(_Reader(result), auto_refresh=False)
+    view._receive(view._generation, result)
+
+    view.source_filter.setCurrentIndex(view.source_filter.findData("decision"))
+    view.stock_filter.setText("rec_old_recommendation")
+
+    assert view.entries_table.rowCount() == 1
+    assert view._selected is entry
+    assert "result ID rec_old_recommendation" in view.detail_label.text()
+    assert "來源 snapshot ID：snapshot-1" in view.original_text.toPlainText()
+    assert not view.compare_evidence_button.isEnabled()
+    assert not view.paper_prerequisites_button.isEnabled()
+    view.close()
+
+
+def test_limited_timeline_searches_complete_history_by_stock_or_result_id():
+    application = _app()
+    newest = _entry("decision", "newest", "最新決定", stock="2330", result_id="rec_new")
+    older = _entry("decision", "older", "舊決定", stock="1569", result_id="rec_old")
+    reader = _Reader(
+        ResearchTimelineReadResult((newest,), limited=True),
+        search_results={
+            "1569": ResearchTimelineReadResult((older,)),
+            "rec_old": ResearchTimelineReadResult((older,)),
+        },
+    )
+    view = ResearchTimelineView(reader, auto_refresh=False)
+    view._receive(view._generation, reader.result)
+
+    assert "搜尋完整 Journal 歷史" in view.status_label.text()
+    view.stock_filter.setText("1569")
+    _wait(application, lambda: reader.search_queries[-1:] == ["1569"] and _timeline_idle(view))
+    assert view._entries == (older,)
+
+    assert view.search_result_id("rec_old")
+    _wait(application, lambda: reader.search_queries[-1:] == ["rec_old"] and _timeline_idle(view))
+    assert view.entries_table.rowCount() == 1
+    assert view._selected is older
+    assert view._full_history_limited is True
     view.close()
 
 

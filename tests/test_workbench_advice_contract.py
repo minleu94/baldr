@@ -9,7 +9,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDateTimeEdit, QDialog, QLabel
+from PySide6.QtWidgets import QApplication, QDateTimeEdit, QDialog, QFrame, QLabel
 from PySide6.QtCore import QDateTime, Qt
 from PySide6.QtTest import QTest
 
@@ -41,6 +41,19 @@ def _app() -> QApplication:
     if isinstance(instance, QApplication):
         return instance
     return QApplication(sys.argv)
+
+
+def _wait_for_qt(predicate, timeout: float = 2.0) -> bool:
+    from time import monotonic, sleep
+
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        QApplication.processEvents()
+        if predicate():
+            return True
+        sleep(0.01)
+    QApplication.processEvents()
+    return bool(predicate())
 
 
 def _dashboard_with_advice() -> WorkbenchDashboardDTO:
@@ -218,7 +231,7 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     assert "適用期間：未提供" in view.advice_selection_card.text()
     assert "風險：未提供" in view.advice_selection_card.text()
     assert "失效條件：未提供" in view.advice_selection_card.text()
-    assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
+    assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.toPlainText()
 
 
 def test_advice_cards_show_saved_comparison_fields_and_centralize_shared_notices() -> None:
@@ -271,11 +284,23 @@ def test_advice_cards_show_saved_comparison_fields_and_centralize_shared_notices
     second_card_text = "\n".join(
         label.text() for label in view._advice_candidate_card_frames[1].findChildren(QLabel)
     )
-    assert "規則分數：92.50" in first_card_text
-    assert "規則分數百分位：82.00%（eligible universe；日期=2026-07-11；N=125）" in first_card_text
-    assert "產業：半導體" in first_card_text
-    assert "收盤價：1000.00" in first_card_text
-    assert "漲跌幅：1.2%" in first_card_text
+    assert "規則分數" in first_card_text
+    assert "92.50" in first_card_text
+    assert "排序參考・非勝率" in first_card_text
+    assert "規則分數百分位" in first_card_text
+    assert "82.00%" in first_card_text
+    assert "排名母體 eligible universe · 資料日 2026-07-11 · N=125" in first_card_text
+    assert "產業" in first_card_text and "半導體" in first_card_text
+    assert "收盤價" in first_card_text and "1000.00" in first_card_text
+    assert "漲跌幅" in first_card_text and "1.2%" in first_card_text
+    comparison_panel = view._advice_candidate_card_frames[0].findChild(
+        QFrame, "adviceCandidateMetrics"
+    )
+    assert comparison_panel is not None
+    assert "規則分數百分位：82.00%（eligible universe；日期=2026-07-11；N=125）" in (
+        comparison_panel.accessibleDescription()
+    )
+    assert "不代表信心或勝率" in comparison_panel.toolTip()
     assert "信心 92.50" not in first_card_text
     assert "前 82%" not in first_card_text
     assert "Why Not：階段=final_selection；結果=未通過" in first_card_text
@@ -332,7 +357,12 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
 
     assert view.advice_candidate_table.isHidden()
     assert len(view._advice_candidate_card_buttons) == 3
-    for width, expected_columns in ((1120, 3), (900, 2), (700, 1)):
+    for width, expected_columns in (
+        (1120, 2),
+        (1540, 2),
+        (1700, 3),
+        (700, 1),
+    ):
         view.resize(width, 900)
         view._apply_responsive_layout(force=True)
         assert view._advice_candidate_card_columns == expected_columns
@@ -520,16 +550,28 @@ def test_advice_selection_card_bounds_height_and_keeps_full_text_reachable() -> 
     view.advice_recommendation_model.set_rows((long_advice,))
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
 
-    assert view.advice_selection_card.maximumHeight() == 160
+    assert view.advice_selection_card.maximumHeight() > 160
+    assert view.advice_selection_card.wordWrap()
     assert "完整理由見下方共用證據詳情" in view.advice_selection_card.text()
     assert long_reason in view.advice_selection_card.toolTip()
     assert "風險：" in view.advice_selection_card.text()
     assert long_risk not in view.advice_selection_card.text()
     assert long_reason in view.advice_selection_card.accessibleDescription()
-    assert long_reason in view.advice_presentation_detail.text()
+    assert long_reason in view.advice_presentation_detail.toPlainText()
     assert long_risk in view.advice_selection_card.toolTip()
     assert long_invalidation in view.advice_selection_card.accessibleDescription()
-    assert long_risk in view.advice_presentation_detail.text()
+    assert long_risk in view.advice_presentation_detail.toPlainText()
+    view.resize(1200, 900)
+    view.show()
+    _app().processEvents()
+    view.advice_presentation_detail.setPlainText(
+        "\n".join(f"完整判讀欄位：{long_reason}" for _ in range(40))
+    )
+    _app().processEvents()
+    assert view.advice_presentation_detail.isReadOnly()
+    assert view.advice_presentation_detail.maximumHeight() == 240
+    assert view.advice_presentation_detail.verticalScrollBar().maximum() > 0
+    view.close()
 
 
 def test_advice_exact_saved_source_button_requires_current_row_identity() -> None:
@@ -631,16 +673,27 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
         candidate_data_date="2026-07-11",
     )
     opened: list[str] = []
+    history_searches: list[str] = []
     dashboard = replace(base, advice_dashboard=composed, daily_evidence=daily)
     view = UnifiedDecisionWorkbenchView(
         dashboard=dashboard,
         navigate_to_saved_recommendation_callback=lambda selected: opened.append(selected) or True,
+        navigate_to_research_history_callback=lambda selected: history_searches.append(selected) or True,
         save_advice_research_decision_callback=lambda action, identity, note: None,
         auto_refresh=False,
     )
 
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
     assert not view.advice_source_result_button.isHidden()
+    assert not view.advice_daily_source_button.isHidden()
+    assert "result_id=" + result_id in view.advice_daily_source_button.toolTip()
+    assert not view.advice_research_history_link.isHidden()
+    assert view._open_selected_advice_research_history()
+    assert history_searches == [result_id]
+    view.advice_daily_source_button.click()
+    assert view.daily_detail_button.isChecked()
+    assert not view.daily_trace_label.isHidden()
+    assert _wait_for_qt(view.advice_accept_decision_button.isEnabled)
     assert view.advice_accept_decision_button.isEnabled()
     assert view._selected_advice_decision_identity == {
         "result_id": result_id,
@@ -665,6 +718,7 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
         mismatch_view.advice_recommendation_model, 0
     )
     assert mismatch_view.advice_source_result_button.isHidden()
+    assert mismatch_view.advice_daily_source_button.isHidden()
     assert not mismatch_view._open_selected_advice_source_result()
     assert opened == [result_id]
 
@@ -745,6 +799,9 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
         auto_refresh=False,
     )
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    assert "背景讀取" in view.advice_research_decision_status.text()
+    assert _wait_for_qt(view.advice_skip_decision_button.isEnabled)
+    assert [item[0] for item in saved] == ["readback"]
     assert view.advice_skip_decision_button.isEnabled()
     assert "讀取" in view.advice_readback_decision_button.text()
     assert "hash 未提供" in view.advice_research_decision_status.text()
@@ -759,8 +816,13 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
         active_note_count=2,
         next_review_at="2026-07-20T09:30:00+08:00",
     )
+    assert _wait_for_qt(view.advice_readback_decision_button.isEnabled)
     view.advice_readback_decision_button.click()
+    assert _wait_for_qt(lambda: saved[-1][0] == "readback")
     assert saved[-1][0] == "readback"
+    assert _wait_for_qt(
+        lambda: "同筆狀態已讀回" in view.advice_research_decision_status.text()
+    )
     assert "同筆狀態已讀回" in view.advice_research_decision_status.text()
     assert "目前人工決定=已略過" in view.advice_research_decision_status.text()
     assert "研究註記=2 筆" in view.advice_research_decision_status.text()
@@ -880,6 +942,7 @@ def test_advice_schedule_review_uses_taipei_time_and_exact_readback(
         auto_refresh=False,
     )
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    assert _wait_for_qt(view.advice_schedule_review_button.isEnabled)
 
     assert view.advice_schedule_review_button.isEnabled()
     view.advice_schedule_review_button.click()
@@ -894,6 +957,149 @@ def test_advice_schedule_review_uses_taipei_time_and_exact_readback(
     assert not view._schedule_selected_advice_review()
     assert len(calls) == call_count
     assert "未設定下次檢視" in view.advice_research_decision_status.text()
+    view.close()
+
+
+def test_advice_reason_capsules_show_longer_summary_and_announce_full_detail() -> None:
+    _app()
+    dashboard = _dashboard_with_advice()
+    long_reason = "成交量放大、MACD金叉及均線多頭排列；" * 5
+    candidate = replace(
+        dashboard.advice_dashboard.recommendations[0],
+        classification=AdviceClassification.PROFESSIONAL_CANDIDATE,
+        why_reasons=(long_reason,),
+    )
+    advice = replace(
+        dashboard.advice_dashboard,
+        mode=AdviceMode.PROFESSIONAL,
+        recommendations=(candidate,),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(dashboard, advice_dashboard=advice), auto_refresh=False
+    )
+
+    reason_label = view._advice_candidate_card_frames[0].findChild(
+        QLabel, "adviceCandidateReasonText"
+    )
+    assert reason_label is not None
+    assert len(reason_label.text()) > 42
+    assert reason_label.text().endswith("…")
+    assert "精簡理由" in reason_label.accessibleDescription()
+    assert "點擊卡片" in reason_label.toolTip()
+
+    view.close()
+
+
+def test_advice_manual_decision_persists_and_reads_back_from_fresh_journal(
+    tmp_path,
+) -> None:
+    """Workbench Advice 的明確人工決定須沿 exact identity 保存並可冷讀回。"""
+    from types import SimpleNamespace
+
+    from app_module.decision_continuity_controller import DecisionContinuityController
+    from app_module.dtos.decision_continuity_dtos import DecisionIdentity
+    from app_module.journal_service import JournalService
+    from ui_qt.main import MainWindow
+
+    _app()
+    result_id = "saved-result-advice-journal-roundtrip"
+    source_snapshot_id = "saved-snapshot-advice-journal-roundtrip"
+    base = _dashboard_with_advice()
+    recommendation = replace(
+        base.advice_dashboard.recommendations[0],
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        source_result_id=result_id,
+        source_payload_sha256="sha256:" + "c" * 64,
+    )
+    daily = WorkbenchDailyEvidence(
+        status="candidate",
+        decision_date="2026-07-12",
+        data_as_of_date="2026-07-11",
+        headline="候選已保存",
+        next_action="記錄研究決定",
+        market_summary="",
+        industry_summary="",
+        stock_summary="",
+        watchlist_summary="",
+        portfolio_summary="",
+        candidate_symbols=("2330",),
+        candidate_status="candidate",
+        candidate_result_id=result_id,
+        candidate_source_snapshot_id=source_snapshot_id,
+        candidate_data_date="2026-07-11",
+    )
+    dashboard = replace(
+        base,
+        advice_dashboard=replace(
+            base.advice_dashboard,
+            recommendations=(recommendation,),
+        ),
+        daily_evidence=daily,
+    )
+    output_root = tmp_path / "isolated-output"
+    config = SimpleNamespace(
+        output_root=output_root,
+        resolve_output_path=lambda name: output_root / name,
+    )
+    controller = DecisionContinuityController(JournalService(config))
+    host = SimpleNamespace(decision_continuity_controller=controller)
+
+    def save(action, identity, note, *, next_review_at=""):
+        return MainWindow._save_workbench_advice_research_decision(
+            host,
+            action,
+            identity,
+            note,
+            next_review_at=next_review_at,
+        )
+
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=dashboard,
+        save_advice_research_decision_callback=save,
+        auto_refresh=False,
+    )
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    assert _wait_for_qt(view.advice_skip_decision_button.isEnabled)
+    assert view.advice_skip_decision_button.isEnabled()
+    view.advice_skip_decision_button.click()
+    assert "已保存並讀回核對" in view.advice_research_decision_status.text()
+
+    journal_path = output_root / "portfolio" / "journal_entries.jsonl"
+    assert journal_path.is_file()
+    journal_bytes_after_save = journal_path.read_bytes()
+    assert b"workbench_advice" in journal_bytes_after_save
+    assert result_id.encode() in journal_bytes_after_save
+    assert b"2330" in journal_bytes_after_save
+    assert not (output_root / "portfolio" / "trades.jsonl").exists()
+
+    identity = DecisionIdentity(
+        result_id=result_id,
+        stock_code="2330",
+        decision_date="2026-07-12",
+        source_snapshot_id=source_snapshot_id,
+        source_snapshot_hash="",
+        identity_status="linked",
+    )
+    reopened = DecisionContinuityController(JournalService(config)).read_state(
+        identity
+    )
+    assert reopened.identity.result_id == result_id
+    assert reopened.identity.stock_code == "2330"
+    assert reopened.identity.decision_date == "2026-07-12"
+    assert reopened.identity.source_snapshot_id == source_snapshot_id
+    assert reopened.identity.source_snapshot_hash == ""
+    assert reopened.decision_status == "skipped"
+    assert len(reopened.history) == 1
+    assert reopened.history[0].decision_identity == identity
+    assert reopened.history[0].payload.get("source_id") == "workbench_advice"
+    other_identity = replace(identity, result_id="another-saved-result")
+    assert (
+        DecisionContinuityController(JournalService(config))
+        .read_state(other_identity)
+        .decision_status
+        == "unrecorded"
+    )
     view.close()
 
 

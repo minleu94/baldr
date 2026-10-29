@@ -449,6 +449,10 @@ def test_workbench_advice_injects_verified_non_promoted_candidates_as_advice() -
 
     assert advice is not None
     assert [row.stock_code for row in advice.recommendations] == ["2330"]
+    assert any(
+        "來源及 point-in-time（PIT）資格尚未核驗" in warning
+        for warning in advice.warnings
+    )
     assert "scheduled_candidate_cohort_filtered" in advice.diagnostics
     assert any("其他股票已排除" in warning for warning in advice.warnings)
     assert advice.recommendations[0].advice_action is AdviceAction.ADD_CANDIDATE

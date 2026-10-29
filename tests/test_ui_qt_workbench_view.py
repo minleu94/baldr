@@ -151,7 +151,7 @@ def test_advice_detail_marks_author_fields_optional_and_does_not_fill_them() -> 
     assert "未知或缺少來源的證據不會由排名分數、其他股票或空白欄位代填" in summary
 
 
-def test_advice_contract_completeness_treats_unknown_states_and_empty_trace_as_missing() -> None:
+def test_advice_contract_completeness_distinguishes_explicit_unknown_from_missing() -> None:
     summary = _advice_contract_completeness(
         RecommendationAdviceDTO(
             stock_code="2330",
@@ -162,11 +162,12 @@ def test_advice_contract_completeness_treats_unknown_states_and_empty_trace_as_m
         )
     )
 
-    assert "流動性狀態" in summary
-    assert "可成交性" in summary
+    assert "流動性狀態" not in summary.splitlines()[0]
+    assert "可成交性" not in summary.splitlines()[0]
     assert "來源追溯" in summary
     assert "策略版本選填說明未提供" in summary
     assert "這些欄位不阻擋 Advice" in summary
+    assert "明確未知／未提供欄位仍是限制：流動性狀態、可成交性" in summary
 
 
 def test_advice_contract_completeness_rejects_source_kind_without_identity() -> None:
@@ -205,6 +206,33 @@ def test_advice_contract_completeness_accepts_known_negative_states_with_trace()
     )
 
     assert "Advice 核心欄位與來源追溯可判讀" in summary
+
+
+def test_advice_contract_completeness_accepts_explicit_unavailable_confidence() -> None:
+    summary = _advice_contract_completeness(
+        RecommendationAdviceDTO(
+            stock_code="2330",
+            advice_action=AdviceAction.RESEARCH,
+            why_not_reasons=("source_not_accepted",),
+            confidence_tier="unavailable",
+            evidence_tier="insufficient",
+            data_quality="ESTIMATED",
+            strategy_version="candidate-v1",
+            decision_date="2026-10-28",
+            data_as_of_date="2026-10-28",
+            market_regime="neutral",
+            liquidity_state="GATE_FAIL",
+            execution_feasibility="NOT_FEASIBLE",
+            source_trace=("RecommendationResultDTO", "result-123"),
+            source_result_id="result-123",
+        )
+    )
+
+    assert "Advice 核心欄位與來源追溯可判讀" in summary
+    assert "Advice 證據欄位待核對" not in summary
+    assert "策略版本選填說明未提供" in summary
+    assert "決策信心不可用" in summary
+    assert "不可解讀為勝率" in summary
 
 
 def test_advice_does_not_require_account_connection_or_offer_account_source_gate() -> None:
@@ -1377,6 +1405,8 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
             RecommendationAdviceDTO(
                 stock_code="2330",
                 advice_action=AdviceAction.NO_NEW_POSITION,
+                confidence_tier="unavailable",
+                evidence_tier="insufficient",
                 why_not_reasons=("evidence_quality_missing",),
                 data_quality="MISSING",
                 liquidity_state="UNKNOWN",
@@ -1427,13 +1457,11 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     confidence_index = view.advice_recommendation_model.index(
         0, view.advice_recommendation_model.column_index("confidence_tier")
     )
+    assert view.advice_recommendation_model.data(confidence_index) == "不可用"
+    assert view.advice_recommendation_model.data(confidence_index, Qt.ToolTipRole) == "原始值：unavailable"
     assert view.advice_recommendation_model.headerData(
         confidence_index.column(), Qt.Horizontal
     ) == "決策信心"
-    assert view.advice_recommendation_model.data(confidence_index) == "未提供"
-    assert view.advice_recommendation_model.data(
-        confidence_index, Qt.ToolTipRole
-    ) == "原始值：未知"
     stock_index = view.advice_recommendation_model.index(
         0, view.advice_recommendation_model.column_index("stock_code")
     )
@@ -1461,7 +1489,7 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
         0, view.advice_recommendation_model.column_index("evidence_status")
     )
     assert view.advice_recommendation_model.data(status_index) == (
-        "缺漏｜證據成熟度：未知／未對齊｜流動性 Gate：未知｜成交：不可成交｜資料日：未知"
+        "缺漏｜證據成熟度：證據不足｜流動性 Gate：未知｜成交：不可成交｜資料日：未知"
     )
     assert "決策日：未知" in view.advice_recommendation_model.data(
         status_index, Qt.ToolTipRole
@@ -1471,11 +1499,12 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     )
     assert "策略 Advice（人工判斷與採納）" in view.advice_selection_card.text()
     assert "evidence_quality_missing" in view.advice_selection_card.text()
-    assert "證據成熟度：未知／未對齊（原始值：未提供）" in view.advice_selection_card.text()
-    assert "證據層級" in view.advice_selection_card.text()
+    assert "證據成熟度：證據不足（原始值：insufficient）" in view.advice_selection_card.text()
+    assert "決策信心不可用" in view.advice_selection_card.text()
+    assert "證據層級" not in view.advice_selection_card.text()
     assert "失效條件：未提供" in view.advice_selection_card.text()
     assert "流動性 Gate：未知（原始值：UNKNOWN）" in view.advice_selection_card.text()
-    assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
+    assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.toPlainText()
     assert view.advice_recommendation_model.rowCount() == 1
 
 
@@ -1787,7 +1816,7 @@ def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknow
     )
 
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
-    detail_text = view.advice_presentation_detail.text()
+    detail_text = view.advice_presentation_detail.toPlainText()
 
     assert "排名分數：未知（僅作排序，不等於機率）" in detail_text
     assert "校準機率：不可用（研究中）" in detail_text
@@ -1797,14 +1826,14 @@ def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknow
     assert "機率依據詳情（唯讀）" not in detail_text
 
     view.advice_lineage_button.click()
-    expanded_text = view.advice_presentation_detail.text()
+    expanded_text = view.advice_presentation_detail.toPlainText()
     assert "機率依據詳情（唯讀）" in expanded_text
     assert "模型版本：未提供" in expanded_text
     assert "自然 evidence status：unknown" in expanded_text
     assert "自然 authority receipt：未提供" in expanded_text
 
     view.advice_lineage_button.click()
-    assert "機率依據詳情（唯讀）" not in view.advice_presentation_detail.text()
+    assert "機率依據詳情（唯讀）" not in view.advice_presentation_detail.toPlainText()
     assert "策略持有期間：swing" in detail_text
     assert "資料日：2026-07-06" in detail_text
     assert "來源追溯：fixture:advice" in detail_text

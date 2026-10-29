@@ -14,6 +14,7 @@ from app_module.daily_investment_journey import (
     DailyInvestmentJourneyService,
     _CandidateRead,
     _EvidenceRead,
+    _event_identity_pairs,
     _headline,
     _industry_rotation_summary,
     _next_action,
@@ -670,6 +671,38 @@ def test_daily_journey_reads_canonical_execution_and_preserves_status_identity(t
         },
     )
     _write_forward_receipt(config)
+    repository = EvidenceEventRepository(config, db_path=config.db_file)
+    repository.insert_event(
+        EvidenceEvent(
+            event_id="screening-missing-match",
+            event_hash="sha256:screening-missing-match",
+            event_date="2026-09-14",
+            decision_date="2026-09-14",
+            symbol="2330",
+            event_type=EvidenceEventType.SCREENING_MATRIX_MISSING,
+            event_family="screening",
+            source_type="scheduled_recommendation",
+            source_id=result_id,
+            source_snapshot_id="snapshot-1",
+            reason_codes=("price_source_missing",),
+            data_quality=EvidenceDataQuality.MISSING,
+        )
+    )
+    repository.insert_event(
+        EvidenceEvent(
+            event_id="screening-missing-other-snapshot",
+            event_hash="sha256:screening-missing-other-snapshot",
+            event_date="2026-09-14",
+            decision_date="2026-09-14",
+            symbol="2317",
+            event_type=EvidenceEventType.SCREENING_MATRIX_MISSING,
+            event_family="screening",
+            source_type="scheduled_recommendation",
+            source_id=result_id,
+            source_snapshot_id="another-snapshot",
+            data_quality=EvidenceDataQuality.MISSING,
+        )
+    )
 
     daily = DailyInvestmentJourneyService(config, evidence_db_path=config.db_file).build(
         decision_snapshot=None,
@@ -687,6 +720,16 @@ def test_daily_journey_reads_canonical_execution_and_preserves_status_identity(t
     assert daily.candidate_quality == "degraded"
     assert daily.candidate_reasons == (
         "1528 恩德｜產業 電機機械｜理由 圖形模式分數+｜排名分數 73.13",
+    )
+    assert daily.candidate_exclusion_summaries == (
+        "排除／篩選事件已核對決策日=2026-09-14、result_id=canonical-daily-rec-1、"
+        "source_id=canonical-daily-rec-1、source_snapshot_id=snapshot-1；"
+        "以下為事件數（同一股票可能有多筆事件，不等同唯一股票數）。",
+        "篩選缺資料：1 筆／1 檔；品質 missing 1；理由碼 price_source_missing 1。",
+    )
+    assert any(
+        item == "candidate_exclusion_snapshot_identity_mismatch:1"
+        for item in daily.diagnostics
     )
     assert "strategy_version_id=strategy-1" in daily.candidate_identity
     assert any("format=RecommendationExecution" in item for item in daily.source_trace)
@@ -730,6 +773,97 @@ def test_daily_journey_accepts_scheduled_cutoff_before_decision_date(
         item.startswith("recommendation_execution_as_of_mismatch:")
         for item in daily.diagnostics
     )
+    assert artifact_path.is_file()
+
+
+def test_daily_journey_binds_missing_wrapper_snapshot_from_exact_included_cohort(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    result_id = "canonical-result-with-unbound-wrapper-snapshot"
+    artifact_path = _seed_canonical_candidate(config, result_id)
+    _write_canonical_candidate_status(
+        config,
+        result_id,
+        decision_date="2026-09-14",
+        data_as_of_date="2026-09-13",
+    )
+    status_path = (
+        config.output_root
+        / "scheduled"
+        / "recommendation_snapshot"
+        / "latest_status.json"
+    )
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status.pop("source_snapshot_id")
+    status["snapshot_cohort"].pop("universe_snapshot_id")
+    status_path.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
+
+    repository = EvidenceEventRepository(config, db_path=config.db_file)
+    event_identity = {
+        **status["evidence_identity"],
+        "result_id": result_id,
+        "cohort_hash": status["snapshot_cohort"]["cohort_hash"],
+        "return_basis": "close_to_close",
+        "as_of_date": "2026-09-14",
+        "data_as_of_date": "2026-09-13",
+    }
+    repository.insert_event(
+        EvidenceEvent(
+            event_id="included-result-with-bound-source-snapshot",
+            event_hash="sha256:included-result-with-bound-source-snapshot",
+            event_date="2026-09-14",
+            decision_date="2026-09-14",
+            symbol="1528",
+            event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+            event_family="recommendation",
+            source_type="scheduled_recommendation",
+            source_id=result_id,
+            source_snapshot_id="evidence-source-snapshot-1",
+            data_quality=EvidenceDataQuality.OBSERVED,
+            as_of_date="2026-09-14",
+            available_date="2026-09-14",
+            metadata=event_identity,
+        )
+    )
+    repository.insert_event(
+        EvidenceEvent(
+            event_id="screening-missing-on-bound-source-snapshot",
+            event_hash="sha256:screening-missing-on-bound-source-snapshot",
+            event_date="2026-09-14",
+            decision_date="2026-09-14",
+            symbol="2317",
+            event_type=EvidenceEventType.SCREENING_MATRIX_MISSING,
+            event_family="screening",
+            source_type="scheduled_recommendation",
+            source_id=result_id,
+            source_snapshot_id="evidence-source-snapshot-1",
+            reason_codes=("price_source_missing",),
+            data_quality=EvidenceDataQuality.MISSING,
+        )
+    )
+
+    daily = DailyInvestmentJourneyService(
+        config, evidence_db_path=config.db_file
+    ).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_result_id == result_id
+    assert daily.candidate_source_id == result_id
+    assert daily.candidate_source_snapshot_id == "evidence-source-snapshot-1"
+    assert "candidate_source_snapshot_id_bound_from_exact_included_events" in daily.diagnostics
+    assert daily.candidate_exclusion_summaries == (
+        "排除／篩選事件已核對決策日=2026-09-14、"
+        f"result_id={result_id}、source_id={result_id}、"
+        "source_snapshot_id=evidence-source-snapshot-1；"
+        "以下為事件數（同一股票可能有多筆事件，不等同唯一股票數）。",
+        "篩選缺資料：1 筆／1 檔；品質 missing 1；理由碼 price_source_missing 1。",
+    )
+    assert "daily_candidate_event_identity_mismatch" not in daily.diagnostics
     assert artifact_path.is_file()
 
 
@@ -1262,7 +1396,7 @@ def test_missing_database_is_not_created_by_daily_read_model(tmp_path: Path) -> 
             _CandidateRead(status="read_failure"),
             _EvidenceRead(status="missing"),
             ScheduledEvidenceStatus(),
-            "查看每日來源詳情",
+            "查看來源與排除",
             "scope receipt",
         ),
         (
@@ -1338,3 +1472,76 @@ def test_learning_projection_preserves_active_candidate_distinction() -> None:
     assert receipt.candidate_status == "active_model"
     assert receipt.active_candidate_id == "candidate-1"
     assert receipt.natural_matured_sample_count == 0
+
+
+def test_candidate_event_identity_uses_complete_ids_not_truncated_trace() -> None:
+    candidate = _CandidateRead(result_id="recommendation-result-1")
+    evidence = _EvidenceRead(
+        event_ids=tuple(f"event-{index}" for index in range(21)),
+        source_snapshot_ids=("older-snapshot", "recommendation-result-1"),
+        source_trace=("evidence_event[event-0].source_snapshot_id=older-snapshot",),
+    )
+    diagnostics: list[str] = []
+    warnings: list[str] = []
+
+    DailyInvestmentJourneyService._check_candidate_event_identity(
+        candidate, evidence, diagnostics, warnings
+    )
+
+    assert diagnostics == []
+    assert warnings == []
+
+
+def test_candidate_event_identity_still_reports_real_mismatch() -> None:
+    candidate = _CandidateRead(result_id="recommendation-result-1")
+    evidence = _EvidenceRead(
+        event_ids=("event-1",),
+        source_ids=("other-result",),
+        source_snapshot_ids=("other-snapshot",),
+    )
+    diagnostics: list[str] = []
+    warnings: list[str] = []
+
+    DailyInvestmentJourneyService._check_candidate_event_identity(
+        candidate, evidence, diagnostics, warnings
+    )
+
+    assert diagnostics == ["daily_candidate_event_identity_mismatch"]
+    assert warnings == ["候選 result_id 與每日 recommendation event identity 未對上"]
+
+
+def test_candidate_event_identity_reads_return_basis_from_metadata() -> None:
+    event = EvidenceEvent(
+        event_id="included-return-basis",
+        event_hash="sha256:included-return-basis",
+        event_date="2026-09-14",
+        decision_date="2026-09-14",
+        symbol="1528",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="scheduled_recommendation",
+        metadata={"return_basis": "close_to_close_event_date"},
+    )
+
+    assert dict(_event_identity_pairs(event))["return_basis"] == (
+        "close_to_close_event_date"
+    )
+
+
+def test_candidate_exclusion_summary_requires_explicit_snapshot_identity(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    summaries, diagnostics = (
+        DailyInvestmentJourneyService(config, evidence_db_path=config.db_file)
+        ._read_candidate_exclusion_summaries(
+            decision_date="2026-09-14",
+            result_id="result-1",
+            source_id="result-1",
+            source_snapshot_id=None,
+        )
+    )
+
+    assert summaries == (
+        "result_id=result-1 缺少可核對的 source_snapshot_id；"
+        "未列出排除／篩選事件，也不把缺少事件解讀成沒有排除。",
+    )
+    assert diagnostics == ("candidate_exclusion_source_snapshot_id_missing",)

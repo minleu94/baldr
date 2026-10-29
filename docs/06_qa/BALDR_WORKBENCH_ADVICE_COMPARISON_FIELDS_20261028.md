@@ -33,3 +33,15 @@
 ## 尚未能顯示的資料
 
 若保存 Recommendation 的同筆列沒有對應值，Advice 只能顯示「未提供」。目前無逐股衍生風險欄位可投影，因此以中性缺值文案呈現；本切片沒有從 `decision_desk_snapshots.risk_prompt_json` join 風險資料。Eligible-universe 日期也只沿用保存的來源日期，不以 Advice 顯示日期代填。
+
+## 2026-10-28 圖卡視覺呈現增量
+
+依圖卡檢視將比較資訊拆為規則分數、百分位母體與產業／行情三組，使用較清晰的字級與層級；規則分數旁明示「排序參考・非勝率」，避免被當成信心。信心缺值改為警示樣式並說明來源未提供。理由與限制膠囊提高對比、加長摘要可見字數，並提示需展開卡片才能讀完整判讀；原比較字串保留在輔助說明中供輔助技術讀取。
+
+本次圖卡聚焦測試：4 passed、12 deselected；必要 Workbench Update UI 回歸 98 passed；Update validator 25 passed、0 failed、4 skipped；本次修改模組 targeted mypy 無錯誤，3 個變更 Python 檔 `py_compile` 通過。Repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇到既有 line-continuation syntax error，無法完成全域檢查。Scoped document-control link check 因手冊內兩個既有 `output/trial/.../TRIAL_GUIDE.md` 外部引用在受限工作區回傳 WinError 5（output 路徑拒絕存取）而未能通過，不能據此判定其目標內容。Offscreen 截圖用環境缺少中文字型，畫面文字呈方框，故只確認布局與元件分區，不以該截圖宣稱中文視覺驗收；原生 GUI／Owner UAT 未執行。未修改 Advice 人工決定的來源身分串接。
+
+## 2026-10-28 第二輪：閱讀寬度、展開高度與響應性
+
+使用者回報一般視窗三欄令理由和行情摘要過窄，展開判讀受固定高度截斷，卡片打開也會等待人工狀態讀取。一般桌面寬度改用兩欄（寬度達 1700 logical px 才三欄），展開卡仍跨滿整列；理由摘要上限增至 96 字，完整判讀 QLabel 移除 160 px 高度限制並由工作台捲動查看。展開時的同筆 journal 唯讀讀取改由 TaskWorker 背景執行，UI thread 負責核對完成回覆；讀取中暫停決定按鈕，避免與 readback 競態，完成或失敗後可重試。來源身份欄位與 exact identity 判斷未變。
+
+驗證：Advice contract suite 16 passed；必要 Workbench Update UI 98 passed；Update validator 25 passed、0 failed、4 skipped；targeted mypy 2 模組無錯誤；py_compile 3 檔通過。Offscreen 合成卡截圖確認 1540 px 寬度為兩欄、展開卡寬 1445 px、判讀框最大高度不再固定（16777215）；該環境中文仍因缺少字型呈方框，不作原生字體驗收。Repo-wide mypy 仍被未修改的 data_module/mops_t164_pdf_disposition_bridge.py 第 411 行語法錯誤阻擋；document-control link check 仍因兩個既有 output trial 引用 WinError 5 無法核對內容；原生 GUI／Owner UAT 未執行。

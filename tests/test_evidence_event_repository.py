@@ -114,6 +114,34 @@ def test_repository_can_select_an_exact_event_id_allowlist(tmp_path):
         raise AssertionError("an explicit allowlist must not be silently truncated")
 
 
+def test_repository_can_filter_events_by_exact_source_and_snapshot(tmp_path):
+    config = _config(tmp_path)
+    repo = EvidenceEventRepository(config)
+    expected = repo.insert_event(_event("hash-a"))
+    repo.insert_event(
+        replace(
+            _event("hash-b"),
+            event_id="event-b",
+            source_snapshot_id="other-snapshot",
+        )
+    )
+    repo.insert_event(
+        replace(
+            _event("hash-c"),
+            event_id="event-c",
+            source_id="other-result",
+        )
+    )
+
+    rows = repo.list_events(
+        decision_date="2026-06-01",
+        source_id="rec-001",
+        source_snapshot_id="snapshot-001",
+    )
+
+    assert [row.event_id for row in rows] == [expected.event_id]
+
+
 def test_repository_upserts_and_lists_outcomes(tmp_path):
     config = _config(tmp_path)
     repo = EvidenceEventRepository(config)

@@ -583,6 +583,7 @@ def test_scheduled_recommendation_snapshot_saves_result_and_status(
     assert payload["status"] == "passed"
     assert payload["task"] == "baldr-recommendation-snapshot-daily"
     assert payload["result_id"].startswith("rec_")
+    assert payload["source_snapshot_id"] == payload["result_id"]
     assert payload["recommendations_count"] == 1
     assert payload["screening_matrix_rows"] == 2
     assert payload["why_not_payload_rows"] == 1

@@ -650,6 +650,17 @@ class WorkbenchSourceService:
             "排程結果已核對保存身份、日期與 cohort；以下 Advice 供使用者判斷與手動記錄，不會自動下單。",
             "Advice 不需要連接真實帳戶；持倉與交易由使用者手動記錄。這裡不計算個人配置或加碼金額。",
         )
+        execution = recommendation_read_model.execution
+        execution_context = getattr(execution, "context", None)
+        source_refs = tuple(getattr(execution_context, "source_refs", ()) or ())
+        data_snapshot_refs = tuple(
+            getattr(execution_context, "data_snapshot_refs", ()) or ()
+        )
+        if not source_refs or not data_snapshot_refs:
+            warnings = (
+                "此筆 Advice 未保存完整可核對的來源與資料快照引用；來源及 point-in-time（PIT）資格尚未核驗。此限制不阻止查看候選，但不代表來源資格已通過。",
+                *warnings,
+            )
         if daily_evidence.candidate_status == "candidate_degraded":
             warnings = (
                 "整體候選 cohort 有缺漏或降級股票；WorkBench 仍逐檔依同一 canonical cohort 判品質，其他股票不會自動降級此候選。",

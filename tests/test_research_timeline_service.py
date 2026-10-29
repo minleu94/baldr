@@ -7,6 +7,10 @@ import pytest
 
 from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
+from app_module.dtos.decision_continuity_dtos import (
+    ACTION_ACCEPTED,
+    DecisionContinuityRevision,
+)
 from app_module.journal_service import JournalService
 from app_module.pinned_stock_research_notes import PinnedStockResearchNote
 from app_module.research_timeline_service import ResearchTimelineService, _sort_by_recorded_at
@@ -291,6 +295,94 @@ def test_shared_snapshot_keeps_lane_error_isolation_and_uses_one_history_object(
     assert len(result.warnings) == 1 and "price lane" in result.warnings[0]
     assert price_reader.shared_history[0] is report_reader.shared_history[0]
     assert report_reader.shared_history[0] is theme_reader.shared_history[0]
+
+
+def test_shared_journal_projects_historical_research_decisions():
+    decision = DecisionContinuityRevision(
+        revision_id="decision-revision-1",
+        continuity_event_id="decision-event-1",
+        action=ACTION_ACCEPTED,
+        entity_type="decision",
+        entity_id="decision-entity-1",
+        decision_identity=DecisionIdentity(
+            result_id="rec_old_recommendation",
+            stock_code="1569",
+            decision_date="2026-10-28",
+            source_snapshot_id="snapshot-1",
+        ),
+        created_at="2026-10-28T08:00:00+00:00",
+    )
+    journal = _SharedJournal(history=[decision.to_dict()])
+
+    result = ResearchTimelineService(
+        journal,
+        price_note_service=_SharedNotes(journal),
+        report_note_service=_SharedNotes(journal),
+        theme_note_service=_SharedNotes(journal),
+    ).read()
+
+    projected = [entry for entry in result.entries if entry.kind == "decision"]
+    assert len(projected) == 1
+    assert projected[0].record_id == "decision-revision-1"
+    assert projected[0].stock_code == "1569"
+    assert projected[0].result_id == "rec_old_recommendation"
+    assert "已納入研究" in projected[0].text
+    assert projected[0].source_identity == "snapshot-1"
+    assert result.warnings == ()
+
+
+def test_identity_search_finds_decision_beyond_global_timeline_limit():
+    decisions = [
+        DecisionContinuityRevision(
+            revision_id="decision-old",
+            continuity_event_id="decision-event-old",
+            action=ACTION_ACCEPTED,
+            entity_type="decision",
+            entity_id="decision-entity-old",
+            decision_identity=DecisionIdentity(
+                result_id="rec_hidden_old_decision",
+                stock_code="1569",
+                decision_date="2026-01-01",
+                source_snapshot_id="snapshot-old",
+            ),
+            created_at="2026-01-01T08:00:00+00:00",
+        ).to_dict(),
+    ]
+    decisions.extend(
+        DecisionContinuityRevision(
+            revision_id=f"decision-{index}",
+            continuity_event_id=f"decision-event-{index}",
+            action=ACTION_ACCEPTED,
+            entity_type="decision",
+            entity_id=f"decision-entity-{index}",
+            decision_identity=DecisionIdentity(
+                result_id=f"rec_current_{index}",
+                stock_code=str(2000 + index),
+                decision_date="2026-10-27",
+                source_snapshot_id=f"snapshot-{index}",
+            ),
+            created_at="2026-10-27T08:00:00+00:00",
+        ).to_dict()
+        for index in range(500)
+    )
+    journal = _SharedJournal(history=decisions)
+    service = ResearchTimelineService(
+        journal,
+        price_note_service=_SharedNotes(journal),
+        report_note_service=_SharedNotes(journal),
+        theme_note_service=_SharedNotes(journal),
+    )
+
+    baseline = service.read()
+    by_stock = service.read(search_query="1569")
+    by_result_id = service.read(search_query="rec_hidden_old_decision")
+
+    assert baseline.limited is True
+    assert all(item.result_id != "rec_hidden_old_decision" for item in baseline.entries)
+    assert [item.result_id for item in by_stock.entries] == ["rec_hidden_old_decision"]
+    assert [item.result_id for item in by_result_id.entries] == ["rec_hidden_old_decision"]
+    assert by_stock.limited is False
+    assert by_result_id.limited is False
 
 
 def test_real_journal_timeline_reuses_one_jsonl_read_with_legacy_lane_parity(

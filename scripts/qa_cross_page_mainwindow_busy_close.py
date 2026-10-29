@@ -89,6 +89,7 @@ def main() -> int:
                 self,
                 stock_code: str,
                 *,
+                as_of_date=None,
                 context=None,
                 cancel_callback=None,
             ):
@@ -97,7 +98,11 @@ def main() -> int:
                 receipt["report_worker_reached_busy_barrier"] = True
                 if not release_worker.wait(timeout=10):
                     raise TimeoutError("MainWindow busy-close worker release timed out")
-                return report_service.read_report(stock_code, context=context)
+                return report_service.read_report(
+                    stock_code,
+                    as_of_date=as_of_date,
+                    context=context,
+                )
 
         window.stock_research_report_service = BarrierReportReadService()
         window.stock_research_workspace.report_view.service = window.stock_research_report_service

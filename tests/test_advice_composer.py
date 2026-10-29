@@ -97,7 +97,11 @@ def test_composer_preserves_dates_and_returns_no_new_position_for_missing_eviden
     assert result.decision_date == "2026-07-12"
     assert result.data_as_of_date == "2026-07-12"
     assert result.recommendations[0].advice_action is AdviceAction.NO_NEW_POSITION
+    assert result.recommendations[0].confidence_tier == "unavailable"
+    assert result.recommendations[0].evidence_tier == "insufficient"
     assert result.recommendations[0].liquidity_state == "UNKNOWN"
+    assert result.recommendations[0].market_regime == "unknown"
+    assert result.recommendations[0].execution_feasibility == "UNKNOWN"
     assert result.recommendations[0].source_trace == ("AdviceComposer.refusal",)
     assert result.recommendations[0].why_not_reasons == (
         "evidence_quality_missing",
@@ -144,6 +148,8 @@ def test_composer_keeps_explicitly_degraded_candidate_research_only() -> None:
 
     assert result.recommendations[0].advice_action is AdviceAction.RESEARCH
     assert result.recommendations[0].data_quality == "DEGRADED"
+    assert result.recommendations[0].confidence_tier == "unavailable"
+    assert result.recommendations[0].evidence_tier == "insufficient"
     assert "data_quality_degraded" in result.recommendations[0].why_not_reasons
 
 
@@ -180,6 +186,37 @@ def test_composer_uses_injected_payloads_and_integer_bp_portfolio_gap() -> None:
     assert portfolio.weight_gap_bp == 1000
     assert portfolio.source_trace == ("PortfolioConstructionResult", "rec-20260712-001")
     assert result.warnings == ("evidence_freshness_review_required",)
+
+
+def test_composer_replays_identically_for_the_same_frozen_inputs() -> None:
+    """相同的保存結果與政策輸入必須生成逐位相同的 Advice payload。"""
+    from app_module.advice_composer import AdviceComposer
+
+    composer = AdviceComposer(AdvicePolicy())
+    frozen_input = _recommendation_result()
+
+    def compose_from_frozen_input() -> AdviceDashboardDTO:
+        return composer.compose(
+            recommendations=frozen_input,
+            portfolio_result=_portfolio_result(),
+            evidence_quality="OBSERVED",
+            evidence_warnings=("evidence_freshness_review_required",),
+            decision_date="2026-07-12",
+            data_as_of_date="2026-07-11",
+            mode=AdviceMode.GUIDED,
+            current_weights_bp={"2330": 500},
+        )
+
+    first = compose_from_frozen_input()
+    second = compose_from_frozen_input()
+
+    first_payload = json.dumps(
+        first.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    second_payload = json.dumps(
+        second.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    assert first_payload == second_payload
 
 
 def test_composer_projects_only_exact_stock_saved_screening_and_risk_evidence() -> None:

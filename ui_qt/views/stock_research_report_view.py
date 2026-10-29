@@ -1311,10 +1311,9 @@ class StockResearchReportView(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
         self.summary_saved_advice_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
         )
         self.summary_saved_advice_label.setMinimumSize(0, 0)
-        self.summary_saved_advice_label.setMaximumHeight(72)
         self.summary_saved_advice_label.setToolTip("")
         layout.addWidget(self.summary_saved_advice_label)
         self.personal_h20_price_chart_group = QGroupBox("原保存 H20 價格圖")

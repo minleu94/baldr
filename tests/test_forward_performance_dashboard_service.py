@@ -158,12 +158,22 @@ def test_empty_state_and_bp_formatting_keep_raw_bp() -> None:
 def test_read_only_repository_honors_exact_event_id_allowlist(tmp_path: Path) -> None:
     config = SimpleNamespace(db_file=tmp_path / "evidence.db")
     writable = EvidenceEventRepository(config)
-    writable.insert_event(_event("hash-a"))
+    expected = writable.insert_event(_event("hash-a"))
     second = writable.insert_event(
-        replace(_event("hash-b"), event_id="event-b", source_id="rec-002")
+        replace(
+            _event("hash-b"),
+            event_id="event-b",
+            source_snapshot_id="snapshot-other",
+        )
     )
 
     readonly = ReadOnlyEvidenceEventRepository(config)
 
     assert [event.event_id for event in readonly.list_events(event_ids=(second.event_id,))] == [second.event_id]
     assert readonly.list_events(event_ids=()) == []
+    assert [
+        event.event_id
+        for event in readonly.list_events(
+            source_id="rec-001", source_snapshot_id="snapshot-001"
+        )
+    ] == [expected.event_id]

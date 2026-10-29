@@ -801,6 +801,9 @@ class BacktestResultPanel(QWidget):
         )
         self.result_interpretation_label.setWordWrap(True)
         self.result_interpretation_label.setAccessibleName("回測結果判讀限制")
+        self.result_interpretation_label.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum
+        )
         self.result_interpretation_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 3px 0; font-size: 12px;"
         )

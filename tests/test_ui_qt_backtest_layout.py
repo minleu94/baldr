@@ -815,6 +815,14 @@ def test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusi
     )
     assert view.config_panel_collapse_btn.width() < view.config_scroll.width()
     assert panel.result_tabs.isVisible()
+    assert (
+        panel.result_interpretation_label.sizePolicy().verticalPolicy()
+        == QSizePolicy.Policy.Maximum
+    )
+    assert (
+        panel.result_interpretation_label.height()
+        <= panel.result_interpretation_label.sizeHint().height()
+    )
     assert panel.summary_group.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
     assert panel.summary_text.isHidden()
     assert panel.summary_text.maximumHeight() == 320

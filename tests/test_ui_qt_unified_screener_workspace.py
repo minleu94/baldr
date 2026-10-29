@@ -720,6 +720,7 @@ def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason
     assert workspace.condition_recipe_group_label.text() == "研究線索篩選"
     assert workspace.combo.accessibleName() == "研究線索篩選來源"
     assert workspace.quick_routes.spacing() == 4
+    assert "仍需在下方來源頁按「套用全域查詢」" in workspace.condition_recipe_hint.text()
     assert all(button.minimumHeight() >= 28 for button in workspace.condition_recipe_buttons.values())
     assert workspace.disabled_note.text() == "先載入並核驗保存來源；套用條件後仍需明確查詢。"
     revenue = workspace.quick_route_buttons["official_technical_revenue"]
@@ -802,6 +803,7 @@ def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot
     unsupported_source = next(item for item in workspace._sources if item.widget is unsupported)
     assert workspace.select_source(unsupported_source.key)
     assert not workspace.save_filter_button.isEnabled()
+    assert workspace.save_filter_button.text() == "此來源未提供收藏"
     assert "尚未提供" in workspace.save_filter_button.toolTip()
 
 

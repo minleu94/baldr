@@ -296,11 +296,13 @@ Workbench 原本把「今日優先查看」、額外工作區捷徑、今日行�
 
 ## 2026-10-29 第二十八輪：Workbench 等待狀態摘要去重
 
-窄版首頁在 Dashboard DTO 尚未載入時，上方每日旅程已顯示五項狀態為等待／未知；下方四張 Dashboard 摘要卡又重複顯示同一組等待資訊，延後 Advice 出現。現在尚無可信 DTO（初次等待或沒有 last-good 資料的讀取失敗）時收起重複摘要列；取得 Dashboard 後顯示摘要，stale refresh 保留最後可信摘要。Advice 與資料狀態的呈現未改，沒有變更資料或策略邏輯。
+窄版首頁在今日工作台資料尚未載入時，上方每日旅程已顯示五項狀態為等待／未知；下方四張摘要卡又重複顯示同一組等待資訊，延後 Advice 出現。現在尚無可信資料（初次等待或沒有最後可信資料的讀取失敗）時收起重複摘要列；取得工作台資料後顯示摘要，更新失敗時保留最後可信摘要並標記為過期。Advice 與資料狀態的呈現未改，沒有變更資料或策略邏輯。
+
+等待 Advice 時原先另外顯示摘要、警告與兩個目的地大按鈕，和等待卡內容重複。現在等待狀態收起這些重複列與導覽按鈕，只留一張含下一步說明的狀態卡及可選的技術診斷；每日結論使用「等待工作台資料載入」等一般語彙，不顯示 DTO 類別名稱。其他無建議、拒絕與讀取失敗狀態保留各自解釋與診斷入口。
 
 - `tests/test_ui_qt_workbench_home_single_page.py`、`tests/test_ui_qt_workbench_view.py`、`tests/test_ui_qt_v5_workbench_guided.py`、`tests/test_workbench_advice_contract.py`：**88 passed**；必要 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。
-- Workbench compact／scale 1.5 MainWindow offscreen 稽核：**13 子頁、0 failures／0 coverage gaps**；首頁截圖確認重複摘要列收起，Advice 提前進入閱讀流。報告 `.pytest-owned-temp/ui_audit_workbench_compact_summary_round28/`。
-- 修改 Python source／test `py_compile` 通過；Workbench view scoped mypy **1 source、0 issues**；依硬規則的完整模組 mypy 在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇語法錯誤，未能檢查其餘模組。文件同步後執行 `git diff --check`。
+- Workbench compact／scale 1.5 MainWindow offscreen 稽核：**13 子頁、0 failures／0 coverage gaps**；首頁截圖確認重複摘要列與等待 Advice 的冗餘說明收起，首屏等待文案不再顯示 DTO 類別名。報告 `.pytest-owned-temp/ui_audit_workbench_compact_waiting_round28/`。
+- 修改 Python source／test `py_compile` 通過；Workbench view scoped mypy **1 source、0 issues**；依硬規則的完整模組 mypy 在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇語法錯誤，未能檢查其餘模組。`git diff --check` 通過，只有既有 fsmonitor IPC 與行尾轉換警告。
 - 原生 GUI／Owner UAT 未執行；這輪只處理初次等待時重複摘要，Workbench 全頁資訊架構與其他工作區盤點仍未完成。
 
 ## 2026-10-29 第二十九輪：首頁延伸區與多工作區版面複驗
@@ -314,3 +316,21 @@ Workbench 原本把「今日優先查看」、額外工作區捷徑、今日行�
 - 必要 `tests/test_ui_qt_update_view_workbench.py`：**98 passed**；`scripts/qa_validate_update_tab.py`：**25 passed／0 failed／4 skipped**。本批 13 個修改 Python source／test `py_compile` 通過；5 個修改 UI source targeted mypy **0 issues**。
 - 合併上述 UI 檔案的一次 pytest 執行在 **300 秒** runner 上限逾時（進度輸出 36%，未完成摘要）；後續依檔案分別執行並取得上述結果。repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 報語法錯誤，未能檢查其餘模組。受控結果及 Job readback 保存在 ignored `.tmp_ui_finish_20261029/`。
 - `document_control check` 的 MOPS QA 子集合已通過；Snapshot 廣域 check 仍受既存 output Junction `WinError 5` 與舊 anchor 問題影響，不記為通過。原生 GUI／Owner UAT 未執行；本輪只完成目前 source／offscreen 測試範圍。
+
+## 2026-10-29 第三十輪：九工作區跨尺寸基線盤點
+
+使用真實 MainWindow 與正式 theme，對 Workbench、Market Explore、Recommendation、Backtest、Watchlist、Stock Research、Portfolio、Update、Runtime 九個工作區跑 default／compact 幾何與 1.0／1.5 scale；每組幾何均檢查頁面、捲動容器、表格與清單可達性，合計 496 子頁。這是幾何及元件覆蓋基線，不是 Owner UAT、資料正確性或資訊易讀性的簽收。
+
+- Default／compact × scale 1.0／1.5：**496 子頁、0 幾何失敗、0 coverage gaps**。輸出與截圖 `.pytest-owned-temp/ui_audit_all_workspaces_default_compact_round30/`。
+- 縮放截圖的人工閱讀檢視仍發現 Recommendation 主研究區把規則條件、來源檢查、全域查詢、保存來源讀回、比較籃及結果表連續擺在同一頁；幾何雖無裁切，操作主次仍需要分層。後續依「每日操作主流程→來源核對→結果判讀→研究記錄」順序盤點，不把零幾何錯誤誤報為整體 UX 完成。
+- 原生 GUI／Owner UAT 未執行；全程式文字、色彩對比、互動回饋與實際資料條件仍須另外檢視。
+- 研究線索提示與收藏狀態文案同步後，`tests/test_ui_qt_unified_screener_workspace.py` 在受控 Windows Job **28 passed**；必要 Update UI **98 passed**、Update validator **25 passed／0 failed／4 skipped**，修改檔 `py_compile` 通過，unified screener source targeted mypy **0 issues**。初次 sandbox 執行為 **25 passed／1 failed／2 errors**，失敗皆涉及系統 Temp `WinError 5`；改用 repo basetemp 後同樣受 `Path.resolve(strict=True)` 權限阻擋，最後在可讀寫受控 Job 以原斷言通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因語法錯誤停止。受控收據位於 ignored `.tmp_ui_finish_20261029/screener_review_20261029_033806_52a8183d/`。
+
+## 2026-10-29 第三十一輪：Recommendation 篩選捷徑與收藏狀態
+
+Recommendation 入口將三個研究線索篩選捷徑放在來源頁與結果表之前，但「捷徑只設定條件、還要到來源頁按查詢」原先只在 Tooltip／下方狀態可見；無法收藏的來源按鈕仍顯示一般「儲存篩選條件」，原因藏在 Tooltip。現在捷徑旁直接說明下一步；來源未接收藏時按鈕標成「此來源未提供收藏」，來源已接通但暫時未符合條件時標成「目前無法收藏」，啟用時才顯示「儲存篩選條件」。收藏呼叫、來源 gating 與查詢流程不變。
+
+- `tests/test_ui_qt_unified_screener_workspace.py` 與 `tests/test_ui_qt_recommendation_layout.py`：排除 3 個在 sandbox tmp path `resolve(strict=True)` 遇 WinError 5 的既有 fixture／整合案例後 **41 passed／3 deselected**；首輪原樣執行為 41 passed、1 failed、2 errors，3 個非通過均為同類型 temp path 權限問題。新增提示與收藏按鈕狀態斷言通過。
+- Recommendation compact／scale 1.5 MainWindow offscreen 稽核：**46 子頁、0 failures／0 coverage gaps**；截圖核對捷徑提示可見且停用收藏有明確狀態文字。報告 `.pytest-owned-temp/ui_audit_recommendation_compact_round31/`。
+- 必要 Update UI：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。修改 Python source／test `py_compile` 通過；Recommendation workspace scoped mypy **1 source、0 issues**。完整模組 mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤停止，無法檢查其餘模組。
+- 使用者手冊同步說明捷徑查詢順序及收藏停用狀態；原生 GUI／Owner UAT 未執行，這次只改善 Recommendation 研究捷徑與收藏入口的可讀性。

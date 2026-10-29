@@ -498,16 +498,27 @@ class UnifiedScreenerWorkspace:
             )
             self.condition_recipe_buttons[key] = button
             self.condition_recipe_layout.addWidget(button, 0, len(self.condition_recipe_buttons) - 1)
+        self.condition_recipe_hint = QLabel(
+            "捷徑只設定規則；仍需在下方來源頁按「套用全域查詢」才會更新結果。"
+        )
+        self.condition_recipe_hint.setObjectName("unifiedScreenerConditionRecipeHint")
+        self.condition_recipe_hint.setWordWrap(True)
+        self.condition_recipe_hint.setAccessibleName("研究線索篩選的下一步")
+        self.condition_recipe_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding-left: 4px;"
+        )
         self.save_filter_button = QPushButton("儲存篩選條件")
         self.save_filter_button.setObjectName("unifiedScreenerSaveFilter")
         self.save_filter_button.setMinimumHeight(28)
         self.save_filter_button.setEnabled(False)
+        self.save_filter_button.setAccessibleName("儲存目前的研究篩選條件")
         self.save_filter_button.setToolTip(
             "目前來源沒有可用的原生收藏流程。"
         )
         self.save_filter_button.clicked.connect(self.save_current_filter)
         quick_routes_header.addWidget(self.save_filter_button)
         self.quick_routes.addLayout(self.condition_recipe_layout)
+        self.quick_routes.addWidget(self.condition_recipe_hint)
         self.unavailable_conditions = QLabel(
             "尚未接通：題材條件、財報條件、法人條件。月營收可由「官方＋技術＋月營收」來源頁使用。"
         )
@@ -807,6 +818,7 @@ class UnifiedScreenerWorkspace:
         native_button = self._bookmark_button_for(source)
         if native_button is None:
             self.save_filter_button.setEnabled(False)
+            self.save_filter_button.setText("此來源未提供收藏")
             self.save_filter_button.setToolTip(
                 "此來源尚未提供已接通的原生收藏流程；無法由共用選股頁保存。"
             )
@@ -815,13 +827,15 @@ class UnifiedScreenerWorkspace:
         self.save_filter_button.setEnabled(enabled)
         native_hint = native_button.toolTip().strip()
         if enabled:
+            self.save_filter_button.setText("儲存篩選條件")
             detail = native_button.text().strip() or "來源頁收藏"
             self.save_filter_button.setToolTip(
                 f"沿用目前來源的「{detail}」流程；不另建或改寫收藏內容。"
             )
         else:
+            self.save_filter_button.setText("目前無法收藏")
             self.save_filter_button.setToolTip(
-                native_hint or "來源頁目前不允許收藏；請依來源頁狀態完成核驗或查詢。"
+                native_hint or "來源頁尚未滿足收藏條件；請核對來源狀態與查詢結果。"
             )
         return native_button
 

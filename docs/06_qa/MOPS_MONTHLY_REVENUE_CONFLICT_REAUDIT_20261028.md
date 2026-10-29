@@ -259,7 +259,7 @@ Recovery receipt：`C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5c
 
 #### 2026-10-29 公司模式正向控制與缺碼檢查
 
-對五個主要長序列缺碼再核對 raw：2867、4130、5371、8183、6806 均未出現在三批 1,800 份 SII／OTC 原始 JSON 的 `data[].COMPANY_ID`，故不是 events.csv 正規化或期別 subject parser 漏列。已知上市正向控制 `2330` 的 MOPS autocomplete `step=05,inpuType=co_id` 回傳正常；同模式帶 `TYPEK=otc` 查 4130、帶 `TYPEK=pub` 查 6806，仍回空 `<div id="zoom"></div>`。早先對 2867／5371／6806 的選單檢查亦回空；目前代碼選單不提供這些代碼，但不能因此推論歷史期間沒有 F22 公告。上述直接查詢只驗證當前選單行為，沒有寫入 DB。
+對五個主要長序列缺碼再核對 raw：2867、4130、5371、8183、6806 均未出現在三批 1,800 份 SII／OTC 原始 JSON 的 `data[].COMPANY_ID`，故不是 events.csv 正規化或期別 subject parser 漏列。已知上市正向控制 `2330` 的 MOPS autocomplete `step=05,inpuType=co_id` 回傳正常；同模式帶 `TYPEK=otc` 查 4130、帶 `TYPEK=pub` 查 6806，仍回空 `<div id="zoom"></div>`。把 4130 直接送入 `RADIO_CM=2`、OTC、F22、2024-03-01..10 公司模式後，MOPS HTTP 200 回 `status=fail`／`查無公司資料`；同窗 OTC 市場模式則成功回 746 列但沒有 4130。早先對 2867／5371／6806 的選單檢查亦回空；目前代碼選單不提供這些代碼，但不能因此推論歷史期間沒有 F22 公告。上述直接查詢只驗證當前選單行為，沒有寫入 DB。
 
 這將 689 個無事件鍵的主要問題收斂到「目前 MOPS EZSearch 市場／公司選擇器及歷史申報範圍」而非本地事件解析。四個 145 期序列（2867／4130／5371／8183）與 6806 的 88 期數值仍存在正式 snapshot；現有 F22 事件路徑沒有對應公告時間。下一步應找能按歷史 issuer identity 回傳原始公告時間的 MOPS 歷史查詢／公告明細路徑，並先用正反控制驗證；未取得 issuer-period 時間證據前，維持 690 列 degraded，不以靜態 snapshot 的 report-level 出表日替代公告時間。
 

@@ -2927,7 +2927,7 @@ class MainWindow(QMainWindow):
             shell_layout.addWidget(content, 1)
             self.left_navigation.set_current_key("workbench")
             self.workspace_stack.setCurrentWidget(workspace_widgets["workbench"])
-            if self.width() <= 1380:
+            if self.width() <= 1260:
                 self.left_navigation.set_collapsed(True)
                 self._navigation_collapsed_by_window = True
 
@@ -2963,13 +2963,13 @@ class MainWindow(QMainWindow):
         if navigation is None:
             return
 
-        if self.width() <= 1380:
+        if self.width() <= 1260:
             if not navigation.is_collapsed():
                 navigation.set_collapsed(True)
                 self._navigation_collapsed_by_window = True
             return
 
-        if self.width() >= 1480 and self._navigation_collapsed_by_window:
+        if self.width() >= 1340 and self._navigation_collapsed_by_window:
             navigation.set_collapsed(False)
             self._navigation_collapsed_by_window = False
 

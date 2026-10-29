@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QTableView,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -828,6 +829,21 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         source_box = QGroupBox("明示保存來源")
         source_box.setObjectName("screenerSourcePreparation")
         source_layout = QVBoxLayout(source_box)
+        self.source_setup_summary = QLabel()
+        self.source_setup_summary.setObjectName("technicalOfficialRevenueSourceSetupSummary")
+        self.source_setup_summary.setWordWrap(True)
+        source_layout.addWidget(self.source_setup_summary)
+        self.source_setup_toggle = QToolButton()
+        self.source_setup_toggle.setObjectName("technicalOfficialRevenueSourceSetupToggle")
+        self.source_setup_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.source_setup_toggle.setCheckable(True)
+        self.source_setup_toggle.setAccessibleName("展開或收合來源路徑設定")
+        source_layout.addWidget(self.source_setup_toggle)
+        self.source_setup_panel = QWidget()
+        self.source_setup_panel.setObjectName("technicalOfficialRevenueSourceSetupPanel")
+        source_setup_layout = QVBoxLayout(self.source_setup_panel)
+        source_setup_layout.setContentsMargins(8, 0, 8, 4)
+        source_setup_layout.setSpacing(4)
         self.root_label = QLabel(str(self.bundle_output_root) if self.bundle_output_root else "尚未選擇")
         self.root_label.setObjectName("technicalOfficialRevenueBundleRoot")
         self.root_label.setWordWrap(True)
@@ -837,15 +853,15 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.operation_root_label = QLabel(str(self.operation_root_parent) if self.operation_root_parent else "尚未選擇 operation 暫存父資料夾")
         self.operation_root_label.setObjectName("technicalOfficialRevenueOperationRoot")
         self.operation_root_label.setWordWrap(True)
-        source_layout.addWidget(self.root_label)
-        source_layout.addWidget(self.monthly_reference_label)
-        source_layout.addWidget(self.operation_root_label)
+        source_setup_layout.addWidget(self.root_label)
+        source_setup_layout.addWidget(self.monthly_reference_label)
+        source_setup_layout.addWidget(self.operation_root_label)
         archive_mode = self.daily_source_config_v2 is not None and self.daily_source_config_v2.use_archived_sources
         self.monthly_artifact_label = QLabel(str(self.monthly_artifact_root) if self.monthly_artifact_root else
             "需選擇研究保存資料夾；原件與版本一併保存，供收藏精確重開。" if archive_mode else
             "每日快照需選擇已存在的版本參照保存資料夾")
         self.monthly_artifact_label.setWordWrap(True)
-        source_layout.addWidget(self.monthly_artifact_label)
+        source_setup_layout.addWidget(self.monthly_artifact_label)
         source_actions = QGridLayout()
         self.choose_root_button = QPushButton("選擇 F17 保存來源資料夾")
         self.choose_root_button.clicked.connect(self.choose_bundle_output_root)
@@ -860,20 +876,42 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         if self.daily_source_config_v2 is not None:
             self.monthly_reference_label.setText("使用已驗證的每日快照接受；按所選 F17 cutoff 選定完整 cohort。")
             self.choose_reference_button.setVisible(False)
-        self.refresh_catalog_button = QPushButton("更新保存來源清單")
-        self.refresh_catalog_button.clicked.connect(self.refresh_catalog)
-        self.next_catalog_button = QPushButton("下一頁候選")
-        self.next_catalog_button.clicked.connect(self.load_next_catalog_page)
-        for row, button in enumerate((
+        setup_buttons = (
             self.choose_root_button,
             self.choose_reference_button,
             self.choose_operation_root_button,
             self.choose_artifact_root_button,
+        )
+        for index, button in enumerate(setup_buttons):
+            source_actions.addWidget(button, index // 2, index % 2)
+        source_setup_layout.addLayout(source_actions)
+        source_layout.addWidget(self.source_setup_panel)
+        self.source_setup_toggle.toggled.connect(self._set_source_setup_expanded)
+        required_paths_present = (
+            self.bundle_output_root is not None
+            and self.operation_root_parent is not None
+            and (
+                self.monthly_artifact_root is not None
+                if self.daily_source_config_v2 is not None
+                else self.monthly_reference_path is not None
+            )
+        )
+        self.source_setup_toggle.setChecked(not required_paths_present)
+        self._set_source_setup_expanded(not required_paths_present)
+        self._refresh_source_setup_summary()
+
+        catalog_actions = QHBoxLayout()
+        self.refresh_catalog_button = QPushButton("更新保存來源清單")
+        self.refresh_catalog_button.clicked.connect(self.refresh_catalog)
+        self.next_catalog_button = QPushButton("載入下一頁候選")
+        self.next_catalog_button.clicked.connect(self.load_next_catalog_page)
+        for button in (
             self.refresh_catalog_button,
             self.next_catalog_button,
-        )):
-            source_actions.addWidget(button, row, 0, 1, 2)
-        source_layout.addLayout(source_actions)
+        ):
+            catalog_actions.addWidget(button)
+        catalog_actions.addStretch(1)
+        source_layout.addLayout(catalog_actions)
         self.catalog_list = QListWidget()
         self.catalog_list.setObjectName("technicalOfficialRevenueCatalog")
         self.catalog_list.setMinimumHeight(105)
@@ -885,7 +923,17 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         body.addWidget(source_box)
 
         self.filter_panel = self._build_filter_panel()
+        self.query_controls_toggle = QToolButton()
+        self.query_controls_toggle.setObjectName("technicalOfficialRevenueQueryControlsToggle")
+        self.query_controls_toggle.setText("收合查詢條件")
+        self.query_controls_toggle.setAccessibleName("收合全母體查詢條件")
+        self.query_controls_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.query_controls_toggle.setCheckable(True)
+        self.query_controls_toggle.setChecked(True)
+        body.addWidget(self.query_controls_toggle)
         body.addWidget(self.filter_panel)
+        self.query_controls_toggle.toggled.connect(self._set_query_controls_expanded)
+        self._set_query_controls_expanded(True)
         action_grid = QGridLayout()
         self.apply_query_button = QPushButton("套用條件並全母體重新查詢")
         self.apply_query_button.clicked.connect(self.apply_filters)
@@ -1107,6 +1155,47 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self._refresh_policy_controls()
         return panel
 
+    def _refresh_source_setup_summary(self) -> None:
+        missing: list[str] = []
+        if self.bundle_output_root is None:
+            missing.append("F17 保存來源")
+        if self.operation_root_parent is None:
+            missing.append("operation 暫存位置")
+        if self.daily_source_config_v2 is not None:
+            if self.monthly_artifact_root is None:
+                missing.append("研究／快照參照保存位置")
+        elif self.monthly_reference_path is None:
+            missing.append("月營收 V2 參照")
+        if missing:
+            self.source_setup_summary.setText(
+                "尚缺「" + "、".join(missing) + "」；展開來源設定完成路徑選擇。"
+            )
+        else:
+            self.source_setup_summary.setText(
+                "必要路徑已提供。來源清單仍須明選版本並核驗後才能查詢。"
+            )
+
+    def _set_source_setup_expanded(self, expanded: bool) -> None:
+        self.source_setup_panel.setVisible(expanded)
+        self.source_setup_toggle.setText(
+            "收合來源設定" if expanded else "查看或修改來源路徑"
+        )
+        self.source_setup_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+
+    def _set_query_controls_expanded(self, expanded: bool) -> None:
+        self.filter_panel.setVisible(expanded)
+        self.query_controls_toggle.setText(
+            "收合查詢條件" if expanded else "修改全母體查詢條件"
+        )
+        self.query_controls_toggle.setAccessibleName(
+            "收合全母體查詢條件" if expanded else "展開並修改全母體查詢條件"
+        )
+        self.query_controls_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+
     @staticmethod
     def _check_group(
         parent_layout: QVBoxLayout,
@@ -1213,6 +1302,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             return False
         self.bundle_output_root = candidate
         self.root_label.setText(str(candidate))
+        self._refresh_source_setup_summary()
         self._catalog_cursor = None
         self._catalog_entries = ()
         self.catalog_list.clear()
@@ -1238,6 +1328,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             return False
         self.monthly_reference_path = candidate
         self.monthly_reference_label.setText(str(candidate))
+        self._refresh_source_setup_summary()
         self._clear_issued_state()
         self._set_status("已選擇月營收 V2 參照；內容與封存來源仍待 exact 核驗。")
         return True
@@ -1260,6 +1351,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             return False
         self.operation_root_parent = candidate
         self.operation_root_label.setText(str(candidate))
+        self._refresh_source_setup_summary()
         return True
 
     def choose_monthly_artifact_root(self) -> None:
@@ -1277,6 +1369,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             return False
         self.monthly_artifact_root = candidate
         self.monthly_artifact_label.setText(str(candidate))
+        self._refresh_source_setup_summary()
         return True
 
     def refresh_catalog(self) -> None:
@@ -1670,6 +1763,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.summary_label.setText(summary)
         self.results_stack.setCurrentIndex(0)
         self._render_page(replace_table=False)
+        self.query_controls_toggle.setChecked(False)
         if value.selected_stock_code:
             self.select_stock_code(value.selected_stock_code)
         self._set_status(

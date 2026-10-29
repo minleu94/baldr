@@ -10,8 +10,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication, QGroupBox, QLabel
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtWidgets import QApplication, QBoxLayout, QGridLayout, QGroupBox, QLabel
 
 from app_module.dtos.decision_continuity_dtos import (
     ACTION_ACCEPTED,
@@ -192,6 +192,39 @@ def test_view_preserves_full_original_and_emits_only_selected_saved_entry():
     assert "完整已載入的研究紀錄中沒有符合「2454」" in view.status_label.text()
     assert not view.open_original_button.isEnabled()
     view.close()
+
+
+def test_research_timeline_reflows_search_and_detail_for_narrow_windows():
+    application = _app()
+    view = ResearchTimelineView(
+        _Reader(ResearchTimelineReadResult(())),
+        auto_refresh=False,
+    )
+    try:
+        assert isinstance(view.search_controls_layout, QGridLayout)
+        view.resize(390, 760)
+        view._apply_responsive_layout()
+        assert view.splitter.orientation() == Qt.Orientation.Vertical
+        assert view.evidence_actions_layout.direction() == QBoxLayout.TopToBottom
+        assert view.search_controls_layout.getItemPosition(
+            view.search_controls_layout.indexOf(view.source_filter)
+        ) == (0, 1, 1, 3)
+        assert view.search_controls_layout.getItemPosition(
+            view.search_controls_layout.indexOf(view.stock_filter)
+        ) == (1, 1, 1, 2)
+        view.stock_filter.setText("rec_example_123")
+
+        view.resize(1280, 900)
+        view._apply_responsive_layout()
+        assert view.splitter.orientation() == Qt.Orientation.Horizontal
+        assert view.evidence_actions_layout.direction() == QBoxLayout.LeftToRight
+        assert view.search_controls_layout.getItemPosition(
+            view.search_controls_layout.indexOf(view.source_filter)
+        ) == (0, 1, 1, 1)
+        assert view.stock_filter.text() == "rec_example_123"
+    finally:
+        view.close()
+        application.processEvents()
 
 
 def test_historical_decision_can_be_found_by_result_id_after_advice_changes():

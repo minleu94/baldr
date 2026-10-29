@@ -807,6 +807,13 @@ def test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusi
     qt_app.processEvents()
     panel = view.result_panel
     assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
+    assert view.config_panel_heading.text() == "回測設定"
+    assert view.config_panel_collapse_btn.parentWidget() is view.config_panel_header
+    assert (
+        view.config_panel_collapse_btn.sizePolicy().horizontalPolicy()
+        == QSizePolicy.Policy.Maximum
+    )
+    assert view.config_panel_collapse_btn.width() < view.config_scroll.width()
     assert panel.result_tabs.isVisible()
     assert panel.summary_group.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
     assert panel.summary_text.isHidden()

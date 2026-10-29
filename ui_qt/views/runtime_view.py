@@ -4,7 +4,7 @@
     QScrollArea, QFrame, QPushButton, QComboBox, QProgressBar
 )
 from PySide6.QtCore import Qt, Slot, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
@@ -731,6 +731,9 @@ class RuntimeView(QWidget):
                 item = QListWidgetItem(
                     f"{operation.label}｜{state_label}｜觀測時間：{updated_text}"
                 )
+                item.setForeground(
+                    QColor(self._scheduled_operation_status_color(operation))
+                )
                 item.setData(Qt.UserRole, operation.job_id)
                 item.setToolTip(
                     "\n".join(
@@ -772,6 +775,21 @@ class RuntimeView(QWidget):
             empty_item = QListWidgetItem("此狀態沒有符合的營運工作。")
             empty_item.setFlags(Qt.NoItemFlags)
             self.operations_list.addItem(empty_item)
+
+    @staticmethod
+    def _scheduled_operation_status_color(
+        operation: ScheduledOperationStatusDTO,
+    ) -> str:
+        """以共用狀態色輔助掃讀；文字狀態仍是判讀依據。"""
+
+        if operation.read_state != "observed":
+            return MIDNIGHT_ANALYST.text_muted
+        return {
+            "operational": MIDNIGHT_ANALYST.status_success,
+            "guarded": MIDNIGHT_ANALYST.status_info,
+            "attention": MIDNIGHT_ANALYST.status_warning,
+            "unavailable": MIDNIGHT_ANALYST.text_muted,
+        }.get(operation.state, MIDNIGHT_ANALYST.accent_warm)
 
     def _render_scheduled_operations_distribution(self, observed_at: datetime) -> None:
         """摘要單一已載入快照；未確認來源不計入任何已觀測狀態。"""

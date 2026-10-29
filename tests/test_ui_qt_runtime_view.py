@@ -327,6 +327,8 @@ def test_runtime_view_renders_operation_status_without_claiming_scheduler_state(
     assert "核心工作已就緒 6/6" in view.operations_summary_label.text()
     assert "每日資料更新｜正常｜觀測時間：" in view.operations_list.item(0).text()
     assert "ML Shadow Co-pilot｜安全邊界中｜觀測時間：" in view.operations_list.item(1).text()
+    assert view.operations_list.item(0).foreground().color().name() == MIDNIGHT_ANALYST.status_success
+    assert view.operations_list.item(1).foreground().color().name() == MIDNIGHT_ANALYST.status_info
     assert "raw_status: passed" in view.operations_list.item(0).toolTip()
     assert "raw_status: passed_rule_only" in view.operations_list.item(1).toolTip()
     assert "timestamp_source: checked_at" in view.operations_list.item(0).toolTip()
@@ -390,6 +392,11 @@ def test_runtime_operations_distribution_counts_only_observed_states_and_keeps_u
         "unknown": 1,
     }
     assert "state: future_state_code" in view.operations_list.item(6).toolTip()
+    assert view.operations_list.item(2).foreground().color().name() == MIDNIGHT_ANALYST.status_info
+    assert view.operations_list.item(3).foreground().color().name() == MIDNIGHT_ANALYST.status_warning
+    assert view.operations_list.item(4).foreground().color().name() == MIDNIGHT_ANALYST.text_muted
+    assert view.operations_list.item(5).foreground().color().name() == MIDNIGHT_ANALYST.text_muted
+    assert view.operations_list.item(6).foreground().color().name() == MIDNIGHT_ANALYST.accent_warm
 
 
 def test_runtime_operations_distribution_is_independent_of_list_filter():

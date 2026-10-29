@@ -8,9 +8,10 @@ from typing import Any, Callable, Protocol
 
 from PySide6.QtCore import QSignalBlocker, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QComboBox,
+    QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -85,6 +86,7 @@ class ResearchTimelineView(QWidget):
         self.last_result: ResearchTimelineReadResult | None = None
         self._full_history_limited = False
         self._pending_search_query = ""
+        self._timeline_layout_mode: tuple[bool, bool, bool] | None = None
         self._setup_ui(journey_service)
         if auto_refresh:
             self.refresh()
@@ -99,7 +101,7 @@ class ResearchTimelineView(QWidget):
 
         controls_group = QGroupBox("查找已保存研究紀錄", self)
         controls_group.setObjectName("researchTimelineSearchControls")
-        controls = QHBoxLayout(controls_group)
+        controls = QGridLayout(controls_group)
         controls.setContentsMargins(10, 7, 10, 7)
         controls.setSpacing(6)
         self.source_filter = QComboBox(self)
@@ -108,18 +110,21 @@ class ResearchTimelineView(QWidget):
         self.source_filter.addItem("所有來源", "all")
         for kind, label in _KIND_LABELS.items():
             self.source_filter.addItem(label, kind)
-        controls.addWidget(QLabel("來源", controls_group))
-        controls.addWidget(self.source_filter)
+        self.source_filter_label = QLabel("來源", controls_group)
+        controls.addWidget(self.source_filter_label, 0, 0)
+        controls.addWidget(self.source_filter, 0, 1)
         self.stock_filter = QLineEdit(self)
         self.stock_filter.setObjectName("researchTimelineStockFilter")
         self.stock_filter.setPlaceholderText("股票代號或完整 result ID")
         self.stock_filter.setAccessibleName("依股票代號或 result ID 篩選研究紀錄")
-        controls.addWidget(QLabel("股票／結果 ID", controls_group))
-        controls.addWidget(self.stock_filter, 1)
+        self.stock_filter_label = QLabel("股票／結果 ID", controls_group)
+        controls.addWidget(self.stock_filter_label, 0, 2)
+        controls.addWidget(self.stock_filter, 0, 3)
         self.refresh_button = QPushButton("重新讀取", self)
         self.refresh_button.setObjectName("researchTimelineRefresh")
         self.refresh_button.setAccessibleName("重新讀取研究時間軸")
-        controls.addWidget(self.refresh_button)
+        controls.addWidget(self.refresh_button, 0, 4)
+        self.search_controls_layout = controls
         root.addWidget(controls_group)
 
         self.search_hint_label = QLabel(
@@ -139,9 +144,9 @@ class ResearchTimelineView(QWidget):
         self.status_label.setWordWrap(True)
         root.addWidget(self.status_label)
 
-        splitter = QSplitter(Qt.Horizontal, self)
-        splitter.setObjectName("researchTimelineSplitter")
-        entries_panel = QWidget(splitter)
+        self.splitter = QSplitter(Qt.Horizontal, self)
+        self.splitter.setObjectName("researchTimelineSplitter")
+        entries_panel = QWidget(self.splitter)
         entries_layout = QVBoxLayout(entries_panel)
         entries_layout.setContentsMargins(0, 0, 0, 0)
         entries_title = QLabel("研究紀錄清單", entries_panel)
@@ -161,7 +166,7 @@ class ResearchTimelineView(QWidget):
         self.entries_table.setColumnWidth(2, 175)
         header.setStretchLastSection(True)
         entries_layout.addWidget(self.entries_table, 1)
-        detail = QWidget(splitter)
+        detail = QWidget(self.splitter)
         detail_layout = QVBoxLayout(detail)
         detail_layout.setContentsMargins(6, 0, 0, 0)
         detail_title = QLabel("所選紀錄與延伸操作", detail)
@@ -190,10 +195,10 @@ class ResearchTimelineView(QWidget):
         self.paper_prerequisites_button.setObjectName("researchTimelinePaperPrerequisites")
         self.paper_prerequisites_button.setAccessibleName("檢查所選研究紀錄的 Paper 條件")
         self.paper_prerequisites_button.setEnabled(False)
-        evidence_actions = QHBoxLayout()
-        evidence_actions.addWidget(self.compare_evidence_button)
-        evidence_actions.addWidget(self.paper_prerequisites_button)
-        detail_layout.addLayout(evidence_actions)
+        self.evidence_actions_layout = QBoxLayout(QBoxLayout.LeftToRight)
+        self.evidence_actions_layout.addWidget(self.compare_evidence_button)
+        self.evidence_actions_layout.addWidget(self.paper_prerequisites_button)
+        detail_layout.addLayout(self.evidence_actions_layout)
         self.evidence_comparison_widget = ResearchEvidenceComparisonWidget(detail)
         self.evidence_comparison_widget.setMinimumHeight(150)
         detail_layout.addWidget(self.evidence_comparison_widget, 1)
@@ -215,12 +220,12 @@ class ResearchTimelineView(QWidget):
             self.journey_widget.readyToClose.connect(self._journey_ready_to_close)
             detail_layout.addWidget(self.journey_widget, 1)
             self.journey_widget.hide()
-        splitter.addWidget(entries_panel)
-        splitter.addWidget(detail)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
-        splitter.setSizes([460, 700])
-        root.addWidget(splitter, 1)
+        self.splitter.addWidget(entries_panel)
+        self.splitter.addWidget(detail)
+        self.splitter.setStretchFactor(0, 2)
+        self.splitter.setStretchFactor(1, 3)
+        self.splitter.setSizes([460, 700])
+        root.addWidget(self.splitter, 1)
 
         self.source_filter.currentIndexChanged.connect(self._apply_filters)
         self.stock_filter.textChanged.connect(self._stock_filter_changed)
@@ -233,6 +238,53 @@ class ResearchTimelineView(QWidget):
         self.open_original_button.clicked.connect(self._open_original)
         self.compare_evidence_button.clicked.connect(self._request_evidence_comparison)
         self.paper_prerequisites_button.clicked.connect(self._request_paper_prerequisites)
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        narrow_controls = self.width() < 760
+        stacked_panels = self.width() < 900
+        stacked_actions = self.width() < 600
+        mode = (narrow_controls, stacked_panels, stacked_actions)
+        if self._timeline_layout_mode == mode:
+            return
+        for widget in (
+            self.source_filter_label,
+            self.source_filter,
+            self.stock_filter_label,
+            self.stock_filter,
+            self.refresh_button,
+        ):
+            self.search_controls_layout.removeWidget(widget)
+        for column in range(5):
+            self.search_controls_layout.setColumnStretch(column, 0)
+        if narrow_controls:
+            self.search_controls_layout.addWidget(self.source_filter_label, 0, 0)
+            self.search_controls_layout.addWidget(self.source_filter, 0, 1, 1, 3)
+            self.search_controls_layout.addWidget(self.stock_filter_label, 1, 0)
+            self.search_controls_layout.addWidget(self.stock_filter, 1, 1, 1, 2)
+            self.search_controls_layout.addWidget(self.refresh_button, 1, 3)
+            self.search_controls_layout.setColumnStretch(1, 1)
+            self.search_controls_layout.setColumnStretch(2, 1)
+        else:
+            self.search_controls_layout.addWidget(self.source_filter_label, 0, 0)
+            self.search_controls_layout.addWidget(self.source_filter, 0, 1)
+            self.search_controls_layout.addWidget(self.stock_filter_label, 0, 2)
+            self.search_controls_layout.addWidget(self.stock_filter, 0, 3)
+            self.search_controls_layout.addWidget(self.refresh_button, 0, 4)
+            self.search_controls_layout.setColumnStretch(3, 1)
+        self.splitter.setOrientation(
+            Qt.Orientation.Vertical if stacked_panels else Qt.Orientation.Horizontal
+        )
+        self.evidence_actions_layout.setDirection(
+            QBoxLayout.TopToBottom
+            if stacked_actions
+            else QBoxLayout.LeftToRight
+        )
+        self._timeline_layout_mode = mode
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt覆寫方法
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
 
     def refresh(self, *, search_query: str | None = None) -> None:
         if self._closing:

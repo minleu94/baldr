@@ -15,11 +15,57 @@ from app_module.daily_market_technical_official_disposition_revenue_bookmark_v2 
 from app_module.daily_market_research_bookmark import DailyMarketResearchBookmarkError
 from app_module.watchlist_service import WatchlistService
 from ui_qt.views.daily_market_technical_official_disposition_revenue_view import DailyMarketTechnicalOfficialDispositionRevenueView, DailyRevenueSourceConfigV2
+from ui_qt.views.daily_market_technical_official_disposition_revenue_view import _OpenedQuery
+import ui_qt.views.daily_market_technical_official_disposition_revenue_view as revenue_view_module
 from ui_qt.views.watchlist_view import WatchlistView
 from ui_qt.views.unified_screener_workspace import UnifiedScreenerWorkspace
 from tests.test_daily_market_technical_official_disposition_revenue_query_v2 import _daily_f17_environment
 
 pytest_plugins = ("test_daily_market_technical_official_disposition_bundle_v1",)
+
+
+def test_source_and_query_panels_collapse_without_clearing_values() -> None:
+    app = cast(QApplication, QApplication.instance() or QApplication([]))
+    view = DailyMarketTechnicalOfficialDispositionRevenueView()
+    try:
+        assert view.source_setup_toggle.isChecked()
+        assert not view.source_setup_panel.isHidden()
+        assert "尚缺" in view.source_setup_summary.text()
+        view.stock_code_input.setText("2330")
+        view.query_controls_toggle.click()
+        assert view.filter_panel.isHidden()
+        assert view.stock_code_input.text() == "2330"
+        assert view.query_controls_toggle.text() == "修改全母體查詢條件"
+        view.query_controls_toggle.click()
+        assert not view.filter_panel.isHidden()
+        assert view.stock_code_input.text() == "2330"
+        assert view.query_controls_toggle.text() == "收合查詢條件"
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_successful_query_collapses_condition_controls(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = cast(QApplication, QApplication.instance() or QApplication([]))
+    view = DailyMarketTechnicalOfficialDispositionRevenueView()
+    view._apply_query_controls = lambda *_args: None  # type: ignore[method-assign]
+    monkeypatch.setattr(revenue_view_module, "_project_revenue_page_table_rows", lambda _rows: ())
+    monkeypatch.setattr(revenue_view_module, "format_technical_official_revenue_counts_v1", lambda *_args, **_kwargs: "摘要")
+    opened = _OpenedQuery(
+        cast(Any, SimpleNamespace(mode="legacy")), cast(Any, object()), cast(Any, object()),
+        cast(Any, SimpleNamespace(
+            counts=object(), result_status="unknown", official_source_coverage_status="unknown",
+        )), cast(Any, object()),
+        cast(Any, SimpleNamespace(rows=(), page_index=0, page_count=1)),
+    )
+    try:
+        view._apply_opened_query(opened)
+        assert view.query_controls_toggle.isChecked() is False
+        assert view.filter_panel.isHidden()
+        assert view.query_controls_toggle.text() == "修改全母體查詢條件"
+    finally:
+        view.close()
+        app.processEvents()
 
 
 def _wait(app: QApplication, predicate: Callable[[], bool], seconds: int = 90) -> None:
@@ -62,6 +108,14 @@ def test_original_view_daily_actor_pages_bookmark_exact_reopen_and_shutdown(
         bundle_fixture.bundle_root, operation_root_parent=operations, monthly_artifact_root=artifact_root,
         daily_source_config_v2=DailyRevenueSourceConfigV2(base_provider, (Path("F:/Min/Python/Project/FA_Data"),), reader_factory=select, exact_reader_factory=exact_reader),
     )
+    assert not view.source_setup_toggle.isChecked()
+    assert view.source_setup_panel.isHidden()
+    view.source_setup_toggle.click()
+    assert not view.source_setup_panel.isHidden()
+    view.source_setup_toggle.click()
+    assert view.source_setup_panel.isHidden()
+    assert view.query_controls_toggle.isChecked()
+    assert not view.filter_panel.isHidden()
     route_tabs = QTabWidget()
     route_tabs.addTab(view, "營收條件來源")
     route_scroll = QScrollArea()
@@ -94,6 +148,10 @@ def test_original_view_daily_actor_pages_bookmark_exact_reopen_and_shutdown(
         view.open_selected_candidate()
         _wait(app, lambda: len(outcomes) == 2)
         assert outcomes[-1][1], view.status_label.text()
+        assert not view.query_controls_toggle.isChecked()
+        assert view.filter_panel.isHidden()
+        view.query_controls_toggle.click()
+        assert not view.filter_panel.isHidden()
         result = view.current_result
         assert result is not None and result.counts.declared_count == 258
         assert result.counts.visible_count == 258

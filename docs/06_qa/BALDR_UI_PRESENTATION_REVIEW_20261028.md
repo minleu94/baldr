@@ -579,6 +579,22 @@ Advice 詳情的完整判讀／機率依據、原始結果／每日來源，以�
 - 操作手冊已補窄版操作列規則。新 QA／手冊 scoped document-control 未列本輪新錯誤；手冊檢查仍被兩個既有 `output/trial/` junction 的 `WinError 5` 阻擋。畫面 QA 為 offscreen，不等同 Owner 原生 GUI UAT。
 - 本輪只調整 Advice 操作入口排列，不改操作行為、保存契約或資料／金融邏輯；也不代表 Advice 來源已核驗或 Gate 1 已接受。
 
+## 2026-10-29 第六十一輪：F17／月營收來源與查詢流程分層
+
+F17 月營收研究頁將多個完整來源路徑及六個滿版按鈕列在候選清單前，查詢後還要越過完整篩選群組才看到結果，造成來源設定、來源清單、條件和結果閱讀互相打斷。現在把必要來源路徑收在可展開設定面板（缺欄位時預設展開），清單更新／續頁入口放在清單旁；成功套用查詢後收起條件面板，保留「修改全母體查詢條件」入口和原值。只改顯示分組，不改核驗、查詢、金融或保存契約。
+
+- 新增來源設定初始展開、收合／重開不清條件、成功查詢後收合的 focused Qt cases：**2 passed**。必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**。原完整 F17 保存／讀回 UI 流程在 sandbox 執行超過 9 分鐘無輸出後中止，結果為 `not_run`，不列通過；需另排除測試環境／整合流程停滯。
+- `daily_market_technical_official_disposition_revenue_view.py` scoped mypy **0 issues**；兩個修改 Python 檔 `py_compile`、`git diff --check` 通過。Repo-wide mypy 在掃描既有 `output/qa/.../origins` 路徑時遇到 `WinError 3`，未進入全域型別檢查。QA 文件 document-control **12 features／1 link source／0 errors**；操作手冊檢查被 9 個既有 `output/trial/` junction 引用的 `WinError 5` 阻擋。
+- 修改檔 `daily_market_technical_official_disposition_revenue_view.py` 與操作手冊已同步；offscreen 版面測試不等同 Windows 原生 GUI／Owner UAT。來源內容、月營收資料與可用資格未因版面收合而改變。
+
+## 2026-10-29 第六十二輪：研究時間軸窄版查找與清單分區
+
+研究時間軸的搜尋欄固定橫排，紀錄清單與詳情固定左右分割；窄窗時 result ID 搜尋入口及長文詳情容易被擠窄。現在窄於 760 logical px 時來源篩選與股票／result ID 搜尋改為兩列；窄於 900 時清單與詳情改上下分割；窄於 600 時詳情延伸操作也改為上下排列。放大後恢復桌面排列。版面切換保留正在輸入的搜尋內容、來源選取與紀錄狀態，不改 Journal 搜尋或保存語義。
+
+- `tests/test_ui_qt_research_timeline_view.py`：**18 passed**；新增 390／1280 px 版面斷言，包含搜尋欄位置、splitter 方向、詳情操作排列及 result ID 輸入跨尺寸保留。Advice→Research Timeline exact result ID MainWindow 跨頁旅程：**1 passed**。
+- 必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**；修改兩個視圖 scoped mypy **0 issues**；修改 Python 檔 `py_compile` 與 `git diff --check` 通過。指定多模組 mypy 仍被未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻止。
+- 操作手冊已同步窄版查找步驟。QA 文件 document-control **12 features／1 link source／0 errors**；Application manual check 仍被兩個既有 `output/trial/` junction 引用的 `WinError 5` 阻擋。Offscreen 版面與跨頁合成測試不等同原生 GUI／Owner UAT；本輪不更動 Journal、Advice、資料來源或金融邏輯。
+
 ## 2026-10-29 第五十一輪：工作區提交前定向回歸核對
 
 提交前重跑目前 dirty UI 變更的部分相關測試。單一 Workbench 四欄桌面／窄版案例 **1 passed**；Decision Desk **55 passed**、Recommendation layout **16 passed**、Research Timeline **17 passed**、Runtime view **26 passed**。個人推薦選擇測試 **8 passed／1 failed**，失敗於 learning `runs` 目錄安全讀取（`runs_directory_unsafe_or_unreadable`），在系統 Temp 與 repo `.tmp_` basetemp 都可重現；個股研究報告測試 **29 passed／1 failed**，失敗案例啟動 MainWindow 時 ML registry 因測試輸出路徑存取錯誤未建立。兩者不是本輪新增的顯示斷言，但仍列為未通過，不能將整檔標示為 pass。
@@ -587,8 +603,25 @@ Advice 詳情的完整判讀／機率依據、原始結果／每日來源，以�
 
 補充受控 runner 結果：Workbench v5 guided + Advice contract changed tests **22 passed**（8 GiB／12-process Job，exit 0、process tree／handles 已關閉）；Backtest 四檔合組於 35.1 秒以 exit code `2147483651`（`0x80000003`）原生中止，stdout 無 pytest 報告，Job 峰值約 1.35 GiB 且程序樹正常關閉。此為測試環境原生中止，不足以定位產品錯誤；仍需拆開不初始化 WebEngine 的 presenter／純 view 測試。使用者手冊 document-control 對既有 `output/trial/` 冷封存連結因 output junction 權限拒絕而未通過路徑檢查；UI QA 文件自身 document-control 通過，不能把外部連結拒絕解讀為手冊內容驗證通過。
 
+## 2026-10-29 第六十三輪：Runtime 排程狀態列色彩掃讀
+
+Runtime 的營運排程清單原本每列都使用相同文字色，雖然上方分布摘要已按狀態著色，仍需逐字讀每一列才能找到需要注意、未知或來源未確認的工作。現在清單列沿用既有語意色：正常 teal、安全邊界資訊藍、需注意 amber、無法判定／來源未確認灰、未知狀態 amber。每列仍明示中文狀態，原始狀態碼和來源資訊保留於 Tooltip；未改排程讀取或狀態判定。
+
+- `tests/test_ui_qt_runtime_view.py`：**26 passed**；新增逐狀態前景色斷言，涵蓋正常、安全邊界、需注意、無法判定、來源未確認及未知代碼。必要 Update UI：**102 passed**。
+- Runtime source scoped mypy **1 file／0 issues**；source／test `py_compile` 通過。QA 文件 document-control **12 features／1 link source／0 errors**。修改檔 scoped `git diff --check` 通過；全工作樹 `git diff --check` 另回報未修改的使用者 dirty `app_module/update_service.py` 第 728–742 行有 trailing whitespace，未改動該檔。
+- Update validator 未執行：受控 runner 啟動前回報可用實體記憶體低於規定 8 GiB 而拒絕建立子程序。repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇到既有語法錯誤，未能檢查其餘模組。
+- 色彩只作為掃讀輔助，文字標籤仍是判讀依據，並沿用手冊已定義的 Runtime 共用狀態色。不等同原生 GUI／Owner UAT，也不證明資料來源或排程執行已核驗。
+
 ## 2026-10-29 分批提交前分組回歸核對
 
 為確認工作區目前 Advice continuity、timeline 導覽與空結果版面修改，分組重跑：`test_cross_page_decision_journey_mainwindow.py` **5 passed**；Decision Continuity controller／controls 與 Research Timeline **34 passed**；Workbench Advice contract **16 passed**；每日技術母體 view 與 Recommendation layout **28 passed**；Workbench 單頁日常來源詳情位置 **7 passed**。每日母體測試在一般 sandbox 初跑因 `Path.resolve(strict=True)` 無法解析系統／repo Temp（`WinError 5`）失敗；在提升執行權限、指定 repo 隔離 Temp 後完整通過。合併成單一長進程的初次嘗試出現環境錯誤且無進一步輸出，已停止；上述分組結果才是本次採用的測試收據。
 
 強制 Update UI suite **99 passed**；Update validator **25 passed／0 failed／4 skipped**，輸出導向 ignored `.pytest-owned-temp/ui_commit_update_validator_20261029/`，使用隔離 QA data root。六個修改 source 檔 scoped mypy **0 issues**，13 個修改 Python source／test `py_compile` 通過，`git diff --check` 通過。Repo-wide mypy 仍因未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的既有語法錯誤，在其他檔案檢查前停止。QA 文件自身 document-control 通過；兩本操作手冊檢查仍因 `output/trial/` junction 的 `WinError 5` 無法讀取既存冷封存連結，本輪沒有新增該等連結。原生 GUI／Owner UAT 未執行。
+
+## 2026-10-29 第六十四輪：Backtest 設定區標題與收合入口併列
+
+Backtest 設定欄最上方原以整列寬按鈕「收合左側設定」開頭，動作與設定內容標題分離，按鈕也搶占設定欄的水平空間。現在加入「回測設定」標題，將收合入口作為同列的次要 ghost 操作靠右放置；按鈕寬度依文字需求，設定表單仍在同一捲動面板，切換至結果頁及回到設定的行為不變。沒有改回測、結果、資料或金融邏輯。
+
+- `tests/test_ui_qt_backtest_layout.py::test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusive`：**1 passed**；檢查設定標題、按鈕與標題列的父子關係、按鈕不再填滿設定欄，以及結果摘要／明細的既有顯示行為。`tests/test_ui_qt_backtest_product_layout.py`：**11 passed**。
+- 必要 Update UI：**102 passed**；Update validator：**25 passed／0 failed／4 skipped**。Backtest source scoped mypy **0 issues**，修改 Python source／test `py_compile` 通過。
+- Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。原生 GUI／Owner UAT 未做；本次不代表 Backtest 成功／失敗正式結果旅程或全程式 UI 盤點完成。

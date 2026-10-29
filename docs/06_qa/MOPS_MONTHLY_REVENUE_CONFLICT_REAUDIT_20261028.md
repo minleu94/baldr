@@ -541,3 +541,66 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 因此上節的 **924／924 `pub` 空窗只證明 API 對傳入 `TYPEK=pub` 的回應內容一致，不構成公開發行市場已完整掃描，也不能據此判斷該市場無公告**。本報告先前稱其為「有效負結果」及「完整覆蓋」的部分予以撤回；此批保留為技術探測原件，不納入市場覆蓋率，不解除或改寫任何 degraded。後續只以 MOPS 官方前端實際提供的市場值（目前可證實 `sii`、`otc`）及其正式歷史 harvest 為公告證據；若要擴至興櫃或公開發行，先由官方頁面／端點確認正確市場參數並用已知公告作正反向驗證，再規劃批次。
 
 依正確市場 `otc` 重核 `6884／2026-08`：`output/mops_harvest_2026/events.csv` 中 6884 共 9 個 2026 F22 月份，包含 7 月公告於 2026-08-06、9 月公告於 2026-10-07，但沒有 `period=2026-08`；既有 OTC 2026-09 發布窗 6 窗合計 907 列，仍沒有 6884 的 8 月事件。故有效結論是：本地完整的 SII／OTC 2026 F22 harvest 未保存該期 6884 公告事件；此前 `TYPEK=pub` 單日探測不能補強這項結論。6884／2026-08 的數值仍在正式 DB，但缺可用 F22 公告時間，維持 degraded；下一個可解除路徑是找到該期可核實公告時間的官方原件，或確認公司該期是否確實未申報。
+
+### 2026-10-30 剩餘 719 筆 degraded 盤點裁決、UI 清楚顯示與推薦排除驗證
+
+#### 1. 剩餘 719 筆 degraded 逐鍵盤點與處置狀態
+
+截至 2026-10-30，正式 SQLite `fundamental_monthly_revenues` 全表 251,949 列中，observed 為 251,230 列，degraded 為 719 列；`revenue` 欄位為 NULL 之筆數為 0。對 719 筆 degraded 舊快照列的逐鍵處置與分類如下：
+
+| 處置分類 | 筆數 | 涵蓋代碼／期別 | 處置說明 |
+|---|---:|---|---|
+| 晚公告已另立新版 | 31 | 6111 (9)、3041 (6)、2608 (4)、6776 (4)、2392 (3)、3466 (1)、4304 (1)、5460 (1)、8942 (1)、3437 (1) | 已於 2026-10-29 另立新版本 `mops.monthly_revenue_f22_detail_revision`、`available_date=2026-10-30` 寫入。**舊快照列維持 degraded**，嚴格禁止把晚期公告時間套回舊快照。 |
+| 非發行人單一營收選擇頁 | 2 | 3712 (2026-01, 2026-02) | 官方 F22 頁面原件為子公司選擇頁，非發行人個別或合併營收，**維持 degraded**。 |
+| 長序列缺少精確 F22 公告事件 | 664 | 4130 (145: 2014-04..2026-04)、5371 (145: 2014-04..2026-04)、8183 (145: 2014-04..2026-04)、2867 (144: 2014-04..2026-04，其中 2026-01 與 2026-02 已於 revision 2 建立 mapped 觀察列，舊快照仍保留 degraded)、6806 (85: 2019-01..2026-02) | 於本機保存之四批 SII／OTC harvest (267,777 筆事件) 中無精確 F22 公告事件，且官方端點查詢無新證據，**維持 degraded**。 |
+| 特殊缺期 | 2 | 6884 (2025-08, 2026-08) | 本地完整的 SII／OTC 2026 F22 harvest 未保存該期 6884 公告事件，**維持 degraded**。 |
+| 散發單筆缺口 (Singleton gaps) | 20 | 1528, 1709, 1735, 2012, 2207, 2433, 3219, 3466, 5205, 5457, 6111, 6224, 6561, 6589, 6645, 6823, 6846, 6859, 8034, 8279 各 1 期 | 經官方 `t05st01` 逐 issuer／年度查詢，均無精確對應月份之月營收公告標題，**維持 degraded**。 |
+| **合計** | **719** | — | **本次正式 DB 實際新增寫入筆數：0 筆**（嚴格遵守「不得偽造公告時間」、「不得把晚公告套回舊快照」硬規則）。 |
+
+#### 2. 「缺值／缺公告時間清楚顯示」行為實作與 UI 驗證
+
+在個股研究報告介面（`ui_qt/views/stock_research_report_view.py`）落實月營收狀態呈現：
+1. **數值顯示**：當月營收數值為空（`value is None`）時，指標文字清楚顯示 `"缺值"`（不再以橫槓 `"—"` 混淆）。
+2. **公告時間與欄位**：
+   - 月營收原值表格（`fundamentalMonthlyRevenueTable`）欄位標題擴充為：`("項目", "值／原披露單位", "期間", "公告日", "資料可得時間")`。
+   - 逐列精確核驗公告日：當 `announced_date` 為空或缺失時，明確顯示 `"缺公告時間"`。
+   - 相關基礎資訊 Tooltip 增補：包含 `公告時間：{announced_date or '缺公告時間'}`；當數值為空時增補提示 `數值狀態：缺值`。
+3. **其餘基本面表公告日**：基本面總表中之月營收觀測列，無公告日者統一明確顯示 `"缺公告時間"`。
+
+#### 3. 缺資料股票不參與建議推薦（RecommendationService 排除驗證）
+
+1. **PIT 資料防線（FundamentalSQLiteProvider）**：
+   - provider 內部強制執行 `evaluate_pit_availability(require_announced_date=True)` 以及 formal availability mapping 白名單核驗。
+   - 未具合法公告日或未在 availability mapping 白名單中的 degraded 舊快照列，在 provider 層即被完全過濾（例如 4130、5371、8183 讀回為 0 筆，6806 僅讀回 3 筆 mapped observed 列，其餘 85 筆 degraded 被完全排除）。
+2. **推薦服務篩選（RecommendationService）**：
+   - 當政策設定 `monthly_revenue_yoy_min` 篩選條件時，由於缺少合規 PIT 月營收資料，計算得到的 `revenue_yoy` 為 `None`。
+   - 候選股票直接以 `status="skipped"`, `reason_codes=["fundamental_revenue_yoy_missing"]`, `quality="missing"` 被淘汰，**絕不進入最終推薦名單**。
+   - 經專屬單元測試驗證：包含 2330（合格推薦）、4130（只有 degraded 列）、9999（無月營收紀錄），結果僅 2330 獲得推薦，4130 與 9999 均被明確排除。
+
+#### 4. 自動化測試驗證結果
+
+- `tests/test_monthly_revenue_degraded_display_and_exclusion.py`: **3 passed**
+  - `test_ui_monthly_revenue_displays_missing_value_and_missing_announcement_date`: 通過（驗證 UI 表格欄位、缺值顯示「缺值」、缺公告時間顯示「缺公告時間」、tooltip 註記）。
+  - `test_fundamental_sqlite_provider_excludes_degraded_unmapped_rows`: 通過（驗證 provider 排除 degraded 與 unmapped 舊列）。
+  - `test_recommendation_service_excludes_degraded_and_missing_revenue_stocks`: 通過（驗證 degraded/缺資料股票被 RecommendationService 淘汰排除）。
+- `tests/test_recommendation_fundamental_filters.py`: **3 passed**
+  - 修復 `test_fundamental_filters_pe_and_yoy_scenarios` 之 PIT 決策基準日傳遞（指定 `as_of_date="2026-07-16"`），3 項測試全部通過。
+- `tests/test_ui_qt_stock_research_visual_integration.py`: **5 passed**
+- 修改檔案 `py_compile ui_qt/views/stock_research_report_view.py tests/test_monthly_revenue_degraded_display_and_exclusion.py tests/test_recommendation_fundamental_filters.py`: 通過（exit code 0）。
+- Scoped mypy `ui_qt/views/stock_research_report_view.py`: 通過（Success: no issues found in 1 source file）。
+
+#### 5. 仍無官方證據逐筆清單與下一步處置建議
+
+1. **仍無官方證據逐筆清單（共 688 筆）**：
+   - 4130 (145 筆: 2014-04..2026-04)
+   - 5371 (145 筆: 2014-04..2026-04)
+   - 8183 (145 筆: 2014-04..2026-04)
+   - 2867 (142 筆: 2014-04..2025-12；2026-01 和 2026-02 已回補 mapped 新版)
+   - 6806 (85 筆: 2019-01..2026-02)
+   - 6884 (2 筆: 2025-08, 2026-08)
+   - 3712 (2 筆: 2026-01, 2026-02)
+   - 22 檔 singleton 缺口各 1 筆：1528、1709、1735、2012、2207、2433、3219、3466、5205、5457、6111、6224、6561、6589、6645、6823、6846、6859、8034、8279，以及 2608、2392 晚期版本未收斂之舊列。
+2. **禁止重複無效掃描**：先前 924 窗 `TYPEK=pub` 掃描已證實非前端支援之有效市場參數，不得再重複執行或推論市場全空。
+3. **下一步建議**：
+   - 若未來需解除此 688 筆 degraded，應依發行人歷史申報身分（如上市前興櫃申報紀錄、更正公告原始公函），從專門的歷史公函／重大訊息資料夾或發行人第一方財報取證，經正式 recovery pipeline 以具名 revision 方式載入。
+   - 在未取得合規官方公告時間前，維持 degraded 狀態，依既有機制於 PIT 推薦中堅守 fail-closed 排除原則。

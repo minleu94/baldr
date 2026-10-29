@@ -24,6 +24,8 @@ V2研究Paper由Main重核目前選取的Timeline原件後組裝：未明選外�
 
 V2 分支的 ProductShell 將入口分為「今日總覽」、「探索與研究」、「我的投資」、「策略實驗室」四個主工作區，另以齒輪「系統管理」提供資料、執行狀態及診斷入口。此為目前導覽層，不取代現有九個頂層工作區契約，也不表示各子頁已完成整合。`main_window_coordinator.py` 將 market、themes、screener、lookup、lists、positions、paper、journal、strategies、backtests、performance、ml、data、operations、diagnostics、storage 等子路由交給既有 Views；PortfolioView 的新分區仍重用原持倉／Paper／Journal 元件與服務。
 
+工作區子頁按鈕由 `WorkspaceSubnav` 依容器寬度排列：寬版單列、中窄版雙欄、極窄版單欄。該版面只影響導覽可達性，不改 route identity、選取狀態或既有 View／服務行為。
+
 全域查詢由 `v2_shell.py` 的 Ctrl+K 搜尋列提供。Main 將 `companies.csv` 路徑交給 ProductShell，後者以 `read_stock_search_directory` 背景讀取公司名錄；名稱子字串或代號命中時，選單最多列 20 筆公司候選，明選後開一般個股資料。4–6 位數字代號也可直接明選一般可用資料。題材名稱、產業鏈及映射內股票則另由目前已載入的題材映射提供，題材選取攜帶版本身份；載入失效或版本改變時拒絕舊結果。名錄僅提供搜尋定位，不代表行情或歷史資格。一般報告與價格研究保留不同來源身份，日期／來源分開呈現，不以相同代號作資料拼接。
 
 來源版的 WorkspaceSubnav 以搜尋按鈕作 Tab 前置點，只讓目前啟用子頁成為 Tab 停駐點，換組或換頁時重接；反向 Shift+Tab 回搜尋按鈕。價格詳情快捷返回經原 return_button 的來源配對驗證與 typed selection 訊號，再由 Main 還原原查詢，不直接切換路由。這兩項為 eefd2163 候選之後的來源修復，具名 QA 見 V2 產品驗收。

@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
@@ -1013,6 +1014,10 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
         execution = SimpleNamespace(result_id="result-1", events=(event,))
         view._update_company_source_snapshot_display(execution)
         text = view.company_source_snapshot_label.text()
+        assert view.company_source_snapshot_label.textFormat() == Qt.TextFormat.PlainText
+        assert "一、公司名冊與分類資格" in text
+        assert "二、產業指數來源與列觀察" in text
+        assert "下一步" in text
         assert "當時分析日期 2026-09-25（v1；不代表行情資料日）" in text
         assert "current_classification_only" in text
         assert "PIT eligible=false" in text

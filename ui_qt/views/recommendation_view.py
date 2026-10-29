@@ -4580,6 +4580,17 @@ class RecommendationView(QWidget):
             "recommendationCompanySourceSnapshot"
         )
         self.company_source_snapshot_label.setWordWrap(True)
+        self.company_source_snapshot_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.company_source_snapshot_label.setAccessibleName(
+            "推薦結果來源核對詳情"
+        )
+        self.company_source_snapshot_label.setStyleSheet(
+            f"QLabel#recommendationCompanySourceSnapshot {{ "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"border-left: 3px solid {MIDNIGHT_ANALYST.border}; "
+            "padding: 8px; }"
+        )
         self.company_source_snapshot_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
@@ -6759,20 +6770,23 @@ class RecommendationView(QWidget):
                     "請檢查同次來源事件並重新產生推薦。"
                 )
         lines = [
+            "一、公司名冊與分類資格",
             f"分類來源：{source_status_label}；{date_line}"
             "僅代表 current_classification_only，PIT eligible=false。",
             f"公司來源契約 SHA-256：{source_contract_hash or '未知'}；"
             f"名冊 artifact SHA-256：{artifact_hash or '未知'}；"
             f"契約產生時間：{contract_generated_at or '未知'}。",
-            f"{index_status_label}。",
         ]
         lines.extend(v2_source_facts)
+        lines.extend(("", "二、產業指數來源與列觀察", f"{index_status_label}。"))
         lines.extend(industry_observation_lines)
         if market_facts:
-            lines.append("市場來源：" + "；".join(market_facts) + "。")
+            lines.extend(("", "三、同次市場來源", "市場來源：" + "；".join(market_facts) + "。"))
         warnings = snapshot.get("warnings", ())
         if isinstance(warnings, (list, tuple)) and warnings:
-            lines.append("來源提示：" + "；".join(str(item) for item in warnings) + "。")
+            lines.extend(
+                ("", "來源提示", "；".join(str(item) for item in warnings) + "。")
+            )
         next_steps = []
         if company_status != "captured":
             next_steps.append(
@@ -6791,7 +6805,7 @@ class RecommendationView(QWidget):
             next_steps.append(
                 "如需歷史成分判讀，請使用具有歷史可得時間的成分資料；本快照不代表 PIT 成分。"
             )
-        lines.append("下一步：" + " ".join(next_steps))
+        lines.extend(("", "下一步", "• " + "\n• ".join(next_steps)))
         source_summary = (
             f"來源判讀：公司名冊契約{'已封存' if company_status == 'captured' else '未能核驗'}；"
             f"{index_status_label}。\n"

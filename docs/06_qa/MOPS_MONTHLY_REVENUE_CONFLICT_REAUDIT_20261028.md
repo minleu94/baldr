@@ -487,3 +487,9 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 同時以正式 SQLite 唯讀查詢重核 2026-07..09：5,585 列都在正式表，全部 `available_date=2026-10-30`；2026-10-29 cutoff 可見 **0** 列，2026-10-30 cutoff 可見 **5,585** 列。當中 5,584 列有公告日／`observed`，唯一缺公告日的 `6884／2026-08` 為數值 `184914` 仟元、`degraded`；值已存在，缺的是可核對的官方 F22 公告時間。SQLite inspector 讀回的 source version 綁定 2026-10-29 TPEx 2026-08 靜態快照 raw SHA `4057158db90c002dc521f8b1e28ba32fe38dc0170f7d82a55a75110c038d01a7`。未以搜尋引擎摘要或第三方轉載替代官方公告原件，也沒有因此新增 mapping／寫入。
 
 截至此查核，歷史舊 snapshot 的 719 個 physical degraded rows 與 10/30 PIT cutoff 的 686 個缺公告日 keys 是不同集合、不能相加：前者 crosswalk 為 686 個 no-event 加 33 個 event-after-capture；其中 31 個 late-event keys 已有 10/30 才可用的新明細版本，另外 2 個未形成可讀 revision。7–9 月新資料內另有唯一 `6884／2026-08` degraded key。Weekly 修復後自然成功 receipt 尚未取得，Update Tab 的自動選檔有自然候選收據但原生 UI 真人 UAT 尚未執行。正式 SQLite／availability mapping 本次均唯讀未改。
+
+### 2026-10-29 6884／2026-08 缺失 F22 公告的來源定位
+
+重新解析官方 harvest 原件 `output/mops_harvest_2026/raw/ezsearch_F22_otc_1150906_1150908.json`：payload 329 列、HTTP/API `success`，原件 SHA-256 `864b1de8fbc09df54ba203d9923a122be9a34001712b4721db2979d54e395018` 與 manifest 一致；329 列中 `COMPANY_ID=6884` 為 **0**。因此 6884／2026-08 的缺事件已存在於官方 OTC EZSearch 原始回應，不是 `events.csv` parser 漏列。該期 6884 的 `mopsfin`／MOPS 現況值仍是 184,914 仟元。
+
+第三方 MoneyDJ／第一銀行轉載頁將相同金額標為 2026-09-07 23:59 發布（[第一銀行頁面](https://wealth.firstbank.com.tw/investment-tips/trend-insight/news/news-detail?id=%7B184CEDB8-C5E8-4E18-A441-504E87000030%7D)）。此只提供下一個官方查詢日期線索，不是 MOPS 原始公告時間，不用於 availability mapping。針對 2026-09-07 的官方 PUB F22 單日窗口再以 Scrapling 普通 HTTPS POST 查一次，12 秒 timeout、單次請求；本機 DNS 解析逾時、沒有 HTTP response。失敗收據保存在 ignored `.tmp_mops_pub_6884_probe_20261029/failure_receipt.json`。故本輪未新增 mapping、未改正式 DB；網路恢復後應先重試該單日 PUB 窗口，再確認公告詳情中的 issuer、period 與 value，才能裁決 6884／2026-08。

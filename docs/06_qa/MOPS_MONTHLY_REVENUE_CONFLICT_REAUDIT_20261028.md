@@ -255,7 +255,7 @@ Recovery receipt：`C:/Users/archi/.codex/visualizations/2026/10/26/01a176a6-e5c
 
 無事件缺口主要集中於 2867／4130／5371／8183 各 145 期、6806 共 88 期，另 21 個單筆鍵；目前抽到的 2026-04 明細頁三個值與正式 DB 一致、兩碼頁面顯示不再公開發行，但五頁都無公告日期／時間欄。EZSearch 的請求需區分市場模式與公司模式：`RADIO_CM=1` 是市場查詢，該模式下帶 `CO_ID=2867` 的 2014-05-12 查詢仍回上市市場 57 列，不能視為公司篩選；舊記錄 raw SHA-256 `f5a359438729571815e1a6f5c1bb5f38b32b3f928df39b129fa342de73a68265`。同一查詢介面的公司模式為 `RADIO_CM=2`，需先由 `step=05` 公司 autocomplete 選取代碼。2026-10-29 的 autocomplete 對 2867／5371／6806 均回空結果，正控制 2330 回傳台積電；以 2867 公司模式查詢 2014-05 則回「查無公司資料」。因此只能確認當前代碼選單／公司查詢未提供這些已下市代碼，不能推論 endpoint 完全不支援 `CO_ID`，也不能推論歷史公告不存在。另一個上市市場模式 2014-05-10..14 查詢回 62 列且無 2867，raw SHA-256 `0f24204adaf7ec8149aaf141f09b907a4a7a1a7e398fbd213584d8415686e450`；這些有限日期查詢不能代替歷史 crosswalk。
 
-原三批歷史 harvest 僅涵蓋 SII／OTC。曾規劃以 10 秒限速、raw+SHA+manifest、checkpoint harvester 對 `rotc`／`pub` 做 2014–2026 全期 1,848 窗補採，但因尚無證據證明範圍與 endpoint 可用性，已在 11 個 ROTC 窗口後停止；這 11 窗 HTTP 200、全為 0 rows，部分 82-byte 回應實際訊息為 `查無公告資料`。未啟動 1,848 窗完整批次，輸出目錄 `output/mops_harvest_rotc_pub_2014_2026/` 僅有這 11 窗的部分記錄。
+原三批歷史 harvest 僅涵蓋 SII／OTC。曾規劃以 10 秒限速、raw+SHA+manifest、checkpoint harvester 對 `rotc`／`pub` 做 2014–2026 全期 1,848 窗補採；先前僅對 6806／2019-02 做 12 窗試查。後續全期批次實際啟動後，在完成 **151 個 ROTC 窗**時停止：151/151 HTTP 200、0 rows，原始回應均為同一個 82-byte `查無公告資料` JSON（SHA-256 相同）；PUB 尚未開始。這證明該查詢設定在這些窗口回空結果，不能證明興櫃／公開發行全期沒有公告，也不能結案 689 個缺事件鍵。因沒有正向控制，未繼續耗費約 5 小時掃完其餘 1,697 窗；輸出目錄 `output/mops_harvest_rotc_pub_2014_2026/` 保留截至中止的原件、manifest 與 checkpoint。
 
 後續針對 6806 缺少 2019-01 期事件，以同一個有 10 秒間隔的 harvester 查 2019-02 全月、`rotc` 與 `pub` 各切六個日期窗，共 12 窗；全部 HTTP 200，MOPS JSON 均為 `status=fail`／`查無公告資料`，無事件列、無 6806 命中。這只表示該月份與兩市場查無資料，不能證明 6806 在該期不適用 F22，也不能替代其他月份或市場查詢。其 raw、manifest、checkpoint 保留於 `.tmp_mops_gap_probe_20261029/rotc_pub_2019_02_6806/`，未寫正式 SQLite。
 

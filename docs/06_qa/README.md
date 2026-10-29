@@ -16,6 +16,7 @@
 
 - [月營收全用途整合](MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)：雙市場原件、版本歸檔、逐用途資格與研究接線；Source 工程與正式金融接受分別判讀。
 - [MOPS 月營收衝突報告獨立複核（2026-10-28）](MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md)：逐類對照 412 列問題與 325 列處置清冊、核對 37 列 OpenAPI 值、直接檢視可達的 F22 明細頁及正式 SQLite 月份覆蓋；區分本機缺件、MOPS 頁面觀察、來源版本衝突與正式 DB 尚未載入。
+- [MOPS 每日月營收候選排程 QA（2026-10-29）](MOPS_DAILY_SNAPSHOT_CAPTURE_QA_20261029.md)：Daily Quick 獨立抓取雙市場 MOPS 候選、完整發布 marker、期別週末順延及待下一次自然排程核實的狀態。
 
 - [V2工程補完與整合](BALDR_V2_FINAL_COMPLETION_20261021.md)：具名月營收來源、人工確認Paper producer、真Main歷史來源保存重開與五旅程五軌判讀；不取代原金融批准或Native／Owner驗收。
 

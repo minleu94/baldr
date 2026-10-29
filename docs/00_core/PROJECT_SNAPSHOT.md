@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+2026-10-29 月營收 Daily Quick MOPS 候選線路修復：Quick `.cmd` 現在以獨立旗標在核心狀態/history 發布後，擷取預期期別的雙市場 MOPS 靜態候選；子程序與 OpenAPI 候選分開收據、失敗不影響核心結果，也不寫正式 DB／availability mapping。完整 selector 可見性要通過上市／上櫃、期別、列值、解析診斷、保存原件與最後 publish marker 守衛；更新頁手動抓取也拒絕單市場半成品。期別共用台灣日期／每月 10 日週末順延政策。47 個定向檢查通過、Update UI 98 passed、Update validator 25/0/4、targeted mypy 5 files clean；repo-wide mypy 仍被未修改 T164 bridge 語法錯誤阻擋。尚未等到下一次自然排程 receipt，故 production schedule 成功仍待驗。正式表仍為 251,189 observed／727 degraded；本修復不解除舊列 degraded。詳[排程修復 QA](../06_qa/MOPS_DAILY_SNAPSHOT_CAPTURE_QA_20261029.md)。
+
 2026-10-29 MOPS late-event 詳頁抽查補充：5 個原被後續去年同期欄列為同值的候選（6111／2025-06..08、3041／2025-07..08），逐一讀取其官方 F22 detail URL 後發現公告本月值 5/5 與固定 snapshot 不同；無法把 2026-09 公告時間映射到舊版數值。一般個股研究報告會直接讀正式月營收列並顯示值、期別、可得時間及品質限制；因子／策略的正式 PIT provider 則要求 availability mapping 與公告日期通過防線，未映射列不進該路徑。明細原件 hash 與逐鍵值見[月營收剩餘缺口 QA](../06_qa/MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md#五筆-late-event-同值候選的官方明細反證)。
 
 2026-10-29 2014–2019 F22 值頁抽樣補驗：每年上市／上櫃各 1 筆，共 12 頁普通 Scrapling GET；12/12 公司／代碼、期別、仟元單位與本月值均核對通過，值與 2026-06-16 固定 snapshot 一致，原始 HTML／SHA readback 保存於 ignored `.tmp_mops_historical_spotcheck_2014_2019/`。正式固定快照範圍 2014-04..2019-12 已是 108,072 observed／288 degraded；這 288 列仍缺可匹配公告事件，樣本不替代公告時間證據。詳[補驗 QA](../06_qa/MOPS_MONTHLY_REVENUE_CONFLICT_REAUDIT_20261028.md#2014-2019-官方明細年度市場抽樣補驗2026-10-29)。

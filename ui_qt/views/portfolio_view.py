@@ -1691,8 +1691,10 @@ class PortfolioView(QWidget):
         main_layout.addWidget(self.portfolio_compact_context_label)
 
         # ========== 1. 頂部狀態看板 (Summary Dashboard) ==========
-        dashboard_layout = QHBoxLayout()
-        dashboard_layout.setSpacing(10)
+        dashboard_layout = QGridLayout()
+        dashboard_layout.setHorizontalSpacing(10)
+        dashboard_layout.setVerticalSpacing(8)
+        self.portfolio_dashboard_layout = dashboard_layout
 
         self.card_net_val = GradientCard(
             "持倉市值（未含現金）", "N/A",
@@ -1711,10 +1713,12 @@ class PortfolioView(QWidget):
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #234e52, stop:1 #2c7a7b)"
         )
 
-        dashboard_layout.addWidget(self.card_net_val)
-        dashboard_layout.addWidget(self.card_invested)
-        dashboard_layout.addWidget(self.card_pnl)
-        dashboard_layout.addWidget(self.card_positions)
+        self._portfolio_metric_cards = (
+            self.card_net_val,
+            self.card_invested,
+            self.card_pnl,
+            self.card_positions,
+        )
         main_layout.addLayout(dashboard_layout)
 
         self.active_positions_summary_label = QLabel("活躍持倉：0 檔")
@@ -3006,6 +3010,7 @@ class PortfolioView(QWidget):
         """依整頁寬度調整區塊與按鈕方向，避免窄版操作文字被切掉。"""
         if not hasattr(self, "main_splitter"):
             return
+        self._arrange_portfolio_dashboard()
         narrow = self.width() < 900
         desired_orientation = Qt.Vertical if narrow else Qt.Horizontal
         orientation_changed = self.main_splitter.orientation() != desired_orientation
@@ -3047,6 +3052,22 @@ class PortfolioView(QWidget):
         # 持倉表欄位包含來源、快照與 identity 欄；全寬仍可能不足以顯示末欄。
         # 保留水平捲動讓欄位可達，避免 AlwaysOff 造成資料被裁切。
         self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+    def _arrange_portfolio_dashboard(self) -> None:
+        """依可用寬度重排摘要卡，避免窄窗把四項核心數值壓成一列。"""
+
+        if not hasattr(self, "portfolio_dashboard_layout"):
+            return
+        width = max(0, self.width())
+        columns = 4 if width >= 1180 else 2 if width >= 640 else 1
+        if getattr(self, "_portfolio_dashboard_columns", None) == columns:
+            return
+        layout = self.portfolio_dashboard_layout
+        while layout.count():
+            layout.takeAt(0)
+        for index, card in enumerate(self._portfolio_metric_cards):
+            layout.addWidget(card, index // columns, index % columns)
+        self._portfolio_dashboard_columns = columns
 
     def refresh_all(self) -> None:
         """重新整理持倉資料；正式 UI 入口使用背景 worker。"""

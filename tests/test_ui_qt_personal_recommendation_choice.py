@@ -1019,6 +1019,16 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
         assert "產業指數來源未知" in text
         assert "下一步" in text
         assert "sha256:" + "a" * 64 in text
+        summary = view.company_source_summary_label.text()
+        assert "公司名冊契約已封存" in summary
+        assert "產業指數來源未知" in summary
+        assert "不能當作歷史 PIT 成分證據" in summary
+        assert "sha256:" + "a" * 64 not in summary
+        assert view.company_source_snapshot_scroll.isHidden()
+        view.company_source_snapshot_details_button.click()
+        assert not view.company_source_snapshot_scroll.isHidden()
+        view.company_source_snapshot_details_button.click()
+        assert view.company_source_snapshot_scroll.isHidden()
 
         mismatched = SimpleNamespace(result_id="another-result", events=(event,))
         view._update_company_source_snapshot_display(mismatched)

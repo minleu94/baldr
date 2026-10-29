@@ -1299,6 +1299,27 @@ def test_portfolio_view_reflows_positions_and_existing_evidence_tabs_on_narrow_w
     )
 
 
+def test_portfolio_summary_cards_reflow_without_compressing_core_metrics(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    host = QStackedWidget()
+    host.setMinimumSize(0, 0)
+    host.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+    host.addWidget(view)
+    host.show()
+
+    cards = view._portfolio_metric_cards
+    layout = view.portfolio_dashboard_layout
+    for width, expected_columns in ((1366, 4), (800, 2), (390, 1)):
+        host.resize(width, 844)
+        app().processEvents()
+        positions = [layout.getItemPosition(layout.indexOf(card))[:2] for card in cards]
+        assert positions == [
+            (index // expected_columns, index % expected_columns)
+            for index in range(len(cards))
+        ]
+    view.close()
+
+
 def test_stress_tab_uses_wide_detail_default_and_preserves_manual_splitter_choice(tmp_path):
     view = make_portfolio_view(tmp_path)
     host = QStackedWidget()

@@ -2632,9 +2632,9 @@ def test_monthly_revenue_tab_uses_user_facing_chinese_labels():
     labels = [label.text() for label in view.content_stack.widget(6).findChildren(QLabel)]
     buttons = [button.text() for button in view.content_stack.widget(6).findChildren(QPushButton)]
 
-    assert "月營收候選 CSV：" in labels
-    assert "正式歷史可得日 CSV：" in labels
-    assert "本次寫入版本名稱：" in labels
+    assert "候選快照（可選另一份）：" in labels
+    assert "正式可得日對照（系統檔）：" in labels
+    assert "資料版本識別（自動，非檔名）：" in labels
     assert "只更新現況研究（獨立流程）" in [
         group.title()
         for group in view.content_stack.widget(6).findChildren(QGroupBox)

@@ -4529,6 +4529,45 @@ class RecommendationView(QWidget):
         detail_group = QGroupBox("推薦理由詳情")
         detail_group.setMinimumHeight(200)
         detail_layout = QVBoxLayout()
+        self.company_source_summary_label = QLabel(
+            "來源核驗狀態會在選取推薦結果後顯示。"
+        )
+        self.company_source_summary_label.setObjectName(
+            "recommendationCompanySourceSummary"
+        )
+        self.company_source_summary_label.setWordWrap(True)
+        self.company_source_summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.company_source_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background-color: {MIDNIGHT_ANALYST.surface_1}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 6px 9px;"
+        )
+        detail_layout.addWidget(self.company_source_summary_label)
+        self.company_source_snapshot_details_button = QToolButton()
+        self.company_source_snapshot_details_button.setText(
+            "查看完整來源欄位與核驗資料"
+        )
+        self.company_source_snapshot_details_button.setObjectName(
+            "recommendationCompanySourceDetailsToggle"
+        )
+        self.company_source_snapshot_details_button.setCheckable(True)
+        self.company_source_snapshot_details_button.setChecked(False)
+        self.company_source_snapshot_details_button.setAutoRaise(True)
+        self.company_source_snapshot_details_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.company_source_snapshot_details_button.toggled.connect(
+            self._set_company_source_details_expanded
+        )
+        source_details_action_row = QHBoxLayout()
+        source_details_action_row.addWidget(
+            self.company_source_snapshot_details_button
+        )
+        source_details_action_row.addStretch(1)
+        detail_layout.addLayout(source_details_action_row)
         self.company_source_snapshot_label = QLabel(
             "分類來源：尚未有本次推薦的封存來源快照。"
         )
@@ -4539,11 +4578,29 @@ class RecommendationView(QWidget):
         self.company_source_snapshot_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        detail_layout.addWidget(self.company_source_snapshot_label)
-        self.detail_expand_button = QPushButton("展開推薦理由")
+        self.company_source_snapshot_scroll = QScrollArea()
+        self.company_source_snapshot_scroll.setObjectName(
+            "recommendationCompanySourceDetails"
+        )
+        self.company_source_snapshot_scroll.setWidgetResizable(True)
+        self.company_source_snapshot_scroll.setMaximumHeight(220)
+        self.company_source_snapshot_scroll.setWidget(
+            self.company_source_snapshot_label
+        )
+        self.company_source_snapshot_scroll.hide()
+        detail_layout.addWidget(self.company_source_snapshot_scroll)
+        self.detail_expand_button = QToolButton()
+        self.detail_expand_button.setText("展開推薦理由")
         self.detail_expand_button.setObjectName("recommendationReasonExpand")
         self.detail_expand_button.setCheckable(True)
-        detail_layout.addWidget(self.detail_expand_button)
+        self.detail_expand_button.setAutoRaise(True)
+        self.detail_expand_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        reason_expand_row = QHBoxLayout()
+        reason_expand_row.addWidget(self.detail_expand_button)
+        reason_expand_row.addStretch(1)
+        detail_layout.addLayout(reason_expand_row)
         self.detail_text = _RecommendationReasonText()
         self.detail_text.setReadOnly(True)
         self.detail_text.setMinimumHeight(140)
@@ -6256,8 +6313,36 @@ class RecommendationView(QWidget):
         label = getattr(self, "company_source_snapshot_label", None)
         if label is None:
             return
+
+        def set_source_display(
+            full_text: str,
+            summary_text: str | None = None,
+            *,
+            attention: bool = True,
+        ) -> None:
+            label.setText(full_text)
+            summary_label = getattr(self, "company_source_summary_label", None)
+            if summary_label is not None:
+                summary_label.setText(summary_text or full_text.splitlines()[0])
+                status_color = (
+                    MIDNIGHT_ANALYST.status_warning
+                    if attention
+                    else MIDNIGHT_ANALYST.text_primary
+                )
+                border_color = (
+                    MIDNIGHT_ANALYST.warning
+                    if attention
+                    else MIDNIGHT_ANALYST.border
+                )
+                summary_label.setStyleSheet(
+                    f"color: {status_color}; "
+                    f"background-color: {MIDNIGHT_ANALYST.surface_1}; "
+                    f"border: 1px solid {border_color}; "
+                    "border-radius: 5px; padding: 6px 9px;"
+                )
+
         if execution is None:
-            label.setText("分類來源：目前沒有推薦結果。")
+            set_source_display("分類來源：目前沒有推薦結果。", attention=False)
             return
         matching_events = [
             event
@@ -6265,7 +6350,7 @@ class RecommendationView(QWidget):
             if event.event_type == "company_registry_source_snapshot"
         ]
         if len(matching_events) != 1:
-            label.setText(
+            set_source_display(
                 "分類來源：本次結果沒有唯一且封存的來源快照；"
                 "不會以目前名冊或產業資料補填歷史結果。"
             )
@@ -6278,7 +6363,7 @@ class RecommendationView(QWidget):
             != "recommendation-company-registry-source-snapshot-event.v1"
             or details.get("result_id") != execution.result_id
         ):
-            label.setText(
+            set_source_display(
                 "分類來源：保存事件與本次結果身分不符，來源無法核對；"
                 "不會改讀目前資料補值。"
             )
@@ -6286,7 +6371,7 @@ class RecommendationView(QWidget):
         snapshot = details.get("snapshot")
 
         if not isinstance(snapshot, Mapping):
-            label.setText(
+            set_source_display(
                 "分類來源：封存快照格式或結果身分無法核對；"
                 "不會以目前資料補填歷史結果。"
             )
@@ -6335,7 +6420,7 @@ class RecommendationView(QWidget):
                 "recommendation-company-registry-source-snapshot.v2",
             )
         ):
-            label.setText(
+            set_source_display(
                 "分類來源：封存快照格式、雜湊或結果身分無法核對；"
                 "不會以目前資料補填歷史結果。"
             )
@@ -6345,7 +6430,7 @@ class RecommendationView(QWidget):
         if snapshot_schema == "recommendation-company-registry-source-snapshot.v1":
             # v1 stores the original Context date, not a verified market-data date.
             if data_date_value is not None and type(data_date_value) is not str:
-                label.setText(
+                set_source_display(
                     "分類來源：歷史快照日期格式無法核對；不會改讀目前資料補值。"
                 )
                 return
@@ -6456,7 +6541,7 @@ class RecommendationView(QWidget):
                 and market_fingerprint in reference_hashes
             )
             if not (valid_dates and valid_clock and valid_source_identity):
-                label.setText(
+                set_source_display(
                     "分類來源：個人即時來源快照與保存時的決策日、時鐘或行情來源身分不符；"
                     "不會改讀目前資料補值。"
                 )
@@ -6702,7 +6787,40 @@ class RecommendationView(QWidget):
                 "如需歷史成分判讀，請使用具有歷史可得時間的成分資料；本快照不代表 PIT 成分。"
             )
         lines.append("下一步：" + " ".join(next_steps))
-        label.setText("\n".join(lines))
+        source_summary = (
+            f"來源判讀：公司名冊契約{'已封存' if company_status == 'captured' else '未能核驗'}；"
+            f"{index_status_label}。\n"
+            f"時間判讀：{date_line}僅代表目前分類，不能當作歷史 PIT 成分證據。\n"
+            f"建議下一步：{' '.join(next_steps)}"
+        )
+        source_attention = (
+            company_status != "captured"
+            or index_status == "unknown"
+            or industry_observation_next_step is not None
+        )
+        set_source_display(
+            "\n".join(lines),
+            source_summary,
+            attention=source_attention,
+        )
+
+    def _set_company_source_details_expanded(self, expanded: bool) -> None:
+        """展開或收合完整來源欄位；摘要狀態固定留在推薦詳情首屏。"""
+
+        details = getattr(self, "company_source_snapshot_scroll", None)
+        if details is not None:
+            details.setVisible(bool(expanded))
+        button = getattr(
+            self,
+            "company_source_snapshot_details_button",
+            None,
+        )
+        if button is not None:
+            button.setText(
+                "收合完整來源欄位與核驗資料"
+                if expanded
+                else "查看完整來源欄位與核驗資料"
+            )
 
     def _find_unique_current_recommendation(
         self,

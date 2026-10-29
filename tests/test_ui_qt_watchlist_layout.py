@@ -145,7 +145,11 @@ def test_watchlist_desktop_layout_keeps_both_universe_lists_visible(monkeypatch,
     assert view.findChild(QGroupBox, "watchlistOpsGroup").parent() is candidate_panel
     distribution_group = view.findChild(QGroupBox, "watchlistReviewDistribution")
     assert distribution_group is not None
-    assert candidate_panel.layout().indexOf(distribution_group) < candidate_panel.layout().indexOf(
+    candidate_layout = candidate_panel.layout()
+    assert candidate_layout.indexOf(view.candidate_search_summary) < candidate_layout.indexOf(
+        view.candidate_status_layout
+    ) < candidate_layout.indexOf(view.stocks_table)
+    assert candidate_layout.indexOf(distribution_group) > candidate_layout.indexOf(
         view.stocks_table
     )
     assert view.universe_list.height() > 150

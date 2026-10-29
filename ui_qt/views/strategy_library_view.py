@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -138,7 +139,12 @@ class StrategyLibraryView(QWidget):
         self.retry_versions_button.clicked.connect(self._retry_saved_versions)
         version_status_row.addWidget(self.retry_versions_button)
         detail_layout.addLayout(version_status_row)
-        self.details = QFormLayout()
+        strategy_content_group = QGroupBox("策略內容與風險")
+        self.strategy_content_group = strategy_content_group
+        self.details = QFormLayout(strategy_content_group)
+        qualification_group = QGroupBox("資料與資格判讀")
+        self.qualification_group = qualification_group
+        self.qualification_details = QFormLayout(qualification_group)
         self.advanced_details = CollapsibleSectionPanel("參數設定與來源原文", collapsed=True)
         advanced_form = QFormLayout()
         self.advanced_details.content_layout.addLayout(advanced_form)
@@ -166,23 +172,44 @@ class StrategyLibraryView(QWidget):
             label.setWordWrap(True)
             label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self.detail_labels[key] = label
-            target = advanced_form if key in {
+            if key in {
                 "parameter_schema", "saved_parameters", "saved_config",
                 "metadata_source", "source_identity",
-            } else self.details
+            }:
+                target = advanced_form
+            elif key in {
+                "required_features", "data_assumptions", "cost",
+                "qualification", "validation_status",
+            }:
+                target = self.qualification_details
+            else:
+                target = self.details
             target.addRow(title, label)
-        detail_layout.addLayout(self.details)
+        detail_layout.addWidget(strategy_content_group)
+        detail_layout.addWidget(qualification_group)
         detail_layout.addWidget(self.advanced_details)
-        detail_layout.addStretch(1)
-        self.select_button = QPushButton("以此設定回測")
-        self.select_button.setEnabled(False)
-        self.select_button.setToolTip("明確選取後只回傳策略 ID 與版本，不會執行回測或保存資料。")
-        detail_layout.addWidget(self.select_button)
         detail_scroll = QScrollArea()
+        self.strategy_detail_scroll = detail_scroll
+        detail_scroll.setAccessibleName("策略內容與來源資格詳細資料")
+        detail_scroll.setAccessibleDescription(
+            "策略說明、資料假設與資格狀態可在此捲動閱讀；回測入口固定在右側面板底部。"
+        )
         detail_scroll.setWidgetResizable(True)
         detail_scroll.setMinimumSize(0, 0)
         detail_scroll.setWidget(detail)
-        split.addWidget(detail_scroll)
+        detail_pane = QWidget()
+        detail_pane_layout = QVBoxLayout(detail_pane)
+        detail_pane_layout.setContentsMargins(0, 0, 0, 0)
+        detail_pane_layout.setSpacing(6)
+        detail_pane_layout.addWidget(detail_scroll, stretch=1)
+        self.select_button = QPushButton("以此設定回測")
+        self.select_button.setEnabled(False)
+        self.select_button.setToolTip("明確選取後只回傳策略 ID 與版本，不會執行回測或保存資料。")
+        select_action_row = QHBoxLayout()
+        select_action_row.addStretch(1)
+        select_action_row.addWidget(self.select_button)
+        detail_pane_layout.addLayout(select_action_row)
+        split.addWidget(detail_pane)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 2)
         root.addWidget(split, stretch=1)

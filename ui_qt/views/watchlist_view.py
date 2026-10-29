@@ -478,8 +478,8 @@ class WatchlistView(QWidget):
             self.review_distribution_counts[state] = count_label
             self.review_distribution_bars[state] = bar
         review_distribution_layout.addLayout(self.review_distribution_rows_layout)
-        candidate_layout.addWidget(review_distribution_group)
         candidate_layout.addWidget(self.stocks_table, stretch=1)
+        candidate_layout.addWidget(review_distribution_group)
         self.stocks_table.doubleClicked.connect(self._open_stock_analysis)
 
         # 研究摘要明確標示，不再讓 QTextEdit 看起來像不明原因的第三個區塊。
@@ -657,6 +657,7 @@ class WatchlistView(QWidget):
 
         # 候選列與不同代號數量和更新狀態分開呈現。
         candidate_status_layout = QHBoxLayout()
+        self.candidate_status_layout = candidate_status_layout
         self.stats_label = QLabel("候選列／不同代號數尚未讀取")
         self.stats_label.setObjectName("watchlistStats")
         self.stats_label.setProperty("role", "summary")
@@ -668,7 +669,10 @@ class WatchlistView(QWidget):
         self.status_label.setWordWrap(True)
         candidate_status_layout.addWidget(self.status_label, stretch=1)
         self._set_status_label("尚未載入", level="info")
-        candidate_layout.addLayout(candidate_status_layout)
+        candidate_layout.insertLayout(
+            candidate_layout.indexOf(self.stocks_table),
+            candidate_status_layout,
+        )
 
         main_splitter.addWidget(candidate_panel)
 

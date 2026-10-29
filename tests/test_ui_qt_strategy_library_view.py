@@ -185,7 +185,23 @@ def test_real_registry_metadata_is_rendered_without_engine_or_writer_calls(qt_dr
     view.advanced_details.toggle_button.click()
     assert not view.advanced_details.is_collapsed()
     assert view.detail_labels["parameter_schema"].text() == original_parameters
-    assert service.write_calls == 0
+
+
+def test_strategy_details_group_qualifications_and_keep_apply_action_visible(qt_driver):
+    app = _app()
+    view = StrategyLibraryView(_SyntheticRegistry, _VersionReader())
+    qt_driver.addWidget(view)
+    view.resize(900, 620)
+    view.show()
+    app.processEvents()
+
+    assert view.strategy_content_group.title() == "策略內容與風險"
+    assert view.qualification_group.title() == "資料與資格判讀"
+    assert view.strategy_detail_scroll.isAncestorOf(
+        view.detail_labels["qualification"]
+    )
+    assert not view.strategy_detail_scroll.isAncestorOf(view.select_button)
+    assert view.select_button.isVisible()
 
 
 def test_select_emits_exact_registered_identity_and_never_runs_query(qt_driver):

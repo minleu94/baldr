@@ -334,3 +334,179 @@ Recommendation 入口將三個研究線索篩選捷徑放在來源頁與結果�
 - Recommendation compact／scale 1.5 MainWindow offscreen 稽核：**46 子頁、0 failures／0 coverage gaps**；截圖核對捷徑提示可見且停用收藏有明確狀態文字。報告 `.pytest-owned-temp/ui_audit_recommendation_compact_round31/`。
 - 必要 Update UI：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。修改 Python source／test `py_compile` 通過；Recommendation workspace scoped mypy **1 source、0 issues**。完整模組 mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤停止，無法檢查其餘模組。
 - 使用者手冊同步說明捷徑查詢順序及收藏停用狀態；原生 GUI／Owner UAT 未執行，這次只改善 Recommendation 研究捷徑與收藏入口的可讀性。
+
+## 2026-10-29 第三十二輪：Workbench 每日旅程移除重複下一步
+
+offscreen 截圖檢視發現，Workbench 每日旅程摘要已列「下一步」，候選來源詳情又重複相同內容，增加首屏文字並切斷候選資訊與 Advice 的閱讀順序。現在候選來源詳情只列候選狀態、品質、來源日期、計數、母體限制與人工研究警語；下一步保留在每日旅程摘要。沒有改變 Advice、來源資格、候選篩選或保存行為。
+
+- Workbench 相關 4 個測試檔：**88 passed**；必要 Update UI：**98 passed**。
+- Update layout validator 因 owned QA runner 啟動前讀到可用實體記憶體低於規定的 8 GiB 而拒絕建立子程序；沒有放寬限制，也沒有執行 validator。
+- 全域可讀性 runner 曾在 scale 1.25 已輸出 Workbench、Market Explore、Recommendation、Backtest 截圖後，於 Watchlist 頁以 `0x80000003` 中止；scale 1.5 未開始，沒有完整矩陣或結論。本輪此 runner 不列為通過。
+- 本輪 `git diff --check` 對四個修改檔通過。Update validator、`py_compile` 與 repo-wide mypy 均在 owned QA runner 的 8 GiB 可用記憶體啟動門檻處被拒絕，未啟動子程序；不得視為已通過。Owner 原生 GUI／UAT 未執行，整體九工作區的操作理解與產品 Gate 仍未完成。
+
+## 2026-10-29 第三十三輪：區分每日主要操作與證據追蹤
+
+延續第 32 輪截圖覆核，旅程摘要內的研究 fallback 也用「下一步」標籤，與每日主要操作並列，造成兩個同名行動入口。現在主要操作保留「下一步」，fallback 後續改標「證據追蹤」，並保留建議動作、回看時間與不可推定機率／權重／買賣結論的限制。此修改只調整呈現標籤。
+
+- Workbench 相關 4 個測試檔：**89 passed**；必要 Update UI：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**。validator 的預設 `output/qa/update_tab/RUN_LOG.txt` 無法寫入，依腳本支援的 `BALDR_UPDATE_TAB_QA_LOG_DIR` 改導至 ignored `.pytest-owned-temp/ui_round33_update_validator_logs/`，隔離資料與 artifact 仍由 validator 自行建立。
+- 修改 Python source／test `py_compile` 通過；Workbench source scoped mypy **1 file、0 issues**。repo-wide mypy 在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇語法錯誤，未能檢查其餘模組。
+- `git diff --check` 通過。Owner 原生 GUI／UAT 未執行；仍需跨工作區實際資料流程的閱讀與操作覆核。
+
+## 2026-10-29 第三十四輪：Recommendation 來源核對與查詢提示分層
+
+Recommendation 首屏把「資料日期、來源版本」藏在泛稱的來源摺疊區，主狀態提示與技術條件捷徑也各自重複說明要再查詢。現在收合標題明列資料日期；主狀態提示引導核對所選來源／資料日並指出查詢按鈕位置；捷徑提示只解釋它會替換技術規則、不更動來源與其他條件，也不自動查詢。查詢、來源核驗、資料資格、收藏及金融邏輯未更動。
+
+- Recommendation workspace＋layout：排除 3 個已確認在本 sandbox 以 `Path.resolve(strict=True)` 對測試暫存路徑遇 `WinError 5` 的 fixture 案例後，**41 passed／3 deselected**。未排除首輪為 **25 passed、1 failed、2 setup errors**；三個非通過均發生在暫存路徑的 strict resolve，沒有把它們記成產品測試通過。
+- Recommendation 真實 MainWindow compact／scale 1.5 offscreen 稽核：**46 子頁、0 failures／0 coverage gaps**；截圖核對來源摺疊標題、來源／資料日核對提示與條件捷徑說明可見。報告 `.pytest-owned-temp/ui_audit_recommendation_round34/`。這是 offscreen 畫面證據，不等於原生 GUI／Owner UAT。
+- 必要 Update UI **98 passed**；Update validator **25 passed／0 failed／4 skipped**。Validator 使用受支援的 `BALDR_UPDATE_TAB_QA_LOG_DIR` 將 log/report 寫入 ignored `.pytest-owned-temp/ui_round34_update_validator_logs/`，隔離資料及輸出仍由 validator 自己產生。
+- 4 個修改 Python source／test `py_compile` 通過；兩個修改 UI source scoped mypy **0 issues**。repo-wide mypy 仍因未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤而停止。
+- 手冊已同步新的收合區名稱與操作順序；Owner 原生 GUI／UAT、其他工作區逐頁資訊易讀性盤點仍未完成。
+
+## 2026-10-29 第三十六輪：Backtest 來源假設入口併入結果導覽
+
+Backtest 結果窗把「顯示完整來源與運算假設」獨立成橫跨結果欄的大型按鈕，讓結果頁選單、結果摘要和補充來源查找之間多出一整列操作區。現在結果頁選單與較低權重的「來源與假設」切換共用同一導覽列；展開的原始假設仍顯示於導覽列下方，僅在摘要／診斷／圖表頁可用，來源仍來自所選回測結果而非未保存草稿。
+
+- `tests/test_ui_qt_backtest_product_layout.py`：**11 passed**；涵蓋導覽列共置、切換文字、原始結果來源及其他結果頁的顯示範圍。
+- Backtest 真實 MainWindow compact／scale 1.5 offscreen 稽核：**110 子頁、0 failures／0 coverage gaps**；截圖 `.pytest-owned-temp/ui_audit_backtest_round35/scale_1_5/geometry_processes/compact/screenshots/scale_1_5/compact/backtest_entry.png` 確認大型按鈕列已移除並併入結果導覽。空結果表仍保留較大可視區，應以有結果情境另行審閱，沒有在本輪改其行為。
+- 必要 Update UI **98 passed**；Update validator **25 passed／0 failed／4 skipped**，驗證輸出導至 ignored `.pytest-owned-temp/ui_round35_update_validator_logs/`。6 個修改 Python source／test `py_compile` 通過；三個修改 UI source scoped mypy **0 issues**；repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因語法錯誤停止。
+- 手冊同步結果頁與「來源與假設」的操作關係；原生 GUI／Owner UAT 未執行。
+
+## 尚未完成的可理解性盤點優先序
+
+幾何稽核覆蓋九工作區，但不證明資料齊全時的閱讀路徑、狀態顏色語意、主要操作是否就近，或新手能否完成流程。後續依下列順序逐項檢查，完成前不把 UI 整體盤點標成通過：
+
+1. **Gate 1 Advice 資料情境**：已用合成 Advice 呈現展開詳情並修正重疊與重複摘要；仍須以 canonical 保存結果走完來源核對、完整理由、人工決定、精確回查與 Journal，Owner 原生 GUI UAT 另由 Owner 執行。
+2. **Recommendation 有結果情境**：合成載入結果已覆核並修正外層捲動被收合來源詳情攔截、保存來源 controls 垂直堆疊過長兩項版面問題；仍須用可核驗保存來源走完核驗、條件捷徑、全域查詢、結果判讀／保存／比較，並檢查未載入／失敗／成功三態。
+3. **Backtest 成功／失敗結果**：已將空摘要與無交易列改成緊湊空態；有交易列才展開表格，offscreen 幾何仍通過。仍須以已載入成功與失敗結果複核摘要／明細、來源假設展開及補充查找的順序；原生 GUI／Owner UAT 未做。
+4. **其餘工作區資料情境**：Watchlist／Portfolio 的空態與載入列已做本地畫面／測試覆核；仍須以有內容的正式來源走主要旅程。Market Explore 已覆核空快照及有資料 synthetic DecisionDeskSnapshot 的摘要、警示、焦點與無產業列狀態；仍缺正式來源旅程及 Owner UAT。Stock Research 已修正無同源價格空卡並需再檢查有內容來源；Update 已修正寬版操作列並仍需正式來源旅程；Runtime 已收斂明細切換並仍需檢查有狀態色的多情境。全域 geometry／scroll coverage 不代替內容覆核。
+
+## 2026-10-29 第三十五輪：Workbench Gate 1 首頁收合空態覆核
+
+完成「下一步」與「證據追蹤」標籤分工後，以真實 MainWindow 對 Workbench compact／scale 1.5 重跑 offscreen 畫面與子頁稽核。空態首屏可同時看到每日旅程、分開的候選來源資訊及 Advice 載入狀態；Advice 不必先展開低優先級的「其他工作區捷徑」區塊。
+
+- MainWindow Workbench compact／scale 1.5：**13 子頁、0 failures／0 coverage gaps**；截圖 `.pytest-owned-temp/ui_audit_workbench_round34/scale_1_5/geometry_processes/compact/screenshots/scale_1_5/compact/workbench_entry.png`。
+- 這次截圖是「等待工作台資料載入」空態；它確認頁面閱讀層級與 Advice 入口位置，不驗證有資料 Advice、來源詳情或研究決定的原生 GUI 操作。Owner UAT 與載入資料情境的實際閱讀仍待完成。
+
+## 2026-10-29 第三十七輪：Gate 1 Advice 展開詳情高度與操作密度
+
+載入合成 Advice 後，展開卡片的判讀區重複顯示一份摘要；完整理由與機率來源按鈕橫跨整列；更關鍵的是詳情面板沒有把展開後高度回報給候選卡，來源文字、入口及研究決定會互相壓疊。現在卡片模式只保留卡面摘要，詳情操作改為緊湊並列；展開時依內容回報面板高度，讓外層工作台捲動承載後續來源與研究決定區，決定按鈕也維持靠左分組。表格選取模式仍顯示獨立摘要。沒有更動 Advice、來源資格、研究保存或讀回契約。
+
+- Advice／Workbench 回歸（首頁、Workbench view、guided flow、Advice contract）：**89 passed**；必要 Update UI：**98 passed**；Update validator：**25 passed／0 failed／4 skipped**，輸出導至 ignored `.pytest-owned-temp/ui_round38_update_validator_logs/`。
+- 以正式 QSS 與合成 Advice DTO 的載入畫面檢視，展開詳情高度由 368 增至 617 logical px；判讀文字結束後才接來源區，沒有再壓疊；摘要只留卡面一次，兩個判讀入口並列。截圖 `.pytest-owned-temp/gate1_advice_detail_round37.png` 及 `gate1_advice_detail_screen_round37.png`。這是合成資料與 offscreen 畫面，不核驗 canonical 來源或研究紀錄端到端，也不是 Owner UAT。
+- Workbench compact／scale 1.5 MainWindow offscreen 稽核：**13 子頁、0 failures／0 coverage gaps**；scoped mypy **0 issues**，修改 Python 檔 `py_compile` 通過。必要 repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因語法錯誤停止。`git diff --check` 通過；Git 只提示兩份 Markdown 會由 LF 轉 CRLF，未列 whitespace error。
+- 手冊已同步摘要去重及緊湊詳情入口；canonical 結果逐欄核驗、真實來源至 Journal 的完整端到端仍待執行，不能由合成畫面推定 Gate 1 或 Owner UAT 通過。
+
+## 2026-10-29 第三十八輪：Recommendation 成功結果頁捲動與保存操作列
+
+合成成功結果畫面暴露兩個首屏問題：收合的來源詳情內含另一個 `QScrollArea`，被外層判定為巢狀捲動而關掉結果頁捲軸，導致下方結果表與判讀區無法到達；保存來源控制項也曾垂直堆成多列，擠壓結果內容。現在只有實際可見的巢狀捲動區才會取代外層捲動；保存結果分為來源選擇列與操作列，窄版才垂直堆疊，取消讀取只在載入期間顯示。沒有改變來源選擇、推薦執行、保存、資格或金融邏輯。
+
+- Recommendation 成功結果的合成 offscreen 畫面確認外層捲動範圍恢復、結果表可到達、操作列由多列收斂為兩列。此證據只驗版面，不代表 canonical 來源核驗或 Owner UAT。
+- 兩個目標測試檔完整執行為 **41 passed、3 個受 sandbox Temp strict resolve 阻擋**（1 failed、2 setup errors，三者均 `PermissionError: [WinError 5]`）；精確排除這 3 個案例後 **41 passed／3 deselected**。必要 Update UI **98 passed**，Update validator **25 passed／0 failed／4 skipped**；兩個修改 UI source scoped mypy **0 issues**，Python source/test `py_compile` 與 `git diff --check` 通過。Repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因語法錯誤停止。
+- 使用者手冊已同步來源選擇／操作列分組、窄版排列與結果外層捲動提示；完整保存來源到結果判讀／比較的真實資料旅程仍待覆核。其他工作區、原生 GUI／Owner UAT 與全程式閱讀理解檢查尚未完成。
+
+同輪補查 Backtest 合成結果頁發現，當次摘要為空時的文字框與無交易資料表仍各自佔據大塊空間，將交易細節推到下方。現在空摘要框收起，長摘要最高 320 logical px 並保留框內捲動；無交易列時表格改為一行空態，有列才顯示可捲動的交易表。這只改版面呈現，不改資料或交易邏輯。
+
+- Backtest 空態／長摘要／有列切換測試加 Backtest product layout：**12 passed**。完整 `tests/test_ui_qt_backtest_layout.py` 因原生 `QWebEngineView` 初始化在 `fast_chart_widget.py:195` 觸發 Windows fatal exception `0x80000003`，尚未完成；略過首個觸發後第二個圖表初始化測試仍觸發相同例外，因此不把完整 suite 記為通過。
+- MainWindow compact／scale 1.5 offscreen 幾何：**19 頁、0 failures／0 coverage gaps**。截圖 `.pytest-owned-temp/ui_audit_backtest_summary_round38c/scale_1_5/geometry_processes/compact/screenshots/scale_1_5/compact/backtest_entry.png` 確認空交易明細只留一行提示。已有合成保存結果截圖確認有資料表格仍能顯示列，但不是本次修改後的成功保存讀回或 Owner UAT。
+- 本輪 Backtest Python source／test `py_compile`、兩個 Backtest UI source scoped mypy 與 `git diff --check` 通過；repo-wide mypy 同樣在未修改 T164 檔案語法錯誤停止。
+
+## 2026-10-29 第三十九輪：Watchlist／Portfolio 空態與候選列閱讀
+
+檢視兩個工作區的窄版 offscreen 畫面與空態程式路徑後，沒有發現需要再加一組空面板或重排按鈕的證據：Watchlist 在載入中、讀取失敗、已載入空清單和搜尋無命中時分別顯示未知／零列狀態，載入列仍有清楚的候選摘要和操作群；Portfolio 在零持倉時保留「活躍持倉 0 檔」及未讀取／未知說明並隱藏持倉表，有列才顯示表格。Portfolio 的破壞性清空動作屬進階區，非預設主列。沒有更動這兩個工作區。
+
+- Watchlist empty/missing/unavailable 與已載入候選搜尋、Portfolio 空 DTO 後恢復持倉列、Paper 空態及分點明細空／有列共五個針對性測試：**5 passed**。
+- 既有 compact／scale 1.5 offscreen 截圖供空態版面覆核；Watchlist 符合計數和 Portfolio table visibility 另由上述程式與測試驗證。這不是正式資料驗證或 Owner UAT；兩工作區的 canonical 有內容旅程仍需逐項覆核。
+- 下一項盤點轉 Stock Research；Update、Runtime 的資料情境仍待檢查。
+
+## 2026-10-29 第四十輪：Market Explore 無產業列時收起空操作列
+
+以每日決策完整合成摘要檢視首屏及捲動底部：摘要、主結論、市況廣度、焦點及完整市場資料的層級可辨；但在可比產業資料缺件時，層級選單仍呈空白框，領先／落後定位按鈕雖停用卻仍佔一列。現在沒有產業列時隱藏空層級選單與整列不可用定位控制；資料摘要仍保留 `Unknown` 及非 0 限制。有列時恢復選單與定位列；全 Unknown 群組保留 Unknown 說明及群組切換。沒有改計算、來源或資格邏輯。
+
+- `tests/test_ui_qt_decision_desk_view.py` 的含零／未知、多群組定位、無來源列清空與 all-unknown／partial-unknown 三個相關案例：**3 passed**。
+- 以正式 QSS、合成 DecisionDeskSnapshot 在 1366×768 offscreen 檢視載入首屏、警示展開、焦點展開與捲動底部。捲動底部確認缺件時只保留產業標題與 Unknown 摘要，沒有空選單／停用定位列；這不是正式來源或 Owner UAT。
+- 使用者市場手冊已說明無列、全 Unknown、有可比值三種呈現差異。其他工作區與 Market Explore 的真人操作仍待驗收。
+
+## 2026-10-29 第四十一輪：個股研究無同源價格時收合空圖卡
+
+個股研究合成載入畫面在價格來源／日期核驗失敗時，仍把沒有圖表的價格卡與五問摘要等高並列；未選股票時也預留空卡。卡片內的限制文字雖然正確，過大的空白區讓它看起來像尚未載入完成。現在只有有同源可核驗價格時才顯示圖表卡；沒有價格、核驗失敗或圖表無法呈現時，將價格及報酬狀態收合成五問摘要下方的一條訊息。未選股／切換中也用同一位置提示狀態。資料來源、價格投影、報酬計算和資格完全未改。
+
+- 個股報告與摘要測試：**101 passed／1 deselected**，涵蓋未載入、股票身份不符、同來源價格缺件及可用價格圖表狀態切換。獨立重跑該 MainWindow ML registry 注入測試仍因隔離資料／輸出根目錄下的 `MLResearchOutputBoundaryError` 而得到 `registry is None`；首次使用系統 Temp 時另出現 Watchlist 原子替換 `WinError 5`。這個既有整合案例不因其他 UI 測試通過而視為已驗。
+- 真 MainWindow compact／scale 1.5 offscreen 幾何與捲動稽核：**1 工作區、0 errors／0 coverage gaps**；畫面複核確認未選股時不再預留並排空價格卡，狀態訊息位於五問摘要下方。輸出 `.pytest-owned-temp/ui_audit_stock_research_round41/`。這只驗版面與合成服務狀態，不等於有資料研究旅程、正式來源核驗或 Owner UAT。
+- 必要 Update UI **98 passed**、Update validator **25 passed／0 failed／4 skipped**；Stock Research view scoped mypy **0 issues**，修改 Python 檔 `py_compile` 與 `git diff --check` 通過。測試檔本身有既有型別錯誤，不納入 scoped mypy 通過宣稱。repo-wide mypy 仍因未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤而停止。整體盤點仍需繼續檢查 Stock Research 有內容操作、Update／Runtime 與其他工作區的真實資料旅程。
+
+## 2026-10-29 第四十二輪：資料更新寬版操作列收斂
+
+資料更新看板的寬版「立即操作」曾將快速更新、安全更新和狀態檢查三鍵按不同比例拉滿整列，按鈕重量壓過資料影響摘要與來源卡；下方唯讀時間軸、候選、P0 與 readiness 明細也都是整列大按鈕。現在寬版主要操作依文字自然寬度靠左排列，窄版保留滿寬直向操作以維持可點性；下方唯讀明細使用靠左、依狀態標示「展開／收合」的短文字入口。底部伸展空間保留作為剩餘高度承接，不再移除造成其他內容被垂直拉開。更新流程、按鈕作用、互斥與資料判讀完全未改。
+
+- `tests/test_ui_qt_update_view_workbench.py`：**99 passed**，含寬／窄版主操作按鈕、唯讀明細入口尺寸策略與展開狀態回歸。必要 Update validator：**25 passed／0 failed／4 skipped**，最終本輪 log/report 導至 `.pytest-owned-temp/ui_round44_update_validator_logs/`。
+- MainWindow Update compact／scale 1.5 offscreen 稽核：**1 工作區、0 errors／0 coverage gaps**；首屏截圖 `.pytest-owned-temp/ui_audit_update_round42c/scale_1_5/geometry_processes/compact/screenshots/scale_1_5/compact/update_entry.png` 與底部 `.pytest-owned-temp/ui_audit_update_round42d/scale_1_5/geometry_processes/compact/screenshots/scale_1_5/compact/update_scrollbottom.png` 確認主要操作靠左、唯讀明細不再拉滿整列。寬版畫面中的摘要、卡片與折疊診斷仍需依正式來源完成資訊閱讀覆核；未點擊更新，未做 Owner UAT。
+- Update view scoped mypy **0 issues**；Stock Research／Update 修改 Python 檔 `py_compile` 通過，`git diff --check` 通過（Git 只有既有 fsmonitor IPC error 訊息與 LF→CRLF 提示）。repo-wide mypy 仍受未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻擋。全程 UI 盤點仍在進行。
+
+## 2026-10-29 第四十三輪：Runtime 唯讀明細控制文字收斂
+
+Runtime 頁三個唯讀明細切換原以「展開／收合」及整列按鈕呈現，在排程狀態與資料來源診斷之間形成第二層寬操作區。現在入口靠左依內容寬度排列，文案隨狀態明確切換「展開：…／收合：…」，tooltip 和可存取名稱說明只切換明細可見性，不重新讀取或啟動工作。資料狀態分布、分組、篩選及健康判讀不變。
+
+- `tests/test_ui_qt_runtime_view.py`：**26 passed**，涵蓋開關文字、窄版主要版面及既有操作／治理事件呈現。
+- Runtime MainWindow compact／scale 1.5 offscreen 幾何與捲動稽核：**1 工作區、0 errors／0 coverage gaps**；截圖 `.pytest-owned-temp/ui_audit_runtime_round43b/scale_1_5/geometry_processes/compact/screenshots/scale_1_5/compact/runtime_entry.png` 確認唯讀明細切換按鈕已靠左收斂；沒有啟動排程或治理工作。必要 Update UI **99 passed**，validator **25 passed／0 failed／4 skipped**；三個修改 UI source scoped mypy **0 issues**，六個 Python source／test `py_compile` 通過，`git diff --check` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的既有語法錯誤停止。Owner UAT 未做。
+
+## 2026-10-29 第四十四輪：Advice 詳情閱讀順序與來源目的地
+
+Advice 展開詳情原先把共用判讀、來源證據、作者說明及原始理由連成長段文字，三個回查入口也未在按鈕上指出目的地。現在詳情先列股票、推薦結果 ID、決策日與行情資料日，再依序標記判讀限制、同筆逐股來源、選填作者說明與原始理由；來源入口標出「今日總覽」「綜合選股」「研究紀錄與覆盤」目的地。詳情文字框可視高度調整為 200–480 px，降低內層捲動。保存、讀取、導航與資格邏輯未變。
+
+- `tests/test_workbench_advice_contract.py`：**16 passed**；必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round44_advice_detail_validator_logs/VALIDATION_REPORT.md`。Workbench MainWindow compact／scale 1.5 offscreen 幾何與捲動稽核：**13 子頁、0 failures／0 coverage gaps**，報告 `.pytest-owned-temp/ui_advice_detail_round44/report.md`。修改 source／test `py_compile` 通過，Workbench view targeted mypy **0 issues**。repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇既有語法錯誤而停止；`git diff --check` 通過；Git 輸出既有 fsmonitor IPC 與 LF→CRLF 提示，沒有 whitespace error。
+- 此輪只核對 Advice 詳情的合成 DTO／介面契約；不代表已核驗正式資料來源或完成 Owner UAT。整體 UI 盤點仍進行中。
+## 2026-10-29 第四十五輪：綜合選股來源詳情身份與長文閱讀
+
+使用者提供的來源詳情含 result ID、名冊契約／artifact hash、產業指數 rowset 證據與 PIT 限制；原面板在完整核驗區未先標本筆 result ID，且內層來源區上限 220 px，容易失去推薦身份並反覆捲動。現在完整來源區開頭列精確保存推薦 ID，可視高度上限提高至 420 px；保留逐項來源、hash、時間狀態與 unknown 提示，不改任何核驗／資格計算。
+
+- `tests/test_ui_qt_personal_recommendation_choice.py::test_company_source_display_uses_only_the_matching_sealed_event`：**1 passed**。整檔測試 **22 passed／12 failed**；失敗為 Windows sandbox 系統 Temp 的 atomic replace/hardlink 權限錯誤，以及 learning root `unsafe_or_unreadable`，不是本次來源顯示斷言；此整檔不可列通過。必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**，`.pytest-owned-temp/ui_round45_update_validator_logs/VALIDATION_REPORT.md`。兩個 UI source scoped mypy **0 issues**；修改 4 檔 `py_compile` 通過，`git diff --check` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。
+- 這輪只呈現保存身份並增加閱讀高度；產業指數與公司名冊來源仍維持既有未知／未核驗狀態，不代表資料資格已通過。
+## 2026-10-29 第四十六輪：研究歷史查找回饋與保存持續性
+
+研究紀錄頁可由 Advice 以 result ID 直達，但搜尋區沒有直接說明歷史不依賴今日候選；少於 500 筆時，ID 篩選成空表也沒有清楚的零符合狀態。現在搜尋區直接說明 Journal 保存持續性與完整 ID 用法；placeholder 明示完整 result ID；狀態分開描述目前清單的符合數、完整 Journal 搜尋中／結果、完整已載入歷史的零符合。
+
+- `tests/test_ui_qt_research_timeline_view.py`：**17 passed**；`tests/test_cross_page_decision_journey_mainwindow.py::test_actual_mainwindow_cross_page_decision_journey_round_trip`：**1 passed**，覆核 Workbench Advice 帶 exact result ID 導航至 Journal、讀回決定與同筆身份。必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**，`.pytest-owned-temp/ui_round46_update_validator_logs/VALIDATION_REPORT.md`。ResearchTimeline scoped mypy **0 issues**，本輪 6 個修改 Python 檔 `py_compile` 通過，`git diff --check` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。
+- 此輪只改搜尋提示及唯讀狀態文字，未修改 Journal 查詢、保存或排序契約；真實 Owner UAT 仍待執行。
+## 2026-10-29 第四十七輪：Recommendation／來源流程回歸盤點
+
+綜合選股來源詳情會先標本筆 `result_id`，展開來源區的可視上限 420 px。Recommendation 寬版／窄版操作與空態排版回歸 **16 passed**；完整來源顯示專項 **1 passed**，涵蓋保存 result ID、unknown／PIT 限制、摘要／詳情切換。統一選股工作區整檔在系統 Temp 與 workspace basetemp 兩種隔離位置都各得 **25 passed／1 failed／2 errors**；三個非通過都在 `Path.resolve(strict=True)` 的 sandbox 權限限制（系統 Temp 或 workspace temp subdirectory），不能列全檔通過。Recommendation source scoped mypy、4 檔 py_compile 與 `git diff --check` 在前輪通過；必要 Update UI／validator 最新收據見第 46 輪。來源資料與資格邏輯不變，成功結果含真實來源的 Owner UAT 尚未完成。
+## 2026-10-29 第四十八輪：共用次要文字對比修正
+
+共用 theme 的 `text_muted=#788496` 在最亮的共用底色 surface_3 (`#223047`) 只有 **3.50:1**，低於一般文字 4.5:1；次要、未知與中性說明在部分卡片上因此偏灰。現在調整為 `#909aaa`，於 app_bg／surface_1／surface_2／surface_3 的最低對比為 **4.67:1**；功能色與市場方向色不變。新增共用文字 token 對比回歸，防止之後再次低於門檻。
+
+- `tests/test_ui_qt_theme.py`：**14 passed**；必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**，`.pytest-owned-temp/ui_round48_theme_validator_logs/VALIDATION_REPORT.md`。
+- 4 個修改 UI source targeted mypy **0 issues**；本輪 8 個修改 Python source／test `py_compile` 通過；`git diff --check` 通過。repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 遇既有語法錯誤而停止。
+- 對比測試只核對共用文字與四種 theme surface，未取代其他各頁的色彩語意盤點、原生 GUI 視覺覆核或 Owner UAT。
+
+## 2026-10-29 第四十九輪：Backtest 執行錯誤留在結果工作區
+
+Backtest worker 直接回報錯誤時，原流程只顯示一次 modal；關閉後摘要區仍空白，錯誤原因沒有留在使用者正在查看的結果工作區。現在錯誤會持續顯示於「實驗摘要」，明確標示沒有可判讀／可保存結果，並停用保存、匯出與升級入口；仍保留短錯誤提示。結果失敗 DTO 的原隔離路徑與交易明細空態不變，沒有改回測計算或資料來源。
+
+- `tests/test_ui_qt_backtest_trade_diagnostics.py`、`tests/test_ui_qt_backtest_product_layout.py`：**43 passed**。必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round49_validator_logs/VALIDATION_REPORT.md`。Backtest view scoped mypy **0 issues**、source/test `py_compile` 與 `git diff --check` 通過。Repo-wide mypy 因未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 既有語法錯誤停止。
+- 已同步操作指南，提醒關閉提示後可在「實驗摘要」讀失敗原因，解決來源／設定後重新執行。本輪驗 worker 錯誤回報及失敗 DTO 的摘要持續性與操作隔離；未完成整個 Backtest 工作區及整體程式 UI 盤點，原生 GUI／Owner UAT 未做。
+
+## 2026-10-29 第五十輪：Backtest 摘要卡與詳情去重
+
+成功回測的卡面已突出原總報酬、原最大回撤、完成配對數及成本假設，但下方文字又重列總報酬、最大回撤與配對數，讓同一結果在相鄰區塊讀兩次。現在 live summary 由卡面承擔這三個數值，文字區保留 SOP／零配對限制、年化／Sharpe／勝率／期望值等其他指標；成交筆數、交易明細列數和期末持股仍在獨立「當次執行觀測」列顯示。一般 `format_backtest_summary` 預設行為保持原樣，只有已有顯眼卡面的 UI 呼叫使用去重選項；未改計算或保存內容。
+
+同一合成成功畫面也顯示頁面選單把使用者可讀的「實驗摘要」再拼上內部 route key，呈現為「實驗摘要 › summary」。現在單層頁面選單只顯示可讀頁名，內部識別仍只留在 route data。
+
+- Backtest formatter、OutcomeSummary、product layout 與 live diagnostics：**57 passed**。隔離成功結果 offscreen 畫面 `.pytest-owned-temp/backtest_summary_round50.png` 已用正式 QSS 檢查：結果列顯示可讀頁名「實驗摘要」、卡面四項重點、文字區 SOP／其他績效／成交觀測；這不是 canonical 結果或 Owner UAT。
+- 必要 Update UI **99 passed**；Update validator **25 passed／0 failed／4 skipped**，`.pytest-owned-temp/ui_round50_validator_logs/VALIDATION_REPORT.md`。三個修改 UI source scoped mypy **0 issues**；六個修改 Python source／tests `py_compile` 通過；`git diff --check` 通過。Repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。原生 GUI／Owner UAT 未做。
+- 操作手冊已同步卡面／詳細文字分工及缺失成交觀測保持未知的閱讀順序。整體 UI 盤點繼續進行；此輪不構成 Backtest 全模式或程式整體驗收。
+
+## 2026-10-29 第五十一輪：Recommendation 資料來源層級與狀態摘要
+
+推薦頁原本用「查看資料與來源細節」和「查看完整來源欄位與核驗資料」兩個近似名稱，沒有說清楚前者是整次分析、後者是所選股票；頂端資料摘要與結果狀態也重複要求先閱讀理由／風險。現在入口分別標成「本次資料日期與來源」及「查看此股完整來源與核驗資料」；摘要只列資料日與候選／未入選筆數，狀態列只說明分析狀態與選列可讀的理由、風險及來源。此輪只調整呈現與引導，不改推薦、來源或資格判定。
+
+- `tests/test_ui_qt_recommendation_layout.py`：**17 passed**，覆核全體資料 context 與逐股來源入口的名稱、顯示狀態，以及摘要／狀態分工。必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round51_update_validator_logs/VALIDATION_REPORT.md`。
+- Recommendation source scoped mypy、修改 Python 檔 `py_compile` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止；`git diff --check` 通過（Git 顯示既有 LF→CRLF 提示）。
+- 操作指南已同步兩個來源入口的層級與狀態摘要分工。畫面證據為合成 UI；資料來源完整端到端、原生 GUI／Owner UAT 與全程式 UI 盤點仍未完成。
+
+## 2026-10-29 第五十一輪：工作區提交前定向回歸核對
+
+提交前重跑目前 dirty UI 變更的部分相關測試。單一 Workbench 四欄桌面／窄版案例 **1 passed**；Decision Desk **55 passed**、Recommendation layout **16 passed**、Research Timeline **17 passed**、Runtime view **26 passed**。個人推薦選擇測試 **8 passed／1 failed**，失敗於 learning `runs` 目錄安全讀取（`runs_directory_unsafe_or_unreadable`），在系統 Temp 與 repo `.tmp_` basetemp 都可重現；個股研究報告測試 **29 passed／1 failed**，失敗案例啟動 MainWindow 時 ML registry 因測試輸出路徑存取錯誤未建立。兩者不是本輪新增的顯示斷言，但仍列為未通過，不能將整檔標示為 pass。
+
+同一進程執行 Backtest 相關測試時，Qt WebEngine 在 `fast_chart_widget.py::_create_webengine_view` 以 Windows native exception `0x80000003` 中止，沒有 pytest 結果；故 Backtest 相關 dirty 測試未獲完整驗收。非 Backtest 的合併 pytest 在遇到長時間 GUI 測試後手動中止，也不列為整體通過。MOPS/data tests 不屬本輪 UI QA；本次結果只支持上述明確列出的定向測試。原生 GUI 與 Owner UAT 尚未執行。
+
+補充受控 runner 結果：Workbench v5 guided + Advice contract changed tests **22 passed**（8 GiB／12-process Job，exit 0、process tree／handles 已關閉）；Backtest 四檔合組於 35.1 秒以 exit code `2147483651`（`0x80000003`）原生中止，stdout 無 pytest 報告，Job 峰值約 1.35 GiB 且程序樹正常關閉。此為測試環境原生中止，不足以定位產品錯誤；仍需拆開不初始化 WebEngine 的 presenter／純 view 測試。使用者手冊 document-control 對既有 `output/trial/` 冷封存連結因 output junction 權限拒絕而未通過路徑檢查；UI QA 文件自身 document-control 通過，不能把外部連結拒絕解讀為手冊內容驗證通過。

@@ -1113,7 +1113,7 @@ class BacktestView(QWidget):
         # 清空結果
         self._mark_research_execution_started()
         self.summary_text.clear()
-        self.trades_table.setModel(None)
+        self.result_panel.set_trades_table_model(None)
 
         if is_batch_mode:
             # 批次模式
@@ -1209,7 +1209,7 @@ class BacktestView(QWidget):
         if details.get("error"):
             self._single_backtest_result_generation = None
             self.summary_text.setPlainText(self._format_summary(report))
-            self.trades_table.setModel(None)
+            self.result_panel.set_trades_table_model(None)
             self._set_single_backtest_save_state(enabled=False, status="回測未完成，不能保存空報告。", tooltip=str(details["error"]))
             self.promote_btn.setEnabled(False)
             if result_panel is not None:
@@ -1249,8 +1249,7 @@ class BacktestView(QWidget):
         trade_list_for_observation = report.details.get('trade_list')
         detail_rows = len(trade_list_for_observation) if isinstance(trade_list_for_observation, pd.DataFrame) else None
         observations = (
-            f"當次執行｜完成進出場配對數：{report.total_trades}；"
-            f"實際成交筆數：{fill_count if fill_count is not None else '未提供'}；"
+            f"當次執行觀測｜實際成交筆數：{fill_count if fill_count is not None else '未提供'}；"
             f"交易明細列數：{detail_rows if detail_rows is not None else '未提供'}；"
             f"期末持股：{str(terminal_position) + ' 股' if terminal_position is not None else '未提供'}。\n"
         )
@@ -1365,12 +1364,12 @@ class BacktestView(QWidget):
             trade_list = report.details['trade_list']
             if len(trade_list) > 0:
                 self.trades_model = PandasTableModel(trade_list)
-                self.trades_table.setModel(self.trades_model)
+                self.result_panel.set_trades_table_model(self.trades_model)
                 self.trades_table.resizeColumnsToContents()
             else:
-                self.trades_table.setModel(None)
+                self.result_panel.set_trades_table_model(None)
         else:
-            self.trades_table.setModel(None)
+            self.result_panel.set_trades_table_model(None)
 
         # 直接從當前結果繪製圖表（不需要保存）
         self._plot_charts_from_report(report)
@@ -1519,10 +1518,34 @@ class BacktestView(QWidget):
         )
 
     def _on_backtest_error(self, error_msg: str):
-        """回測錯誤"""
+        """回測錯誤同時留在結果摘要，避免關閉提示後只剩空白結果區。"""
         self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
+
+        # 執行開始時已清除上一筆結果；失敗原因應留在同一結果工作區，
+        # 並明確關閉保存／升級入口，避免把失敗誤看成可用結果。
+        message = str(error_msg).strip() or "未提供錯誤原因。"
+        self.summary_text.setPlainText(
+            "回測未完成\n"
+            "本次沒有可判讀或可保存的回測結果。\n\n"
+            f"原因：{message}"
+        )
+        self._set_single_backtest_save_state(
+            enabled=False,
+            status="回測未完成；沒有可保存的當次結果。",
+            tooltip=message,
+        )
+        if hasattr(self, "promote_btn") and self.promote_btn is not None:
+            self.promote_btn.setEnabled(False)
+        if hasattr(self, "export_report_btn"):
+            self.export_report_btn.setEnabled(False)
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None:
+            focus_summary = getattr(result_panel, "focus_result_tab", None)
+            if callable(focus_summary):
+                focus_summary("summary")
+        self._show_finished_result_in_windowed_mode()
 
         QMessageBox.critical(self, "回測錯誤", f"執行回測時發生錯誤：\n\n{error_msg}")
 
@@ -1884,8 +1907,8 @@ class BacktestView(QWidget):
         self.parameter_display_names = PARAMETER_DISPLAY_NAMES
 
     def _format_summary(self, report: BacktestReportDTO) -> str:
-        """???????????????? presenter??"""
-        return format_backtest_summary(report)
+        """格式化詳細回測摘要，卡面已列的首要數值不重複顯示。"""
+        return format_backtest_summary(report, prominent_metrics_displayed=True)
 
 
 
@@ -3508,12 +3531,12 @@ class BacktestView(QWidget):
             trade_list = run_data['trade_list']
             if len(trade_list) > 0:
                 self.trades_model = PandasTableModel(trade_list)
-                self.trades_table.setModel(self.trades_model)
+                self.result_panel.set_trades_table_model(self.trades_model)
                 self.trades_table.resizeColumnsToContents()
             else:
-                self.trades_table.setModel(None)
+                self.result_panel.set_trades_table_model(None)
         else:
-            self.trades_table.setModel(None)
+            self.result_panel.set_trades_table_model(None)
 
         if result_panel is not None and hasattr(result_panel, "set_research_mode"):
             mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
@@ -4576,7 +4599,7 @@ class BacktestView(QWidget):
 
             wf_df = pd.DataFrame(wf_data)
             self.trades_model = PandasTableModel(wf_df)
-            self.trades_table.setModel(self.trades_model)
+            self.result_panel.set_trades_table_model(self.trades_model)
             self.trades_table.resizeColumnsToContents()
 
             # 顯示摘要
@@ -5374,12 +5397,12 @@ class BacktestView(QWidget):
             trade_list = run_data['trade_list']
             if len(trade_list) > 0:
                 self.trades_model = PandasTableModel(trade_list)
-                self.trades_table.setModel(self.trades_model)
+                self.result_panel.set_trades_table_model(self.trades_model)
                 self.trades_table.resizeColumnsToContents()
             else:
-                self.trades_table.setModel(None)
+                self.result_panel.set_trades_table_model(None)
         else:
-            self.trades_table.setModel(None)
+            self.result_panel.set_trades_table_model(None)
 
         # 更新圖表並切換到實驗摘要 Tab
         if hasattr(self, 'chart_run_combo') and self.chart_data_service:

@@ -1467,11 +1467,12 @@ class UpdateView(QWidget):
             self.check_status_btn,
         ]
         for button in self._action_buttons:
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
-        actions_layout.addWidget(self.quick_update_all_btn, stretch=2)
-        actions_layout.addWidget(self.safe_update_all_btn, stretch=2)
-        actions_layout.addWidget(self.check_status_btn, stretch=1)
+        actions_layout.addWidget(self.quick_update_all_btn)
+        actions_layout.addWidget(self.safe_update_all_btn)
+        actions_layout.addWidget(self.check_status_btn)
+        actions_layout.addStretch(1)
         all_layout.addStretch()
 
         self.content_stack.addWidget(all_page)
@@ -1652,6 +1653,8 @@ class UpdateView(QWidget):
             self._reflow_grid(self._cards_layout, self._status_cards, columns=2)
             self._reflow_grid(self._candidate_layout, self._candidate_cards, columns=1)
             self._actions_layout.setDirection(QBoxLayout.TopToBottom)
+            for button in self._action_buttons:
+                button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         else:
             self.workbench_layout.setDirection(QBoxLayout.LeftToRight)
             self.nav_list.setFixedWidth(160)
@@ -1661,6 +1664,8 @@ class UpdateView(QWidget):
             self._reflow_grid(self._cards_layout, self._status_cards, columns=3)
             self._reflow_grid(self._candidate_layout, self._candidate_cards, columns=3)
             self._actions_layout.setDirection(QBoxLayout.LeftToRight)
+            for button in self._action_buttons:
+                button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     @staticmethod
     def _add_source_detail_status(layout: QVBoxLayout, key: str, parent: QWidget) -> None:
@@ -4822,10 +4827,21 @@ class UpdateView(QWidget):
     @staticmethod
     def _add_update_details(layout: QVBoxLayout, group: QGroupBox, title: str) -> QPushButton:
         """只收合呈現；既有阻擋條件與操作 callback 保留。"""
-        button = QPushButton(f"展開／收合：{title}")
+        button = QPushButton(f"展開：{title}")
         button.setCheckable(True)
         button.setProperty("variant", "ghost")
-        button.toggled.connect(group.setVisible)
+        button.setAccessibleName(f"展開唯讀明細：{title}")
+        button.setToolTip("只切換唯讀明細的顯示，不會重新檢查或啟動更新。")
+        button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        def set_expanded(expanded: bool) -> None:
+            group.setVisible(expanded)
+            button.setText(f"{'收合' if expanded else '展開'}：{title}")
+            button.setAccessibleName(
+                f"{'收合' if expanded else '展開'}唯讀明細：{title}"
+            )
+
+        button.toggled.connect(set_expanded)
         layout.addWidget(button)
         layout.addWidget(group)
         group.hide()

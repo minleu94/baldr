@@ -44,6 +44,29 @@ def test_format_backtest_summary_preserves_sop_and_metric_order() -> None:
     assert "總報酬率: 10.00%" in summary
 
 
+def test_format_backtest_summary_can_defer_prominent_values_to_summary_cards() -> None:
+    report = BacktestReportDTO(
+        total_return=0.1,
+        annual_return=0.2,
+        sharpe_ratio=1.5,
+        max_drawdown=0.05,
+        win_rate=0.6,
+        total_trades=3,
+        expectancy=0.02,
+        details={"start_date": "2026-01-01", "end_date": "2026-01-31"},
+        validation_status=ValidationStatus.PASS,
+    )
+
+    summary = format_backtest_summary(report, prominent_metrics_displayed=True)
+
+    assert "總交易次數:" not in summary
+    assert "總報酬率:" not in summary
+    assert "最大回撤:" not in summary
+    assert "年化報酬率 (CAGR): 20.00%" in summary
+    assert "夏普比率: 1.50" in summary
+    assert "Phase 3.5 SOP 驗證" in summary
+
+
 def test_summary_zero_pairs_are_explicit_without_changing_trade_count() -> None:
     report = BacktestReportDTO(
         total_return=0, annual_return=0, sharpe_ratio=0, max_drawdown=0,

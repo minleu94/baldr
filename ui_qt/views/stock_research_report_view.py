@@ -1118,11 +1118,16 @@ class StockResearchReportView(QWidget):
         self._product_layout_enabled = True
         self.tabs.tabBar().hide()
         self.section_navigation_row.show()
-        self.overview_price_group.show()
         self._sync_stock_search_controls()
         self._arrange_overview()
         if self._loaded_report is not None:
             self._render_overview_chart(self._loaded_report)
+        else:
+            self.overview_price_group.hide()
+            self.overview_price_status_label.setText(
+                "尚未載入個股報告。選取股票並載入後，這裡會顯示同來源價格與報酬研究狀態。"
+            )
+            self.overview_price_status_label.show()
         self._sync_section_selector(self.tabs.currentIndex())
 
     def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
@@ -1247,6 +1252,23 @@ class StockResearchReportView(QWidget):
             self.overview_chart_caption.setText(
                 "來源或日期核對失敗；不顯示其他版本價格。請查看價格與技術章節。"
             )
+            self.overview_price_group.hide()
+            self.overview_price_status_label.setText(
+                self.overview_chart_caption.text() + "\n" + self.overview_return_label.text()
+            )
+            self.overview_price_status_label.show()
+            return
+        if not payload.price_points:
+            if self.overview_chart is not None:
+                self.overview_chart.hide()
+            self.overview_chart_caption.setText(
+                "這份研究沒有可核驗價格；不借用最新行情補圖。"
+            )
+            self.overview_price_group.hide()
+            self.overview_price_status_label.setText(
+                self.overview_chart_caption.text() + "\n" + self.overview_return_label.text()
+            )
+            self.overview_price_status_label.show()
             return
         try:
             if self.overview_chart is None:
@@ -1263,8 +1285,15 @@ class StockResearchReportView(QWidget):
             self.overview_chart_caption.setText(
                 "圖表目前無法呈現；請到價格與技術章節查看同來源精確價格表。"
             )
+            self.overview_price_group.hide()
+            self.overview_price_status_label.setText(
+                self.overview_chart_caption.text() + "\n" + self.overview_return_label.text()
+            )
+            self.overview_price_status_label.show()
             return
         self.overview_chart.show()
+        self.overview_price_status_label.hide()
+        self.overview_price_group.show()
         self.overview_chart_caption.setText(
             (_price_chart_range_text(payload.price_points) if payload.price_points
              else "這份研究沒有可核驗價格；不借用最新行情補圖。")
@@ -1363,6 +1392,20 @@ class StockResearchReportView(QWidget):
         self.overview_layout.addWidget(self.overview_price_group, 1)
         self.overview_layout.addWidget(self.summary_focus, 1)
         layout.addLayout(self.overview_layout)
+        self.overview_price_status_label = self._wrapped_label(
+            "選取股票並載入報告後，這裡會顯示同來源價格狀態。"
+        )
+        self.overview_price_status_label.setObjectName("stockResearchOverviewPriceStatus")
+        self.overview_price_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.overview_price_status_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_1}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; padding: 8px;"
+        )
+        self.overview_price_status_label.hide()
+        layout.addWidget(self.overview_price_status_label)
         layout.addWidget(self.summary_questions_toggle)
         self.summary_facets_layout = QHBoxLayout()
         self.summary_facets_layout.setSpacing(6)
@@ -2538,6 +2581,12 @@ class StockResearchReportView(QWidget):
                 self.overview_chart.hide()
         self.overview_chart_caption.setText("尚未載入本股同來源價格。")
         self.overview_return_label.setText("報酬研究：尚無本股可核驗估計；不能判定獲利機率。")
+        if self._product_layout_enabled:
+            self.overview_price_group.hide()
+            self.overview_price_status_label.setText(
+                "正在切換股票；舊股票的價格已清除，等待本股報告讀回。"
+            )
+            self.overview_price_status_label.show()
         self._loaded_context_identity = None
         self._loaded_request_context = None
         self._rendered_report_tabs = set()

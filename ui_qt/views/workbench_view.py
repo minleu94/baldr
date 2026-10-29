@@ -717,7 +717,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_card.setText("所選 Advice 判讀：選取建議列後顯示。")
         self.advice_selection_card.setVisible(False)
         self.advice_selection_detail_layout.addWidget(self.advice_selection_card)
-        self.advice_evidence_heading = QLabel("判讀依據")
+        self.advice_evidence_heading = QLabel("1｜判讀依據")
         self.advice_evidence_heading.setObjectName("adviceEvidenceHeading")
         self.advice_evidence_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.accent}; font-weight: 700; padding-top: 4px;"
@@ -727,15 +727,20 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_presentation_toggle.setObjectName("advicePresentationToggle")
         self.advice_presentation_toggle.setProperty("variant", "ghost")
         self.advice_presentation_toggle.setCheckable(True)
+        self.advice_presentation_toggle.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         self.advice_presentation_toggle.setAccessibleName("展開完整判讀與原始理由")
         self.advice_presentation_toggle.toggled.connect(
             self._toggle_advice_presentation_detail
         )
-        self.advice_selection_detail_layout.addWidget(self.advice_presentation_toggle)
         self.advice_lineage_button = QPushButton("展開校準機率來源")
         self.advice_lineage_button.setObjectName("adviceLineageButton")
         self.advice_lineage_button.setProperty("variant", "ghost")
         self.advice_lineage_button.setCheckable(True)
+        self.advice_lineage_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         self.advice_lineage_button.setEnabled(False)
         self.advice_lineage_button.setAccessibleName("展開校準機率來源")
         self.advice_lineage_button.setToolTip(
@@ -743,7 +748,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "不會由排名分數計算機率。"
         )
         self.advice_lineage_button.toggled.connect(self._toggle_advice_lineage)
-        self.advice_selection_detail_layout.addWidget(self.advice_lineage_button)
+        advice_evidence_actions = QHBoxLayout()
+        advice_evidence_actions.setContentsMargins(0, 0, 0, 0)
+        advice_evidence_actions.setSpacing(6)
+        advice_evidence_actions.addWidget(self.advice_presentation_toggle)
+        advice_evidence_actions.addWidget(self.advice_lineage_button)
+        advice_evidence_actions.addStretch(1)
+        self.advice_selection_detail_layout.addLayout(advice_evidence_actions)
         self.advice_presentation_detail = QPlainTextEdit(
             self.advice_selection_detail_panel
         )
@@ -752,11 +763,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_presentation_detail.setLineWrapMode(
             QPlainTextEdit.LineWrapMode.WidgetWidth
         )
-        self.advice_presentation_detail.setMinimumHeight(120)
-        self.advice_presentation_detail.setMaximumHeight(240)
+        self.advice_presentation_detail.setMinimumHeight(200)
+        self.advice_presentation_detail.setMaximumHeight(480)
         self.advice_presentation_detail.setAccessibleName("Advice 完整判讀詳情")
         self.advice_presentation_detail.setAccessibleDescription(
-            "唯讀詳情文字區；內容較長時可使用垂直捲軸閱讀完整判讀與來源追溯。"
+            "唯讀詳情文字區；依序列出本筆身份、判讀依據、來源與限制。"
+            "內容較長時可使用垂直捲軸閱讀。"
         )
         self.advice_presentation_detail.setStyleSheet(
             f"QPlainTextEdit {{ background: {MIDNIGHT_ANALYST.surface_2}; "
@@ -771,7 +783,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_presentation_detail.setVisible(False)
         self.advice_selection_detail_layout.addWidget(self.advice_presentation_detail)
 
-        self.advice_source_heading = QLabel("原始結果與來源")
+        self.advice_source_heading = QLabel("2｜核對原始結果與每日來源")
         self.advice_source_heading.setObjectName("adviceSourceHeading")
         self.advice_source_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.accent}; font-weight: 700; padding-top: 4px;"
@@ -780,18 +792,19 @@ class UnifiedDecisionWorkbenchView(QWidget):
         source_actions = QHBoxLayout()
         source_actions.setContentsMargins(0, 0, 0, 0)
         source_actions.setSpacing(6)
-        self.advice_daily_source_button = QPushButton("查看本次來源與篩選排除")
+        self.advice_daily_source_button = QPushButton("今日總覽｜每日來源與排除")
         self.advice_daily_source_button.setObjectName("adviceDailySourceButton")
         self.advice_daily_source_button.setProperty("variant", "secondary")
         self.advice_daily_source_button.setToolTip(
-            "跳到同一筆每日推薦的來源／篩選摘要；只在 result ID、股票與日期吻合時提供。"
+            "跳到「今日總覽」同一筆推薦的每日來源／篩選摘要；"
+            "只在 result ID、股票與日期吻合時提供。"
         )
         self.advice_daily_source_button.clicked.connect(
             self._open_selected_advice_daily_source_details
         )
         self.advice_daily_source_button.hide()
         source_actions.addWidget(self.advice_daily_source_button)
-        self.advice_source_result_button = QPushButton("回查這筆保存推薦結果")
+        self.advice_source_result_button = QPushButton("綜合選股｜保存推薦結果")
         self.advice_source_result_button.setObjectName("adviceSourceResultButton")
         self.advice_source_result_button.setProperty("variant", "secondary")
         self.advice_source_result_button.setToolTip(
@@ -806,7 +819,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         source_actions.addStretch(1)
         self.advice_selection_detail_layout.addLayout(source_actions)
 
-        self.advice_author_heading = QLabel("策略作者說明（選填）")
+        self.advice_author_heading = QLabel("3｜策略作者說明（選填）")
         self.advice_author_heading.setObjectName("adviceAuthorHeading")
         self.advice_author_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; font-weight: 600; padding-top: 2px;"
@@ -826,7 +839,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_contract_backtest_button.setProperty("variant", "ghost")
         self.advice_selection_detail_layout.addWidget(self.advice_contract_backtest_button)
 
-        self.advice_decision_heading = QLabel("研究決定與追蹤")
+        self.advice_decision_heading = QLabel("4｜保存研究決定與後續追蹤")
         self.advice_decision_heading.setObjectName("adviceDecisionHeading")
         self.advice_decision_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.accent}; font-weight: 700; padding-top: 6px;"
@@ -880,6 +893,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             if index < 2:
                 decision_actions.addWidget(button)
+        decision_actions.addStretch(1)
         self.advice_accept_decision_button.clicked.connect(
             lambda: self._save_selected_advice_research_decision("accepted")
         )
@@ -2686,8 +2700,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"候選資料日：{daily.candidate_data_date or '未提供'}｜"
             f"要求檔數：{requested_count}｜降級檔數：{degraded_count}｜缺漏檔數：{missing_count}\n"
             "全市場分母：未提供；以上筆數是候選來源範圍，不代表全市場覆蓋率。\n"
-            f"{reasons} 候選僅供研究，不代表已驗證、可成交或應下單。\n"
-            f"下一步：{next_action}"
+            f"{reasons} 候選僅供研究，不代表已驗證、可成交或應下單。"
         )
         self._sync_daily_candidate_open_controls()
         self.daily_watchlist_button.setEnabled(self.navigate_to_watchlist_callback is not None)
@@ -5175,30 +5188,50 @@ class UnifiedDecisionWorkbenchView(QWidget):
         presentation = self._selected_advice_presentation
         if presentation is None:
             return
-        detail = "共用證據詳情（唯讀）\n" + format_decision_presentation(presentation)
         item = self._selected_advice_row
+        identity_lines = [
+            f"股票：{getattr(item, 'stock_code', '') or presentation.stock_code}"
+        ]
+        for label, attribute in (
+            ("推薦結果 ID", "source_result_id"),
+            ("決策日", "decision_date"),
+            ("行情資料日", "data_as_of_date"),
+        ):
+            value = getattr(item, attribute, None) if item is not None else None
+            identity_lines.append(f"{label}：{value or '未提供'}")
+        sections = [
+            "本筆資料身份（唯讀）\n" + "\n".join(identity_lines),
+            "1｜Advice 判讀與限制（唯讀）\n" + format_decision_presentation(presentation),
+        ]
         if item is not None:
-            detail += (
-                "\n\n策略版本說明（選填；缺漏不阻擋 Advice）\n"
-                + _advice_contract_completeness(item)
-            )
             source_evidence = tuple(getattr(item, "source_evidence", ()) or ())
-            detail += "\n\n保存來源逐股證據\n" + (
-                "\n".join(f"• {value}" for value in source_evidence)
-                if source_evidence
-                else "未提供"
+            sections.extend(
+                (
+                    "2｜這筆保存結果的逐股來源證據\n"
+                    + (
+                        "\n".join(f"• {value}" for value in source_evidence)
+                        if source_evidence
+                        else "未提供"
+                    ),
+                    "3｜策略版本作者說明（選填；缺漏不阻擋 Advice）\n"
+                    + _advice_contract_completeness(item),
+                    "Advice 原始理由／論點\n"
+                    + (
+                        "\n".join(
+                            public_advice_reason(reason)
+                            for reason in self._selected_advice_original_reasons
+                        )
+                        if self._selected_advice_original_reasons
+                        else "未提供"
+                    ),
+                )
             )
-        detail += "\n\nAdvice 原始理由／論點\n" + (
-            "；".join(
-                public_advice_reason(reason)
-                for reason in self._selected_advice_original_reasons
-            )
-            if self._selected_advice_original_reasons
-            else "未提供"
-        )
         if self.advice_lineage_button.isChecked():
-            detail += "\n\n" + format_decision_lineage_detail(presentation)
-        self.advice_presentation_detail.setPlainText(detail)
+            sections.append(
+                "進階｜校準機率與模型來源\n"
+                + format_decision_lineage_detail(presentation)
+            )
+        self.advice_presentation_detail.setPlainText("\n\n".join(sections))
 
     def _toggle_advice_lineage(self, expanded: bool) -> None:
         if expanded and not self.advice_presentation_toggle.isChecked():
@@ -5207,6 +5240,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _toggle_advice_presentation_detail(self, expanded: bool) -> None:
         self.advice_presentation_detail.setVisible(expanded)
+        # 候選卡在 Grid 中展開時，父層可能沿用收合前的卡片高度。
+        # 明確回報展開後的內容高度，讓外層工作台捲動，而不是把後續區塊壓到詳情文字上。
+        self.advice_selection_detail_panel.setMinimumHeight(
+            self.advice_selection_detail_layout.sizeHint().height() if expanded else 0
+        )
+        self.advice_selection_detail_panel.updateGeometry()
         self.advice_presentation_toggle.setText(
             "收合完整判讀與原始理由" if expanded else "展開完整判讀與原始理由"
         )
@@ -5367,7 +5406,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"流動性 Gate：{liquidity_label}（原始值：{liquidity_raw or '未提供'}）\n"
             f"保存來源逐股證據：{source_evidence_text}"
         )
-        self.advice_selection_card.setVisible(True)
+        # 展開卡本身已保留同一筆摘要，避免在完整判讀入口上方重複貼一次。
+        # 表格模式沒有卡面摘要，仍使用此選取摘要提供上下文。
+        self.advice_selection_card.setVisible(not is_card_row)
         self.advice_presentation_toggle.blockSignals(True)
         self.advice_presentation_toggle.setChecked(False)
         self.advice_presentation_toggle.blockSignals(False)
@@ -5553,7 +5594,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             and result_id.strip()
         ):
             self.advice_research_history_link.setText(
-                "到「研究紀錄與覆盤」找這筆"
+                "研究紀錄與覆盤｜查找這筆"
             )
             self.advice_research_history_link.show()
         else:
@@ -6959,7 +7000,7 @@ def _daily_research_fallback_line(packet: ResearchFallbackPacket | None) -> str:
     return "\n".join(
         (
             f"研究 fallback：{user_reason}",
-            f"下一步：{next_step}。再看時間：{revisit}。",
+            f"證據追蹤：{next_step}。再看時間：{revisit}。",
             "目前不能下有效機率、權重或買賣結論。",
         )
     )

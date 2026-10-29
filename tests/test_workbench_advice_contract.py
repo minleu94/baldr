@@ -9,7 +9,14 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDateTimeEdit, QDialog, QFrame, QLabel
+from PySide6.QtWidgets import (
+    QApplication,
+    QDateTimeEdit,
+    QDialog,
+    QFrame,
+    QLabel,
+    QSizePolicy,
+)
 from PySide6.QtCore import QDateTime, Qt
 from PySide6.QtTest import QTest
 
@@ -231,10 +238,13 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     assert view.advice_presentation_detail.isHidden()
     view.advice_presentation_toggle.click()
     detail = view.advice_presentation_detail.toPlainText()
+    assert "本筆資料身份（唯讀）" in detail
+    assert "股票：2330" in detail
+    assert "1｜Advice 判讀與限制（唯讀）" in detail
     assert "適用期間：未提供" in detail
     assert "風險：未提供" in detail
     assert "失效條件：未提供" in detail
-    assert "共用證據詳情（唯讀）" in detail
+    assert "1｜Advice 判讀與限制（唯讀）" in detail
 
 
 def test_advice_cards_show_saved_comparison_fields_and_centralize_shared_notices() -> None:
@@ -422,10 +432,22 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     assert "信心 未提供" in summary_texts
     assert not any(text.startswith("支持理由：") for text in summary_texts)
     assert "同筆來源證據 Alpha" in view.advice_selection_card.toolTip()
-    assert not view.advice_selection_card.isHidden()
+    assert "策略 Advice" in view.advice_selection_card.accessibleDescription()
+    assert view.advice_selection_card.isHidden()
+    assert view.advice_presentation_toggle.parentWidget() is view.advice_selection_detail_panel
+    assert view.advice_lineage_button.parentWidget() is view.advice_selection_detail_panel
+    assert view.advice_presentation_toggle.sizePolicy().horizontalPolicy() == (
+        QSizePolicy.Policy.Fixed
+    )
+    assert view.advice_lineage_button.sizePolicy().horizontalPolicy() == (
+        QSizePolicy.Policy.Fixed
+    )
     assert view.advice_presentation_detail.isHidden()
     view.advice_presentation_toggle.click()
     assert not view.advice_presentation_detail.isHidden()
+    assert view.advice_selection_detail_panel.minimumHeight() >= (
+        view.advice_selection_detail_layout.sizeHint().height()
+    )
     assert view._advice_candidate_detail_hosts[0].isAncestorOf(
         view.advice_accept_decision_button
     )
@@ -575,7 +597,7 @@ def test_advice_selection_card_bounds_height_and_keeps_full_text_reachable() -> 
     )
     _app().processEvents()
     assert view.advice_presentation_detail.isReadOnly()
-    assert view.advice_presentation_detail.maximumHeight() == 240
+    assert view.advice_presentation_detail.maximumHeight() == 480
     assert view.advice_presentation_detail.verticalScrollBar().maximum() > 0
     view.close()
 
@@ -694,10 +716,12 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
     assert not view.advice_source_result_button.isHidden()
     assert not view.advice_daily_source_button.isHidden()
-    assert view.advice_daily_source_button.text() == "查看本次來源與篩選排除"
+    assert view.advice_daily_source_button.text() == "今日總覽｜每日來源與排除"
+    assert view.advice_source_result_button.text() == "綜合選股｜保存推薦結果"
     assert "result_id=" + result_id in view.advice_daily_source_button.toolTip()
     assert not view.advice_research_history_link.isHidden()
     assert "研究紀錄與覆盤" in view.advice_research_history_link.text()
+    assert "查找這筆" in view.advice_research_history_link.text()
     assert view.advice_research_history_link.width() <= (
         view.advice_research_history_link.sizeHint().width() + 2
     )

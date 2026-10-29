@@ -727,6 +727,8 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     view._display_loading_snapshot()
     assert view._industry_strength_rows == ()
     assert view.industry_strength_group_selector.count() == 0
+    assert view.industry_strength_group_selector.isHidden()
+    assert view.industry_strength_navigation.isHidden()
     assert not view.industry_strength_chart_scroll.isVisible()
     assert not view.industry_strength_leading_button.isEnabled()
     assert not view.industry_strength_trailing_button.isEnabled()
@@ -904,6 +906,8 @@ def test_industry_strength_all_unknown_group_keeps_metadata_and_partial_unknown_
 
     assert view.industry_strength_group_selector.isEnabled()
     assert view.industry_strength_group_selector.count() == 2
+    assert not view.industry_strength_group_selector.isHidden()
+    assert not view.industry_strength_navigation.isHidden()
     assert "此群組 5 日與 20 日超額值皆為 Unknown" in view.industry_strength_empty_state.text()
     assert not view.industry_strength_empty_state.isHidden()
     assert view.industry_strength_chart_scroll.isHidden()

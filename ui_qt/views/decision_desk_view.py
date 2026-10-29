@@ -1717,6 +1717,7 @@ class DecisionDeskView(QWidget):
         self.industry_strength_group_selector.blockSignals(True)
         self.industry_strength_group_selector.clear()
         self.industry_strength_group_selector.setEnabled(False)
+        self.industry_strength_group_selector.hide()
         self.industry_strength_group_selector.blockSignals(False)
         self._clear_layout_widgets(self.industry_strength_card_grid)
         self.industry_strength_chart_header.clear()
@@ -1726,6 +1727,7 @@ class DecisionDeskView(QWidget):
         self.industry_strength_trailing_button.setText("定位來源落後")
         self.industry_strength_leading_button.setEnabled(False)
         self.industry_strength_trailing_button.setEnabled(False)
+        self.industry_strength_navigation.hide()
         self.industry_strength_navigation_status.setText(
             "領先／落後定位暫不可用：目前沒有可用快照列。"
         )
@@ -1787,6 +1789,7 @@ class DecisionDeskView(QWidget):
             )
             return
 
+        self.industry_strength_navigation.show()
         self._industry_strength_rows = rows
         self._industry_strength_summary = strength
         self._industry_strength_as_of_date = as_of_date
@@ -1817,6 +1820,7 @@ class DecisionDeskView(QWidget):
                 "選取要比較的產業層級與市場範圍。",
                 Qt.ToolTipRole,
             )
+        self.industry_strength_group_selector.setVisible(bool(group_keys))
         if previous_group in group_keys:
             self.industry_strength_group_selector.setCurrentIndex(group_keys.index(previous_group))
         else:

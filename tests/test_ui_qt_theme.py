@@ -17,6 +17,23 @@ from ui_qt.widgets.info_button import InfoButton
 from ui_qt.main import apply_app_theme
 
 
+def _relative_luminance(color: str) -> float:
+    channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+    linear = [
+        channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+        for channel in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast_ratio(foreground: str, background: str) -> float:
+    luminances = sorted(
+        (_relative_luminance(foreground), _relative_luminance(background)),
+        reverse=True,
+    )
+    return (luminances[0] + 0.05) / (luminances[1] + 0.05)
+
+
 def test_midnight_analyst_tokens_expose_required_palette():
     assert MIDNIGHT_ANALYST.app_bg == "#070b12"
     assert MIDNIGHT_ANALYST.surface_1 == "#101722"
@@ -41,6 +58,24 @@ def test_midnight_analyst_tokens_expose_required_palette():
     assert MIDNIGHT_ANALYST.status_success != MIDNIGHT_ANALYST.market_down
     assert MIDNIGHT_ANALYST.status_error != MIDNIGHT_ANALYST.market_up
     assert MIDNIGHT_ANALYST.table_hover == "#20334a"
+
+
+def test_shared_text_tokens_meet_normal_text_contrast_on_all_surfaces():
+    surfaces = (
+        MIDNIGHT_ANALYST.app_bg,
+        MIDNIGHT_ANALYST.surface_1,
+        MIDNIGHT_ANALYST.surface_2,
+        MIDNIGHT_ANALYST.surface_3,
+    )
+    for foreground in (
+        MIDNIGHT_ANALYST.text_primary,
+        MIDNIGHT_ANALYST.text_secondary,
+        MIDNIGHT_ANALYST.text_muted,
+    ):
+        assert all(
+            _contrast_ratio(foreground, background) >= 4.5
+            for background in surfaces
+        ), foreground
 
 
 def test_global_stylesheet_contains_core_qt_selectors():

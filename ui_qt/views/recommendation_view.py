@@ -915,8 +915,8 @@ class RecommendationView(QWidget):
         self._recommendation_narrow = False
         self._recommendation_result_narrow = False
         self._personal_policy_history_narrow = False
-        self._recommendation_saved_result_narrow = False
         self._recommendation_saved_title_narrow = False
+        self._recommendation_saved_controls_narrow = False
 
         # 策略配置狀態
         self.strategy_config = self._get_default_config()
@@ -2932,14 +2932,14 @@ class RecommendationView(QWidget):
         compact_saved_readback = (
             saved_readback and not narrow and viewport_width >= 720
         )
-        saved_result_narrow = result_narrow and not compact_saved_readback
+        saved_controls_narrow = viewport_width < 560
         saved_title_narrow = result_narrow and not compact_saved_readback
         if (
             not force
             and narrow == self._recommendation_narrow
             and result_narrow == self._recommendation_result_narrow
             and history_narrow == self._personal_policy_history_narrow
-            and saved_result_narrow == self._recommendation_saved_result_narrow
+            and saved_controls_narrow == self._recommendation_saved_controls_narrow
             and saved_title_narrow == self._recommendation_saved_title_narrow
         ):
             if saved_readback:
@@ -2949,7 +2949,7 @@ class RecommendationView(QWidget):
         self._recommendation_narrow = narrow
         self._recommendation_result_narrow = result_narrow
         self._personal_policy_history_narrow = history_narrow
-        self._recommendation_saved_result_narrow = saved_result_narrow
+        self._recommendation_saved_controls_narrow = saved_controls_narrow
         self._recommendation_saved_title_narrow = saved_title_narrow
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
         self.result_title_layout.setDirection(
@@ -2960,7 +2960,7 @@ class RecommendationView(QWidget):
         self.result_scroll.setMinimumWidth(0)
         self._set_result_row_directions(
             result_narrow,
-            saved_result_narrow=saved_result_narrow,
+            saved_controls_narrow=saved_controls_narrow,
         )
         self._set_personal_policy_history_direction(history_narrow)
         policy_group = getattr(self, "personal_policy_group", None)
@@ -3084,18 +3084,14 @@ class RecommendationView(QWidget):
         self,
         narrow: bool,
         *,
-        saved_result_narrow: bool | None = None,
+        saved_controls_narrow: bool | None = None,
     ) -> None:
         """窄版時將長路徑欄與操作按鈕改為垂直排列，保留可讀寬度。"""
         direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
         saved_direction = (
-            direction
-            if saved_result_narrow is None
-            else (
-                QBoxLayout.TopToBottom
-                if saved_result_narrow
-                else QBoxLayout.LeftToRight
-            )
+            QBoxLayout.TopToBottom
+            if saved_controls_narrow
+            else QBoxLayout.LeftToRight
         )
         for layout_name in (
             "research_context_header_layout",
@@ -3112,10 +3108,11 @@ class RecommendationView(QWidget):
             if row is not None:
                 row.setDirection(direction)
                 row.setSpacing(6)
-        saved_row = getattr(self, "saved_result_row", None)
-        if saved_row is not None:
-            saved_row.setDirection(saved_direction)
-            saved_row.setSpacing(6)
+        for layout_name in ("saved_result_select_row", "saved_result_actions_row"):
+            row = getattr(self, layout_name, None)
+            if row is not None:
+                row.setDirection(saved_direction)
+                row.setSpacing(6)
 
     def _set_personal_policy_history_direction(self, narrow: bool) -> None:
         """依歷史控制項所在結果欄寬度排列選擇器與操作按鈕。"""
@@ -3826,7 +3823,7 @@ class RecommendationView(QWidget):
         context_header = QHBoxLayout()
         self.research_context_header_layout = context_header
         self.research_context_summary_label = QLabel(
-            "判讀前確認：尚未執行推薦分析；執行後會先顯示資料日期、結果數量與限制。"
+            "本次行情資料日與候選筆數會顯示在這裡；展開右側資料來源可核對決策日、Profile 與結果 ID。"
         )
         self.research_context_summary_label.setWordWrap(True)
         self.research_context_summary_label.setAccessibleName("推薦分析資料摘要")
@@ -3837,11 +3834,11 @@ class RecommendationView(QWidget):
         )
         context_header.addWidget(self.research_context_summary_label, stretch=1)
         self.research_context_toggle = QToolButton()
-        self.research_context_toggle.setText("查看資料與來源細節")
+        self.research_context_toggle.setText("本次資料日期與來源")
         self.research_context_toggle.setCheckable(True)
         self.research_context_toggle.setAccessibleName("顯示推薦分析研究上下文細節")
         self.research_context_toggle.setToolTip(
-            "需要追溯時查看 Profile、來源、結果識別碼與資料日期；不會重新執行分析。"
+            "展開可核對本次決策日、資料日、Profile、來源與結果 ID；不會重新執行分析。"
         )
         self.research_context_toggle.toggled.connect(self._toggle_research_context)
         context_header.addWidget(self.research_context_toggle)
@@ -3862,9 +3859,9 @@ class RecommendationView(QWidget):
         self.research_context_label.setVisible(False)
         layout.addWidget(self.research_context_label)
 
-        saved_result_row = QHBoxLayout()
-        self.saved_result_row = saved_result_row
-        saved_result_row.addWidget(QLabel("讀取已保存結果"))
+        saved_result_select_row = QHBoxLayout()
+        self.saved_result_select_row = saved_result_select_row
+        saved_result_select_row.addWidget(QLabel("讀取已保存結果"))
         self.saved_source_combo = QComboBox()
         self.saved_source_combo.setObjectName("savedRecommendationSourceChoice")
         self.saved_source_combo.setAccessibleName("選擇已核驗保存推薦來源")
@@ -3872,11 +3869,15 @@ class RecommendationView(QWidget):
         self.saved_source_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.saved_source_combo.addItem("請先讀取可用來源", None)
         self.saved_source_combo.currentIndexChanged.connect(self._on_saved_source_changed)
-        saved_result_row.addWidget(self.saved_source_combo, 1)
+        saved_result_select_row.addWidget(self.saved_source_combo, 1)
         self.refresh_saved_sources_button = QPushButton("讀取可用來源")
         self.refresh_saved_sources_button.setEnabled(self.config is not None)
         self.refresh_saved_sources_button.clicked.connect(self._refresh_saved_sources)
-        saved_result_row.addWidget(self.refresh_saved_sources_button)
+        saved_result_select_row.addWidget(self.refresh_saved_sources_button)
+        layout.addLayout(saved_result_select_row)
+
+        saved_result_actions_row = QHBoxLayout()
+        self.saved_result_actions_row = saved_result_actions_row
         self.load_daily_recommendation_button = QPushButton("載入每日推薦")
         self.load_daily_recommendation_button.setObjectName("loadDailyScheduledRecommendation")
         self.load_daily_recommendation_button.setToolTip(
@@ -3886,11 +3887,12 @@ class RecommendationView(QWidget):
         self.load_daily_recommendation_button.clicked.connect(
             self._load_latest_scheduled_recommendation
         )
-        saved_result_row.addWidget(self.load_daily_recommendation_button)
+        saved_result_actions_row.addWidget(self.load_daily_recommendation_button)
         self.cancel_saved_source_button = QPushButton("取消讀取")
         self.cancel_saved_source_button.setEnabled(False)
+        self.cancel_saved_source_button.setVisible(False)
         self.cancel_saved_source_button.clicked.connect(self._cancel_saved_source_read)
-        saved_result_row.addWidget(self.cancel_saved_source_button)
+        saved_result_actions_row.addWidget(self.cancel_saved_source_button)
         self.saved_result_id_input = QLineEdit()
         self.saved_result_id_input.setObjectName("savedRecommendationResultId")
         self.saved_result_id_input.setPlaceholderText("輸入完整結果 ID；只讀取這一筆")
@@ -3898,7 +3900,7 @@ class RecommendationView(QWidget):
         self.saved_result_id_input.setClearButtonEnabled(True)
         # 保留舊單筆入口 ABI；日常操作由已核驗選項帶入完整 ID。
         self.saved_result_id_input.setVisible(False)
-        saved_result_row.addWidget(self.saved_result_id_input)
+        saved_result_actions_row.addWidget(self.saved_result_id_input)
         self.load_saved_result_button = QPushButton("讀取")
         self.load_saved_result_button.setObjectName("loadSavedRecommendationResult")
         self.load_saved_result_button.setToolTip(
@@ -3908,7 +3910,7 @@ class RecommendationView(QWidget):
         self.load_saved_result_button.clicked.connect(
             self._load_saved_recommendation_result
         )
-        saved_result_row.addWidget(self.load_saved_result_button)
+        saved_result_actions_row.addWidget(self.load_saved_result_button)
         self.saved_research_to_workbench_button = QPushButton("送至 Workbench 作研究")
         self.saved_research_to_workbench_button.setObjectName("savedResearchToWorkbench")
         self.saved_research_to_workbench_button.setProperty("variant", "secondary")
@@ -3920,8 +3922,9 @@ class RecommendationView(QWidget):
         self.saved_research_to_workbench_button.clicked.connect(
             self._send_saved_research_to_workbench
         )
-        saved_result_row.addWidget(self.saved_research_to_workbench_button)
-        layout.addLayout(saved_result_row)
+        saved_result_actions_row.addWidget(self.saved_research_to_workbench_button)
+        saved_result_actions_row.addStretch(1)
+        layout.addLayout(saved_result_actions_row)
 
         # 標題和控制欄
         title_layout = QHBoxLayout()
@@ -4012,7 +4015,7 @@ class RecommendationView(QWidget):
         layout.addLayout(title_layout)
 
         self.result_status_label = QLabel(
-            "結果尚未就緒：執行推薦分析後，先看結果數量、資料品質與風險限制，再決定是否保存或加入觀察。"
+            "尚未分析｜先確認左側策略設定與資料日期，再按「執行推薦分析」。"
         )
         self.result_status_label.setWordWrap(True)
         self.result_status_label.setAccessibleName("推薦分析結果判讀摘要")
@@ -4535,7 +4538,7 @@ class RecommendationView(QWidget):
         detail_group.setMinimumHeight(200)
         detail_layout = QVBoxLayout()
         self.company_source_summary_label = QLabel(
-            "來源核驗狀態會在選取推薦結果後顯示。"
+            "選取一列後，這裡顯示該股票的來源核驗狀態。"
         )
         self.company_source_summary_label.setObjectName(
             "recommendationCompanySourceSummary"
@@ -4553,7 +4556,7 @@ class RecommendationView(QWidget):
         detail_layout.addWidget(self.company_source_summary_label)
         self.company_source_snapshot_details_button = QToolButton()
         self.company_source_snapshot_details_button.setText(
-            "查看完整來源欄位與核驗資料"
+            "查看此股完整來源與核驗資料"
         )
         self.company_source_snapshot_details_button.setObjectName(
             "recommendationCompanySourceDetailsToggle"
@@ -4599,7 +4602,7 @@ class RecommendationView(QWidget):
             "recommendationCompanySourceDetails"
         )
         self.company_source_snapshot_scroll.setWidgetResizable(True)
-        self.company_source_snapshot_scroll.setMaximumHeight(220)
+        self.company_source_snapshot_scroll.setMaximumHeight(420)
         self.company_source_snapshot_scroll.setWidget(
             self.company_source_snapshot_label
         )
@@ -5032,7 +5035,7 @@ class RecommendationView(QWidget):
             label.setVisible(bool(checked))
         toggle = getattr(self, "research_context_toggle", None)
         if toggle is not None:
-            toggle.setText("隱藏資料與來源細節" if checked else "查看資料與來源細節")
+            toggle.setText("收合本次資料日期與來源" if checked else "本次資料日期與來源")
 
     def _toggle_research_actions(self, checked: bool) -> None:
         """展開既有研究與匯出按鈕；動作本身與 handlers 保持不變。"""
@@ -5994,8 +5997,7 @@ class RecommendationView(QWidget):
         self.progress_label.setVisible(True)
         self.result_status_label.setText(
             f"{status_label(execution.status, dimension='research')}；ML來源：{status_label(ml_status)}。"
-            f"找到 {len(recommendations)} 檔候選。先看表格與選取列的理由／風險；"
-            "資料不足時請依提示處理。完成判讀後可保存結果或加入觀察清單。"
+            "選取一列查看完整理由、風險與該股來源證據，再決定是否保存或加入觀察清單。"
         )
         self.result_status_label.setToolTip(
             f"{status_detail(execution.status, dimension='research')}；ML來源：{status_detail(ml_status)}"
@@ -6770,6 +6772,7 @@ class RecommendationView(QWidget):
                     "請檢查同次來源事件並重新產生推薦。"
                 )
         lines = [
+            f"本筆保存推薦結果：result_id={getattr(execution, 'result_id', None) or '未知'}。",
             "一、公司名冊與分類資格",
             f"分類來源：{source_status_label}；{date_line}"
             "僅代表 current_classification_only，PIT eligible=false。",
@@ -7095,6 +7098,7 @@ class RecommendationView(QWidget):
         generation = self._saved_source_list_generation
         self.refresh_saved_sources_button.setEnabled(False)
         self.cancel_saved_source_button.setEnabled(True)
+        self.cancel_saved_source_button.setVisible(True)
         self.result_status_label.setText("正在核驗保存來源；原結果保留。")
 
         def read_sources(cancel_callback=None):
@@ -7175,6 +7179,7 @@ class RecommendationView(QWidget):
             self._saved_source_list_worker = None
             self.refresh_saved_sources_button.setEnabled(self.config is not None)
             self.cancel_saved_source_button.setEnabled(self._saved_result_load_worker is not None)
+            self.cancel_saved_source_button.setVisible(self._saved_result_load_worker is not None)
         worker.deleteLater()
 
     def _cancel_saved_source_read(self) -> None:
@@ -7186,6 +7191,7 @@ class RecommendationView(QWidget):
                 worker.cancel(cooperative=True, wait=False)
         self.result_status_label.setText("已取消保存來源讀取；原選項與結果保留。")
         self.cancel_saved_source_button.setEnabled(False)
+        self.cancel_saved_source_button.setVisible(False)
 
     def _load_latest_scheduled_recommendation(self) -> None:
         """Load the exact result named by the validated daily scheduler pointer."""
@@ -7319,6 +7325,7 @@ class RecommendationView(QWidget):
         self._execution_generation = getattr(self, "_execution_generation", 0) + 1
         self.load_saved_result_button.setEnabled(False)
         self.cancel_saved_source_button.setEnabled(True)
+        self.cancel_saved_source_button.setVisible(True)
         self.execute_btn.setEnabled(False)
         self.result_status_label.setText(
             f"正在讀取單筆已保存結果 {requested_result_id}；目前畫面保留不變。"
@@ -7603,6 +7610,7 @@ class RecommendationView(QWidget):
         if getattr(self, "_saved_result_load_worker", None) is worker:
             self._saved_result_load_worker = None
             self.cancel_saved_source_button.setEnabled(self._saved_source_list_worker is not None)
+            self.cancel_saved_source_button.setVisible(self._saved_source_list_worker is not None)
             button = getattr(self, "load_saved_result_button", None)
             if button is not None:
                 button.setEnabled(self.config is not None)
@@ -8988,19 +8996,16 @@ class RecommendationView(QWidget):
             recommendations = self._current_items()
             result_count = len(recommendations) if recommendations else 0
             if result_count:
-                result_summary = f"候選結果：{result_count} 檔；請先看理由與風險限制"
+                result_summary = f"本次候選：{result_count} 檔"
             elif screening_rows:
-                result_summary = (
-                    f"篩選紀錄：{len(screening_rows)} 檔未入選；僅供研究，不代表推薦"
-                )
+                result_summary = f"篩選列：{len(screening_rows)} 檔未入選（僅供研究，不代表推薦）"
             else:
-                result_summary = "候選結果：尚未產生"
+                result_summary = "候選：尚未產生"
             summary_label.setText(
-                f"判讀前確認：{data_summary}；{result_summary}。"
-                "日期不足時會明示原因與可做動作。"
+                f"{data_summary}｜{result_summary}。"
             )
         label.setText(
-            "研究上下文\n"
+            "本次分析資料與來源\n"
             f"標的：{selected}｜區間：{interval}\n"
             f"決策基準日：{decision_date}｜"
             f"資料日期：{data_date or market_date_note or '未提供'}\n"

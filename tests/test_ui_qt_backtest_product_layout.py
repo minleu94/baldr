@@ -155,6 +155,8 @@ def test_install_flattens_nested_tabs_and_preserves_original_widgets(qt_driver):
     assert original_tabs.tabBar().isHidden()
     assert original_chart_tabs.tabBar().isHidden()
     assert adapter.navigator.findData("charts/權益曲線") >= 0
+    assert adapter.navigator.currentText() == "摘要"
+    assert adapter.navigator.findText("summary") == -1
     assert adapter.select_result("charts/權益曲線")
     assert original_tabs.currentWidget() is host.result_panel._result_tab_widgets["charts"]
     assert original_chart_tabs.currentWidget() is original_page
@@ -210,6 +212,12 @@ def test_assumption_banner_uses_report_and_matching_run_params_not_live_draft(qt
     assert "14.25 bps" in adapter.outcome_summary.values["cost"].text()
     assert "99" not in adapter.outcome_summary.values["cost"].text()
     assert not adapter.draft_status.isHidden()
+    assert adapter.navigator.parentWidget() is adapter.result_toolbar
+    assert adapter.assumption_details_button.parentWidget() is adapter.result_toolbar
+    assert adapter.assumption_details_button.text() == "來源與假設"
+    adapter.assumption_details_button.click()
+    assert adapter.assumption_details_button.text() == "收合來源與假設"
+    assert not adapter.assumption_banner.isHidden()
 
 
 def test_result_parameter_snapshot_is_not_rebound_by_refresh_none(qt_driver):

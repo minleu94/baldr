@@ -427,10 +427,21 @@ class RuntimeView(QWidget):
     @staticmethod
     def _add_details(layout: QVBoxLayout, content: QWidget, title: str) -> QPushButton:
         """保留所有原始明細，只控制可見性。"""
-        button = QPushButton(f"展開／收合：{title}")
+        button = QPushButton(f"展開：{title}")
         button.setCheckable(True)
         button.setProperty("variant", "ghost")
-        button.toggled.connect(content.setVisible)
+        button.setAccessibleName(f"展開唯讀明細：{title}")
+        button.setToolTip("只切換唯讀明細的顯示，不會重新讀取資料或啟動工作。")
+        button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        def set_expanded(expanded: bool) -> None:
+            content.setVisible(expanded)
+            button.setText(f"{'收合' if expanded else '展開'}：{title}")
+            button.setAccessibleName(
+                f"{'收合' if expanded else '展開'}唯讀明細：{title}"
+            )
+
+        button.toggled.connect(set_expanded)
         layout.addWidget(button)
         layout.addWidget(content)
         content.hide()

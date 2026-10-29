@@ -112,7 +112,7 @@ class ResearchTimelineView(QWidget):
         controls.addWidget(self.source_filter)
         self.stock_filter = QLineEdit(self)
         self.stock_filter.setObjectName("researchTimelineStockFilter")
-        self.stock_filter.setPlaceholderText("股票代號或 result ID")
+        self.stock_filter.setPlaceholderText("股票代號或完整 result ID")
         self.stock_filter.setAccessibleName("依股票代號或 result ID 篩選研究紀錄")
         controls.addWidget(QLabel("股票／結果 ID", controls_group))
         controls.addWidget(self.stock_filter, 1)
@@ -121,6 +121,17 @@ class ResearchTimelineView(QWidget):
         self.refresh_button.setAccessibleName("重新讀取研究時間軸")
         controls.addWidget(self.refresh_button)
         root.addWidget(controls_group)
+
+        self.search_hint_label = QLabel(
+            "研究決定會保留在 Journal，不依賴今日 Advice 清單；貼上完整 result ID 可找回同一筆。",
+            self,
+        )
+        self.search_hint_label.setObjectName("researchTimelineSearchHint")
+        self.search_hint_label.setWordWrap(True)
+        self.search_hint_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        root.addWidget(self.search_hint_label)
 
         self.status_label = QLabel("正在讀取原始研究紀錄…", self)
         self.status_label.setObjectName("researchTimelineStatus")
@@ -289,12 +300,28 @@ class ResearchTimelineView(QWidget):
                 else "已達 500 筆清單上限；輸入股票代號或 result ID 可搜尋完整 Journal 歷史。"
             )
             warning = limit_message + (" " + warning if warning else "")
-        if not self._entries:
-            message = (
-                "完整 Journal 歷史中沒有符合的研究紀錄。"
-                if self._pending_search_query
-                else "目前沒有可查看的研究紀錄。"
-            )
+        query = self.stock_filter.text().strip()
+        visible_count = len(self._filtered_entries())
+        if query:
+            if self._pending_search_query == query:
+                message = (
+                    f"完整 Journal 歷史中沒有符合「{query}」的研究紀錄。"
+                    if not self._entries
+                    else f"完整 Journal 搜尋「{query}」找到 {visible_count} 筆研究紀錄。"
+                )
+            elif result.limited:
+                message = (
+                    f"目前已載入的最新紀錄中，「{query}」符合 {visible_count} 筆；"
+                    "正在搜尋完整 Journal 歷史。"
+                )
+            else:
+                message = (
+                    f"完整已載入的研究紀錄中沒有符合「{query}」的資料。"
+                    if visible_count == 0
+                    else f"完整已載入的研究紀錄中，「{query}」符合 {visible_count} 筆。"
+                )
+        elif not self._entries:
+            message = "目前沒有可查看的研究紀錄。"
         else:
             message = f"已讀取 {len(self._entries)} 筆唯讀研究紀錄。"
         if self._selected is not None and not self._selected.result_id:
@@ -378,11 +405,49 @@ class ResearchTimelineView(QWidget):
 
     def _apply_filters(self, *_args: object) -> None:
         self._render_entries()
+        self._update_search_status()
 
     def _stock_filter_changed(self, *_args: object) -> None:
         self._render_entries()
         if self._full_history_limited:
+            self._update_search_status(searching_full_history=True)
             self._search_timer.start()
+        else:
+            self._update_search_status()
+
+    def _update_search_status(self, *, searching_full_history: bool = False) -> None:
+        """明確區分完整歷史的零符合與清單讀取狀態。"""
+
+        result = self.last_result
+        if result is None:
+            return
+        query = self.stock_filter.text().strip()
+        visible_count = len(self._filtered_entries())
+        if query:
+            if searching_full_history:
+                message = (
+                    f"目前已載入的最新紀錄中，「{query}」符合 {visible_count} 筆；"
+                    "正在搜尋完整 Journal 歷史。"
+                )
+            else:
+                message = (
+                    f"完整已載入的研究紀錄中沒有符合「{query}」的資料。"
+                    if visible_count == 0
+                    else f"完整已載入的研究紀錄中，「{query}」符合 {visible_count} 筆。"
+                )
+        elif result.limited:
+            message = (
+                f"已讀取最新 {len(self._entries)} 筆研究紀錄；輸入股票代號或完整 result ID，"
+                "可搜尋完整 Journal 歷史。"
+            )
+        elif self._entries:
+            message = f"已讀取完整歷史 {len(self._entries)} 筆研究紀錄。"
+        else:
+            message = "目前沒有可查看的研究紀錄。"
+        warning = "；".join(result.warnings)
+        if warning:
+            message += " " + warning
+        self.status_label.setText(message)
 
     def _search_full_history(self) -> None:
         if self._closing or not self._full_history_limited:

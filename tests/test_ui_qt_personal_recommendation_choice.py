@@ -1015,6 +1015,7 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
         view._update_company_source_snapshot_display(execution)
         text = view.company_source_snapshot_label.text()
         assert view.company_source_snapshot_label.textFormat() == Qt.TextFormat.PlainText
+        assert "本筆保存推薦結果：result_id=result-1" in text
         assert "一、公司名冊與分類資格" in text
         assert "二、產業指數來源與列觀察" in text
         assert "下一步" in text
@@ -1030,6 +1031,7 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
         assert "不能當作歷史 PIT 成分證據" in summary
         assert "sha256:" + "a" * 64 not in summary
         assert view.company_source_snapshot_scroll.isHidden()
+        assert view.company_source_snapshot_scroll.maximumHeight() == 420
         view.company_source_snapshot_details_button.click()
         assert not view.company_source_snapshot_scroll.isHidden()
         view.company_source_snapshot_details_button.click()

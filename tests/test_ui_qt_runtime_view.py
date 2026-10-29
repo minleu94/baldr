@@ -97,12 +97,18 @@ def test_runtime_scope_note_is_compact_and_content_starts_near_top():
     app()
     view = RuntimeView()
     try:
+        assert view.operations_details_button.text().startswith("展開：")
+        assert (
+            view.operations_details_button.sizePolicy().horizontalPolicy().name
+            == "Fixed"
+        )
         view.operations_details_button.setChecked(True)
         view.scope_label.setText("窄版長範圍說明；" * 16)
         view.resize(390, 420)
         view.show()
         app().processEvents()
 
+        assert view.operations_details_button.text().startswith("收合：")
         assert view.scope_label.wordWrap()
         assert view.scope_label.maximumHeight() > view.scope_label.height()
         assert view.scope_label.height() >= view.scope_label.heightForWidth(

@@ -441,6 +441,17 @@ class BacktestResultPanel(QWidget):
     def trades_model(self, value):
         self._trades_model = value
 
+    def set_trades_table_model(self, model) -> None:
+        self._trades_model = model
+        self.trades_table.setModel(model)
+        has_rows = model is not None and model.rowCount() > 0
+        self.trades_table.setVisible(has_rows)
+        self.trades_empty_status.setVisible(not has_rows)
+        self.trades_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding if has_rows else QSizePolicy.Policy.Maximum,
+        )
+
     @property
     def charts_available(self) -> bool:
         return self._charts_available
@@ -797,6 +808,9 @@ class BacktestResultPanel(QWidget):
         
         # 績效摘要
         summary_group = QGroupBox("實驗摘要")
+        summary_group.setObjectName("backtestExperimentSummary")
+        summary_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.summary_group = summary_group
         summary_layout = QVBoxLayout()
         self.return_basic_pair_button = QPushButton("返回兩策略對照")
         self.return_basic_pair_button.setToolTip("回到剛才選取的兩筆原保存 run；不重跑或重選策略。")
@@ -819,8 +833,13 @@ class BacktestResultPanel(QWidget):
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
         self.summary_text.setMinimumHeight(150)
+        self.summary_text.setMaximumHeight(320)
         self.summary_text.setFont(QFont("Consolas", 9))
         summary_layout.addWidget(self.summary_text)
+        self.summary_text.textChanged.connect(
+            lambda: self.summary_text.setVisible(bool(self.summary_text.toPlainText().strip()))
+        )
+        self.summary_text.hide()
         
         # 單股回測 Excel 匯出按鈕
         btn_layout = QHBoxLayout()
@@ -837,6 +856,9 @@ class BacktestResultPanel(QWidget):
         
         # 交易明細
         trades_group = QGroupBox("交易明細")
+        trades_group.setObjectName("backtestTradeDetails")
+        trades_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        self.trades_group = trades_group
         trades_layout = QVBoxLayout()
         
         self.trades_table = QTableView()
@@ -847,11 +869,15 @@ class BacktestResultPanel(QWidget):
         self.trades_table.setMinimumHeight(150)
         self.trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.trades_table.setFont(QFont("Consolas", 9))
+        self.trades_empty_status = QLabel("此處目前沒有可顯示的交易明細。")
+        self.trades_empty_status.setObjectName("backtestTradesEmptyStatus")
+        self.trades_empty_status.setWordWrap(True)
+        trades_layout.addWidget(self.trades_empty_status)
         
         # 啟用右鍵選單
         self.trades_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.trades_table.customContextMenuRequested.connect(self.parent_view._show_trades_table_context_menu)
-        
+        self.trades_table.hide()
         trades_layout.addWidget(self.trades_table)
         trades_group.setLayout(trades_layout)
         result_layout.addWidget(trades_group, stretch=35)

@@ -280,8 +280,18 @@ def _reader_issued_composite_v2_result(tmp_path: Path, monkeypatch):
 def test_source_selection_keeps_original_tabs_and_does_not_run_queries(qtbot):
     host, workspace, pages = _workspace(qtbot)
     saved, _daily, _nested, price, _snapshot, official, _composite, _h20 = pages
+    hidden_details_scroll = QScrollArea(saved)
+    hidden_details_scroll.setObjectName("collapsedSavedSourceDetailsScroll")
+    hidden_details_scroll.hide()
+    workspace.sync_sources()
     original_tabs = host.result_source_tabs
     original_pages = [original_tabs.widget(index) for index in range(original_tabs.count())]
+
+    saved_entry = next(item for item in workspace._sources if item.widget is saved)
+    assert workspace.select_source(saved_entry.key)
+    assert host.result_source_tabs.currentWidget() is saved
+    assert host.result_scroll.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    assert host.result_source_tabs.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Preferred
 
     price_entry = next(item for item in workspace._sources if item.widget is price)
     assert workspace.select_source(price_entry.key)
@@ -711,6 +721,7 @@ def test_source_preparation_disclosure_preserves_original_controls_and_explicit_
 def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason(qtbot):
     _host, workspace, _pages = _workspace(qtbot)
     assert workspace.source_details.is_collapsed()
+    assert workspace.source_details.title_label.text() == "資料日期、來源版本與可用條件"
     original_key = workspace.combo.currentData()
     workspace.source_details.toggle_button.click()
     assert not workspace.source_details.is_collapsed()
@@ -720,9 +731,10 @@ def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason
     assert workspace.condition_recipe_group_label.text() == "研究線索篩選"
     assert workspace.combo.accessibleName() == "研究線索篩選來源"
     assert workspace.quick_routes.spacing() == 4
-    assert "仍需在下方來源頁按「套用全域查詢」" in workspace.condition_recipe_hint.text()
+    assert "不會改變來源、其他條件或自動查詢" in workspace.condition_recipe_hint.text()
     assert all(button.minimumHeight() >= 28 for button in workspace.condition_recipe_buttons.values())
-    assert workspace.disabled_note.text() == "先載入並核驗保存來源；套用條件後仍需明確查詢。"
+    assert "先核對所選來源與資料日期" in workspace.disabled_note.text()
+    assert "按「套用全域查詢」更新結果" in workspace.disabled_note.text()
     revenue = workspace.quick_route_buttons["official_technical_revenue"]
     composite = workspace.quick_route_buttons["official_technical_price"]
     price = workspace.quick_route_buttons["price_universe"]

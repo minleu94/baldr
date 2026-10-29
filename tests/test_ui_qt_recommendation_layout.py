@@ -445,6 +445,23 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
                     control.size(),
                     control.minimumSizeHint(),
                 )
+            assert view.research_context_toggle.text() == "本次資料日期與來源"
+            assert "行情資料日與候選筆數" in view.research_context_summary_label.text()
+            assert "尚未分析" in view.result_status_label.text()
+            view._toggle_research_context(True)
+            assert view.research_context_label.isVisible()
+            assert view.research_context_toggle.text() == "收合本次資料日期與來源"
+            view._toggle_research_context(False)
+            assert not view.research_context_label.isVisible()
+            assert view.research_context_toggle.text() == "本次資料日期與來源"
+            expected_saved_row_direction = (
+                QBoxLayout.TopToBottom
+                if view.result_scroll.viewport().width() < 560
+                else QBoxLayout.LeftToRight
+            )
+            assert view.saved_result_select_row.direction() == expected_saved_row_direction
+            assert view.saved_result_actions_row.direction() == expected_saved_row_direction
+            assert view.cancel_saved_source_button.isHidden()
 
             wrapped_labels = (
                 view.research_context_summary_label,
@@ -670,6 +687,26 @@ def test_selected_recommendation_view_shows_full_saved_reasons_and_table_summary
         assert "表格摘要：" in detail
         assert "理由甲+、理由乙-、理由丙" in detail
         assert "理由丁+、理由戊" not in detail.split("表格摘要：", 1)[1]
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_recommendation_result_summary_separates_context_and_next_action() -> None:
+    app = _app()
+    view = _new_view()
+    try:
+        view.current_execution = None
+        view.current_config = {}
+        view._update_research_context_banner()
+        app.processEvents()
+
+        summary = view.research_context_summary_label.text()
+        assert "價格／指標資料日：未保存可核對的行情資料日" in summary
+        assert "候選：尚未產生" in summary
+        assert "請先看" not in summary
+        assert "尚未分析" in view.result_status_label.text()
+        assert "結果數量" not in view.result_status_label.text()
     finally:
         view.close()
         app.processEvents()

@@ -233,6 +233,38 @@ def test_stock_research_overview_return_label_discloses_omitted_estimates() -> N
         view.close()
 
 
+def test_stock_research_overview_uses_compact_status_when_same_source_chart_is_unavailable() -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    view.enable_product_layout()
+    assert view.overview_price_group.isHidden()
+    assert not view.overview_price_status_label.isHidden()
+
+    report = _report_for("2330", "500")
+    try:
+        view._active_code = "2317"
+        view._render_overview_chart(report)
+        assert view.overview_price_group.isHidden()
+        assert not view.overview_price_status_label.isHidden()
+        assert "來源或日期核對失敗" in view.overview_price_status_label.text()
+        assert view.overview_chart is None
+
+        view._active_code = "2330"
+        view._render_overview_chart(replace(report, price_points=()))
+        assert view.overview_price_group.isHidden()
+        assert not view.overview_price_status_label.isHidden()
+        assert "沒有可核驗價格" in view.overview_price_status_label.text()
+        assert view.overview_chart is None
+
+        view._active_code = "2330"
+        view._render_overview_chart(report)
+        assert not view.overview_price_group.isHidden()
+        assert view.overview_price_status_label.isHidden()
+        assert view.overview_chart is not None
+    finally:
+        view.close()
+
+
 def test_stock_research_overview_return_label_with_h5_notes_shows_total_estimate_count() -> None:
     _app()
     view = StockResearchReportView(SimpleNamespace())

@@ -371,8 +371,10 @@ def choice_display_text(param_name: str, value: Any) -> str:
     return display_map.get(param_name, {}).get(value_text, value_text)
 
 
-def format_backtest_summary(report: BacktestReportDTO) -> str:
-    """格式化績效摘要，維持 Primary/SOP 指標優先順序。"""
+def format_backtest_summary(
+    report: BacktestReportDTO, *, prominent_metrics_displayed: bool = False
+) -> str:
+    """格式化績效摘要；UI 已有首要指標卡時可省略重複數值。"""
     details = report.details
     if details.get("error"):
         return "回測未完成\n原因：" + str(details["error"]) + "\n本次沒有有效績效結果；空明細不代表零交易，請保留原錯誤與輸入。"
@@ -524,12 +526,16 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
         if type(completed_pairs) is int and completed_pairs >= 0
         else "未提供"
     )
-    lines.extend(["", "--- Primary 指標（行為健康） ---", f"總交易次數: {pair_count_text}（已完成進出場配對）"])
+    primary_details: list[str] = []
+    if not prominent_metrics_displayed:
+        primary_details.append(f"總交易次數: {pair_count_text}（已完成進出場配對）")
     if completed_pairs == 0:
-        lines.append("尚無已完成交易；配對數為 0 不代表沒有成交或期末沒有持股。")
+        primary_details.append("尚無已完成交易；配對數為 0 不代表沒有成交或期末沒有持股。")
     trade_list = details.get("trade_list")
     if isinstance(trade_list, pd.DataFrame) and len(trade_list) > 0 and "持有天數" in trade_list.columns:
-        lines.append(f"平均持有天數: {trade_list['持有天數'].mean():.1f} 天")
+        primary_details.append(f"平均持有天數: {trade_list['持有天數'].mean():.1f} 天")
+    if primary_details:
+        lines.extend(["", "--- Primary 指標（行為健康） ---", *primary_details])
 
     if report.baseline_comparison:
         lines.extend(["", "--- Baseline 對比 ---"])
@@ -554,6 +560,19 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
         if degradation is not None:
             lines.append(f"退化程度: {degradation * 100:.1f}%")
 
+    secondary_metrics = [
+        ("總報酬率", f"總報酬率: {metric_text(metric_values['total_return'], percent=True)}"),
+        ("年化報酬率", f"年化報酬率 (CAGR): {metric_text(metric_values['annual_return'], percent=True)}"),
+        ("夏普比率", f"夏普比率: {metric_text(metric_values['sharpe_ratio'])}"),
+        ("最大回撤", f"最大回撤: {metric_text(metric_values['max_drawdown'], percent=True)}"),
+        ("勝率", f"勝率: {metric_text(metric_values['win_rate'], percent=True)}"),
+        ("期望值", f"期望值: {metric_text(metric_values['expectancy'], percent=True)}"),
+    ]
+    if prominent_metrics_displayed:
+        secondary_metrics = [
+            item for item in secondary_metrics
+            if item[0] not in {"總報酬率", "最大回撤"}
+        ]
     lines.extend(
         [
             "",
@@ -561,12 +580,7 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
             "║  Secondary 指標（輔助參考）            ║",
             "╚════════════════════════════════════════╝",
             "",
-            f"總報酬率: {metric_text(metric_values['total_return'], percent=True)}",
-            f"年化報酬率 (CAGR): {metric_text(metric_values['annual_return'], percent=True)}",
-            f"夏普比率: {metric_text(metric_values['sharpe_ratio'])}",
-            f"最大回撤: {metric_text(metric_values['max_drawdown'], percent=True)}",
-            f"勝率: {metric_text(metric_values['win_rate'], percent=True)}",
-            f"期望值: {metric_text(metric_values['expectancy'], percent=True)}",
+            *(item[1] for item in secondary_metrics),
             "",
             "=== 詳細統計 ===",
         ]

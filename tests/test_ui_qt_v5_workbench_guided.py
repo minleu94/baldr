@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLabel
 
 from app_module.workbench_dtos import (
+    ResearchFallbackPacket,
     WorkbenchActionItem,
     WorkbenchDailyEvidence,
     WorkbenchReviewItem,
@@ -150,7 +151,8 @@ def test_guided_home_keeps_mixed_sources_separate_and_advanced_collapsed() -> No
     assert "2603" in candidate_preview
     assert "原來源說明：未提供個別說明" in candidate_preview
     assert "個股研究候選：2 檔" in view.daily_candidate_detail_label.text()
-    assert "下一步：先查看資料與候選來源" in view.daily_candidate_detail_label.text()
+    assert "下一步：先查看資料與候選來源" in view.daily_journey_label.text()
+    assert "下一步：" not in view.daily_candidate_detail_label.text()
 
     view.guided_priority_action_buttons["data"].click()
     assert not view.warnings_collapsible.is_collapsed()
@@ -162,6 +164,24 @@ def test_guided_home_keeps_mixed_sources_separate_and_advanced_collapsed() -> No
     view.guided_priority_action_buttons["other"].click()
     assert view._selected_detail_item.item_id == "data_review"
     assert "來源日期需要人工核對" in view.detail_summary_box.text()
+
+
+def test_guided_journey_labels_fallback_as_evidence_follow_up() -> None:
+    app()
+    dashboard = _mixed_dashboard()
+    daily = replace(
+        dashboard.daily_evidence,
+        research_fallback=ResearchFallbackPacket(status="pending_capture"),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(dashboard, daily_evidence=daily),
+        auto_refresh=False,
+    )
+
+    journey = view.daily_journey_label.text()
+    assert journey.count("下一步：") == 1
+    assert "證據追蹤：重新整理每日資料，再查看證據成熟度" in journey
+    assert "目前不能下有效機率、權重或買賣結論。" in journey
 
 
 def test_guided_candidates_selects_action_item_when_review_row_is_absent() -> None:

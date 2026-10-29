@@ -1628,6 +1628,10 @@ def test_update_view_reflows_for_narrow_viewport_without_changing_navigation():
     )
     assert view.nav_list.verticalScrollBar().maximum() > 0
     assert view._actions_layout.direction().name == "TopToBottom"
+    assert all(
+        button.sizePolicy().horizontalPolicy().name == "Expanding"
+        for button in view._action_buttons
+    )
     assert view._cards_layout.getItemPosition(0)[:2] == (0, 0)
     assert view._cards_layout.getItemPosition(1)[:2] == (0, 1)
     assert view._cards_layout.getItemPosition(2)[:2] == (1, 0)
@@ -1642,6 +1646,10 @@ def test_update_view_reflows_for_narrow_viewport_without_changing_navigation():
     assert view.nav_list.width() == 160
     assert view.nav_list.maximumHeight() > 190
     assert view._actions_layout.direction().name == "LeftToRight"
+    assert all(
+        button.sizePolicy().horizontalPolicy().name == "Fixed"
+        for button in view._action_buttons
+    )
     assert view._cards_layout.getItemPosition(0)[:2] == (0, 0)
     assert view._cards_layout.getItemPosition(5)[:2] == (1, 2)
     assert view._candidate_layout.getItemPosition(2)[:2] == (0, 2)
@@ -1676,6 +1684,32 @@ def test_all_data_actions_are_before_long_status_sections():
     assert all_layout.indexOf(action_group) < all_layout.indexOf(timeline_group)
     assert all_layout.indexOf(action_group) < all_layout.indexOf(view.p0_source_control_table.parentWidget())
     assert view._cards_layout.getItemPosition(5)[:2] == (1, 2)
+
+
+def test_all_data_action_buttons_use_natural_width_in_wide_layout():
+    view = make_view()
+    assert all(
+        button.sizePolicy().horizontalPolicy().name == "Fixed"
+        for button in view._action_buttons
+    )
+    detail_buttons = (
+        view.timeline_details_button,
+        view.candidate_details_button,
+        view.p0_details_button,
+        view.readiness_details_button,
+    )
+    assert all(
+        button.sizePolicy().horizontalPolicy().name == "Fixed"
+        and button.text().startswith("展開：")
+        for button in detail_buttons
+    )
+    view.timeline_details_button.setChecked(True)
+    assert view.timeline_details_button.text().startswith("收合：")
+    view.timeline_details_button.setChecked(False)
+    assert view.timeline_details_button.text().startswith("展開：")
+    all_layout = view.all_page.layout()
+    assert all_layout is not None
+    assert view._actions_layout.itemAt(view._actions_layout.count() - 1).spacerItem() is not None
 
 
 def test_candidate_and_monthly_pages_expose_update_controls_near_top():

@@ -10,14 +10,16 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QPushButton,
+    QHBoxLayout,
     QLabel,
+    QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
-    QWidget,
     QTabWidget,
+    QWidget,
 )
 
 
@@ -119,11 +121,26 @@ class BacktestProductLayout:
                     if original_layout is not None:
                         original_layout.removeWidget(pair_return)
                     summary_layout.insertWidget(0, pair_return)
-        self.assumption_details_button = QPushButton("顯示完整來源與運算假設", panel)
+        self.assumption_details_button = QPushButton("來源與假設", panel)
         self.assumption_details_button.setObjectName("backtestAssumptionDetailsToggle")
         self.assumption_details_button.setCheckable(True)
+        self.assumption_details_button.setProperty("variant", "secondary")
+        self.assumption_details_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+        self.assumption_details_button.setMinimumHeight(28)
+        self.assumption_details_button.setAccessibleName("切換完整來源與運算假設")
+        self.assumption_details_button.setToolTip("展開本次結果的原始來源與運算假設")
         self.assumption_details_button.toggled.connect(lambda _checked: self._update_assumptions_scope())
         self.assumption_banner.hide()
+
+        self.result_toolbar = QWidget(panel)
+        self.result_toolbar.setObjectName("backtestResultNavigationToolbar")
+        result_toolbar_layout = QHBoxLayout(self.result_toolbar)
+        result_toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        result_toolbar_layout.setSpacing(8)
+        result_toolbar_layout.addWidget(self.navigator, 1)
+        result_toolbar_layout.addWidget(self.assumption_details_button)
 
         self.stack = QStackedWidget(panel)
         self.stack.setObjectName("backtestProductResultStack")
@@ -133,10 +150,9 @@ class BacktestProductLayout:
         layout.removeWidget(tabs)
         self.stack.addWidget(tabs)
         layout.insertWidget(original_index, self.stack, 1)
-        layout.insertWidget(1, self.assumption_details_button)
+        layout.insertWidget(1, self.result_toolbar)
         layout.insertWidget(2, self.assumption_banner)
         layout.insertWidget(3, self.draft_status)
-        layout.insertWidget(4, self.navigator)
 
         self.open_positions_page, self.open_positions_table, self.open_positions_status = self._make_table_page(
             "backtestOpenPositionsPage", "期末未平倉：只顯示本次結果原始期末欄位。"
@@ -291,7 +307,9 @@ class BacktestProductLayout:
                     ))
             else:
                 key = self._unique_key(outer_key, used)
-                routes.append(_ResultRoute(key, f"{outer_title} › {outer_key}", "tabs", outer_index))
+                # 導覽只顯示使用者可辨認的頁面名稱；route key 是內部識別，
+                # 把它拼到標籤會造成「實驗摘要 › summary」這類重複文字。
+                routes.append(_ResultRoute(key, outer_title, "tabs", outer_index))
 
         if self._active_mode() == "single_stock":
             routes.extend(self._custom_routes)
@@ -372,6 +390,11 @@ class BacktestProductLayout:
 
     def _update_assumptions_scope(self) -> None:
         own_result = self._assumptions_in_scope()
+        self.assumption_details_button.setText(
+            "收合來源與假設"
+            if self.assumption_details_button.isChecked()
+            else "來源與假設"
+        )
         self.assumption_details_button.setVisible(own_result)
         self.assumption_banner.setVisible(own_result and self.assumption_details_button.isChecked())
         if not own_result:

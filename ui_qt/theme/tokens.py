@@ -46,7 +46,8 @@ MIDNIGHT_ANALYST = ThemeTokens(
     border="#2a3548",
     text_primary="#eef3f8",
     text_secondary="#a8b3c2",
-    text_muted="#788496",
+    # 次要／未知文字仍須在最亮的共用底色 surface_3 上達到一般文字對比。
+    text_muted="#909aaa",
     accent="#4fb7e5",
     accent_hover="#75cdf5",
     success="#22c55e",

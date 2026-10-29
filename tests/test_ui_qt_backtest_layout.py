@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMainWindow,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QTableView,
     QTableWidget,
@@ -807,6 +808,12 @@ def test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusi
     panel = view.result_panel
     assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
     assert panel.result_tabs.isVisible()
+    assert panel.summary_group.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
+    assert panel.summary_text.isHidden()
+    assert panel.summary_text.maximumHeight() == 320
+    assert panel.trades_table.isHidden()
+    assert panel.trades_empty_status.isVisible()
+    assert panel.trades_group.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Maximum
     assert all(group.isHidden() for group in (
         panel.saved_strategy_version_group,
         panel.research_history_group,
@@ -815,10 +822,20 @@ def test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusi
 
     panel.summary_text.setPlainText("\n".join(f"實驗摘要第 {index} 行" for index in range(200)))
     qt_app.processEvents()
+    assert panel.summary_text.isVisible()
     scrollbar = panel.summary_text.verticalScrollBar()
     assert scrollbar.maximum() > 0
     scrollbar.setValue(scrollbar.maximum())
     assert scrollbar.value() == scrollbar.maximum()
+
+    trade_model = QStandardItemModel(2, 1, panel.trades_table)
+    panel.set_trades_table_model(trade_model)
+    assert panel.trades_table.isVisible()
+    assert panel.trades_empty_status.isHidden()
+    assert panel.trades_group.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Expanding
+    panel.set_trades_table_model(None)
+    assert panel.trades_table.isHidden()
+    assert panel.trades_empty_status.isVisible()
 
     panel.research_history_button.click()
     qt_app.processEvents()

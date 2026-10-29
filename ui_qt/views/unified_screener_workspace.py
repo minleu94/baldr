@@ -446,7 +446,7 @@ class UnifiedScreenerWorkspace:
         self.funnel_detail_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.funnel_details.content_layout.addWidget(self.funnel_detail_text)
         self.disabled_note = QLabel(
-            "先載入並核驗保存來源；套用條件後仍需明確查詢。"
+            "先核對所選來源與資料日期；條件變更後，在該來源頁按「套用全域查詢」更新結果。"
         )
         self.disabled_note.setObjectName("unifiedScreenerUsageHint")
         self.disabled_note.setWordWrap(True)
@@ -499,7 +499,7 @@ class UnifiedScreenerWorkspace:
             self.condition_recipe_buttons[key] = button
             self.condition_recipe_layout.addWidget(button, 0, len(self.condition_recipe_buttons) - 1)
         self.condition_recipe_hint = QLabel(
-            "捷徑只設定規則；仍需在下方來源頁按「套用全域查詢」才會更新結果。"
+            "捷徑只替換技術規則，不會改變來源、其他條件或自動查詢。"
         )
         self.condition_recipe_hint.setObjectName("unifiedScreenerConditionRecipeHint")
         self.condition_recipe_hint.setWordWrap(True)
@@ -538,7 +538,9 @@ class UnifiedScreenerWorkspace:
         layout.addWidget(self.funnel)
         layout.addWidget(self.funnel_details)
         layout.addWidget(self.disabled_note)
-        self.source_details = CollapsibleSectionPanel("來源版本與可用條件", collapsed=True)
+        self.source_details = CollapsibleSectionPanel(
+            "資料日期、來源版本與可用條件", collapsed=True
+        )
         self._compact_disclosure(self.source_details)
         self.source_details.content_layout.addLayout(self.source_routes)
         self.source_details.content_layout.addWidget(self.banner)
@@ -1054,7 +1056,11 @@ class UnifiedScreenerWorkspace:
 
     def _set_outer_scroll_policy(self, source: _Source) -> None:
         widget = source.widget
-        nested = widget.findChild(QScrollArea) is not None
+        # 收合的來源追溯面板也可能含 QScrollArea；只有目前頁面實際可見的
+        # 內層捲動區才能取代外層捲動，否則保存結果的下半部會被裁掉。
+        nested = isinstance(widget, QScrollArea) or any(
+            area.isVisibleTo(widget) for area in widget.findChildren(QScrollArea)
+        )
         self.scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             if nested

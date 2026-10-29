@@ -162,6 +162,8 @@ def test_view_preserves_full_original_and_emits_only_selected_saved_entry():
     controls_group = view.findChild(QGroupBox, "researchTimelineSearchControls")
     assert controls_group is not None
     assert controls_group.title() == "查找已保存研究紀錄"
+    assert "不依賴今日 Advice 清單" in view.search_hint_label.text()
+    assert "完整 result ID" in view.stock_filter.placeholderText()
     entries_heading = view.findChild(QLabel, "researchTimelineEntriesHeading")
     detail_heading = view.findChild(QLabel, "researchTimelineDetailHeading")
     assert entries_heading is not None and entries_heading.text() == "研究紀錄清單"
@@ -187,6 +189,7 @@ def test_view_preserves_full_original_and_emits_only_selected_saved_entry():
     view.source_filter.setCurrentIndex(view.source_filter.findData("all"))
     view.stock_filter.setText("2454")
     assert view.entries_table.rowCount() == 0
+    assert "完整已載入的研究紀錄中沒有符合「2454」" in view.status_label.text()
     assert not view.open_original_button.isEnabled()
     view.close()
 
@@ -229,6 +232,7 @@ def test_historical_decision_can_be_found_by_result_id_after_advice_changes():
     assert view._selected is entry
     assert "result ID rec_old_recommendation" in view.detail_label.text()
     assert "來源 snapshot ID：snapshot-1" in view.original_text.toPlainText()
+    assert "完整已載入的研究紀錄中，「rec_old_recommendation」符合 1 筆" in view.status_label.text()
     assert not view.compare_evidence_button.isEnabled()
     assert not view.paper_prerequisites_button.isEnabled()
     view.close()
@@ -258,6 +262,7 @@ def test_limited_timeline_searches_complete_history_by_stock_or_result_id():
     assert reader.search_queries.count("rec_old") == 1
     assert view.entries_table.rowCount() == 1
     assert view._selected is older
+    assert "完整 Journal 搜尋「rec_old」找到 1 筆" in view.status_label.text()
     assert view._full_history_limited is True
     view.close()
 

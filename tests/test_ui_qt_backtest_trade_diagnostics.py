@@ -10,6 +10,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import QApplication, QDialog, QListWidgetItem, QMessageBox
 
 from app_module.dtos import BacktestReportDTO, ValidationStatus
+from ui_qt.views.backtest_product_layout import BacktestProductLayout
 from ui_qt.views.backtest_view import BacktestView
 
 
@@ -98,6 +99,8 @@ def test_failed_report_cannot_save_export_promote_or_reuse_previous_chart(view):
     view._on_backtest_finished(_report({"error": "生成信號失敗：原OHLCV矛盾"}))
     assert "回測未完成" in view.summary_text.toPlainText()
     assert "總交易次數: 0" not in view.summary_text.toPlainText()
+    assert view.trades_table.isHidden()
+    assert not view.result_panel.trades_empty_status.isHidden()
     assert not view.result_panel.save_current_result_button.isEnabled()
     assert not view.promote_btn.isEnabled()
     assert view.result_panel._pending_chart_plots == {}
@@ -105,6 +108,23 @@ def test_failed_report_cannot_save_export_promote_or_reuse_previous_chart(view):
     with pytest.raises(ValueError, match="回測未完成"):
         view._ensure_current_single_backtest_is_saveable()
     view.research_run_service.save_run.assert_not_called()
+
+
+def test_worker_error_remains_in_result_summary_after_modal_closes(view, monkeypatch):
+    critical = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda *args: critical.append(args))
+    view.promote_btn.setEnabled(True)
+    view.export_report_btn.setEnabled(True)
+
+    view._on_backtest_error("來源資料載入失敗")
+
+    assert "回測未完成" in view.summary_text.toPlainText()
+    assert "沒有可判讀或可保存" in view.summary_text.toPlainText()
+    assert "來源資料載入失敗" in view.summary_text.toPlainText()
+    assert not view.result_panel.save_current_result_button.isEnabled()
+    assert not view.promote_btn.isEnabled()
+    assert not view.export_report_btn.isEnabled()
+    assert len(critical) == 1
 
 
 def test_passed_sop_does_not_override_explicit_research_promotion_blocker(view):
@@ -135,6 +155,24 @@ def test_open_or_observed_fill_does_not_claim_no_trade_or_suggest_lowering_thres
     assert '未平倉估值' in text
     assert report.to_dict() == before and report.total_trades == 0
     assert not view.promote_btn.isEnabled()
+
+
+def test_live_summary_cards_own_primary_values_without_repeating_them_below(view):
+    product_layout = BacktestProductLayout(view)
+    assert product_layout.install()
+    view.resultPresented.connect(product_layout.refresh_assumptions)
+    view._on_backtest_finished(_report({'execution_summary': {'trade_count': 0}, 'terminal_position': 0}))
+
+    summary = view.summary_text.toPlainText()
+    assert product_layout.outcome_summary.values['return'].text() == '1.00 %'
+    assert product_layout.outcome_summary.values['drawdown'].text() == '0.00 %'
+    assert product_layout.outcome_summary.values['trades'].text() == '0'
+    assert '總報酬率:' not in summary
+    assert '最大回撤:' not in summary
+    assert '總交易次數:' not in summary
+    assert '年化報酬率 (CAGR): 2.00%' in summary
+    assert 'Phase 3.5 SOP 驗證' in summary
+    assert '實際成交筆數：0' in summary and '期末持股：0 股' in summary
 
 
 @pytest.mark.parametrize('extra', [{}, {'execution_summary': None}, {'execution_summary': {'trade_count': True}}])
@@ -210,6 +248,9 @@ def test_history_zero_pairs_are_labelled_without_inferring_fills(view):
 
 
 def test_six_completed_pairs_show_same_run_fills_and_detail_rows(view):
+    product_layout = BacktestProductLayout(view)
+    assert product_layout.install()
+    view.resultPresented.connect(product_layout.refresh_assumptions)
     details = pd.DataFrame({'買進日': [f'2026-09-{day:02d}' for day in range(1, 7)]})
     report = _report({
         'execution_summary': {'trade_count': 12},
@@ -221,7 +262,8 @@ def test_six_completed_pairs_show_same_run_fills_and_detail_rows(view):
     view._on_backtest_finished(report)
 
     text = view.summary_text.toPlainText()
-    assert '完成進出場配對數：6' in text
+    assert product_layout.outcome_summary.values['trades'].text() == '6'
+    assert '總交易次數:' not in text
     assert '實際成交筆數：12' in text
     assert '交易明細列數：6' in text
     assert '期末持股：0 股' in text

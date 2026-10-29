@@ -458,4 +458,18 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 
 Update → 月營收頁已修正：無候選檔時不再把 snapshot 輸出資料夾填入 CSV 路徑；路徑留白會引導使用者先抓候選，寫入時自動挑選最新的實際 CSV。服務端現在拒絕資料夾及非 CSV 檔，且仍要求正式歷史回填走獨立確認流程。歷史可得日 mapping 與自動命名改為清楚標示；現況更新按鈕另行說明。
 
-本次程式驗證：`tests/test_ui_qt_update_view_workbench.py` **102 passed**；`tests/test_update_service_monthly_revenue_status.py` **12 passed**；`scripts/qa_validate_update_tab.py` **25 passed、0 failed、4 skipped**；修改檔 `py_compile` 通過；`mypy` 對 3 個修改的 Python 檔通過。這些是自動測試／靜態檢查，未執行桌面原生 UI UAT；排程自然 receipt 亦未驗證。
+本次程式驗證：`tests/test_ui_qt_update_view_workbench.py` **102 passed**；`tests/test_update_service_monthly_revenue_status.py` **12 passed**；`scripts/qa_validate_update_tab.py` **25 passed、0 failed、4 skipped**；修改檔 `py_compile` 通過；`mypy` 對 3 個修改的 Python 檔通過。這些是自動測試／靜態檢查，未執行桌面原生 UI UAT；自然排程證據見下節補錄。
+
+### 2026-10-29 自然 Daily Quick MOPS capture 與殘餘缺口覆核
+
+正式排程產物已從資料根唯讀讀回：Daily Quick run `20261029-41720` 於 2026-10-29 04:20 PDT 啟動，核心於 04:50 完成 `passed_with_warnings`；MOPS child receipt 於 04:51 PDT 終結為 `captured`、return code 0、diagnostics 空。候選期別是 2026-09，上市 996 列、上櫃 866 列，共 1,862；receipt 明示 `candidate_only=true`、`formal_database_written=false`、`availability_mapping_emitted=false`、`formal_pit_eligible=false`。這證明每日擷取自然執行成功，不代表正式資料庫或 PIT mapping 由排程更新。
+
+已核對 child receipt SHA-256 `bfbd50d8d44e9cc500f89076da322b5e0e448f7b266862c687d1ed30fcd64bc7`、候選 CSV SHA-256 `db3d86262e442c290ef4737a0fb4b90e5b3e9aabd64427b2fb88003ac98c28ef`；實際 CSV 讀得 1,862 列。兩個 raw HTML 原件均存在，byte count 與 SHA 分別符合 receipt：TWSE 468,513 bytes／`f5222dde4362a4ed9ef11a375c4c76e2f7a28655a8eea5748ffd368e3a702495`，TPEx 406,653 bytes／`ccf1665aef3d2ed83ca415914b10d137fa9dc2efcb6bd90428b9b442af58c37c`。`capture_complete.json` 的候選與 receipt hashes 也相符。以正式 snapshot selector 對資料根執行唯讀選檔，回傳這個 2026-09 候選；因此更新頁自動選檔現在有真實自然產物可供讀取。核心 `latest_status.json` 留存的是發布 child 前的 `pending_after_core_publication`，child receipt 才是此次 MOPS 擷取終態的權威收據；不把核心狀態 JSON 的舊欄位解讀成 child 失敗。
+
+週排程不是同一條成功線：唯讀收據顯示最新 `weekly_d161c8...` parent run 在 2026-10-26 逾時，狀態為 `core_process_timeout`／`blocked`，月營收 statement child 因 core 非零結束而 skipped；`current_fundamentals` 最近一次 terminal 為 2026-10-19 `failed`、exit code 1。DB 內有 `fundamental_current_observations` 月營收列，不足以歸因為週排程成功。Task Scheduler 當前註冊狀態本輪因 CIM 權限拒絕未能重新讀回；因此 Daily Quick 有自然成功證據，Weekly current-observation 線仍未驗過成功。
+
+本輪再次核對 `.tmp_mops_event_crosswalk_20261029/degraded_crosswalk.csv` 與唯讀正式 DB，719 個 degraded keys 完全相符；4 個已保存 F22 event CSV 合計 267,777 rows／266,836 unique stock-period keys。交叉比對結果仍為 686 個 `no_event`、33 個 `event_after_row_capture`；33 個事件時間全部晚於 2026-06-16 舊 snapshot capture，不可套給舊值。三個主要歷史 harvest（2014–2019、2020–2025、2026）的 1,800 個 raw JSON 已逐檔重算 SHA、byte count、JSON row count，並確認與 manifest／events.csv 相符，raw mismatch 0。
+
+額外檢查官方舊版 MOPS `t05st01` issuer-year 清冊：4130 與 5371 民國 103–115 年各 13/13 年份回 HTTP/API 200，但公告清單沒有月營收標題；8183 同為 13/13 年份 200，唯一 103 年 9 月自願申報詳情 API 500，精確期別金額未取回。精星[官方營運報告頁](https://www.psaitc.com/investors/operate_state)的 2014-07 月營收為 245,529 仟元，與 DB 值相同；頁面沒有公告日期／時間，而 MOPS 清單標題僅寫自願申報，詳情 API 500，尚不能證明該詳情就是同一合併月營收數值，因此只列為交叉來源候選、不解除 PIT degraded。6806 在 108–115 年 7/8 個年份回 API 200、108 年 API 406；僅 2025-09、2026-03 有營收公告標題，均已不屬目前 degraded keys。官方舊版 EZSearch／市場分流 probe 未找到可補進現有 4130／5371／8183／6806 gap 的精確事件。22 個 singleton 子集合中，18 個沒有精確 F22 event；另 4 個雖有晚期明細，但公告更正數值與 2026-06-16 snapshot 不同，不能解除舊列。
+
+Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 最終為 DNS resolution error（自動重試亦未收到 HTTP）；前一輪 `mopsov.twse.com.tw` ezSearch probe 也在 DNS 階段失敗。Genovate、Coretronic、精星及森崴官方頁面的 Scrapling GET 也因 DNS 解析逾時而無 HTTP response。DNS 失敗只描述本機連線，不能推論公告不存在；沒有使用 Remote Desktop。既有公司官方月營收表能交叉核對部分數值，但若頁面未提供公告時間，仍不能代替公告 timestamp 或 PIT mapping。故本輪**新增安全解除 0 keys**，正式 DB 與 availability mapping 未修改；需要恢復官方端點連線或找到逐期可驗證的第一方公告時間／值證據，才能再裁決剩餘 719 個物理 degraded 舊列。

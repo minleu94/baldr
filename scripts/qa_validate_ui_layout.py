@@ -3966,6 +3966,7 @@ def _audit_page_text_controls(
     from PySide6.QtGui import QFontMetrics
     from PySide6.QtWidgets import (
         QAbstractButton,
+        QAbstractSpinBox,
         QComboBox,
         QGroupBox,
         QLabel,
@@ -3982,7 +3983,7 @@ def _audit_page_text_controls(
             continue
         if not isinstance(
             widget,
-            (QLabel, QAbstractButton, QComboBox, QLineEdit, QGroupBox, QPlainTextEdit, QTextEdit, QTextBrowser),
+            (QLabel, QAbstractButton, QAbstractSpinBox, QComboBox, QLineEdit, QGroupBox, QPlainTextEdit, QTextEdit, QTextBrowser),
         ):
             continue
         text = ""
@@ -3994,6 +3995,8 @@ def _audit_page_text_controls(
             text = widget.currentText()
         elif isinstance(widget, QLineEdit):
             text = widget.text() or widget.placeholderText()
+        elif isinstance(widget, QAbstractSpinBox):
+            text = widget.text()
         elif isinstance(widget, QGroupBox):
             text = widget.title()
         elif isinstance(widget, (QPlainTextEdit, QTextEdit, QTextBrowser)):
@@ -4055,7 +4058,11 @@ def _audit_page_text_controls(
                         page=page_path,
                         widget=widget.objectName() or "QLabel",
                     )
-        elif isinstance(widget, (QLineEdit, QAbstractButton, QComboBox)):
+        elif isinstance(widget, QLineEdit) and isinstance(widget.parentWidget(), QAbstractSpinBox):
+            # QSpinBox / QDateEdit / QTimeEdit own a smaller internal line edit;
+            # measure the composite control below instead of flagging its editor.
+            metric["composite_editor_subcontrol"] = True
+        elif isinstance(widget, (QLineEdit, QAbstractButton, QAbstractSpinBox, QComboBox)):
             metric["vertical_size_sufficient"] = height + 2 >= int(hint.height())
             if height + 2 < int(hint.height()):
                 _add_error(

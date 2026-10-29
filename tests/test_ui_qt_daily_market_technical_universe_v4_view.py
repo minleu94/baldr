@@ -16,7 +16,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QTableView
+from PySide6.QtWidgets import QApplication, QBoxLayout, QTableView, QSizePolicy
 
 import app_module.daily_market_technical_universe_v4_query as universe_query_module
 from app_module.daily_market_technical_parent_v4_query import (
@@ -84,6 +84,49 @@ def _entry_index(view: DailyMarketTechnicalUniverseV4View, status: str) -> int:
         if getattr(entry, "source_status", None) == status:
             return index
     return -1
+
+
+def test_v4_result_actions_are_grouped_and_reflow_at_narrow_width(app: QApplication) -> None:
+    view = DailyMarketTechnicalUniverseV4View(str(Path.cwd()))
+    try:
+        view.resize(1200, 800)
+        view.show()
+        app.processEvents()
+
+        assert view.action_groups_layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert view.comparison_controls_layout.direction() == QBoxLayout.Direction.LeftToRight
+        assert view.stock_action_group.title() == "所選個股"
+        assert view.comparison_action_group.title() == "比較籃"
+        assert view.open_button.property("variant") == "primary"
+        assert view.compare_button.property("variant") == "primary"
+        assert view.clear_comparison_button.property("variant") == "ghost"
+        assert all(
+            button.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Fixed
+            and button.width() <= 280
+            for button in (
+                view.open_button,
+                view.add_comparison_button,
+                view.clear_comparison_button,
+                view.compare_button,
+                view.bookmark_button,
+            )
+        )
+
+        view.resize(600, 800)
+        app.processEvents()
+        assert view.action_groups_layout.direction() == QBoxLayout.Direction.TopToBottom
+        assert view.comparison_controls_layout.direction() == QBoxLayout.Direction.TopToBottom
+        assert all(
+            button.geometry().right() <= view.comparison_action_group.contentsRect().right()
+            for button in (
+                view.add_comparison_button,
+                view.clear_comparison_button,
+                view.compare_button,
+                view.bookmark_button,
+            )
+        )
+    finally:
+        view.close()
 
 
 def _native_file_path(path: Path) -> str:

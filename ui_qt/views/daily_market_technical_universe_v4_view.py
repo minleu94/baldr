@@ -12,6 +12,7 @@ from typing import Any, cast
 from PySide6.QtCore import QModelIndex, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QBoxLayout,
     QComboBox,
     QFileDialog,
     QGridLayout,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -989,30 +991,62 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.next_button.setObjectName("dailyMarketTechnicalUniverseV4Next")
         self.open_button = QPushButton("讀取原保存個股證據")
         self.open_button.setObjectName("dailyMarketTechnicalUniverseV4OpenStock")
+        self.open_button.setProperty("variant", "primary")
         navigation.addWidget(self.previous_button)
         navigation.addWidget(self.next_button)
         navigation.addStretch(1)
-        navigation.addWidget(self.open_button)
+        self.action_groups_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.action_groups_layout.setObjectName("dailyMarketTechnicalUniverseV4ActionGroups")
+        self.action_groups_layout.setSpacing(8)
+        self.stock_action_group = QGroupBox("所選個股")
+        self.stock_action_group.setObjectName("dailyMarketTechnicalUniverseV4StockActions")
+        stock_action_layout = QHBoxLayout(self.stock_action_group)
+        stock_action_layout.setContentsMargins(8, 6, 8, 6)
+        stock_action_layout.addWidget(self.open_button)
+        stock_action_layout.addStretch(1)
 
-        comparison_controls = QHBoxLayout()
+        self.comparison_action_group = QGroupBox("比較籃")
+        self.comparison_action_group.setObjectName("dailyMarketTechnicalUniverseV4ComparisonActions")
+        self.comparison_controls_layout = QBoxLayout(
+            QBoxLayout.Direction.LeftToRight,
+            self.comparison_action_group,
+        )
+        self.comparison_controls_layout.setContentsMargins(8, 6, 8, 6)
+        self.comparison_controls_layout.setSpacing(6)
         self.add_comparison_button = QPushButton("加入比較")
+        self.add_comparison_button.setProperty("variant", "secondary")
         self.add_comparison_button.setToolTip("將目前明選股票的原查詢與來源加入比較籃；不讀取其他來源。")
         self.add_comparison_button.setObjectName("dailyMarketTechnicalUniverseV4AddComparison")
         self.clear_comparison_button = QPushButton("清空比較籃")
+        self.clear_comparison_button.setProperty("variant", "ghost")
         self.clear_comparison_button.setObjectName("dailyMarketTechnicalUniverseV4ClearComparison")
         self.compare_button = QPushButton("比較原保存研究（2–256 檔）")
+        self.compare_button.setProperty("variant", "primary")
         self.compare_button.setObjectName("dailyMarketTechnicalUniverseV4Compare")
         self.compare_button.setEnabled(False)
         self.bookmark_button = QPushButton("收藏目前查詢與比較籃")
+        self.bookmark_button.setProperty("variant", "secondary")
         self.bookmark_button.setObjectName("dailyMarketTechnicalUniverseV4Bookmark")
         self.bookmark_button.setEnabled(False)
-        comparison_controls.addWidget(self.add_comparison_button)
-        comparison_controls.addWidget(self.clear_comparison_button)
-        comparison_controls.addWidget(self.compare_button)
-        comparison_controls.addWidget(self.bookmark_button)
-        navigation.removeWidget(self.open_button)
-        comparison_controls.insertWidget(0, self.open_button)
-        root.addLayout(comparison_controls)
+        for button in (
+            self.open_button,
+            self.add_comparison_button,
+            self.clear_comparison_button,
+            self.compare_button,
+            self.bookmark_button,
+        ):
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        for button in (
+            self.add_comparison_button,
+            self.clear_comparison_button,
+            self.compare_button,
+            self.bookmark_button,
+        ):
+            self.comparison_controls_layout.addWidget(button)
+        self.comparison_controls_layout.addStretch(1)
+        self.action_groups_layout.addWidget(self.stock_action_group)
+        self.action_groups_layout.addWidget(self.comparison_action_group, 1)
+        root.addLayout(self.action_groups_layout)
         root.addWidget(self.table)
         root.addLayout(navigation)
         self.comparison_basket_label = QLabel("比較籃 0／256；至少 2 檔可比較。")
@@ -1054,6 +1088,18 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             self.resume_button.setEnabled(False)
             self.produce_button.setToolTip("由每日研究入口提供明示 source／cohort／cutoff 請求後啟用。")
             self.resume_button.setToolTip("由每日研究入口提供原 source／cohort／cutoff 請求後啟用。")
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        direction = (
+            QBoxLayout.Direction.LeftToRight
+            if self.width() >= 760
+            else QBoxLayout.Direction.TopToBottom
+        )
+        if self.action_groups_layout.direction() != direction:
+            self.action_groups_layout.setDirection(direction)
+        if self.comparison_controls_layout.direction() != direction:
+            self.comparison_controls_layout.setDirection(direction)
 
     def refresh_sources(self, *, append: bool = False) -> None:
         cursor = self._source_cursor if append else None

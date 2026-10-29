@@ -15,7 +15,15 @@ import pandas as pd
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QFontMetrics, QTextCursor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QBoxLayout, QHBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QBoxLayout,
+    QDateEdit,
+    QHBoxLayout,
+    QLayout,
+    QTimeEdit,
+    QWidget,
+)
 
 from app_module.dtos import RegimeResultDTO
 from data_module.contracts.market import SourceRef
@@ -385,6 +393,68 @@ def test_recommendation_table_keeps_extended_evidence_expandable() -> None:
         assert view.result_columns_toggle.isHidden()
     finally:
         view.close()
+
+
+def test_saved_recommendation_primary_controls_keep_their_readable_height() -> None:
+    app = _app()
+    view = _new_view()
+    view.result_source_tabs.setCurrentIndex(0)
+    view.show()
+    try:
+        result_layout = view.result_panel.layout()
+        assert result_layout.verticalSizeConstraint() == QLayout.SizeConstraint.SetMinimumSize
+        assert result_layout.horizontalSizeConstraint() == QLayout.SizeConstraint.SetNoConstraint
+        for width, height in ((1366, 768), (897, 360), (390, 844)):
+            view.resize(width, height)
+            app.processEvents()
+            controls = (
+                view.research_context_toggle,
+                view.saved_source_combo,
+                view.refresh_saved_sources_button,
+                view.load_daily_recommendation_button,
+                view.personal_choice_controls.adopt_button,
+                view.personal_choice_controls.reject_button,
+                view.personal_choice_controls.override_button,
+            )
+            for control in controls:
+                assert control.isVisible()
+                assert control.height() >= control.minimumSizeHint().height(), (
+                    width,
+                    control.objectName() or getattr(control, "text", lambda: "")(),
+                    control.size(),
+                    control.minimumSizeHint(),
+                )
+
+            wrapped_labels = (
+                view.research_context_summary_label,
+                view.personal_choice_controls.status_label,
+            )
+            for label in wrapped_labels:
+                required_height = label.heightForWidth(label.width())
+                if required_height > 0:
+                    assert label.height() >= required_height, (
+                        width,
+                        label.objectName(),
+                        label.size(),
+                        required_height,
+                    )
+
+        view.result_source_tabs.setCurrentIndex(1)
+        daily_research = view.daily_market_research_view
+        daily_research.research_sections.setCurrentWidget(daily_research.snapshot_page)
+        app.processEvents()
+        for editor in (
+            daily_research.decision_date_edit,
+            daily_research.decision_time_edit,
+        ):
+            assert editor.height() >= editor.minimumSizeHint().height(), (
+                type(editor).__name__,
+                editor.size(),
+                editor.minimumSizeHint(),
+            )
+    finally:
+        view.close()
+        app.processEvents()
 
 
 def test_responsive_layout_timer_coalesces_resizes_without_reentry(monkeypatch) -> None:

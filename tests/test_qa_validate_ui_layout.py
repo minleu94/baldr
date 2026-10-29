@@ -1138,6 +1138,51 @@ def test_rich_text_label_uses_rendered_width_and_still_flags_real_clipping(
         qt_app.processEvents()
 
 
+def test_spinbox_editor_is_audited_through_its_composite_control(qt_app: object) -> None:
+    from PySide6.QtWidgets import QTimeEdit, QVBoxLayout, QWidget
+
+    page_widget = QWidget()
+    layout = QVBoxLayout(page_widget)
+    editor = QTimeEdit(page_widget)
+    editor.setObjectName("decision_time_edit")
+    layout.addWidget(editor)
+    page_widget.resize(260, editor.minimumSizeHint().height() + 24)
+    page_widget.show()
+    qt_app.processEvents()
+    try:
+        evidence: dict[str, object] = {"errors": []}
+        geometry: dict[str, object] = {"errors": []}
+        page: dict[str, object] = {"text_controls": []}
+        qa_layout._audit_page_text_controls(
+            page_widget,
+            "qa/time_edit",
+            "qa",
+            page,
+            evidence,
+            geometry,
+        )
+
+        controls = page["text_controls"]
+        parent_metric = next(
+            metric for metric in controls
+            if metric["object_name"] == "decision_time_edit"
+        )
+        editor_metrics = [
+            metric for metric in controls
+            if metric.get("composite_editor_subcontrol") is True
+        ]
+        assert parent_metric["vertical_size_sufficient"] is True
+        assert editor_metrics
+        assert not any(
+            error["code"] == "control_vertical_clip"
+            for error in evidence["errors"]
+        )
+    finally:
+        page_widget.close()
+        page_widget.deleteLater()
+        qt_app.processEvents()
+
+
 def test_list_fixture_tooltip_and_wrapped_fifth_row_are_measured(qt_app: object) -> None:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QListWidget

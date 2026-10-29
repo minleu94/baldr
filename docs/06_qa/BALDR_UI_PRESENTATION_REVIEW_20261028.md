@@ -148,4 +148,19 @@ Backtest 的「證據覆盤 → 今日決策 → 排程狀態」在來源缺件�
 離線 MainWindow 畫面顯示複合來源頁把「套用條件並重新全域查詢」橫跨整個內容區，清除與取消各占半列，操作面積打斷條件與結果的連結。現在將三項操作集中在條件下方一列，明確以 primary／ghost／secondary 區分查詢、清除、取消；寬版同列靠左，窄版改直排。控制項仍呼叫原 signals／slots，查詢條件與資料不變。
 
 - `tests/test_ui_qt_technical_official_composite_view_v2.py::test_v2_query_actions_have_primary_hierarchy_and_reflow_without_stretching`：**1 passed**；確認寬版主次樣式與內容寬度、窄版直排且按鈕都在操作區內。
-- 相關測試檔完整執行及必要 Update 驗證、全域檢查在本輪結束前待完成；全程式 UI 盤點與原生 GUI／Owner UAT 仍未完成。
+- 新操作列定向測試 **1 passed**；完整 `tests/test_ui_qt_technical_official_composite_view_v2.py` 執行約 15 分鐘沒有輸出，已中止 owned session，不能列為通過。必要 Update UI **98 passed**；`scripts/qa_validate_update_tab.py` **25 passed／0 failed／4 skipped**。修改 UI source scoped mypy **4 files / 0 issues**、Python `py_compile` 通過；repo-wide mypy 仍被未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤擋住。全程式 UI 盤點與原生 GUI／Owner UAT 仍未完成。
+
+## 2026-10-29 第十二輪：技術母體結果操作分組
+
+綜合選股的每日技術母體結果表上方，原本五個同權按鈕平均展開，將「開啟所選股票」和「比較清單」的動作混成一排。現在以「所選個股」和「比較籃」兩個區塊建立操作上下文；查個股證據和比較原研究作為主要動作，新增／收藏列次要、清空比較籃為低權重；寬版左右並列，窄版上下排列。沒有改查詢或保存行為。
+
+- `tests/test_ui_qt_daily_market_technical_universe_v4_view.py::test_v4_result_actions_are_grouped_and_reflow_at_narrow_width`：**1 passed**；驗證兩種寬度下的分組、層級、內容寬度與容器邊界。
+- 新操作列定向測試 **1 passed**；完整 V4 測試檔未在本輪執行。必要 Update UI **98 passed**、`scripts/qa_validate_update_tab.py` **25 passed／0 failed／4 skipped**。修改的 5 個 UI source scoped mypy **0 issues**，Python `py_compile` 通過；repo-wide mypy 仍被未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤阻斷。全程式 UI 盤點與原生 GUI／Owner UAT 仍未完成。
+
+## 2026-10-29 第十三輪：Recommendation 捲動高度與控件裁切
+
+Recommendation 結果頁原先把內層 layout 的水平與垂直 size constraint 一起設為 `SetNoConstraint`。MainWindow 窄版中，外層捲動區因此沒有取得內容所需的自然高度：保存來源選單被壓到 1 px，人工決定區高度不足。現在保留「水平不鎖寬」並恢復「垂直依內容延伸」，讓外層捲動承接長頁；查詢與保存行為不變。
+
+- `tests/test_ui_qt_recommendation_layout.py::test_saved_recommendation_primary_controls_keep_their_readable_height`：**1 passed**；檢查寬／窄視窗保存來源、主要操作、研究決定與日期時間控件高度，並斷言水平／垂直 layout constraints。
+- 稽核器誤報也一併修正：把 `QTimeEdit` 內部 `QLineEdit` 改按複合控件量測。`tests/test_qa_validate_ui_layout.py::test_spinbox_editor_is_audited_through_its_composite_control`：**1 passed**。
+- 修正後 Recommendation 定向 MainWindow 稽核（scale 1.0、1400×800、46 子頁）：**0 failures／0 coverage gaps**；保存來源選單為 30×30 px，研究決定組高度問題不再出現。原九工作區多尺寸稽核未重跑；原生 GUI／Owner UAT 與全程式 UI 盤點仍未完成。

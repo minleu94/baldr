@@ -405,3 +405,9 @@ Recovery planner 對 3712／2026-04 回報 1 列、0 conflict、0 diagnostic、1
 正式寫入收據及讀回：新增 31 列、mapping 新增 31 列；SQLite `PRAGMA quick_check=ok`。PIT provider cutoff 驗證為 **2026-10-29 不可見、2026-10-30 31/31 精確值可見**。SQLite 物理列品質目前為 **251,228 observed／719 degraded**：observed 增加 31，但舊 snapshot 的 degraded 標記仍保留，因而底層 degraded 計數不變。這 31 個鍵於 10/30 之後有可用的新觀察版本；不能稱舊 snapshot 被回填，也不能把其更正值回寫到更早時間。DB 與 mapping 備份、逐筆寫入／provider 驗證收據保存在正式資料根目錄 `meta_data/backup/` 及本次 ignored scratch `.tmp_mops_late_revision_20261029/`。
 
 此處置將 36 個晚於舊 snapshot 可得日事件及 1 個晚於原列擷取時間事件中的 31 個鍵，補成「目前頁面值、於本次實際觀察後可用」的新版本；其餘晚公告鍵仍需可識別的單一公司營收明細，尤其 3712 的選擇頁不能代替子公司資料。原分類的 681 個缺少已配對事件、未解的晚公告鍵及 6884／2026-08 特殊缺口仍須繼續逐類處理。這不是 719 個 degraded 全數解除，也不代表歷史公告版本都已還原。
+
+### 2026-10-29 6806 歷史公告缺口離線交叉核查
+
+對目前集中缺口的 6806 做唯讀比對。四批既存 MOPS F22 `events.csv`（`mops_harvest_2013_2019`、`2014_2019`、`2020_2025`、`2026`）合計 **267,777 列**，以公司代碼精確搜尋皆為 **0 筆 6806 事件**；逐檔 SHA-256 分別為 `927e45f5e099b06523c2d7e39923dae1f71a6ab9ddff73da4e82a731e3cdf9f1`、`d04bad914fa19a1467465358ab09c2b6d4f4c0ac4f227072bc94a1f8fb6829b6`、`c0c6eadd04872e3ca44a85eff88bb99ae844e74d04ff3c1e8f255c53cbf6944f`、`1da9b9fc85197f1545efdd6da1ca5e7c224ac2e66fbba1c63bbf20abbc6b2176`。既有 6806／民國 108 年 `t05st01` 原件 HTTP 200，但 API code 406「查無相符資料」、0 列、89 bytes，SHA-256 `3e87b377fbcd68d73065b3389f2f57320abb4b9a05b443995d24c80720aa7199`。這只表示該公司年度查詢未回資料，不能推定當期沒有公告。
+
+本次另以 Scrapling 普通 HTTPS POST 對同一官方 `t05st01` 入口做一次即時重試，DNS 解析失敗，沒有收到 HTTP 回應；失敗收據位於 ignored `.tmp_mops_gap_scout_6806_20261029/`。沒有替換解析器、代理或使用 Remote Desktop。現有 F22 harvest 事件欠缺是來源事件未取得，非本地 market/date 欄位配對錯誤；這 85 個目前仍 degraded 的 6806 keys 沒有可安全解除列。還需從另一條能取得其歷史公告的公開官方路徑查核，或補得能綁定精確公司、期別、數值及當時可得時間的原件。原件集合與摘要保留於上述 ignored scratch；正式 DB／mapping 未修改。

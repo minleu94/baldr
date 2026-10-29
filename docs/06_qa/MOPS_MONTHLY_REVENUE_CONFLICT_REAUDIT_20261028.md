@@ -504,6 +504,12 @@ Scrapling 對官方 `mops.twse.com.tw/mops/api/t05st01` 的當次 bounded probe 
 
 因此本次來源路徑補查**沒有新增可安全套用的公告時間或 mapping**，沒有改正式 SQLite／availability mapping，`6884／2026-08` 仍 degraded。下一步應尋找可按歷史日期／期別完整查詢並能回傳公告明細的官方路徑，或取得對應 F22 公告原件；不得將這次 t05st01 最近 20 筆結果當成完成歷史查核。
 
+### 2026-10-29 F22 harvest 的 API 狀態驗證修正
+
+專案 harvest 對 HTTP 200 只驗 JSON 與 `data` 列表，原先會把 `status=fail` 的應用層錯誤（例如「參數錯誤」）當成成功的零列視窗。現在僅接受 `status=fail` 且訊息精確為「查無公告資料」、`data=[]` 的正式空結果；其他應用層失敗會丟出錯誤並沿既有 retry／停止流程處理，未知狀態也不會落地成空視窗。已加回歸案例區分有效無公告與參數錯誤；使用受控 Windows Job 執行的 harvest 測試 **9 passed**，兩個修改 Python 檔 `py_compile` 通過，Job 的 8 GiB／12 程序上限讀回驗證、子程序及 Job handles 關閉。
+
+依使用者既有授權，已啟動全期 PUB F22 獨立 harvest：2014–2026-10，規劃 **924 個窗口**，目標 `output/mops_harvest_pub_2014_2026_backfill20261029/`，維持每請求至少 10 秒間隔與 checkpoint；截至本段記錄已完成最前兩個窗口，均為 HTTP 200、官方 `查無公告資料`、0 列。任務仍在跑，不能把局部空窗外推為全期空，也未把任何事件寫入正式 DB／mapping。原件與即時進度以該目錄 manifest、raw、checkpoint 為準。
+
 ### 2026-10-29 Weekly MOPS child 實跑：編碼與 output junction 修復
 
 隔離手動執行 Weekly controller 時先重現兩個可修故障：核心 collector 在 Windows `cp1252` stdout 輸出含中文 JSON 時拋 `UnicodeEncodeError`；修正為子程序自行重設 UTF-8 後，core 已能正常完成。接著 `fetch_mops_statement_availability.py` 把已由 output guard 驗證的輸出路徑 `resolve()` 後再檢查是否位於 repo；本機 `repo/output` 是指向 `F:/Min/Python/Project/BaldrStorage/repo-output` 的既定 junction，故被誤判為越界。現在以固定 repo 內預設路徑做詞法範圍驗證，再由既有 output guard 確認解析後位置不在正式 `DATA_ROOT`。

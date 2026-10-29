@@ -20,6 +20,34 @@ def test_fetch_ezsearch_window_accepts_valid_json_rows(monkeypatch: pytest.Monke
     assert parsed == {"data": [{"COMPANY_ID": "2330"}]}
 
 
+def test_fetch_ezsearch_window_accepts_official_no_announcement_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = json.dumps(
+        {"data": [], "message": ["查無公告資料"], "status": "fail"}, ensure_ascii=False
+    ).encode()
+    monkeypatch.setattr(harvest.Fetcher, "post", lambda *args, **kwargs: SimpleNamespace(status=200, body=body))
+
+    status, raw, parsed = harvest.fetch_ezsearch_window("pub", date(2026, 9, 6), date(2026, 9, 8))
+
+    assert status == 200
+    assert raw == body
+    assert parsed["status"] == "fail"
+    assert parsed["data"] == []
+
+
+def test_fetch_ezsearch_window_rejects_application_parameter_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = json.dumps(
+        {"data": [], "message": "參數錯誤", "status": "fail"}, ensure_ascii=False
+    ).encode()
+    monkeypatch.setattr(harvest.Fetcher, "post", lambda *args, **kwargs: SimpleNamespace(status=200, body=body))
+
+    with pytest.raises(ValueError, match="參數錯誤"):
+        harvest.fetch_ezsearch_window("pub", date(2026, 9, 6), date(2026, 9, 8))
+
+
 @pytest.mark.parametrize("body", [b"not-json", b"[]", b"{}", b'{"data": {}}', b'{"data": [null]}'])
 def test_fetch_ezsearch_window_rejects_invalid_http_200_payloads(
     monkeypatch: pytest.MonkeyPatch, body: bytes

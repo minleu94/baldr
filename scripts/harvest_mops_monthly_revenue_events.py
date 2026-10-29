@@ -206,6 +206,23 @@ def fetch_ezsearch_window(
         if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
             raise ValueError("MOPS returned HTTP 200 JSON without a valid data row list")
 
+        api_status = str(parsed_json.get("status", "")).strip().lower()
+        message_value = parsed_json.get("message", [])
+        if isinstance(message_value, str):
+            messages = [message_value.strip()]
+        elif isinstance(message_value, list):
+            messages = [str(message).strip() for message in message_value]
+        else:
+            messages = []
+
+        if api_status == "fail":
+            is_expected_empty = not rows and any(message == "查無公告資料" for message in messages)
+            if not is_expected_empty:
+                detail = " / ".join(messages) or "unspecified application error"
+                raise ValueError(f"MOPS application-level query failure: {detail}")
+        elif api_status and api_status != "success":
+            raise ValueError(f"MOPS returned an unexpected application status: {api_status}")
+
     return status_code, body, parsed_json
 
 

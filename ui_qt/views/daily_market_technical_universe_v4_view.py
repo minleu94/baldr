@@ -997,11 +997,28 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSortingEnabled(False)
 
-        navigation = QHBoxLayout()
+        self.empty_results_label = QLabel(
+            "尚未載入查詢列。先嚴格核驗保存來源並套用查詢；結果列會顯示於此。"
+        )
+        self.empty_results_label.setObjectName("dailyMarketTechnicalUniverseV4EmptyResults")
+        self.empty_results_label.setAccessibleName("技術研究結果空狀態")
+        self.empty_results_label.setWordWrap(True)
+        self.empty_results_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.empty_results_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+
+        self.page_navigation_widget = QWidget()
+        self.page_navigation_widget.setObjectName("dailyMarketTechnicalUniverseV4PageNavigation")
+        navigation = QHBoxLayout(self.page_navigation_widget)
+        navigation.setContentsMargins(0, 0, 0, 0)
         self.previous_button = QPushButton("上一頁")
         self.previous_button.setObjectName("dailyMarketTechnicalUniverseV4Previous")
         self.next_button = QPushButton("下一頁")
         self.next_button.setObjectName("dailyMarketTechnicalUniverseV4Next")
+        for button in (self.previous_button, self.next_button):
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.open_button = QPushButton("讀取原保存個股證據")
         self.open_button.setObjectName("dailyMarketTechnicalUniverseV4OpenStock")
         self.open_button.setProperty("variant", "primary")
@@ -1060,8 +1077,10 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.action_groups_layout.addWidget(self.stock_action_group)
         self.action_groups_layout.addWidget(self.comparison_action_group, 1)
         root.addLayout(self.action_groups_layout)
+        root.addWidget(self.empty_results_label)
         root.addWidget(self.table)
-        root.addLayout(navigation)
+        root.addWidget(self.page_navigation_widget)
+        self.table.hide()
         self.comparison_basket_label = QLabel("比較籃 0／256；至少 2 檔可比較。")
         self.comparison_basket_label.setObjectName("dailyMarketTechnicalUniverseV4ComparisonBasket")
         self.comparison_basket_label.setAccessibleName("跨頁保留的原保存研究比較清單")
@@ -1076,6 +1095,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(self.status)
+        root.addStretch(1)
 
         self.refresh_button.clicked.connect(self.refresh_sources)
         self.more_sources_button.clicked.connect(lambda: self.refresh_sources(append=True))
@@ -2163,6 +2183,18 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             selection_model.clearSelection()
         self.table.setCurrentIndex(QModelIndex())
         self.results_model.replace_page(rows)
+        has_rows = bool(rows)
+        self.table.setVisible(has_rows)
+        self.empty_results_label.setVisible(not has_rows)
+        if not has_rows:
+            if self._query is None:
+                self.empty_results_label.setText(
+                    "尚未載入查詢列。先嚴格核驗保存來源並套用查詢；結果列會顯示於此。"
+                )
+            else:
+                self.empty_results_label.setText(
+                    "目前條件沒有符合列；上方查詢摘要會保留已核驗母體與符合數。"
+                )
         if selected_code is not None:
             self._select_stock_code(selected_code)
 
@@ -2173,6 +2205,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
     def _set_page_controls(self) -> None:
         query = self._query
         page = self._page
+        self.page_navigation_widget.setVisible(
+            page is not None and page.page_count > 1 and not self._closing
+        )
         self.previous_button.setEnabled(
             query is not None
             and page is not None

@@ -730,8 +730,13 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     view.advice_daily_source_button.click()
     assert view.daily_detail_button.isChecked()
     assert not view.daily_trace_label.isHidden()
-    assert "本次每日來源（唯讀）" in view.daily_trace_label.text()
-    assert "daily-event-for-ui-test" not in view.daily_trace_label.text()
+    daily_trace_text = view.daily_trace_label.text()
+    assert "本次每日來源（唯讀）" in daily_trace_text
+    assert daily_trace_text.index("本次結果") < daily_trace_text.index("篩選與排除")
+    assert daily_trace_text.index(result_id) < daily_trace_text.index("篩選與排除")
+    assert "研究候選" in daily_trace_text
+    assert "來源未提供可顯示的排除摘要；不能據此判定沒有排除。" in daily_trace_text
+    assert "daily-event-for-ui-test" not in daily_trace_text
     assert view.daily_trace_advanced_panel.is_collapsed()
     assert "daily-event-for-ui-test" in view.daily_trace_advanced_text.text()
     assert "industry source contract pending" in view.daily_trace_advanced_text.text()
@@ -853,6 +858,14 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
     assert saved[1][2] == ""
     assert "已保存並讀回核對" in view.advice_research_decision_status.text()
     assert "不建立交易或 fill" in view.advice_research_decision_status.text()
+    assert "回查位置：研究紀錄與覆盤｜查找這筆" in view.advice_research_decision_status.text()
+    readback_result[0] = state(expected_identity, active_note_count=0)
+    assert _wait_for_qt(view.advice_readback_decision_button.isEnabled)
+    view.advice_readback_decision_button.click()
+    assert _wait_for_qt(
+        lambda: "研究註記=0 筆（不含研究決定）"
+        in view.advice_research_decision_status.text()
+    )
     readback_result[0] = state(
         expected_identity,
         active_note_count=2,
@@ -866,9 +879,9 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
         lambda: "同筆狀態已讀回" in view.advice_research_decision_status.text()
     )
     assert "同筆狀態已讀回" in view.advice_research_decision_status.text()
-    assert "回查位置：研究紀錄與覆盤" in view.advice_research_decision_status.text()
+    assert "回查位置：研究紀錄與覆盤｜查找這筆" in view.advice_research_decision_status.text()
     assert "目前人工決定=已略過" in view.advice_research_decision_status.text()
-    assert "研究註記=2 筆" in view.advice_research_decision_status.text()
+    assert "研究註記=2 筆（不含研究決定）" in view.advice_research_decision_status.text()
     assert "下次檢視=2026-07-20T09:30:00+08:00" in view.advice_research_decision_status.text()
 
     readback_result[0] = state(

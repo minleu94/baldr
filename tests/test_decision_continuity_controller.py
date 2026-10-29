@@ -74,6 +74,8 @@ def test_accept_review_note_reopen_preserves_intent_and_review(tmp_path: Path) -
     noted = controller.note(identity, note="確認營收與風險", request_id="note-1")
 
     assert accepted.success and reviewed.success and noted.success
+    assert "另加註記：0 筆（不含研究決定）" in accepted.message
+    assert "研究動作歷史：1 筆" in accepted.message
     reopened = DecisionContinuityController(JournalService(_config(tmp_path)))
     state = reopened.read_state(identity)
     assert state.decision_status == "accepted"

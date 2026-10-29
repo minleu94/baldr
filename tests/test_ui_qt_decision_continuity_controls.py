@@ -66,6 +66,8 @@ def test_controls_save_accept_review_note_and_reopen_exact_state(tmp_path: Path)
     assert widget.accept_button.isEnabled()
     widget.accept_button.click()
     assert "已納入研究" in widget.status_label.text()
+    assert "另加註記：0 筆（不含研究決定）" in widget.status_label.text()
+    assert "研究動作歷史：1 筆" in widget.status_label.text()
     assert widget.history_list.count() == 1
 
     selected = QDateTime.fromString("2026-09-20 10:30:00", "yyyy-MM-dd HH:mm:ss")
@@ -75,7 +77,7 @@ def test_controls_save_accept_review_note_and_reopen_exact_state(tmp_path: Path)
     assert "2026-09-20T10:30:00+08:00" in widget.status_label.text()
 
     widget._submit(ACTION_NOTE, note="確認營收與風險")
-    assert "Journal 紀錄：1 筆" in widget.status_label.text()
+    assert "另加註記：1 筆（不含研究決定）" in widget.status_label.text()
     assert widget.history_list.count() == 3
     widget.close()
 

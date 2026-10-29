@@ -98,7 +98,17 @@ def test_home_is_one_visible_page_with_existing_summary_widgets() -> None:
         assert "不是按鈕" in view.guided_priority_status_badges["candidates"].accessibleDescription()
         assert view.home_research_evidence_button.isEnabled()
         assert view.home_advanced_button.isEnabled()
-        assert view.daily_detail_button.text() == "展開本次來源、篩選與排除"
+        assert view.daily_detail_button.text() == "查看每日來源詳情"
+        assert view.daily_detail_button.accessibleName() == "查看每日來源、篩選與排除詳情"
+        assert view.daily_detail_button.parentWidget() is view.daily_source_details_row
+        assert view.daily_action_layout.indexOf(view.daily_detail_button) == -1
+        journey_layout = view.daily_investment_journey_panel.layout
+        assert journey_layout.indexOf(view.daily_candidate_detail_label) < journey_layout.indexOf(
+            view.daily_source_details_row
+        )
+        assert journey_layout.indexOf(view.daily_source_details_row) < journey_layout.indexOf(
+            view.daily_action_row
+        )
         market_row = view.guided_priority_rows["market"]
         assert view.daily_market_kpi_row.parentWidget() is market_row
         assert view.daily_market_footer_label.parentWidget() is market_row

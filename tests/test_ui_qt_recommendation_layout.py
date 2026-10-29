@@ -425,6 +425,15 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
         result_layout = view.result_panel.layout()
         assert result_layout.verticalSizeConstraint() == QLayout.SizeConstraint.SetMinimumSize
         assert result_layout.horizontalSizeConstraint() == QLayout.SizeConstraint.SetNoConstraint
+        assert result_layout.indexOf(view.result_heading_layout) < result_layout.indexOf(
+            view.result_title_layout
+        )
+        assert result_layout.indexOf(view.result_title_layout) < result_layout.indexOf(
+            view.result_status_label
+        )
+        assert view.result_title_layout.indexOf(view.stock_research_btn) >= 0
+        assert view.result_heading_layout.indexOf(view.stock_research_btn) == -1
+        assert view.result_heading_layout.indexOf(view.result_columns_toggle) >= 0
         for width, height in ((1366, 768), (897, 360), (390, 844)):
             view.resize(width, height)
             app.processEvents()
@@ -460,7 +469,7 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
             assert view.research_context_toggle.text() == "本次資料日期與來源"
             expected_saved_row_direction = (
                 QBoxLayout.TopToBottom
-                if view.result_scroll.viewport().width() < 560
+                if view.result_scroll.viewport().width() < 900
                 else QBoxLayout.LeftToRight
             )
             expected_context_direction = (

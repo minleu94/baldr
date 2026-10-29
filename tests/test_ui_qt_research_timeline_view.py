@@ -225,9 +225,12 @@ def test_historical_decision_can_be_found_by_result_id_after_advice_changes():
     view = ResearchTimelineView(_Reader(result), auto_refresh=False)
     view._receive(view._generation, result)
 
-    view.source_filter.setCurrentIndex(view.source_filter.findData("decision"))
-    view.stock_filter.setText("rec_old_recommendation")
+    # The Advice cross-page action must find its decision even if Journal was
+    # previously narrowed to another source.
+    view.source_filter.setCurrentIndex(view.source_filter.findData("manual"))
+    assert view.search_result_id("rec_old_recommendation")
 
+    assert view.source_filter.currentData() == "decision"
     assert view.entries_table.rowCount() == 1
     assert view._selected is entry
     assert "result ID rec_old_recommendation" in view.detail_label.text()

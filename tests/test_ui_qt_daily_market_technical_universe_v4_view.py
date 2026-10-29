@@ -219,9 +219,18 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     )
 
     view = DailyMarketTechnicalUniverseV4View(fixture["store_output_root"])
+    view.resize(1366, 768)
     view.show()
+    app.processEvents()
     selected_events: list[object] = []
     view.stockSelected.connect(selected_events.append)
+    assert view.table.isHidden()
+    assert view.empty_results_label.isVisible()
+    assert "嚴格核驗保存來源" in view.empty_results_label.text()
+    assert view.empty_results_label.height() <= (
+        view.empty_results_label.fontMetrics().height() * 2 + 24
+    )
+    assert not view.page_navigation_widget.isVisible()
 
     # 產製測試資料會建立兩份 parent 保存（256+1）與完整 full-N 收據，
     # 並在測試前移除來源資料庫；來源清冊與查詢必須只重開固定保存版本。
@@ -271,6 +280,9 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert view.table.isSortingEnabled() is False
     assert view.results_model.rowCount() == len(page.rows)
     assert view.results_model.columnCount() == 9
+    assert view.table.isVisible()
+    assert view.empty_results_label.isHidden()
+    assert view.page_navigation_widget.isVisible()
     first_row = page.rows[0]
     assert tuple(rule.key for rule in first_row.rules) == (
         "ma5_20_golden_cross",
@@ -478,6 +490,10 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     )
     assert view.current_page is None
     assert view.results_model.rowCount() == 0
+    assert view.table.isHidden()
+    assert view.empty_results_label.isVisible()
+    assert "目前條件沒有符合列" in view.empty_results_label.text()
+    assert not view.page_navigation_widget.isVisible()
     assert view.next_button.isEnabled() is False
     assert view.open_button.isEnabled() is False
     assert view.add_comparison_button.isEnabled() is False
@@ -494,6 +510,8 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     restored_selection = view._selection
     assert restored_page is not None
     assert restored_page.matching_count == 255
+    assert view.table.isVisible()
+    assert view.empty_results_label.isHidden()
     assert calls["strict_open"] == strict_opens_before_page_turn
 
     # explicit reload 必須重新核驗整個保存版本；篡改非目前頁面依賴的 receipt

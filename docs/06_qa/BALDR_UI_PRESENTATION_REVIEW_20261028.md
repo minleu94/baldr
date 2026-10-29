@@ -505,6 +505,62 @@ Backtest worker 直接回報錯誤時，原流程只顯示一次 modal；關閉�
 - Recommendation source scoped mypy、修改 Python 檔 `py_compile` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止；`git diff --check` 通過（Git 顯示既有 LF→CRLF 提示）。
 - 操作指南已同步兩個來源入口的層級與狀態摘要分工。畫面證據為合成 UI；資料來源完整端到端、原生 GUI／Owner UAT 與全程式 UI 盤點仍未完成。
 
+## 2026-10-29 第五十三輪：研究決定與註記數分開呈現
+
+Owner 回報的保存回條顯示「Journal 紀錄：0 筆」，但 `active_note_count` 實際只計文字註記；已納入／略過決定是獨立的研究動作。把兩者共用「Journal 紀錄」會讓成功保存看起來像沒有留下任何資料。現在 controller 與決定面板改稱「另加註記」，明示不含研究決定，並獨立列「研究動作歷史」；Workbench 保存成功後標示「研究紀錄與覆盤｜查找這筆」及 exact result ID 查找路徑。保存、Journal schema、決定身份和行為均未改。
+
+- Advice contract、Decision Continuity controls／controller 與 MainWindow Advice→研究決定→Journal 精確讀回跨頁案例：**34 passed**；必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round53_update_validator_logs/VALIDATION_REPORT.md`。
+- 三個修改 UI／service source scoped mypy **0 issues**；7 個修改 Python source／test `py_compile` 通過；`git diff --check` 通過（既有 LF→CRLF 提示）。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。
+- 操作手冊已說明「註記 0 筆」不代表決定未保存，以及按 result ID 找回方式。該跨頁測試使用隔離 Journal fixture；正式資料保存紀錄與 Owner 原生 GUI UAT 仍依 Gate 1 檢核卡另行確認。
+
+## 2026-10-29 第五十四輪：Advice 直達研究決定時解除舊來源篩選
+
+Advice 的「研究紀錄與覆盤｜查找這筆」會把完整 `result_id` 傳到研究時間軸，但若該頁先前選的是手動筆記、報告等其他來源，舊來源篩選會把研究決定藏起來，讓精確導覽看似沒有找到。現在以 Advice 進入時自動切換到「研究決定」，再依完整 `result_id` 篩選／搜尋；一般手動查找仍可自行切換來源。沒有變更 Journal 查詢、保存或研究決定契約。
+
+- `tests/test_ui_qt_research_timeline_view.py`：**17 passed**，包含先選「手動筆記」再由 result ID 查找時會切回「研究決定」並顯示同筆決定。必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，報告 `.pytest-owned-temp/ui_round54_update_validator_logs/VALIDATION_REPORT.md`。
+- `ui_qt/views/research_timeline_view.py` scoped mypy **0 issues**；兩個修改 Python 檔 `py_compile` 通過；停用 Git fsmonitor IPC 後 `git diff --check` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。
+- 本 QA 文件的 `document_control check` 通過（12 features／1 link source）；兩本手冊的檢查仍被既有 `output/trial/` Junction `WinError 5` 阻擋，非本輪新增連結；未觸碰封存路徑。
+- 操作手冊已補充直達時會自動切到「研究決定」。此修正只關閉已辨識的跨頁可尋找性斷點，不代表整體研究記錄 UI 或 Gate 1 Owner UAT 完成。
+
+## 2026-10-29 第五十五輪：Recommendation 技術母體空結果收合
+
+Recommendation 的「每日研究／技術母體」未載入或查詢零符合時，空表仍撐滿結果區，單頁也保留停用的翻頁按鈕；多個換行標籤還分攤版面剩餘高度，讓空白區隔開查詢摘要和操作。現在零列時以一行、依文字高度排列的提示取代表格；尚未載入與查詢零符合會顯示不同提示，並沿用上方摘要區分來源未核驗及已核驗母體計數。資料表只在有列時顯示；只有多頁結果顯示翻頁操作。增加主版面底部伸展區，剩餘高度落在內容末端，不再拉高中間標籤。來源、查詢、母體、分頁資料及金融邏輯未改。
+
+- `tests/test_ui_qt_daily_market_technical_universe_v4_view.py`：**11 passed**，涵蓋未載入提示、已核驗 257 檔多頁結果、精確個股下鑽、零符合與恢復結果。合成來源 fixture 的 `Path.resolve(strict=True)` 在 sandbox 內被 `WinError 5` 阻擋；取得受控本機路徑核驗後以隔離暫存根跑完原整檔，未排除案例。
+- Recommendation MainWindow compact／scale 1.5 offscreen 稽核：**1 工作區、0 errors／0 coverage gaps**，報告與截圖在 `.pytest-owned-temp/ui_audit_recommendation_empty_round55b/`；空提示、比較籃及狀態標籤高度均為 **16 logical px**，先前會被拉到 141 px。這是 offscreen 合成工作區，不是 Windows 原生 GUI 或 Owner UAT。
+- 必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，`.pytest-owned-temp/ui_round55_update_validator_logs/VALIDATION_REPORT.md`。修改 view scoped mypy **0 issues**；兩個 Python 檔 `py_compile`、`git diff --check` 通過。Repo-wide mypy 仍在未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。
+- 使用者手冊已同步空結果提示、零符合摘要及單頁收合翻頁的判讀。Recommendation 有效保存來源端到端與原生 GUI／Owner UAT 仍未完成；這項 UI 改善不授予來源資格或 Gate 1 接受。
+
+## 2026-10-29 第五十六輪：Recommendation 結果標題與操作分組
+
+「推薦結果與風險判讀」標題列原先混放保存、觀察清單、個股研究與研究／匯出按鈕，閱讀標題會被多個操作入口打斷。現在標題列只保留標題及延伸欄位切換；各結果操作集中在下一列，再接結果狀態與表格。一般結果欄較窄時操作改垂直排列；已精確讀回的保存結果在足夠寬度時可並列。保存／讀取／研究動作本身未改，另保留既有 saved-result row 名稱供相關版面使用。
+
+- Recommendation layout 與保存結果精確讀回版面：**19 passed**；新增斷言確認標題／操作／狀態次序、標題不承載個股研究操作，以及保存讀回前後控制列的響應排列。
+- 必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，日誌與報告在 `.pytest-owned-temp/ui_round56_update_validator_logs/`。validator 預設 `output/qa/update_tab/RUN_LOG.txt` 受工作區權限拒絕；使用既有 `BALDR_UPDATE_TAB_QA_LOG_DIR` 導至隔離目錄後完成。
+- `recommendation_view.py` scoped mypy **0 issues**；2 個修改 Python 檔 `py_compile` 通過；`git diff --check` 通過（僅既有 LF／CRLF 警告）。Repo-wide mypy 仍在未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 因既有語法錯誤停止。
+- 本 QA 文件 document-control **12 features／1 link source／0 errors**。Application manual document-control 仍受既有兩個 `output/trial/` junction 外部連結越界阻擋，與本輪新增操作說明無關。
+- 畫面驗證為 Qt offscreen 合成測試，沒有執行原生 GUI／Owner UAT；Recommendation 正式保存來源端到端與全程式 UI 盤點仍未完成，本輪不構成 Gate 1 接受。
+
+## 2026-10-29 第五十七輪：今日總覽每日來源詳情入口定位
+
+每日來源詳情雖可由 Advice 精確同源直達，但今日總覽自己的入口仍和 Advice 判讀、觀察清單及證據成熟度按鈕混在同一操作列，且名稱「展開本次來源、篩選與排除」沒有直接沿用使用者尋找的「每日來源詳情」。現在把「查看每日來源詳情」放在候選來源摘要正下方，獨立成「來源核對」小列；選股與其他研究操作仍留在候選選擇列。Advice 同源直達仍展開同一區塊，來源摘要與資格邏輯不變。
+
+- `tests/test_ui_qt_workbench_home_single_page.py`、`tests/test_workbench_advice_contract.py`、`tests/test_cross_page_decision_journey_mainwindow.py`：**28 passed**；首頁測試確認入口緊接候選來源摘要、獨立於其他動作列；Advice contract／MainWindow 跨頁案例確認精確同源展開仍可用。
+- 必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，輸出於 `.pytest-owned-temp/ui_round57_update_validator_logs/`。
+- `workbench_view.py` scoped mypy **0 issues**；本輪 2 個修改 Python 檔 `py_compile` 通過。Repo-wide mypy 仍由未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的既有語法錯誤阻斷。
+- 操作手冊已把入口位置更新為「今日總覽 → 候選來源摘要下方 → 查看每日來源詳情」，並保留只讀及未知狀態限制。
+- 本輪只調整入口位置與文字，未更動正式資料、來源讀取、Advice identity 或金融邏輯；offscreen UI 測試不能代替 Owner 原生 GUI UAT。
+
+## 2026-10-29 第五十八輪：每日來源摘要的身份與缺件判讀順序
+
+每日來源詳情展開後，result ID 原本排在證據成熟度段落尾端；使用者要先辨識「這是哪一次結果」時，得先讀過其他區塊。空排除摘要的文字也只說「沒有可顯示摘要」，容易被讀成「沒有排除」；成熟度窗口仍用 `total/ready/waiting/missing` 技術欄名。現在先列本次結果與 result ID，再列篩選／排除及證據觀察；缺少摘要時明說來源未提供、不能推定沒有排除；窗口數字改以「總數、已就緒、待成熟、缺漏」顯示。來源原值、空值與事件仍維持唯讀且不補造。
+
+- `tests/test_workbench_advice_contract.py`：**16 passed**；包含每日來源展開、結果身份順序、空排除摘要的未知語意與進階事件欄隔離。
+- 必要 Update UI：**99 passed**；Update validator：**25 passed／0 failed／4 skipped**，輸出於 `.pytest-owned-temp/ui_round58_update_validator_logs/`。
+- `workbench_view.py` scoped mypy **0 issues**；本輪 2 個修改 Python 檔 `py_compile` 通過。Repo-wide mypy 仍被未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的既有語法錯誤阻斷。
+- 操作手冊已同步來源詳情的閱讀順序、窗口欄名及空摘要限制。
+- 本輪不改來源擷取、資料資格、Advice 或金融邏輯；offscreen 測試不等同 Owner 原生 GUI UAT。
+
 ## 2026-10-29 第五十一輪：工作區提交前定向回歸核對
 
 提交前重跑目前 dirty UI 變更的部分相關測試。單一 Workbench 四欄桌面／窄版案例 **1 passed**；Decision Desk **55 passed**、Recommendation layout **16 passed**、Research Timeline **17 passed**、Runtime view **26 passed**。個人推薦選擇測試 **8 passed／1 failed**，失敗於 learning `runs` 目錄安全讀取（`runs_directory_unsafe_or_unreadable`），在系統 Temp 與 repo `.tmp_` basetemp 都可重現；個股研究報告測試 **29 passed／1 failed**，失敗案例啟動 MainWindow 時 ML registry 因測試輸出路徑存取錯誤未建立。兩者不是本輪新增的顯示斷言，但仍列為未通過，不能將整檔標示為 pass。
@@ -512,3 +568,9 @@ Backtest worker 直接回報錯誤時，原流程只顯示一次 modal；關閉�
 同一進程執行 Backtest 相關測試時，Qt WebEngine 在 `fast_chart_widget.py::_create_webengine_view` 以 Windows native exception `0x80000003` 中止，沒有 pytest 結果；故 Backtest 相關 dirty 測試未獲完整驗收。非 Backtest 的合併 pytest 在遇到長時間 GUI 測試後手動中止，也不列為整體通過。MOPS/data tests 不屬本輪 UI QA；本次結果只支持上述明確列出的定向測試。原生 GUI 與 Owner UAT 尚未執行。
 
 補充受控 runner 結果：Workbench v5 guided + Advice contract changed tests **22 passed**（8 GiB／12-process Job，exit 0、process tree／handles 已關閉）；Backtest 四檔合組於 35.1 秒以 exit code `2147483651`（`0x80000003`）原生中止，stdout 無 pytest 報告，Job 峰值約 1.35 GiB 且程序樹正常關閉。此為測試環境原生中止，不足以定位產品錯誤；仍需拆開不初始化 WebEngine 的 presenter／純 view 測試。使用者手冊 document-control 對既有 `output/trial/` 冷封存連結因 output junction 權限拒絕而未通過路徑檢查；UI QA 文件自身 document-control 通過，不能把外部連結拒絕解讀為手冊內容驗證通過。
+
+## 2026-10-29 分批提交前分組回歸核對
+
+為確認工作區目前 Advice continuity、timeline 導覽與空結果版面修改，分組重跑：`test_cross_page_decision_journey_mainwindow.py` **5 passed**；Decision Continuity controller／controls 與 Research Timeline **34 passed**；Workbench Advice contract **16 passed**；每日技術母體 view 與 Recommendation layout **28 passed**；Workbench 單頁日常來源詳情位置 **7 passed**。每日母體測試在一般 sandbox 初跑因 `Path.resolve(strict=True)` 無法解析系統／repo Temp（`WinError 5`）失敗；在提升執行權限、指定 repo 隔離 Temp 後完整通過。合併成單一長進程的初次嘗試出現環境錯誤且無進一步輸出，已停止；上述分組結果才是本次採用的測試收據。
+
+強制 Update UI suite **99 passed**；Update validator **25 passed／0 failed／4 skipped**，輸出導向 ignored `.pytest-owned-temp/ui_commit_update_validator_20261029/`，使用隔離 QA data root。六個修改 source 檔 scoped mypy **0 issues**，13 個修改 Python source／test `py_compile` 通過，`git diff --check` 通過。Repo-wide mypy 仍因未修改 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的既有語法錯誤，在其他檔案檢查前停止。QA 文件自身 document-control 通過；兩本操作手冊檢查仍因 `output/trial/` junction 的 `WinError 5` 無法讀取既存冷封存連結，本輪沒有新增該等連結。原生 GUI／Owner UAT 未執行。

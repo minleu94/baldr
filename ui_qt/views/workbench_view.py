@@ -2485,6 +2485,30 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         panel.layout.addWidget(self.daily_candidate_detail_label)
 
+        source_details_row = QWidget()
+        self.daily_source_details_row = source_details_row
+        source_details_layout = QHBoxLayout(source_details_row)
+        source_details_layout.setContentsMargins(0, 0, 0, 0)
+        source_details_layout.setSpacing(8)
+        source_details_label = QLabel("來源核對")
+        source_details_label.setAccessibleName("每日推薦來源核對區")
+        source_details_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
+        )
+        source_details_layout.addWidget(source_details_label)
+        self.daily_detail_button = QPushButton("查看每日來源詳情")
+        self.daily_detail_button.setObjectName("dailySourceDetailsToggle")
+        self.daily_detail_button.setProperty("variant", "primary")
+        self.daily_detail_button.setCheckable(True)
+        self.daily_detail_button.setAccessibleName("查看每日來源、篩選與排除詳情")
+        self.daily_detail_button.setToolTip(
+            "展開本次推薦來源、候選篩選／排除與證據追蹤；唯讀，不會重新執行推薦。"
+        )
+        self.daily_detail_button.toggled.connect(self._toggle_daily_detail)
+        source_details_layout.addWidget(self.daily_detail_button)
+        source_details_layout.addStretch(1)
+        panel.layout.addWidget(source_details_row)
+
         candidate_selector_row = QWidget()
         self.home_candidate_selector_row = candidate_selector_row
         candidate_selector_layout = QHBoxLayout(candidate_selector_row)
@@ -2507,6 +2531,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.home_candidate_controls_layout.addWidget(candidate_selector_row)
 
         actions_row = QWidget()
+        self.daily_action_row = actions_row
         self.daily_action_layout = QHBoxLayout(actions_row)
         self.daily_action_layout.setContentsMargins(0, 0, 0, 0)
         self.daily_action_layout.setSpacing(8)
@@ -2550,14 +2575,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "切到既有證據頁查看範圍、身份與各成熟度窗口；不執行重算。"
         )
         self.daily_evidence_button.clicked.connect(lambda: self.select_subtab("Evidence"))
-        self.daily_detail_button = QPushButton("展開本次來源、篩選與排除")
-        self.daily_detail_button.setProperty("variant", "secondary")
-        self.daily_detail_button.setCheckable(True)
-        self.daily_detail_button.setAccessibleName("查看每日來源與排除詳情")
-        self.daily_detail_button.setToolTip(
-            "在今日總覽展開本次推薦來源、候選篩選／排除與證據追蹤；唯讀。"
-        )
-        self.daily_detail_button.toggled.connect(self._toggle_daily_detail)
         self.daily_candidate_advice_button = QPushButton("查看這檔策略判讀")
         self.daily_candidate_advice_button.setProperty("variant", "secondary")
         self.daily_candidate_advice_button.setAccessibleName("查看所選每日候選的同源策略判讀")
@@ -2571,7 +2588,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.daily_candidate_advice_button,
             self.daily_watchlist_button,
             self.daily_evidence_button,
-            self.daily_detail_button,
         ):
             self.daily_action_layout.addWidget(button)
         self.daily_action_layout.addStretch()
@@ -2908,15 +2924,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
 
     def _format_daily_trace(self, daily: WorkbenchDailyEvidence) -> str:
-        horizon_text = "；".join(
-            f"{item.window_days}日 total={item.total}/ready={item.ready}/"
-            f"waiting={item.pending}/missing={item.missing}"
+        horizon_lines = [
+            f"• {item.window_days} 日：總數 {item.total}｜已就緒 {item.ready}｜"
+            f"待成熟 {item.pending}｜缺漏 {item.missing}"
             for item in daily.evidence_windows
-        ) or "未知"
+        ] or ["目前未提供證據成熟度觀察。"]
         lines = [
             "本次每日來源（唯讀）",
-            f"候選：{daily.stock_summary or '未提供'}｜狀態：{daily.candidate_status or '未知'}",
+            "本次結果",
+            f"候選：{daily.stock_summary or '未提供'}｜"
+            f"狀態：{display_workbench_value(daily.candidate_status or 'unknown')}",
             f"決策日：{daily.decision_date or '未知'}｜行情資料日：{daily.data_as_of_date or '未知'}",
+            f"結果 ID：{daily.candidate_result_id or '未知'}",
             "篩選與排除",
         ]
         if daily.candidate_exclusion_summaries:
@@ -2924,12 +2943,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 f"• {summary}" for summary in daily.candidate_exclusion_summaries
             )
         else:
-            lines.append("目前沒有可顯示的排除摘要。")
+            lines.append("來源未提供可顯示的排除摘要；不能據此判定沒有排除。")
         lines.extend(
             (
-                "證據狀態",
-                f"證據成熟度觀察：{horizon_text}",
-                f"結果 ID：{daily.candidate_result_id or '未知'}",
+                "證據成熟度觀察",
+                *horizon_lines,
             )
         )
         return "\n".join(lines)
@@ -3001,7 +3019,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_trace_label.setVisible(bool(expanded))
         self.daily_trace_advanced_panel.setVisible(bool(expanded))
         self.daily_detail_button.setText(
-            "收合每日來源詳情" if expanded else "展開本次來源、篩選與排除"
+            "收合每日來源詳情" if expanded else "查看每日來源詳情"
         )
 
     def _daily_saved_result_id(self) -> str | None:
@@ -5963,14 +5981,14 @@ class UnifiedDecisionWorkbenchView(QWidget):
             ).strip() or "未設定"
             message = (
                 f"目前人工決定={decision_status_text}；"
-                f"研究註記={note_count_text} 筆；"
+                f"研究註記={note_count_text} 筆（不含研究決定）；"
                 f"下次檢視={next_review_at}"
             )
         self.advice_research_decision_status.setText(
             f"{'同筆狀態已讀回' if success else '未讀回'}：{message}\n"
             f"result_id={identity['result_id']}；股票={identity['stock_code']}；"
             f"決策日={identity['decision_date']}\n"
-            "回查位置：研究紀錄與覆盤（可用 result ID 搜尋）\n"
+            "回查位置：研究紀錄與覆盤｜查找這筆（依 result ID，不依賴今日候選）\n"
             "來源 snapshot：已提供 ID；hash 未提供。此操作只讀取研究狀態，不建立交易或 fill。"
         )
         self.advice_research_decision_status.show()
@@ -6065,7 +6083,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 ).strip() or "未設定"
                 message = (
                     f"目前人工決定={decision_status_text}；"
-                    f"研究註記={note_count_text} 筆；"
+                    f"研究註記={note_count_text} 筆（不含研究決定）；"
                     f"下次檢視={next_review_at}"
                 )
             else:
@@ -6114,11 +6132,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
                             else ""
                         )
                     )
-        self.advice_research_decision_status.setText(
-            f"{'同筆狀態已讀回' if is_readback and success else '已保存並讀回核對' if success and verified else '已送出但尚未核對讀回' if success else '未保存／未讀回'}：{message}\n"
-            f"result_id={identity['result_id']}；股票={identity['stock_code']}；決策日={identity['decision_date']}\n"
+        status_lines = [
+            f"{'同筆狀態已讀回' if is_readback and success else '已保存並讀回核對' if success and verified else '已送出但尚未核對讀回' if success else '未保存／未讀回'}：{message}",
+            f"result_id={identity['result_id']}；股票={identity['stock_code']}；決策日={identity['decision_date']}",
+        ]
+        if success and verified:
+            status_lines.append(
+                "回查位置：研究紀錄與覆盤｜查找這筆（依 result ID，不依賴今日候選）"
+            )
+        status_lines.append(
             "來源 snapshot：已提供 ID；hash 未提供。此操作只記錄研究狀態，不建立交易或 fill。"
         )
+        self.advice_research_decision_status.setText("\n".join(status_lines))
         self.advice_research_decision_status.show()
         return success and verified
 

@@ -273,6 +273,9 @@ class ResearchTimelineView(QWidget):
         query = str(result_id or "").strip()
         if self._closing or not query:
             return False
+        decision_index = self.source_filter.findData("decision")
+        if decision_index >= 0:
+            self.source_filter.setCurrentIndex(decision_index)
         self.stock_filter.setText(query)
         if self._full_history_limited:
             self._search_timer.stop()

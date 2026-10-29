@@ -2932,7 +2932,9 @@ class RecommendationView(QWidget):
         compact_saved_readback = (
             saved_readback and not narrow and viewport_width >= 720
         )
-        saved_controls_narrow = viewport_width < 560
+        saved_controls_narrow = viewport_width < 560 or (
+            result_narrow and not compact_saved_readback
+        )
         saved_title_narrow = result_narrow and not compact_saved_readback
         if (
             not force
@@ -3873,6 +3875,7 @@ class RecommendationView(QWidget):
 
         saved_result_select_row = QHBoxLayout()
         self.saved_result_select_row = saved_result_select_row
+        self.saved_result_row = saved_result_select_row
         saved_result_select_row.addWidget(QLabel("讀取已保存結果"))
         self.saved_source_combo = QComboBox()
         self.saved_source_combo.setObjectName("savedRecommendationSourceChoice")
@@ -3938,9 +3941,9 @@ class RecommendationView(QWidget):
         saved_result_actions_row.addStretch(1)
         layout.addLayout(saved_result_actions_row)
 
-        # 標題和控制欄
+        # 標題只承載閱讀層級與欄位展開；結果操作另列，避免標題被按鈕切碎。
         title_layout = QHBoxLayout()
-        self.result_title_layout = title_layout
+        self.result_heading_layout = title_layout
         title = QLabel("推薦結果與風險判讀")
         self.result_title_label = title
         title_font = QFont()
@@ -3958,13 +3961,16 @@ class RecommendationView(QWidget):
         self.result_columns_toggle.setVisible(False)
         self.result_columns_toggle.toggled.connect(self._set_result_columns_expanded)
         title_layout.addWidget(self.result_columns_toggle)
+        layout.addLayout(title_layout)
 
+        result_actions_layout = QHBoxLayout()
+        self.result_title_layout = result_actions_layout
         # 保存結果按鈕
         self.save_result_btn = QPushButton("保存推薦結果")
         self.save_result_btn.setVisible(False)  # 初始隱藏
         self.save_result_btn.clicked.connect(self._save_recommendation_result)
         if self.config:
-            title_layout.addWidget(self.save_result_btn)
+            result_actions_layout.addWidget(self.save_result_btn)
 
         # 加入觀察清單按鈕
         self.add_to_watchlist_btn = QPushButton("加入觀察清單")
@@ -3972,7 +3978,7 @@ class RecommendationView(QWidget):
         self.add_to_watchlist_btn.setEnabled(False)
         self.add_to_watchlist_btn.clicked.connect(self._add_selected_to_watchlist)
         if self.watchlist_service:
-            title_layout.addWidget(self.add_to_watchlist_btn)
+            result_actions_layout.addWidget(self.add_to_watchlist_btn)
 
         # 從已顯示的推薦列進入單股研究；只傳遞目前結果的 metadata，不重新執行推薦。
         self.stock_research_btn = QPushButton("查看個股研究")
@@ -3980,7 +3986,7 @@ class RecommendationView(QWidget):
         self.stock_research_btn.setEnabled(False)
         self.stock_research_btn.setToolTip("選取一檔結果股票後，帶著原決策／資料日期查看個股研究。")
         self.stock_research_btn.clicked.connect(self._open_selected_stock_research)
-        title_layout.addWidget(self.stock_research_btn)
+        result_actions_layout.addWidget(self.stock_research_btn)
 
         # 研究與匯出不是日常第一步，但保留所有既有動作並集中到可展開區。
         self.research_actions_toggle = QToolButton()
@@ -3992,13 +3998,13 @@ class RecommendationView(QWidget):
         )
         self.research_actions_toggle.toggled.connect(self._toggle_research_actions)
         self.research_actions_toggle.setVisible(False)
-        title_layout.addWidget(self.research_actions_toggle)
+        result_actions_layout.addWidget(self.research_actions_toggle)
         self.research_actions_widget = QWidget()
         self.research_actions_layout = QHBoxLayout(self.research_actions_widget)
         self.research_actions_layout.setContentsMargins(0, 0, 0, 0)
         self.research_actions_layout.setSpacing(6)
         self.research_actions_widget.setVisible(False)
-        title_layout.addWidget(self.research_actions_widget)
+        result_actions_layout.addWidget(self.research_actions_widget)
 
         # 送 Research Lab 批次回測按鈕（Phase 3.3）
         self.send_to_backtest_btn = QPushButton("送 Research Lab 批次回測")
@@ -4024,7 +4030,7 @@ class RecommendationView(QWidget):
         self.export_report_btn.clicked.connect(self._export_current_recommendation)
         self.research_actions_layout.addWidget(self.export_report_btn)
 
-        layout.addLayout(title_layout)
+        layout.addLayout(result_actions_layout)
 
         self.result_status_label = QLabel(
             "尚未分析｜先確認左側策略設定與資料日期，再按「執行推薦分析」。"

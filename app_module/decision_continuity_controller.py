@@ -273,8 +273,9 @@ class DecisionContinuityController:
         if redelivery:
             prefix += "；相同 request id 未新增事件"
         return (
-            f"{prefix}。目前狀態：{cls._decision_status_text(state.decision_status)}；"
-            f"Journal 紀錄：{state.active_note_count} 筆；"
+            f"{prefix}。研究狀態：{cls._decision_status_text(state.decision_status)}；"
+            f"另加註記：{state.active_note_count} 筆（不含研究決定）；"
+            f"研究動作歷史：{len(state.history)} 筆；"
             f"下次檢視：{state.next_review_at or '未設定'}。"
         )
 

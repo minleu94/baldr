@@ -305,8 +305,8 @@ class DecisionContinuityControlsWidget(QWidget):
         review_text = state.next_review_at or "未設定"
         self.status_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
         self.status_label.setText(
-            f"研究狀態：{decision_text}｜Journal 紀錄：{state.active_note_count} 筆｜"
-            f"下次檢視：{review_text}｜歷史：{len(state.history)} 筆"
+            f"研究狀態：{decision_text}｜另加註記：{state.active_note_count} 筆（不含研究決定）｜"
+            f"下次檢視：{review_text}｜研究動作歷史：{len(state.history)} 筆"
         )
         note_rows = tuple(
             item

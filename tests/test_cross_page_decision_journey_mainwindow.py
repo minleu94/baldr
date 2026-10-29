@@ -1362,7 +1362,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             "candidate_key": [saved_id, "2330"],
             "identity_status": "linked",
             "next_review_at": second_review.isoformat(),
-            "status_text": f"研究狀態：已納入研究｜Journal 紀錄：3 筆｜下次檢視：{second_review.isoformat()}｜歷史：6 筆",
+            "status_text": f"研究狀態：已納入研究｜另加註記：3 筆（不含研究決定）｜下次檢視：{second_review.isoformat()}｜研究動作歷史：6 筆",
             "accept_enabled": True,
         }
 

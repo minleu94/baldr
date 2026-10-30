@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
     QComboBox, QLineEdit, QMessageBox, QSplitter, QScrollArea,
     QAbstractSlider, QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy,
-    QTabWidget, QStyle, QLayout,
+    QTabWidget, QStyle, QLayout, QTextBrowser,
 )
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QKeyEvent, QPainter, QResizeEvent, QTextOption
@@ -25,6 +25,7 @@ from typing import List, Dict, Any, Mapping, Optional
 from datetime import date, datetime, timezone
 from pathlib import Path
 import json
+from html import escape as html_escape
 from uuid import uuid4
 
 from ui_qt.models.pandas_table_model import PandasTableModel
@@ -1213,6 +1214,24 @@ class RecommendationView(QWidget):
         if self.personal_policy_path is None:
             text += "目前未注入本機設定路徑，不能保存模式設定。"
         status.setText(text)
+        summary = getattr(self, "personal_policy_summary_label", None)
+        if summary is not None:
+            if self._personal_policy_one_shot_rule_confirmed:
+                summary_text = "規則排序｜僅本次已確認，未保存"
+            elif self._personal_policy_load_error:
+                summary_text = "設定無法驗證，推薦暫停；展開處理"
+            elif getattr(policy, "revision", 0) == 0:
+                summary_text = "規則排序｜尚未保存個人設定"
+            else:
+                mode_label = (
+                    "個人校準機率"
+                    if mode == "personal_calibrated_probability"
+                    else "規則排序"
+                )
+                summary_text = f"{mode_label}｜版本 {policy.revision}"
+            summary.setText(summary_text)
+            summary.setToolTip(text)
+            summary.setAccessibleName(f"目前個人推薦模式：{summary_text}")
         one_shot = getattr(self, "personal_policy_one_shot_button", None)
         if one_shot is not None:
             one_shot.setVisible(bool(self._personal_policy_load_error))
@@ -1259,6 +1278,15 @@ class RecommendationView(QWidget):
                     )
                 )
             )
+
+    def _set_personal_policy_expanded(self, expanded: bool) -> None:
+        self.personal_policy_group.setVisible(expanded)
+        self.personal_policy_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+        self.personal_policy_toggle.setAccessibleName(
+            "收合個人推薦模式設定" if expanded else "展開個人推薦模式設定"
+        )
 
     def _confirm_rule_only_for_next_run(self) -> None:
         """明確允許一次性安全降級，不覆寫無法驗證的設定檔。"""
@@ -2936,9 +2964,9 @@ class RecommendationView(QWidget):
         compact_saved_readback = (
             saved_readback and not narrow and viewport_width >= 720
         )
-        saved_controls_narrow = viewport_width < 560 or (
-            result_narrow and not compact_saved_readback
-        )
+        # 保存來源選擇與讀回動作在中寬桌面可並排；只在窄於560px時
+        # 垂直堆疊，避免 560–899px 寬度把每個按鈕各占一整列。
+        saved_controls_narrow = viewport_width < 560
         saved_title_narrow = result_narrow and not compact_saved_readback
         if (
             not force
@@ -2972,15 +3000,16 @@ class RecommendationView(QWidget):
         self._set_personal_policy_history_direction(history_narrow)
         policy_group = getattr(self, "personal_policy_group", None)
         if policy_group is not None:
-            policy_layout = policy_group.layout()
-            policy_layout.invalidate()
-            required_height = max(
-                policy_layout.totalHeightForWidth(policy_group.width()),
-                policy_layout.totalMinimumSize().height(),
-                policy_layout.totalSizeHint().height(),
-            )
-            if required_height > 0:
-                policy_group.setMinimumHeight(required_height)
+            if not policy_group.isHidden():
+                policy_layout = policy_group.layout()
+                policy_layout.invalidate()
+                required_height = max(
+                    policy_layout.totalHeightForWidth(policy_group.width()),
+                    policy_layout.totalMinimumSize().height(),
+                    policy_layout.totalSizeHint().height(),
+                )
+                if required_height > 0:
+                    policy_group.setMinimumHeight(required_height)
         self.result_panel.setMinimumWidth(0)
         self.result_panel.updateGeometry()
         if orientation_changed and narrow:
@@ -3957,6 +3986,24 @@ class RecommendationView(QWidget):
         saved_result_select_row.addWidget(self.refresh_saved_sources_button)
         layout.addLayout(saved_result_select_row)
 
+        self.saved_result_workflow_hint = QLabel(
+            "回看舊結果：先讀取可用來源，再選一筆並讀取；今天的排程結果可直接查看。"
+        )
+        self.saved_result_workflow_hint.setObjectName(
+            "savedRecommendationWorkflowHint"
+        )
+        self.saved_result_workflow_hint.setWordWrap(True)
+        self.saved_result_workflow_hint.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.saved_result_workflow_hint.setAccessibleName(
+            "已保存推薦結果讀取步驟"
+        )
+        self.saved_result_workflow_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 0 2px;"
+        )
+        layout.addWidget(self.saved_result_workflow_hint)
+
         saved_result_actions_row = QHBoxLayout()
         self.saved_result_actions_row = saved_result_actions_row
         self.load_daily_recommendation_button = QPushButton("讀取今日排程結果")
@@ -4031,6 +4078,19 @@ class RecommendationView(QWidget):
         title_layout.addWidget(self.result_columns_toggle)
         layout.addLayout(title_layout)
 
+        self.result_status_label = QLabel(
+            "尚未分析｜先確認左側策略設定與資料日期，再按「執行推薦分析」。"
+        )
+        self.result_status_label.setWordWrap(True)
+        self.result_status_label.setAccessibleName("推薦分析結果判讀摘要")
+        self.result_status_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border-left: 3px solid {MIDNIGHT_ANALYST.accent}; "
+            "border-radius: 4px; padding: 7px 9px; font-size: 12px;"
+        )
+        layout.addWidget(self.result_status_label)
+
         result_actions_layout = QHBoxLayout()
         self.result_title_layout = result_actions_layout
         # 保存結果按鈕
@@ -4099,17 +4159,6 @@ class RecommendationView(QWidget):
         self.research_actions_layout.addWidget(self.export_report_btn)
 
         layout.addLayout(result_actions_layout)
-
-        self.result_status_label = QLabel(
-            "尚未分析｜先確認左側策略設定與資料日期，再按「執行推薦分析」。"
-        )
-        self.result_status_label.setWordWrap(True)
-        self.result_status_label.setAccessibleName("推薦分析結果判讀摘要")
-        self.result_status_label.setStyleSheet(
-            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
-            f"background: {MIDNIGHT_ANALYST.surface_2}; padding: 7px; font-size: 12px;"
-        )
-        layout.addWidget(self.result_status_label)
 
         personal_capture_row = QHBoxLayout()
         self.personal_capture_row = personal_capture_row
@@ -4304,6 +4353,35 @@ class RecommendationView(QWidget):
         personal_policy_group = QGroupBox("個人推薦模式")
         self.personal_policy_group = personal_policy_group
         personal_policy_group.setObjectName("personalRecommendationPolicyControls")
+        personal_policy_header = QWidget()
+        personal_policy_header_layout = QHBoxLayout(personal_policy_header)
+        personal_policy_header_layout.setContentsMargins(0, 0, 0, 0)
+        self.personal_policy_toggle = QToolButton()
+        self.personal_policy_toggle.setText("個人推薦模式（選用設定）")
+        self.personal_policy_toggle.setCheckable(True)
+        self.personal_policy_toggle.setChecked(False)
+        self.personal_policy_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.personal_policy_toggle.setAccessibleName("展開個人推薦模式設定")
+        self.personal_policy_toggle.setToolTip(
+            "設定個人規則排序或已驗證候選模式；目前生效模式會一直顯示在右側。"
+        )
+        self.personal_policy_summary_label = QLabel("")
+        self.personal_policy_summary_label.setObjectName(
+            "personalRecommendationPolicySummary"
+        )
+        self.personal_policy_summary_label.setWordWrap(True)
+        self.personal_policy_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
+        personal_policy_header_layout.addWidget(self.personal_policy_toggle)
+        personal_policy_header_layout.addWidget(
+            self.personal_policy_summary_label, 1
+        )
+        self.personal_policy_toggle.toggled.connect(
+            self._set_personal_policy_expanded
+        )
+        personal_policy_group.setVisible(False)
+        layout.addWidget(personal_policy_header)
         personal_policy_layout = QVBoxLayout(personal_policy_group)
         personal_policy_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         personal_policy_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -4620,10 +4698,41 @@ class RecommendationView(QWidget):
         result_splitter.addWidget(self.results_table)
 
         # 詳細信息（推薦理由）
-        detail_group = QGroupBox("推薦理由詳情")
+        detail_group = QGroupBox("所選股票判讀")
         self.result_detail_group = detail_group
         detail_group.setMinimumHeight(200)
         detail_layout = QVBoxLayout()
+        source_heading_row = QHBoxLayout()
+        self.source_heading_layout = source_heading_row
+        source_heading = QLabel("來源與資料日期")
+        source_heading.setObjectName("recommendationSourceSectionHeading")
+        source_heading.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
+        )
+        source_heading_row.addWidget(source_heading)
+        source_heading_row.addStretch(1)
+        self.company_source_snapshot_details_button = QToolButton()
+        self.company_source_snapshot_details_button.setText("查看每日來源詳情")
+        self.company_source_snapshot_details_button.setObjectName(
+            "recommendationCompanySourceDetailsToggle"
+        )
+        self.company_source_snapshot_details_button.setAccessibleName(
+            "查看所選股票的每日來源詳情"
+        )
+        self.company_source_snapshot_details_button.setToolTip(
+            "查看此推薦結果封存的來源狀態、資料日期與限制；不代表來源資格已通過。hash、列觀察、儲存位置和提示碼可再展開。"
+        )
+        self.company_source_snapshot_details_button.setCheckable(True)
+        self.company_source_snapshot_details_button.setChecked(False)
+        self.company_source_snapshot_details_button.setAutoRaise(True)
+        self.company_source_snapshot_details_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.company_source_snapshot_details_button.toggled.connect(
+            self._set_company_source_details_expanded
+        )
+        source_heading_row.addWidget(self.company_source_snapshot_details_button)
+        detail_layout.addLayout(source_heading_row)
         self.company_source_summary_label = QLabel(
             "選取一列後，這裡顯示該股票的來源核驗狀態。"
         )
@@ -4641,63 +4750,93 @@ class RecommendationView(QWidget):
             "border-radius: 5px; padding: 6px 9px;"
         )
         detail_layout.addWidget(self.company_source_summary_label)
-        self.company_source_snapshot_details_button = QToolButton()
-        self.company_source_snapshot_details_button.setText(
-            "查看此股完整來源與核驗資料"
-        )
-        self.company_source_snapshot_details_button.setObjectName(
-            "recommendationCompanySourceDetailsToggle"
-        )
-        self.company_source_snapshot_details_button.setAccessibleName(
-            "查看所選股票的完整來源與核驗資料"
-        )
-        self.company_source_snapshot_details_button.setCheckable(True)
-        self.company_source_snapshot_details_button.setChecked(False)
-        self.company_source_snapshot_details_button.setAutoRaise(True)
-        self.company_source_snapshot_details_button.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
-        self.company_source_snapshot_details_button.toggled.connect(
-            self._set_company_source_details_expanded
-        )
-        source_details_action_row = QHBoxLayout()
-        source_details_action_row.addWidget(
-            self.company_source_snapshot_details_button
-        )
-        source_details_action_row.addStretch(1)
-        detail_layout.addLayout(source_details_action_row)
-        self.company_source_snapshot_label = QLabel(
-            "分類來源：尚未有本次推薦的封存來源快照。"
-        )
+        self.company_source_snapshot_label = QTextBrowser()
         self.company_source_snapshot_label.setObjectName(
             "recommendationCompanySourceSnapshot"
         )
-        self.company_source_snapshot_label.setWordWrap(True)
-        self.company_source_snapshot_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.company_source_snapshot_label.setReadOnly(True)
+        self.company_source_snapshot_label.setOpenLinks(False)
+        self.company_source_snapshot_label.setOpenExternalLinks(False)
+        self.company_source_snapshot_label.setPlainText(
+            "分類來源：尚未有本次推薦的封存來源快照。"
+        )
         self.company_source_snapshot_label.setAccessibleName(
             "推薦結果來源核對詳情"
         )
         self.company_source_snapshot_label.setStyleSheet(
-            f"QLabel#recommendationCompanySourceSnapshot {{ "
+            f"QTextBrowser#recommendationCompanySourceSnapshot {{ "
             f"background: {MIDNIGHT_ANALYST.surface_2}; "
             f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
             f"border-left: 3px solid {MIDNIGHT_ANALYST.border}; "
-            "padding: 8px; }"
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; "
+            "padding: 6px; }"
         )
         self.company_source_snapshot_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        self.company_source_snapshot_scroll = QScrollArea()
+        self.company_source_snapshot_label.setMaximumHeight(420)
+        self.company_source_snapshot_label.hide()
+        self.company_source_snapshot_scroll = self.company_source_snapshot_label
         self.company_source_snapshot_scroll.setObjectName(
             "recommendationCompanySourceDetails"
         )
-        self.company_source_snapshot_scroll.setWidgetResizable(True)
-        self.company_source_snapshot_scroll.setMaximumHeight(420)
-        self.company_source_snapshot_scroll.setWidget(
-            self.company_source_snapshot_label
+        detail_layout.addWidget(self.company_source_snapshot_label)
+        self.company_source_technical_details_button = QToolButton()
+        self.company_source_technical_details_button.setText("查看技術追溯欄位")
+        self.company_source_technical_details_button.setObjectName(
+            "recommendationCompanySourceTechnicalDetailsToggle"
         )
-        self.company_source_snapshot_scroll.hide()
-        detail_layout.addWidget(self.company_source_snapshot_scroll)
+        self.company_source_technical_details_button.setAccessibleName(
+            "查看每日來源的技術追溯欄位"
+        )
+        self.company_source_technical_details_button.setToolTip(
+            "展開原始 hash、資料列觀察、儲存定位與來源提示碼；這些欄位供追查，不代表來源資格已通過。"
+        )
+        self.company_source_technical_details_button.setCheckable(True)
+        self.company_source_technical_details_button.setChecked(False)
+        self.company_source_technical_details_button.setAutoRaise(True)
+        self.company_source_technical_details_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.company_source_technical_details_button.toggled.connect(
+            self._set_company_source_technical_details_expanded
+        )
+        self.company_source_technical_details_button.hide()
+        detail_layout.addWidget(self.company_source_technical_details_button)
+        self.company_source_technical_label = QTextBrowser()
+        self.company_source_technical_label.setObjectName(
+            "recommendationCompanySourceTechnicalDetails"
+        )
+        self.company_source_technical_label.setReadOnly(True)
+        self.company_source_technical_label.setOpenLinks(False)
+        self.company_source_technical_label.setOpenExternalLinks(False)
+        self.company_source_technical_label.setAccessibleName(
+            "每日來源技術追溯欄位"
+        )
+        self.company_source_technical_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.company_source_technical_label.setMaximumHeight(260)
+        self.company_source_technical_label.setStyleSheet(
+            f"QTextBrowser#recommendationCompanySourceTechnicalDetails {{ "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-left: 3px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 6px; }}"
+        )
+        self.company_source_technical_label.hide()
+        detail_layout.addWidget(self.company_source_technical_label)
+        reason_heading_row = QHBoxLayout()
+        self.reason_heading_layout = reason_heading_row
+        reason_heading = QLabel("推薦理由與限制")
+        reason_heading.setObjectName("recommendationReasonSectionHeading")
+        reason_heading.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
+        )
+        reason_heading_row.addWidget(reason_heading)
+        reason_heading_row.addStretch(1)
         self.detail_expand_button = QToolButton()
         self.detail_expand_button.setText("展開推薦理由")
         self.detail_expand_button.setObjectName("recommendationReasonExpand")
@@ -4706,10 +4845,9 @@ class RecommendationView(QWidget):
         self.detail_expand_button.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonTextOnly
         )
-        reason_expand_row = QHBoxLayout()
-        reason_expand_row.addWidget(self.detail_expand_button)
-        reason_expand_row.addStretch(1)
-        detail_layout.addLayout(reason_expand_row)
+        self.detail_expand_button.setAccessibleName("展開推薦理由與限制全文")
+        reason_heading_row.addWidget(self.detail_expand_button)
+        detail_layout.addLayout(reason_heading_row)
         self.detail_text = _RecommendationReasonText()
         self.detail_text.setReadOnly(True)
         self.detail_text.setMinimumHeight(140)
@@ -6453,12 +6591,128 @@ class RecommendationView(QWidget):
             full_text: str,
             summary_text: str | None = None,
             *,
+            technical_text: str = "",
             attention: bool = True,
         ) -> None:
-            label.setText(full_text)
+            detail_colors = {
+                "primary": MIDNIGHT_ANALYST.text_primary,
+                "secondary": MIDNIGHT_ANALYST.text_secondary,
+                "muted": MIDNIGHT_ANALYST.text_muted,
+                "accent": MIDNIGHT_ANALYST.accent,
+            }
+            rendered_lines: list[str] = []
+            headings = {
+                "每日來源核對（請搭配上方摘要判讀；不代表來源資格已通過）": detail_colors["accent"],
+            }
+            for raw_line in full_text.splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                escaped_line = html_escape(line)
+                if line in headings:
+                    rendered_lines.append(
+                        "<h3 style='margin:10px 0 3px 0; font-size:12pt; "
+                        f"font-weight:700; color:{headings[line]};'>{escaped_line}</h3>"
+                    )
+                elif line.startswith(("一、", "二、", "三、")):
+                    rendered_lines.append(
+                        "<h4 style='margin:8px 0 2px 0; font-size:10pt; "
+                        f"font-weight:700; color:{detail_colors['primary']};'>{escaped_line}</h4>"
+                    )
+                elif line.startswith("本筆保存推薦結果："):
+                    rendered_lines.append(
+                        "<p style='margin:0 0 6px 0; font-size:9pt; "
+                        f"color:{detail_colors['muted']};'>{escaped_line}</p>"
+                    )
+                elif line.startswith("• "):
+                    rendered_lines.append(
+                        "<p style='margin:2px 0 2px 10px; "
+                        f"color:{detail_colors['primary']};'>• {html_escape(line[2:])}</p>"
+                    )
+                elif "：" in line:
+                    key, value = line.split("：", 1)
+                    rendered_lines.append(
+                        "<p style='margin:2px 0; color:{value_color};'>"
+                        "<span style='font-weight:600; color:{key_color};'>{key}：</span>{value}</p>".format(
+                            value_color=detail_colors["secondary"],
+                            key_color=detail_colors["primary"],
+                            key=html_escape(key),
+                            value=html_escape(value),
+                        )
+                    )
+                else:
+                    rendered_lines.append(
+                        "<p style='margin:2px 0; "
+                        f"color:{detail_colors['secondary']};'>{escaped_line}</p>"
+                    )
+            label.setHtml(
+                "<html><body style='margin:2px; font-family:Segoe UI, sans-serif; "
+                f"font-size:10pt; color:{detail_colors['secondary']};'>"
+                + "".join(rendered_lines)
+                + "</body></html>"
+            )
+            technical_label = getattr(
+                self, "company_source_technical_label", None
+            )
+            technical_button = getattr(
+                self, "company_source_technical_details_button", None
+            )
+            if technical_label is not None and technical_button is not None:
+                has_technical_text = bool(technical_text.strip())
+                technical_lines = []
+                for raw_line in technical_text.splitlines():
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    escaped = html_escape(line)
+                    if line.startswith(("一、", "二、", "三、")) or line in {
+                        "原始技術追溯欄位（僅供核對；不代表來源資格已通過）",
+                        "來源提示碼",
+                    }:
+                        technical_lines.append(
+                            "<h4 style='margin:8px 0 2px 0; font-size:10pt; "
+                            f"font-weight:700; color:{detail_colors['primary']};'>{escaped}</h4>"
+                        )
+                    elif line.startswith("• ") and "：" in line:
+                        key, value = line[2:].split("：", 1)
+                        technical_lines.append(
+                            "<p style='margin:2px 0 2px 10px; color:{value_color};'>"
+                            "• <b style='color:{key_color};'>{key}：</b>{value}</p>".format(
+                                value_color=detail_colors["secondary"],
+                                key_color=detail_colors["primary"],
+                                key=html_escape(key),
+                                value=html_escape(value),
+                            )
+                        )
+                    else:
+                        technical_lines.append(
+                            "<p style='margin:2px 0; color:{color};'>{text}</p>".format(
+                                color=detail_colors["secondary"], text=escaped
+                            )
+                        )
+                technical_label.setHtml(
+                    "<html><body style='margin:2px; font-family:Segoe UI, sans-serif; "
+                    f"font-size:9pt; color:{detail_colors['secondary']};'>"
+                    + "".join(technical_lines)
+                    + "</body></html>"
+                )
+                technical_button.setChecked(False)
+                technical_label.hide()
+                technical_button.setText(
+                    "查看技術追溯欄位"
+                )
+                source_button = getattr(
+                    self, "company_source_snapshot_details_button", None
+                )
+                technical_button.setVisible(
+                    has_technical_text
+                    and bool(source_button and source_button.isChecked())
+                )
             summary_label = getattr(self, "company_source_summary_label", None)
             if summary_label is not None:
-                summary_label.setText(summary_text or full_text.splitlines()[0])
+                summary_lines = (
+                    summary_text or full_text.splitlines()[0]
+                ).splitlines()
                 status_color = (
                     MIDNIGHT_ANALYST.status_warning
                     if attention
@@ -6469,6 +6723,41 @@ class RecommendationView(QWidget):
                     if attention
                     else MIDNIGHT_ANALYST.border
                 )
+                summary_html: list[str] = [
+                    "<html><body style='margin:0; font-family:Segoe UI, sans-serif; "
+                    "font-size:10pt; line-height:1.35;'>"
+                ]
+                label_colors = {
+                    "來源判讀": status_color,
+                    "時間判讀": MIDNIGHT_ANALYST.text_secondary,
+                    "建議下一步": status_color,
+                }
+                for summary_line in summary_lines:
+                    key, separator, value = summary_line.partition("：")
+                    key_color = label_colors.get(key, MIDNIGHT_ANALYST.text_primary)
+                    if separator:
+                        summary_html.append(
+                            "<p style='margin:2px 0;'><b style='color:{key_color};'>"
+                            "{key}：</b><span style='color:{value_color};'>{value}</span></p>".format(
+                                key_color=key_color,
+                                value_color=(
+                                    status_color
+                                    if key == "建議下一步"
+                                    else MIDNIGHT_ANALYST.text_secondary
+                                ),
+                                key=html_escape(key),
+                                value=html_escape(value),
+                            )
+                        )
+                    else:
+                        summary_html.append(
+                            "<p style='margin:2px 0; color:{color};'>{text}</p>".format(
+                                color=MIDNIGHT_ANALYST.text_secondary,
+                                text=html_escape(summary_line),
+                            )
+                        )
+                summary_html.append("</body></html>")
+                summary_label.setText("".join(summary_html))
                 summary_label.setStyleSheet(
                     f"color: {status_color}; "
                     f"background-color: {MIDNIGHT_ANALYST.surface_1}; "
@@ -6860,23 +7149,26 @@ class RecommendationView(QWidget):
                         else "本輪尚未 canonical 保存；以下僅為本機觀測"
                     )
                     industry_observation_lines = (
-                        f"產業指數列觀察（{persistence_text}）：來源 {source_id}；"
-                        f"儲存方式 {storage_kind}；定位 {locator or '未知'}。",
-                        f"列日期範圍 {date_text}；列數 {observation.get('row_count')}；"
-                        f"欄位 {', '.join(columns) if columns else '未知'}；"
-                        f"rowset SHA-256 {rowset_hash}。",
-                        f"本機觀察時間 {observed_at}（只代表本機讀取時間）；"
-                        "available_at／published_at 未知；PIT eligible=false。",
+                        f"• 保存狀態：{persistence_text}",
+                        f"• 來源：{source_id}",
+                        f"• 儲存方式：{storage_kind}",
+                        f"• 定位：{locator or '未知'}",
+                        f"• 列日期範圍：{date_text}",
+                        f"• 列數：{observation.get('row_count')}",
+                        f"• 欄位：{', '.join(columns) if columns else '未知'}",
+                        f"• rowset SHA-256：{rowset_hash}",
+                        f"• 本機觀察時間：{observed_at}（只代表本機讀取時間）",
+                        "• 可得／發布時間：未知；PIT eligible=false",
                     )
                     if storage_kind == "csv":
                         industry_observation_lines += (
-                            "同次 CSV artifact："
-                            f"{observation.get('stored_artifact_bytes')} bytes；"
-                            f"SHA-256 {observation.get('stored_artifact_sha256') or '未知'}。",
+                            f"• CSV artifact 大小：{observation.get('stored_artifact_bytes')} bytes",
+                            "• CSV artifact SHA-256："
+                            f"{observation.get('stored_artifact_sha256') or '未知'}",
                         )
                     elif storage_kind == "sqlite":
                         industry_observation_lines += (
-                            f"SQLite table：{observation.get('table_name') or '未知'}。",
+                            f"• SQLite table：{observation.get('table_name') or '未知'}",
                         )
                 else:
                     industry_observation_next_step = (
@@ -6906,33 +7198,33 @@ class RecommendationView(QWidget):
             next_steps.append(
                 "如需歷史成分判讀，請使用具有歷史可得時間的成分資料；本快照不代表 PIT 成分。"
             )
-        lines = [
-            f"本筆保存推薦結果：result_id={getattr(execution, 'result_id', None) or '未知'}。",
-            "先看結論",
-            f"公司分類來源：{source_status_label}；{date_line}"
-            "只代表當時分類狀態，不是歷史 PIT 成分證據。",
-            f"產業指數：{index_status_label}。",
-            "下一步",
-            "• " + "\n• ".join(next_steps),
-            "",
-            "來源憑據（以下是核對資料，不代表來源資格已通過）",
-            "一、公司名冊與分類資格",
-            f"分類來源：{source_status_label}；{date_line}"
-            "僅代表 current_classification_only，PIT eligible=false。",
-            f"公司來源契約 SHA-256：{source_contract_hash or '未知'}；"
-            f"名冊 artifact SHA-256：{artifact_hash or '未知'}；"
-            f"契約產生時間：{contract_generated_at or '未知'}。",
+        technical_lines = [
+            "原始技術追溯欄位（僅供核對；不代表來源資格已通過）",
+            "一、公司名冊契約欄位",
+            f"• 公司來源契約 SHA-256：{source_contract_hash or '未知'}",
+            f"• 名冊 artifact SHA-256：{artifact_hash or '未知'}",
+            f"• 契約產生時間：{contract_generated_at or '未知'}",
         ]
-        lines.extend(v2_source_facts)
-        lines.extend(("", "二、產業指數來源與列觀察", f"{index_status_label}。"))
-        lines.extend(industry_observation_lines)
+        technical_lines.extend(f"• {fact}" for fact in v2_source_facts)
+        technical_lines.extend(("", "二、產業指數列觀察欄位"))
+        technical_lines.extend(industry_observation_lines)
         if market_facts:
-            lines.extend(("", "三、同次市場來源", "市場來源：" + "；".join(market_facts) + "。"))
+            technical_lines.extend(("", "三、同次市場來源欄位"))
+            technical_lines.extend(f"• {fact}" for fact in market_facts)
         warnings = snapshot.get("warnings", ())
         if isinstance(warnings, (list, tuple)) and warnings:
-            lines.extend(
-                ("", "來源提示", "；".join(str(item) for item in warnings) + "。")
-            )
+            technical_lines.extend(("", "來源提示碼"))
+            technical_lines.extend(f"• {str(item)}" for item in warnings)
+
+        lines = [
+            f"本筆保存推薦結果：result_id={getattr(execution, 'result_id', None) or '未知'}。",
+            "每日來源核對（請搭配上方摘要判讀；不代表來源資格已通過）",
+            "一、公司名冊與分類資格",
+            f"• 來源狀態：{source_status_label}",
+            f"• 分類日期：{date_line.rstrip('；')}",
+            "• 適用範圍：current_classification_only；PIT eligible=false",
+        ]
+        lines.extend(("", "二、產業指數來源與列觀察", f"{index_status_label}。"))
         source_summary = (
             f"來源判讀：公司名冊契約{'已封存' if company_status == 'captured' else '未能核驗'}；"
             f"{index_status_label}。\n"
@@ -6947,6 +7239,7 @@ class RecommendationView(QWidget):
         set_source_display(
             "\n".join(lines),
             source_summary,
+            technical_text="\n".join(technical_lines),
             attention=source_attention,
         )
 
@@ -6956,6 +7249,20 @@ class RecommendationView(QWidget):
         details = getattr(self, "company_source_snapshot_scroll", None)
         if details is not None:
             details.setVisible(bool(expanded))
+        technical_button = getattr(
+            self, "company_source_technical_details_button", None
+        )
+        technical_label = getattr(self, "company_source_technical_label", None)
+        if technical_button is not None:
+            has_technical_text = bool(
+                technical_label
+                and technical_label.toPlainText().strip()
+            )
+            technical_button.setVisible(bool(expanded) and has_technical_text)
+            if not expanded:
+                technical_button.setChecked(False)
+                if technical_label is not None:
+                    technical_label.hide()
         button = getattr(
             self,
             "company_source_snapshot_details_button",
@@ -6963,9 +7270,27 @@ class RecommendationView(QWidget):
         )
         if button is not None:
             button.setText(
-                "收合完整來源欄位與核驗資料"
+                "收合每日來源詳情"
                 if expanded
-                else "查看完整來源欄位與核驗資料"
+                else "查看每日來源詳情"
+            )
+
+    def _set_company_source_technical_details_expanded(
+        self, expanded: bool
+    ) -> None:
+        """展開或收合非日常閱讀所需的原始追溯欄位。"""
+
+        details = getattr(self, "company_source_technical_label", None)
+        if details is not None:
+            details.setVisible(bool(expanded))
+        button = getattr(
+            self, "company_source_technical_details_button", None
+        )
+        if button is not None:
+            button.setText(
+                "收合技術追溯欄位"
+                if expanded
+                else "查看技術追溯欄位"
             )
 
     def _find_unique_current_recommendation(
@@ -7166,6 +7491,24 @@ class RecommendationView(QWidget):
         self._saved_source_expected_identity = identity
         self.saved_result_id_input.setText(identity[3] if identity is not None else "")
 
+    def _set_result_status(self, text: str, *, level: str = "info") -> None:
+        """Show saved-result workflow state with a consistent semantic accent."""
+
+        palette = {
+            "info": (MIDNIGHT_ANALYST.status_info, "#0b1c27"),
+            "success": (MIDNIGHT_ANALYST.status_success, "#0b2624"),
+            "warning": (MIDNIGHT_ANALYST.status_warning, "#221a10"),
+            "error": (MIDNIGHT_ANALYST.status_error, "#27162d"),
+        }
+        color, background = palette.get(level, palette["info"])
+        self.result_status_label.setText(text)
+        self.result_status_label.setProperty("statusLevel", level)
+        self.result_status_label.setStyleSheet(
+            f"color: {color}; background: {background}; "
+            f"border-left: 3px solid {color}; border-radius: 4px; "
+            "padding: 7px 9px; font-size: 12px;"
+        )
+
     def _on_saved_source_changed(self, index: int) -> None:
         self._select_saved_source(index)
         self._sync_saved_research_handoff_button()
@@ -7223,7 +7566,7 @@ class RecommendationView(QWidget):
         self.refresh_saved_sources_button.setEnabled(False)
         self.cancel_saved_source_button.setEnabled(True)
         self.cancel_saved_source_button.setVisible(True)
-        self.result_status_label.setText("正在核驗保存來源；原結果保留。")
+        self._set_result_status("正在核驗保存來源；原結果保留。")
 
         def read_sources(cancel_callback=None):
             if callable(cancel_callback) and cancel_callback():
@@ -7289,14 +7632,18 @@ class RecommendationView(QWidget):
         self.saved_source_combo.blockSignals(False)
         self._select_saved_source(self.saved_source_combo.currentIndex())
         self._sync_saved_research_handoff_button()
-        self.result_status_label.setText(
+        self._set_result_status(
             f"可讀保存推薦來源 {len(options)} 筆；不支援或缺件 {refused} 筆。"
-            "請明確選擇後按讀取；每日研究條件是另一種研究來源。"
+            "請明確選擇後按讀取；每日研究條件是另一種研究來源。",
+            level="success" if options and refused == 0 else "warning",
         )
 
     def _on_saved_sources_error(self, message: str, generation: int) -> None:
         if generation == self._saved_source_list_generation:
-            self.result_status_label.setText(f"來源核驗失敗，保留原選項與結果：{str(message).splitlines()[0][:300]}")
+            self._set_result_status(
+                f"來源核驗失敗，保留原選項與結果：{str(message).splitlines()[0][:300]}",
+                level="error",
+            )
 
     def _release_saved_sources_worker(self, worker: TaskWorker) -> None:
         if self._saved_source_list_worker is worker:
@@ -7451,7 +7798,7 @@ class RecommendationView(QWidget):
         self.cancel_saved_source_button.setEnabled(True)
         self.cancel_saved_source_button.setVisible(True)
         self.execute_btn.setEnabled(False)
-        self.result_status_label.setText(
+        self._set_result_status(
             f"正在讀取單筆已保存結果 {requested_result_id}；目前畫面保留不變。"
         )
 
@@ -7592,26 +7939,30 @@ class RecommendationView(QWidget):
         )
         self.stock_research_btn.setEnabled(False)
         if screening_only_rows:
-            self.result_status_label.setText(
+            self._set_result_status(
                 f"已讀取並驗證單筆 canonical 篩選紀錄 {requested_result_id}；"
-                f"以下 {len(screening_only_rows)} 筆為未入選紀錄，僅供個股研究，不代表推薦。"
+                f"以下 {len(screening_only_rows)} 筆為未入選紀錄，僅供個股研究，不代表推薦。",
+                level="warning",
             )
         elif rows:
-            self.result_status_label.setText(
+            self._set_result_status(
                 f"{status_label('completed', dimension='load')}（歷史保存結果）。"
                 f"已讀取並驗證單筆 canonical 保存結果 {requested_result_id}（{len(rows)} 檔）。"
-                "這是保存當時的建議；資料與模式以當時紀錄為準。"
+                "這是保存當時的建議；資料與模式以當時紀錄為準。",
+                level="success",
             )
         else:
-            self.result_status_label.setText(
-                f"已讀取 canonical 保存結果 {requested_result_id}；原結果沒有推薦列。"
+            self._set_result_status(
+                f"已讀取 canonical 保存結果 {requested_result_id}；原結果沒有推薦列。",
+                level="warning",
             )
         pointer = getattr(self, "_pending_scheduled_recommendation", None)
         if pointer is not None and pointer.result_id == requested_result_id:
-            self.result_status_label.setText(
+            self._set_result_status(
                 f"每日排程研究候選｜決策日 {pointer.decision_date.isoformat()}｜"
                 f"快照標示 {pointer.recommendations_count} 檔。僅供研究判讀，不代表投資建議或交易。\n"
-                + self.result_status_label.text()
+                + self.result_status_label.text(),
+                level="info",
             )
             self._pending_scheduled_recommendation = None
         self._update_watchlist_action_state()
@@ -7653,7 +8004,7 @@ class RecommendationView(QWidget):
         self.current_profile = None
         self.current_regime = None
         self._update_company_source_snapshot_display(None)
-        self.company_source_snapshot_label.setText(
+        self.company_source_snapshot_label.setPlainText(
             "分類來源：舊格式結果沒有可核對的封存分類事件；不會用目前名冊補填。"
         )
         self.result_title_label.setText("舊格式保存推薦（唯讀研究）")
@@ -7678,16 +8029,18 @@ class RecommendationView(QWidget):
             if read_model.integrity_basis == "legacy_trusted_hash_verified"
             else "原件 SHA-256 僅在讀取當次計算，沒有獨立可信值"
         )
-        self.result_status_label.setText(
+        self._set_result_status(
             f"已唯讀開啟舊格式保存結果 {requested_result_id}（{len(rows)} 檔）；{basis}。"
-            "可選股查看個股與結果追蹤；不可據此保存新推薦、採用、交易或推定歷史 PIT。"
+            "可選股查看個股與結果追蹤；不可據此保存新推薦、採用、交易或推定歷史 PIT。",
+            level="warning",
         )
         pointer = getattr(self, "_pending_scheduled_recommendation", None)
         if pointer is not None and pointer.result_id == requested_result_id:
-            self.result_status_label.setText(
+            self._set_result_status(
                 f"每日排程保存欄位｜決策日 {pointer.decision_date.isoformat()}｜"
                 f"候選 {pointer.recommendations_count} 檔；原件資格仍依下方說明。\n"
-                + self.result_status_label.text()
+                + self.result_status_label.text(),
+                level="warning",
             )
             self._pending_scheduled_recommendation = None
         self._update_watchlist_action_state()
@@ -7711,8 +8064,9 @@ class RecommendationView(QWidget):
         pointer = getattr(self, "_pending_scheduled_recommendation", None)
         if pointer is not None and pointer.result_id == requested_result_id:
             self._pending_scheduled_recommendation = None
-        self.result_status_label.setText(
-            f"讀取結果 {requested_result_id} 失敗；原畫面保留。原因：{short_message}"
+        self._set_result_status(
+            f"讀取結果 {requested_result_id} 失敗；原畫面保留。原因：{short_message}",
+            level="error",
         )
 
     def _on_saved_result_load_cancelled(
@@ -7726,8 +8080,9 @@ class RecommendationView(QWidget):
         pointer = getattr(self, "_pending_scheduled_recommendation", None)
         if pointer is not None and pointer.result_id == requested_result_id:
             self._pending_scheduled_recommendation = None
-        self.result_status_label.setText(
-            f"已取消讀取 {requested_result_id}；原畫面保留。"
+        self._set_result_status(
+            f"已取消讀取 {requested_result_id}；原畫面保留。",
+            level="info",
         )
 
     def _release_saved_result_load_worker(self, worker: TaskWorker) -> None:

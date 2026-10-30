@@ -983,6 +983,7 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
     qt_app: QApplication,
 ) -> None:
     view = _make_view()
+    capture_root = os.environ.get("UI_LAYOUT_CAPTURE_DIR")
     try:
         snapshot = _signed_company_source_snapshot({
             "schema_version": "recommendation-company-registry-source-snapshot.v1",
@@ -1001,7 +1002,10 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
                 ],
             },
             "usage": ["current_industry_index_performance_for_reason"],
-            "warnings": ["industry_index_source_contract_unavailable_for_current_use"],
+            "warnings": [
+                "industry_index_source_contract_unavailable_for_current_use",
+                "<script>alert('source')</script>",
+            ],
         })
         event = SimpleNamespace(
             event_type="company_registry_source_snapshot",
@@ -1013,40 +1017,88 @@ def test_company_source_display_uses_only_the_matching_sealed_event(
         )
         execution = SimpleNamespace(result_id="result-1", events=(event,))
         view._update_company_source_snapshot_display(execution)
-        text = view.company_source_snapshot_label.text()
-        assert view.company_source_snapshot_label.textFormat() == Qt.TextFormat.PlainText
+        text = view.company_source_snapshot_label.toPlainText()
+        technical_text = view.company_source_technical_label.toPlainText()
+        source_html = view.company_source_snapshot_label.document().toHtml()
+        technical_html = view.company_source_technical_label.document().toHtml()
+        assert "<h3" in source_html and "<h4" in source_html
+        assert "&lt;script&gt;" in technical_html and "<script>" not in technical_html
+        assert "<script>alert('source')</script>" in technical_text
+        assert "PIT eligible=false" in text
         assert "本筆保存推薦結果：result_id=result-1" in text
-        assert text.index("先看結論") < text.index("下一步")
-        assert text.index("下一步") < text.index("來源憑據")
-        assert text.index("來源憑據") < text.index("公司來源契約 SHA-256")
+        assert "先看結論" not in text and "下一步" not in text
+        assert "每日來源核對" in text
+        assert "公司來源契約 SHA-256" not in text
+        assert "公司來源契約 SHA-256" in technical_text
         assert "一、公司名冊與分類資格" in text
         assert "二、產業指數來源與列觀察" in text
-        assert "下一步" in text
         assert "當時分析日期 2026-09-25（v1；不代表行情資料日）" in text
         assert "current_classification_only" in text
         assert "PIT eligible=false" in text
         assert "產業指數來源未知" in text
-        assert "下一步" in text
-        assert "sha256:" + "a" * 64 in text
+        assert "sha256:" + "a" * 64 in technical_text
         summary = view.company_source_summary_label.text()
+        assert "<b style='color:" in summary
+        assert "來源判讀：" in summary
+        assert "時間判讀：" in summary
+        assert "建議下一步：" in summary
         assert "公司名冊契約已封存" in summary
         assert "產業指數來源未知" in summary
         assert "不能當作歷史 PIT 成分證據" in summary
         assert "sha256:" + "a" * 64 not in summary
+        unsafe_snapshot = _signed_company_source_snapshot({
+            **snapshot,
+            "data_as_of_date": "<img src=x onerror=alert(1)>",
+        })
+        unsafe_event = SimpleNamespace(
+            event_type="company_registry_source_snapshot",
+            details={
+                "schema_version": "recommendation-company-registry-source-snapshot-event.v1",
+                "result_id": "result-1",
+                "snapshot": unsafe_snapshot,
+            },
+        )
+        view._update_company_source_snapshot_display(
+            SimpleNamespace(result_id="result-1", events=(unsafe_event,))
+        )
+        unsafe_summary = view.company_source_summary_label.text()
+        assert "&lt;img" in unsafe_summary
+        assert "<img" not in unsafe_summary
         assert view.company_source_snapshot_scroll.isHidden()
+        assert view.company_source_technical_details_button.isHidden()
         assert view.company_source_snapshot_scroll.maximumHeight() == 420
+        if capture_root:
+            view.resize(1366, 768)
+            view.show()
+            qt_app.processEvents()
         view.company_source_snapshot_details_button.click()
         assert not view.company_source_snapshot_scroll.isHidden()
+        assert not view.company_source_technical_details_button.isHidden()
+        if capture_root:
+            capture_path = Path(capture_root)
+            capture_path.mkdir(parents=True, exist_ok=True)
+            assert view.grab().save(
+                str(capture_path / "recommendation_daily_source_details.png")
+            )
+        view.company_source_technical_details_button.click()
+        assert not view.company_source_technical_label.isHidden()
+        if capture_root:
+            assert view.grab().save(
+                str(capture_path / "recommendation_technical_trace_details.png")
+            )
+        view.company_source_technical_details_button.click()
+        assert view.company_source_technical_label.isHidden()
         view.company_source_snapshot_details_button.click()
         assert view.company_source_snapshot_scroll.isHidden()
+        assert view.company_source_technical_details_button.isHidden()
 
         mismatched = SimpleNamespace(result_id="another-result", events=(event,))
         view._update_company_source_snapshot_display(mismatched)
-        assert "不會改讀目前資料補值" in view.company_source_snapshot_label.text()
+        assert "不會改讀目前資料補值" in view.company_source_snapshot_label.toPlainText()
 
         no_event = SimpleNamespace(result_id="legacy-result", events=())
         view._update_company_source_snapshot_display(no_event)
-        assert "不會以目前名冊或產業資料補填" in view.company_source_snapshot_label.text()
+        assert "不會以目前名冊或產業資料補填" in view.company_source_snapshot_label.toPlainText()
     finally:
         view.close()
 
@@ -1357,11 +1409,14 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
             view.current_execution = execution
             view.current_read_model = None
             view._update_company_source_snapshot_display(execution)
-            unsaved_display = view.company_source_snapshot_label.text()
-            assert "本輪尚未 canonical 保存；以下僅為本機觀測" in unsaved_display
-            assert observation["rowset_sha256"] in unsaved_display
-            assert observation["observed_at"] in unsaved_display
-            assert "available_at／published_at 未知" in unsaved_display
+            unsaved_display = view.company_source_snapshot_label.toPlainText()
+            unsaved_technical_display = (
+                view.company_source_technical_label.toPlainText()
+            )
+            assert "本輪尚未 canonical 保存；以下僅為本機觀測" in unsaved_technical_display
+            assert observation["rowset_sha256"] in unsaved_technical_display
+            assert observation["observed_at"] in unsaved_technical_display
+            assert "可得／發布時間：未知" in unsaved_technical_display
             assert "PIT eligible=false" in unsaved_display
 
             # 改動 live CSV 後再載入舊結果；UI 必須仍呈現 sealed event 的觀察。
@@ -1377,18 +1432,19 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
             assert view.current_read_model is not None
             assert view.current_read_model.execution == execution
             assert view.current_save_receipt is None
-            displayed = view.company_source_snapshot_label.text()
+            displayed = view.company_source_snapshot_label.toPlainText()
+            technical_displayed = view.company_source_technical_label.toPlainText()
             assert f"決策日 {_DECISION_DATE}" in displayed
             assert f"行情資料日 {_SOURCE_DATE}" in displayed
-            assert f"行情來源 ID：{source_snapshot['source_id']}" in displayed
-            assert f"sha256:{source_snapshot['market_data_fingerprint']}" in displayed
+            assert f"行情來源 ID：{source_snapshot['source_id']}" in technical_displayed
+            assert f"sha256:{source_snapshot['market_data_fingerprint']}" in technical_displayed
             assert "current_classification_only" in displayed
             assert "PIT eligible=false" in displayed
-            assert "已 canonical 保存並以同一結果 ID 讀回" in displayed
-            assert observation["rowset_sha256"] in displayed
-            assert "2026-09-23 至 2026-09-24" in displayed
-            assert observation["observed_at"] in displayed
-            assert "available_at／published_at 未知" in displayed
+            assert "已 canonical 保存並以同一結果 ID 讀回" in technical_displayed
+            assert observation["rowset_sha256"] in technical_displayed
+            assert "2026-09-23 至 2026-09-24" in technical_displayed
+            assert observation["observed_at"] in technical_displayed
+            assert "可得／發布時間：未知" in technical_displayed
             assert "2099-01-01" not in displayed
 
             def changed_source_snapshot(**changes: object):
@@ -1410,7 +1466,7 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
                 changed_source_snapshot(decision_date="2026-09-26")
             )
             assert "決策日、時鐘或行情來源身分不符" in (
-                view.company_source_snapshot_label.text()
+                view.company_source_snapshot_label.toPlainText()
             )
 
             # 只有外層重算快照仍不能遮蔽 inner observation echo mismatch。
@@ -1419,10 +1475,10 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
                     industry_index_source_observation_sha256="sha256:" + "c" * 64
                 )
             )
-            mismatched_observation_display = view.company_source_snapshot_label.text()
-            assert "rowset SHA-256" not in mismatched_observation_display
+            mismatched_observation_display = view.company_source_snapshot_label.toPlainText()
+            assert "rowset SHA-256" not in view.company_source_technical_label.toPlainText()
             assert "封存列觀察缺漏、雜湊不符或時間狀態矛盾" in (
-                mismatched_observation_display
+                view.company_source_summary_label.text()
             )
 
             # 即使 warning 字串本身包含預期 token，錯誤型別也不可通過。
@@ -1433,17 +1489,17 @@ def test_personal_clock_v2_source_event_survives_real_save_and_exact_reload(
                     )
                 )
             )
-            malformed_warning_display = view.company_source_snapshot_label.text()
-            assert "rowset SHA-256" not in malformed_warning_display
+            malformed_warning_display = view.company_source_snapshot_label.toPlainText()
+            assert "rowset SHA-256" not in view.company_source_technical_label.toPlainText()
             assert "封存列觀察缺漏、雜湊不符或時間狀態矛盾" in (
-                malformed_warning_display
+                view.company_source_summary_label.text()
             )
 
             # 明示未知行情日仍顯示未知，不以目前 provider 資料補值。
             view._update_company_source_snapshot_display(
                 changed_source_snapshot(data_as_of_date=None)
             )
-            unknown_display = view.company_source_snapshot_label.text()
+            unknown_display = view.company_source_snapshot_label.toPlainText()
             assert f"決策日 {_DECISION_DATE}" in unknown_display
             assert "行情資料日 未知" in unknown_display
             assert "不會改讀目前資料補值" not in unknown_display

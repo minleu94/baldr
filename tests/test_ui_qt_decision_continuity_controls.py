@@ -147,6 +147,7 @@ def test_personal_recommendation_choice_reflows_on_narrow_width() -> None:
     _app()
     widget = PersonalRecommendationChoiceControlsWidget()
     try:
+        widget.set_context_available(True, "已驗證保存結果與股票身分。")
         widget.resize(390, 700)
         widget.show()
         _app().processEvents()
@@ -166,6 +167,47 @@ def test_personal_recommendation_choice_reflows_on_narrow_width() -> None:
         widget.close()
         widget.deleteLater()
         _app().processEvents()
+
+
+def test_personal_choice_actions_wait_for_verified_context() -> None:
+    app = _app()
+    widget = PersonalRecommendationChoiceControlsWidget()
+    try:
+        widget.resize(900, 500)
+        widget.show()
+        app.processEvents()
+        for button in (
+            widget.adopt_button,
+            widget.reject_button,
+            widget.override_button,
+        ):
+            assert button.isHidden()
+        assert "先保存並驗證" in widget.status_label.text()
+
+        widget.show_retry("上次狀態尚未核對，請重試同一筆讀回。")
+        assert widget.retry_button.isVisible()
+        assert all(
+            button.isHidden()
+            for button in (
+                widget.adopt_button,
+                widget.reject_button,
+                widget.override_button,
+            )
+        )
+
+        widget.clear_retry()
+        widget.set_context_available(True, "已驗證保存結果與股票身分。")
+        app.processEvents()
+        assert all(
+            button.isVisible()
+            for button in (
+                widget.adopt_button,
+                widget.reject_button,
+                widget.override_button,
+            )
+        )
+    finally:
+        widget.close()
 
 
 

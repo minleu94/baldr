@@ -557,6 +557,11 @@ class PersonalRecommendationChoiceControlsWidget(QWidget):
 
     def set_context_available(self, available: bool, message: str) -> None:
         self.status_label.setText(message)
+        # 未選取且未完成身份核驗時，不以一整列停用按鈕佔住結果閱讀區；
+        # 可用狀態才呈現三種可記錄的個人決定。
+        self.adopt_button.setVisible(available)
+        self.reject_button.setVisible(available)
+        self.override_button.setVisible(available)
         self.adopt_button.setEnabled(available)
         self.reject_button.setEnabled(available)
         self.override_button.setEnabled(available)

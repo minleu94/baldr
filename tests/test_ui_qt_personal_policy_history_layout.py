@@ -109,6 +109,8 @@ def test_personal_policy_history_row_responds_to_its_result_pane_geometry() -> N
     try:
         app.processEvents()
         assert view.result_scroll.isAncestorOf(view.personal_policy_group)
+        assert view.personal_policy_group.isHidden()
+        view.personal_policy_toggle.setChecked(True)
         view.main_splitter.setSizes([1400, 420])
         view._apply_responsive_layout(force=True)
         app.processEvents()

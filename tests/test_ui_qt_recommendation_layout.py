@@ -117,6 +117,7 @@ def _assert_recommendation_table_geometry(view: RecommendationView, app: QApplic
 
 def _assert_personal_controls_fit(view: RecommendationView) -> None:
     # 收合是預設；展開後仍需驗證既有 capture／Stage C 完整控制幾何。
+    view.personal_policy_toggle.setChecked(True)
     view.personal_research_toggle.setChecked(True)
     _app().processEvents()
     view.result_scroll.verticalScrollBar().setValue(view.result_scroll.verticalScrollBar().maximum())
@@ -201,6 +202,7 @@ def _assert_personal_controls_scroll_reachable(
     assert view.personal_research_toggle.isChecked()
     assert not view.personal_capture_widget.isHidden()
     assert not view.personal_assessment_group.isHidden()
+    assert view.personal_policy_toggle.isChecked()
     assert not view.personal_policy_group.isHidden()
     assert view.result_scroll.verticalScrollBar().maximum() > 0
 
@@ -384,6 +386,58 @@ def test_empty_result_table_guides_first_action_and_tracks_row_changes() -> None
         view.close()
 
 
+def test_selected_stock_reading_separates_source_from_reason_actions() -> None:
+    _app()
+    view = _new_view()
+    try:
+        _attach_layout_fixture(view)
+        view.resize(1366, 768)
+        view.show()
+        _app().processEvents()
+        _capture_if_requested(view, "recommendation_selected_stock_reading.png")
+        assert view.result_detail_group.title() == "所選股票判讀"
+        source_heading = view.findChild(QLabel, "recommendationSourceSectionHeading")
+        reason_heading = view.findChild(QLabel, "recommendationReasonSectionHeading")
+        assert source_heading is not None and source_heading.text() == "來源與資料日期"
+        assert reason_heading is not None and reason_heading.text() == "推薦理由與限制"
+        detail_layout = view.result_detail_group.layout()
+        assert detail_layout.itemAt(0).layout() is view.source_heading_layout
+        assert detail_layout.itemAt(1).widget() is view.company_source_summary_label
+        assert detail_layout.itemAt(2).widget() is view.company_source_snapshot_label
+        assert detail_layout.itemAt(3).widget() is view.company_source_technical_details_button
+        assert detail_layout.itemAt(4).widget() is view.company_source_technical_label
+        assert detail_layout.itemAt(5).layout() is view.reason_heading_layout
+        assert detail_layout.itemAt(6).widget() is view.detail_text
+        assert "技術追溯欄位" in view.company_source_technical_details_button.text()
+        assert view.reason_heading_layout.indexOf(view.detail_expand_button) >= 0
+        assert view.company_source_snapshot_details_button.text() == "查看每日來源詳情"
+        assert "每日來源詳情" in view.company_source_snapshot_details_button.accessibleName()
+        assert "不代表來源資格已通過" in view.company_source_snapshot_details_button.toolTip()
+        assert view.detail_expand_button.text() == "展開推薦理由"
+    finally:
+        view.close()
+
+
+def test_optional_personal_policy_is_collapsed_with_effective_mode_summary() -> None:
+    _app()
+    view = _new_view()
+    try:
+        view.resize(1366, 768)
+        view.show()
+        _app().processEvents()
+        assert not view.personal_policy_toggle.isChecked()
+        assert view.personal_policy_group.isHidden()
+        assert "規則排序" in view.personal_policy_summary_label.text()
+        _capture_if_requested(view, "recommendation_empty_optional_policy.png")
+        view.personal_policy_toggle.setChecked(True)
+        assert not view.personal_policy_group.isHidden()
+        assert view.personal_policy_toggle.accessibleName() == "收合個人推薦模式設定"
+        view.personal_policy_toggle.setChecked(False)
+        assert view.personal_policy_group.isHidden()
+    finally:
+        view.close()
+
+
 def test_recommendation_table_keeps_extended_evidence_expandable() -> None:
     _app()
     view = _new_view()
@@ -452,13 +506,22 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
         assert result_layout.indexOf(view.result_heading_layout) < result_layout.indexOf(
             view.result_title_layout
         )
-        assert result_layout.indexOf(view.result_title_layout) < result_layout.indexOf(
+        assert result_layout.indexOf(view.result_heading_layout) < result_layout.indexOf(
             view.result_status_label
+        )
+        assert result_layout.indexOf(view.result_status_label) < result_layout.indexOf(
+            view.result_title_layout
         )
         assert view.result_title_layout.indexOf(view.stock_research_btn) >= 0
         assert view.result_heading_layout.indexOf(view.stock_research_btn) == -1
         assert view.result_heading_layout.indexOf(view.result_columns_toggle) >= 0
         assert view.saved_result_select_row.itemAt(0).widget().text() == "回看已保存結果"
+        assert view.saved_result_workflow_hint.isVisible()
+        assert "先讀取可用來源，再選一筆並讀取" in view.saved_result_workflow_hint.text()
+        assert view.saved_result_workflow_hint.accessibleName() == "已保存推薦結果讀取步驟"
+        assert result_layout.indexOf(view.saved_result_select_row) < result_layout.indexOf(
+            view.saved_result_workflow_hint
+        ) < result_layout.indexOf(view.saved_result_actions_row)
         assert view.load_daily_recommendation_button.text() == "讀取今日排程結果"
         assert view.load_saved_result_button.text() == "讀取所選結果"
         assert view.load_daily_recommendation_button.accessibleName() == (
@@ -469,6 +532,9 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
         )
         assert "不重新執行" in view.load_daily_recommendation_button.toolTip()
         assert "不重新執行推薦" in view.load_saved_result_button.toolTip()
+        view.personal_choice_controls.set_context_available(
+            True, "已驗證保存結果與股票身分。"
+        )
         for width, height in ((1366, 768), (897, 360), (390, 844)):
             view.resize(width, height)
             app.processEvents()
@@ -478,6 +544,7 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
                 view.research_context_toggle,
                 view.saved_source_combo,
                 view.refresh_saved_sources_button,
+                view.saved_result_workflow_hint,
                 view.load_daily_recommendation_button,
                 view.personal_choice_controls.adopt_button,
                 view.personal_choice_controls.reject_button,
@@ -494,7 +561,7 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
             assert view.research_context_toggle.text() == "本次資料日期與來源"
             assert view.research_context_toggle.accessibleName() == "展開本次資料日期與來源"
             assert view.company_source_snapshot_details_button.accessibleName() == (
-                "查看所選股票的完整來源與核驗資料"
+                "查看所選股票的每日來源詳情"
             )
             assert "分析後列行情資料日與候選數" in view.research_context_summary_label.text()
             assert "尚未分析" in view.result_status_label.text()
@@ -506,7 +573,7 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
             assert view.research_context_toggle.text() == "本次資料日期與來源"
             expected_saved_row_direction = (
                 QBoxLayout.TopToBottom
-                if view.result_scroll.viewport().width() < 900
+                if view.result_scroll.viewport().width() < 560
                 else QBoxLayout.LeftToRight
             )
             expected_context_direction = (
@@ -632,6 +699,7 @@ def test_recommendation_result_scroll_and_five_rows_at_desktop_viewports() -> No
     assert view.results_table.minimumHeight() >= populated_five_row_minimum
     assert view.empty_result_state_widget.isHidden()
     assert not view.result_splitter.isHidden()
+    view.personal_policy_toggle.setChecked(True)
     view.show()
 
     try:
@@ -774,6 +842,27 @@ def test_recommendation_result_summary_separates_context_and_next_action() -> No
         assert "請先看" not in summary
         assert "尚未分析" in view.result_status_label.text()
         assert "結果數量" not in view.result_status_label.text()
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_saved_result_status_uses_semantic_color_levels() -> None:
+    app = _app()
+    view = _new_view()
+    try:
+        statuses = (
+            ("來源讀取中", "info", "#0b1c27"),
+            ("讀回完成", "success", "#0b2624"),
+            ("需核對", "warning", "#221a10"),
+            ("讀取失敗", "error", "#27162d"),
+        )
+        for text, level, background in statuses:
+            view._set_result_status(text, level=level)
+            assert view.result_status_label.text() == text
+            assert view.result_status_label.property("statusLevel") == level
+            assert background in view.result_status_label.styleSheet()
+            assert "border-left: 3px solid" in view.result_status_label.styleSheet()
     finally:
         view.close()
         app.processEvents()

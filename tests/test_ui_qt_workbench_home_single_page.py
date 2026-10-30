@@ -9,8 +9,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 from ui_qt.views.research_console_view import ResearchConsoleView
 from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
@@ -90,6 +90,10 @@ def test_home_is_one_visible_page_with_existing_summary_widgets() -> None:
             assert widget.parentWidget() is view.home_secondary_panel.content_widget
         assert view.daily_investment_journey_panel.parentWidget() is home
         assert view.advanced_workbench_panel.parentWidget() is home
+        assert view.advice_history_hint.parentWidget() is view.advice_panel
+        assert not view.advice_history_hint.isHidden()
+        assert "不隨今日候選更新" in view.advice_history_hint.text()
+        assert "我的投資 → 研究紀錄與覆盤" in view.advice_history_hint.text()
 
         assert view.home_theme_summary_label.text().startswith("尚未載入題材研究版本")
         assert "候選資料尚未載入" in " ".join(
@@ -98,8 +102,13 @@ def test_home_is_one_visible_page_with_existing_summary_widgets() -> None:
         assert "不是按鈕" in view.guided_priority_status_badges["candidates"].accessibleDescription()
         assert view.home_research_evidence_button.isEnabled()
         assert view.home_advanced_button.isEnabled()
-        assert view.daily_detail_button.text() == "查看每日來源詳情"
-        assert view.daily_detail_button.accessibleName() == "查看每日來源、篩選與排除詳情"
+        assert isinstance(view.daily_detail_button, QToolButton)
+        assert view.daily_detail_button.text() == "展開來源／範圍／排除"
+        assert view.daily_detail_button.accessibleName() == (
+            "展開每日來源詳情：本次推薦來源、候選範圍、篩選與排除"
+        )
+        assert view.daily_detail_button.autoRaise()
+        assert view.daily_detail_button.arrowType() == Qt.ArrowType.RightArrow
         assert view.daily_detail_button.parentWidget() is view.daily_source_details_row
         assert view.daily_action_layout.indexOf(view.daily_detail_button) == -1
         journey_layout = view.daily_investment_journey_panel.layout

@@ -698,6 +698,7 @@ def test_source_preparation_disclosure_preserves_original_controls_and_explicit_
     assert workspace.select_source(key)
     disclosure = price.findChild(QWidget, "screenerSourcePreparationDisclosure")
     assert disclosure is not None and disclosure.is_collapsed()
+    assert disclosure.toggle_button.maximumWidth() > 48
     assert group.parentWidget() is disclosure.content_widget
     assert pins.parentWidget() is disclosure.content_widget
     advanced = price.findChild(QWidget, "screenerAdvancedConditionsDisclosure")
@@ -722,6 +723,7 @@ def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason
     _host, workspace, _pages = _workspace(qtbot)
     assert workspace.source_details.is_collapsed()
     assert workspace.source_details.title_label.text() == "資料日期、來源版本與可用條件"
+    assert workspace.source_details.toggle_button.maximumWidth() > 48
     original_key = workspace.combo.currentData()
     workspace.source_details.toggle_button.click()
     assert not workspace.source_details.is_collapsed()
@@ -731,7 +733,12 @@ def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason
     assert workspace.condition_recipe_group_label.text() == "研究線索篩選"
     assert workspace.combo.accessibleName() == "研究線索篩選來源"
     assert workspace.quick_routes.spacing() == 4
-    assert "不會改變來源、其他條件或自動查詢" in workspace.condition_recipe_hint.text()
+    assert "目前來源與其他條件會保留" in workspace.condition_recipe_hint.text()
+    assert workspace.quick_routes.indexOf(workspace.condition_recipe_hint) + 1 == (
+        workspace.quick_routes.indexOf(workspace.disabled_note)
+    )
+    assert workspace.disabled_note.property("statusLevel") == "info"
+    assert "border-left: 3px solid" in workspace.disabled_note.styleSheet()
     assert all(button.minimumHeight() >= 28 for button in workspace.condition_recipe_buttons.values())
     assert "先核對所選來源與資料日期" in workspace.disabled_note.text()
     assert "按「套用全域查詢」更新結果" in workspace.disabled_note.text()
@@ -873,6 +880,10 @@ def test_condition_recipe_routes_without_query_and_keeps_return_source(qtbot):
     class _RecipePage(_Page):
         def apply_condition_recipe(self, key):
             applied.append(key)
+            self._condition_recipe_dirty = True
+            self.status = QLabel(
+                "範本條件已變更；請先成功套用全域查詢，再收藏新條件。"
+            )
             return True
 
     recipe_page = _RecipePage("dailyTechnicalV4RecipeSource")
@@ -894,6 +905,27 @@ def test_condition_recipe_routes_without_query_and_keeps_return_source(qtbot):
     assert nested.currentWidget() is recipe_page
     assert recipe_page.run_count == 0
     assert "尚未查詢" in workspace.disabled_note.text()
+    assert workspace.disabled_note.property("statusLevel") == "warning"
+    assert "#221a10" in workspace.disabled_note.styleSheet()
+    workspace._sync_condition_recipe_status()
+    assert "尚未查詢" in workspace.disabled_note.text()
+    recipe_page._worker = object()
+    workspace._sync_condition_recipe_status()
+    assert "進行中" in workspace.disabled_note.text()
+    assert workspace.disabled_note.property("statusLevel") == "info"
+    recipe_page._worker = None
+    recipe_page.status.setText(
+        "查詢來源或 selection pin 不符；目前已核驗結果保留。"
+    )
+    workspace._sync_condition_recipe_status()
+    assert "失敗或取消" in workspace.disabled_note.text()
+    assert workspace.disabled_note.property("statusLevel") == "error"
+    recipe_page.status.setText("查詢完成。")
+    recipe_page._condition_recipe_dirty = False
+    workspace.refresh_funnel()
+    assert "查詢完成" in workspace.disabled_note.text()
+    assert workspace.disabled_note.property("statusLevel") == "success"
+    assert workspace._condition_recipe_pending_widget is None
     assert workspace.select_source(original.key)
     assert nested.currentWidget() is pages[3]
 

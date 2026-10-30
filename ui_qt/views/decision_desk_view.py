@@ -348,10 +348,17 @@ class DecisionDeskView(QWidget):
         self.stock_focus_research_button.setToolTip(
             "以市場焦點的既有日期與來源開啟個股研究；沒有焦點時停用。"
         )
+        self.stock_focus_research_button.setSizePolicy(
+            QSizePolicy.Fixed, QSizePolicy.Fixed
+        )
         self.stock_focus_research_button.setEnabled(False)
         self.stock_focus_research_button.clicked.connect(self._open_stock_focus_research)
-        focus_group.layout.addWidget(self.stock_focus_research_button)
-        content_layout.addWidget(focus_group)
+        self.market_focus_actions = QWidget()
+        self.market_focus_actions.setObjectName("decisionDeskFocusActions")
+        market_focus_actions_layout = QHBoxLayout(self.market_focus_actions)
+        market_focus_actions_layout.setContentsMargins(0, 2, 0, 0)
+        market_focus_actions_layout.setSpacing(8)
+        market_focus_actions_layout.addWidget(self.stock_focus_research_button)
 
         self.advanced_market_panel = CollapsibleSectionPanel(
             "完整市場資料",
@@ -365,10 +372,19 @@ class DecisionDeskView(QWidget):
         self.market_details_button = QPushButton("查看完整市場資料")
         self.market_details_button.setProperty("variant", "secondary")
         self.market_details_button.setAccessibleName("查看完整市場資料")
+        self.market_details_button.setSizePolicy(
+            QSizePolicy.Fixed, QSizePolicy.Fixed
+        )
+        self.market_details_button.setToolTip(
+            "展開下方完整市場資料分區；不會重新取得或重算資料。"
+        )
         self.market_details_button.clicked.connect(
             lambda: self.advanced_market_panel.set_collapsed(False)
         )
-        focus_group.layout.addWidget(self.market_details_button)
+        market_focus_actions_layout.addWidget(self.market_details_button)
+        market_focus_actions_layout.addStretch(1)
+        focus_group.layout.addWidget(self.market_focus_actions)
+        content_layout.addWidget(focus_group)
         advanced_layout = self.advanced_market_panel.content_layout
 
         self.presentation_contract_label = QLabel("尚未載入共用呈現契約。")

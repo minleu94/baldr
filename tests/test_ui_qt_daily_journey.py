@@ -7,6 +7,7 @@ from datetime import date, datetime
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from app_module.workbench_dtos import (
@@ -145,21 +146,38 @@ def test_daily_journey_details_are_collapsed_until_requested_and_evidence_tab_is
 
     assert view.daily_trace_label.isHidden() is True
     assert "sha256:event-1" not in view.daily_candidate_detail_label.text()
-    assert "來源：scheduled-rec-1" in view.daily_candidate_detail_label.text()
+    assert "來源 ID=scheduled-rec-1" in view.daily_candidate_detail_label.text()
     assert "candidate_degraded" not in view.daily_candidate_detail_label.text()
-    assert "候選資料日：2026-09-14" in view.daily_candidate_detail_label.text()
-    assert "要求檔數：120｜降級檔數：2｜缺漏檔數：1" in view.daily_candidate_detail_label.text()
-    assert "全市場分母：未提供" in view.daily_candidate_detail_label.text()
+    assert "候選資料日=2026-09-14" in view.daily_candidate_detail_label.text()
+    assert "要求檔數" not in view.daily_candidate_detail_label.text()
+    assert "全市場分母" not in view.daily_candidate_detail_label.text()
     assert "合格事件 1 件" in view.daily_evidence_card.value_label.text()
     assert "recommendation_included" not in view.daily_journey_label.text()
     assert "active pointer" not in view.daily_journey_label.text()
     view.daily_detail_button.click()
     assert view.daily_trace_label.isHidden() is False
-    assert "sha256:event-1" in view.daily_trace_label.text()
-    assert "自然成熟樣本：回執 0；候選 0；啟用版本 0" in view.daily_trace_label.text()
+    assert view.daily_detail_button.isChecked()
+    assert view.daily_detail_button.text() == "收合來源／範圍／排除"
+    assert "sha256:event-1" not in view.daily_trace_label.text()
+    assert "border-left" in view.daily_trace_label.text()
+    assert "候選來源與範圍" in view.daily_trace_label.text()
+    assert "要求檔數：120｜降級檔數：2｜缺漏檔數：1" in view.daily_trace_label.text()
+    assert "全市場分母：未提供" in view.daily_trace_label.text()
     assert "篩選缺資料：197 筆／197 檔" in view.daily_trace_label.text()
     assert "品質 missing 197" in view.daily_trace_label.text()
+    advanced_trace = view.daily_trace_advanced_text.text()
+    assert "sha256:event-1" in advanced_trace
+    assert "自然成熟樣本：回執 0；候選 0；啟用版本 0" in advanced_trace
     view.daily_detail_button.click()
+    assert view.daily_trace_label.isHidden() is True
+    assert not view.daily_detail_button.isChecked()
+    assert view.daily_detail_button.text() == "展開來源／範圍／排除"
+    assert view.daily_detail_button.arrowType() == Qt.ArrowType.RightArrow
+
+    view.daily_detail_button.click()
+    view._render_daily_investment_journey(_dashboard().daily_evidence)
+    assert not view.daily_detail_button.isChecked()
+    assert view.daily_detail_button.text() == "展開來源／範圍／排除"
     assert view.daily_trace_label.isHidden() is True
 
     view.daily_evidence_button.click()
@@ -192,7 +210,7 @@ def test_daily_candidate_disclosure_remains_visible_for_empty_candidate_result()
     )
 
     disclosure = view.daily_candidate_detail_label.text()
-    assert "目前沒有可安全呈現的候選列" in disclosure
-    assert "來源：未提供" in disclosure
-    assert "要求檔數：未提供｜降級檔數：未提供｜缺漏檔數：未提供" in disclosure
-    assert "全市場分母：未提供" in disclosure
+    assert "目前無候選列或來源理由可供檢視" in disclosure
+    assert "來源 ID=未提供" in disclosure
+    assert "要求檔數" not in disclosure
+    assert "全市場分母" not in disclosure

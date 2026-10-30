@@ -5,6 +5,7 @@ from html import escape
 from pathlib import Path
 from collections.abc import Callable, Mapping
 from datetime import date, datetime, timedelta, timezone
+from math import ceil
 from typing import cast
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,7 @@ from PySide6.QtCore import (
     QItemSelectionModel,
     QModelIndex,
     QObject,
+    Signal,
     QTimer,
     Qt,
 )
@@ -40,6 +42,9 @@ from PySide6.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
+    QTextBrowser,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -103,6 +108,56 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_label
 from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
 from ui_qt.widgets.info_button import InfoButton
+
+
+class _ContentSizedAdviceTextBrowser(QTextBrowser):
+    """讓 Advice 完整判讀依內容展開，避免工作台內再套一層文字捲軸。"""
+
+    content_height_changed = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setMinimumHeight(80)
+        self.setMaximumHeight(16777215)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self._resize_pending = False
+
+    def setPlainText(self, text: str) -> None:
+        super().setPlainText(text)
+        self._schedule_content_resize()
+
+    def setHtml(self, text: str) -> None:
+        super().setHtml(text)
+        self._schedule_content_resize()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._schedule_content_resize()
+
+    def _schedule_content_resize(self) -> None:
+        if self._resize_pending:
+            return
+        self._resize_pending = True
+        QTimer.singleShot(0, self._fit_document_height)
+
+    def _fit_document_height(self) -> None:
+        self._resize_pending = False
+        width = max(1, self.viewport().width())
+        self.document().setTextWidth(width)
+        document_height = self.document().documentLayout().documentSize().height()
+        margins = self.contentsMargins()
+        target_height = (
+            ceil(document_height)
+            + margins.top()
+            + margins.bottom()
+            + 2 * self.frameWidth()
+            + 8
+        )
+        if target_height != self.minimumHeight():
+            self.setMinimumHeight(target_height)
+            self.content_height_changed.emit()
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.theme_widgets import (
     CollapsibleSectionPanel,
@@ -560,6 +615,18 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         advice_panel, self.advice_section_title = self._panel_with_title("今日策略建議")
         self.advice_panel = advice_panel
+        self.advice_history_hint = QLabel(
+            "已保存的研究決定不隨今日候選更新；可到「我的投資 → 研究紀錄與覆盤」，"
+            "依股票代號或 result ID 找回。",
+            advice_panel,
+        )
+        self.advice_history_hint.setObjectName("adviceResearchHistoryHint")
+        self.advice_history_hint.setWordWrap(True)
+        self.advice_history_hint.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.advice_history_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 1px 3px;"
+        )
+        advice_panel.layout.insertWidget(1, self.advice_history_hint)
         self.advice_summary_metrics = QWidget(self)
         self.advice_summary_metrics.setObjectName("adviceSummaryMetrics")
         self.advice_summary_metrics_layout = QHBoxLayout(self.advice_summary_metrics)
@@ -664,7 +731,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         advice_panel.layout.addWidget(self.advice_recommendation_table)
         self.advice_candidate_label = QLabel("策略 Advice（人工判斷與採納）")
         self.advice_candidate_hint = QLabel(
-            "每筆 Advice 以獨立小卡呈現。卡面列出主要理由與限制；點卡片可展開同一筆完整判讀與研究紀錄，不會自動下單。"
+            "每筆 Advice 是一張獨立小卡。展開後依序核對來源、閱讀理由與限制，再記錄研究決定；不會自動下單。"
         )
         self.advice_candidate_hint.setObjectName("adviceCandidateHint")
         self.advice_candidate_hint.setWordWrap(True)
@@ -718,7 +785,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_selection_card.setText("所選 Advice 判讀：選取建議列後顯示。")
         self.advice_selection_card.setVisible(False)
         self.advice_selection_detail_layout.addWidget(self.advice_selection_card)
-        self.advice_evidence_heading = QLabel("1｜判讀依據")
+        self.advice_evidence_heading = QLabel("2｜閱讀判讀理由與限制")
         self.advice_evidence_heading.setObjectName("adviceEvidenceHeading")
         self.advice_evidence_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.accent}; font-weight: 700; padding-top: 4px;"
@@ -757,26 +824,29 @@ class UnifiedDecisionWorkbenchView(QWidget):
         advice_evidence_actions.addWidget(self.advice_lineage_button)
         advice_evidence_actions.addStretch(1)
         self.advice_selection_detail_layout.addLayout(advice_evidence_actions)
-        self.advice_presentation_detail = QPlainTextEdit(
+        self.advice_presentation_detail = _ContentSizedAdviceTextBrowser(
             self.advice_selection_detail_panel
         )
         self.advice_presentation_detail.setObjectName("advicePresentationDetail")
         self.advice_presentation_detail.setReadOnly(True)
         self.advice_presentation_detail.setLineWrapMode(
-            QPlainTextEdit.LineWrapMode.WidgetWidth
+            QTextEdit.LineWrapMode.WidgetWidth
         )
-        self.advice_presentation_detail.setMinimumHeight(200)
-        self.advice_presentation_detail.setMaximumHeight(480)
+        self.advice_presentation_detail.setOpenLinks(False)
+        self.advice_presentation_detail.setOpenExternalLinks(False)
         self.advice_presentation_detail.setAccessibleName("Advice 完整判讀詳情")
         self.advice_presentation_detail.setAccessibleDescription(
-            "唯讀詳情文字區；依序列出本筆身份、判讀依據、來源與限制。"
-            "內容較長時可使用垂直捲軸閱讀。"
+            "唯讀詳情；依序列出本筆身份、判讀依據、來源與限制。"
+            "內容依文字長度展開，使用工作台頁面捲動閱讀。"
+        )
+        self.advice_presentation_detail.content_height_changed.connect(
+            self._sync_advice_selection_detail_height
         )
         self.advice_presentation_detail.setStyleSheet(
-            f"QPlainTextEdit {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"QTextBrowser {{ background: {MIDNIGHT_ANALYST.surface_2}; "
             f"color: {MIDNIGHT_ANALYST.text_secondary}; "
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
-            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 8px; }}"
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 4px; }}"
         )
         self.advice_presentation_detail.setPlainText(
             "共用證據詳情：選取 Advice 列後顯示；"
@@ -785,12 +855,34 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_presentation_detail.setVisible(False)
         self.advice_selection_detail_layout.addWidget(self.advice_presentation_detail)
 
-        self.advice_source_heading = QLabel("2｜核對原始結果與每日來源")
+        self.advice_source_heading = QLabel("1｜核對每日來源與原始結果")
         self.advice_source_heading.setObjectName("adviceSourceHeading")
         self.advice_source_heading.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.accent}; font-weight: 700; padding-top: 4px;"
         )
         self.advice_selection_detail_layout.addWidget(self.advice_source_heading)
+        self.advice_source_unavailable_label = QLabel(
+            "目前沒有可用的同筆來源回查入口；請看完整判讀中的來源欄位。系統不會替你改選其他結果。",
+            self.advice_selection_detail_panel,
+        )
+        self.advice_source_unavailable_label.setObjectName(
+            "adviceSourceUnavailableHint"
+        )
+        self.advice_source_unavailable_label.setTextFormat(Qt.TextFormat.RichText)
+        self.advice_source_unavailable_label.setWordWrap(True)
+        self.advice_source_unavailable_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.advice_source_unavailable_label.linkActivated.connect(
+            self._open_daily_source_overview
+        )
+        self.advice_source_unavailable_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 1px 2px;"
+        )
+        self.advice_selection_detail_layout.addWidget(
+            self.advice_source_unavailable_label
+        )
         source_actions = QBoxLayout(QBoxLayout.LeftToRight)
         self.advice_source_actions_layout = source_actions
         source_actions.setContentsMargins(0, 0, 0, 0)
@@ -821,6 +913,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
         source_actions.addWidget(self.advice_source_result_button)
         source_actions.addStretch(1)
         self.advice_selection_detail_layout.addLayout(source_actions)
+        self.advice_selection_detail_layout.removeWidget(self.advice_source_heading)
+        self.advice_selection_detail_layout.removeWidget(
+            self.advice_source_unavailable_label
+        )
+        self.advice_selection_detail_layout.removeItem(source_actions)
+        self.advice_selection_detail_layout.insertWidget(1, self.advice_source_heading)
+        self.advice_selection_detail_layout.insertWidget(
+            2, self.advice_source_unavailable_label
+        )
+        self.advice_selection_detail_layout.insertLayout(3, source_actions)
 
         self.advice_author_heading = QLabel("3｜作者填寫的策略版本說明（選填）")
         self.advice_author_heading.setObjectName("adviceAuthorHeading")
@@ -2556,13 +2658,20 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
         )
         source_details_layout.addWidget(source_details_label)
-        self.daily_detail_button = QPushButton("查看每日來源詳情")
+        self.daily_detail_button = QToolButton()
         self.daily_detail_button.setObjectName("dailySourceDetailsToggle")
-        self.daily_detail_button.setProperty("variant", "primary")
+        self.daily_detail_button.setAutoRaise(True)
         self.daily_detail_button.setCheckable(True)
-        self.daily_detail_button.setAccessibleName("查看每日來源、篩選與排除詳情")
+        self.daily_detail_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.daily_detail_button.setArrowType(Qt.ArrowType.RightArrow)
+        self.daily_detail_button.setText("展開來源／範圍／排除")
+        self.daily_detail_button.setAccessibleName(
+            "展開每日來源詳情：本次推薦來源、候選範圍、篩選與排除"
+        )
         self.daily_detail_button.setToolTip(
-            "展開本次推薦來源、候選篩選／排除與證據追蹤；唯讀，不會重新執行推薦。"
+            "查看本次推薦結果、來源、候選範圍、篩選排除及證據狀態。唯讀，不會重新執行推薦。"
         )
         self.daily_detail_button.toggled.connect(self._toggle_daily_detail)
         source_details_layout.addWidget(self.daily_detail_button)
@@ -2667,6 +2776,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         self.daily_trace_label = self._make_detail_box()
         self.daily_trace_label.setObjectName("dailyJourneyTrace")
+        self.daily_trace_label.setTextFormat(Qt.RichText)
         self.daily_trace_label.setVisible(False)
         panel.layout.addWidget(self.daily_trace_label)
         self.daily_trace_advanced_panel = CollapsibleSectionPanel(
@@ -2694,8 +2804,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_detail_button.blockSignals(True)
         self.daily_detail_button.setChecked(False)
         self.daily_detail_button.blockSignals(False)
-        self.daily_trace_label.setVisible(False)
-        self.daily_trace_advanced_panel.setVisible(False)
+        self._toggle_daily_detail(False)
         self.daily_trace_advanced_panel.set_collapsed(True)
         if daily is None:
             self.daily_conclusion_label.setText("今日結論：等待工作台資料載入。")
@@ -2717,15 +2826,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 "下一步：重新整理既有唯讀來源。UI 不讀 DB、不執行策略、不補值。"
             )
             self.daily_candidate_detail_label.setText(
-                "個股研究候選：尚未載入；空白不等於沒有候選。\n"
-                "來源：未提供｜候選資料日：未提供｜品質：未知\n"
-                "範圍：要求檔數未提供｜降級檔數未提供｜缺漏檔數未提供｜全市場分母：未提供"
+                "候選來源核對：尚未載入；空白不等於沒有候選。\n"
+                "來源 ID：未提供｜候選資料日：未提供｜品質：未知"
             )
             self._sync_daily_candidate_open_controls()
             self.daily_watchlist_button.setEnabled(False)
             self.daily_evidence_button.setEnabled(False)
             self.daily_detail_button.setEnabled(False)
-            self.daily_trace_label.setText("每日來源詳情：尚未有可信 DTO。")
+            self.daily_trace_label.setText(
+                _daily_trace_sections_html("每日來源詳情：尚未有可信 DTO。")
+            )
             self.daily_trace_advanced_text.setText(
                 "進階來源追蹤：尚未有可信 DTO。"
             )
@@ -2736,7 +2846,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_state_label.setText(
             f"狀態：{display_workbench_value(daily.status)}｜"
             f"決策日：{daily.decision_date}｜資料日：{daily.data_as_of_date or '未知'}｜"
-            f"研究候選 {daily.candidate_count} 檔；候選僅供人工研究，非交易指令。"
+            "候選僅供人工研究，非交易指令。"
         )
         self._style_daily_state(tone_status)
         self.daily_market_card.value_label.setText(
@@ -2756,45 +2866,38 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if fallback_line:
             journey_lines.append(fallback_line)
         self.daily_journey_label.setText("\n".join(journey_lines))
-        requested_count = (
-            str(daily.candidate_requested_count)
-            if daily.candidate_requested_count is not None
-            else "未提供"
-        )
-        degraded_count = (
-            str(daily.candidate_degraded_count)
-            if daily.candidate_degraded_count is not None
-            else "未提供"
-        )
-        missing_count = (
-            str(daily.candidate_missing_count)
-            if daily.candidate_missing_count is not None
-            else "未提供"
-        )
-        candidate_state = (
-            f"候選狀態：{_daily_candidate_surface_status(daily)}｜"
-            if daily.candidate_count or daily.candidate_symbols or daily.candidate_reasons
-            else "目前沒有可安全呈現的候選列；空結果不等於 Gate 已通過。｜"
-        )
         reasons = (
             "逐股原始理由請看上方候選列。"
             if daily.candidate_count or daily.candidate_symbols or daily.candidate_reasons
             else "目前無候選列或來源理由可供檢視。"
         )
         self.daily_candidate_detail_label.setText(
-            f"個股研究候選：{daily.candidate_count} 檔｜{candidate_state}"
-            f"品質：{_daily_quality_text(daily.candidate_quality)}\n"
-            f"來源：{daily.candidate_source_id or '未提供'}｜"
-            f"候選資料日：{daily.candidate_data_date or '未提供'}｜"
-            f"要求檔數：{requested_count}｜降級檔數：{degraded_count}｜缺漏檔數：{missing_count}\n"
-            "全市場分母：未提供；以上筆數是候選來源範圍，不代表全市場覆蓋率。\n"
+            f"候選來源核對：來源 ID={daily.candidate_source_id or '未提供'}｜"
+            f"候選資料日={daily.candidate_data_date or '未提供'}｜"
+            f"品質={_daily_quality_text(daily.candidate_quality)}\n"
             f"{reasons} 候選僅供研究，不代表已驗證、可成交或應下單。"
         )
         self._sync_daily_candidate_open_controls()
         self.daily_watchlist_button.setEnabled(self.navigate_to_watchlist_callback is not None)
         self.daily_evidence_button.setEnabled(True)
-        self.daily_detail_button.setEnabled(bool(daily.source_trace or daily.diagnostics))
-        self.daily_trace_label.setText(self._format_daily_trace(daily))
+        self.daily_detail_button.setEnabled(
+            bool(
+                daily.source_trace
+                or daily.diagnostics
+                or daily.candidate_result_id
+                or daily.candidate_source_id
+                or daily.candidate_source_snapshot_id
+                or daily.candidate_data_date
+                or daily.candidate_requested_count is not None
+                or daily.candidate_degraded_count is not None
+                or daily.candidate_missing_count is not None
+                or daily.candidate_exclusion_summaries
+                or daily.evidence_windows
+            )
+        )
+        self.daily_trace_label.setText(
+            _daily_trace_sections_html(self._format_daily_trace(daily))
+        )
         self.daily_trace_advanced_text.setText(
             self._format_daily_advanced_trace(daily)
         )
@@ -3008,6 +3111,14 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"狀態：{display_workbench_value(daily.candidate_status or 'unknown')}",
             f"決策日：{daily.decision_date or '未知'}｜行情資料日：{daily.data_as_of_date or '未知'}",
             f"結果 ID：{daily.candidate_result_id or '未知'}",
+            "候選來源與範圍",
+            f"來源 ID：{daily.candidate_source_id or '未提供'}｜"
+            f"候選資料日：{daily.candidate_data_date or '未提供'}｜"
+            f"品質：{_daily_quality_text(daily.candidate_quality)}",
+            f"要求檔數：{daily.candidate_requested_count if daily.candidate_requested_count is not None else '未提供'}｜"
+            f"降級檔數：{daily.candidate_degraded_count if daily.candidate_degraded_count is not None else '未提供'}｜"
+            f"缺漏檔數：{daily.candidate_missing_count if daily.candidate_missing_count is not None else '未提供'}",
+            "全市場分母：未提供；這些筆數只代表候選來源範圍，不代表全市場覆蓋率。",
             "篩選與排除",
         ]
         if daily.candidate_exclusion_summaries:
@@ -3090,8 +3201,20 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _toggle_daily_detail(self, expanded: bool) -> None:
         self.daily_trace_label.setVisible(bool(expanded))
         self.daily_trace_advanced_panel.setVisible(bool(expanded))
+        self.daily_detail_button.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
         self.daily_detail_button.setText(
-            "收合每日來源詳情" if expanded else "查看每日來源詳情"
+            "收合來源／範圍／排除" if expanded else "展開來源／範圍／排除"
+        )
+        self.daily_detail_button.setAccessibleName(
+            ("收合" if expanded else "展開")
+            + "每日來源詳情：本次推薦來源、候選範圍、篩選與排除"
+        )
+        self.daily_detail_button.setToolTip(
+            "收合每日推薦來源、候選範圍、篩選排除與證據狀態。"
+            if expanded
+            else "查看本次推薦結果、來源、候選範圍、篩選排除及證據狀態。唯讀，不會重新執行推薦。"
         )
 
     def _daily_saved_result_id(self) -> str | None:
@@ -3980,6 +4103,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._advice_research_readback_identity = None
         self.advice_source_result_button.hide()
         self.advice_daily_source_button.hide()
+        self.advice_source_unavailable_label.show()
         self.advice_research_history_link.hide()
         self._set_advice_research_decision_enabled(False)
         self.advice_research_decision_status.hide()
@@ -4589,7 +4713,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             card.setObjectName("adviceCandidateCard")
             card.setProperty("advice_candidate_row", row_index)
             card.setAccessibleDescription(
-                "點擊卡片查看此 Advice 的完整判讀；展開後可在卡內記錄研究決定。"
+                "展開後依序核對每日來源、閱讀完整判讀，再記錄此筆研究決定。"
             )
             card.setToolTip("點擊卡片查看此 Advice 詳情。")
             card.setCursor(Qt.PointingHandCursor)
@@ -5249,6 +5373,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_source_result_button.hide()
         if hasattr(self, "advice_daily_source_button"):
             self.advice_daily_source_button.hide()
+        if hasattr(self, "advice_source_unavailable_label"):
+            self.advice_source_unavailable_label.show()
         if hasattr(self, "advice_research_history_link"):
             self.advice_research_history_link.hide()
         if hasattr(self, "advice_contract_backtest_button"):
@@ -5299,7 +5425,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         sections = [
             "本筆資料身份（唯讀）\n" + "\n".join(identity_lines),
-            "1｜Advice 判讀與限制（唯讀）\n"
+            "Advice 判讀與限制｜唯讀\n"
             + format_decision_presentation(presentation)
             + "\n來源理由／論點\n"
             + original_reasons,
@@ -5308,13 +5434,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             source_evidence = tuple(getattr(item, "source_evidence", ()) or ())
             sections.extend(
                 (
-                    "2｜這筆保存結果的逐股來源證據\n"
+                    "逐股來源證據｜本筆保存結果\n"
                     + (
                         "\n".join(f"• {value}" for value in source_evidence)
                         if source_evidence
                         else "未提供"
                     ),
-                    "3｜策略版本作者說明（選填；缺漏不阻擋 Advice）\n"
+                    "策略版本作者說明｜選填；缺漏不阻擋 Advice\n"
                     + _advice_contract_completeness(item),
                 )
             )
@@ -5323,7 +5449,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 "進階｜校準機率與模型來源\n"
                 + format_decision_lineage_detail(presentation)
             )
-        self.advice_presentation_detail.setPlainText("\n\n".join(sections))
+        self.advice_presentation_detail.setHtml(
+            _advice_presentation_sections_html(sections)
+        )
 
     def _toggle_advice_lineage(self, expanded: bool) -> None:
         if expanded and not self.advice_presentation_toggle.isChecked():
@@ -5332,15 +5460,25 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _toggle_advice_presentation_detail(self, expanded: bool) -> None:
         self.advice_presentation_detail.setVisible(expanded)
-        # 候選卡在 Grid 中展開時，父層可能沿用收合前的卡片高度。
-        # 明確回報展開後的內容高度，讓外層工作台捲動，而不是把後續區塊壓到詳情文字上。
-        self.advice_selection_detail_panel.setMinimumHeight(
-            self.advice_selection_detail_layout.sizeHint().height() if expanded else 0
-        )
-        self.advice_selection_detail_panel.updateGeometry()
+        self._sync_advice_selection_detail_height()
         self.advice_presentation_toggle.setText(
             "收合完整判讀與原始理由" if expanded else "展開完整判讀與原始理由"
         )
+
+    def _sync_advice_selection_detail_height(self) -> None:
+        """將完整判讀的內容高度回報給外層工作台捲動區。"""
+
+        if self.advice_presentation_detail.isHidden():
+            return
+        self.advice_selection_detail_panel.setMinimumHeight(
+            self.advice_selection_detail_layout.sizeHint().height()
+        )
+        self.advice_selection_detail_panel.updateGeometry()
+        if self._advice_selection_detail_host_row is not None:
+            columns = self._advice_candidate_card_columns or (
+                self._advice_candidate_columns_for_width(self.width())
+            )
+            self._layout_advice_candidate_cards(columns, force_reflow=True)
 
     def _show_advice_row_presentation(self, model, row: int) -> None:
         """在 Workbench 直接展示共用 DTO；無法適配時 fail closed。"""
@@ -5510,6 +5648,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.advice_lineage_button.blockSignals(False)
         self._update_advice_source_result_action(item, model)
         self._update_advice_daily_source_action(item, model)
+        self._sync_advice_source_section_visibility()
         self._update_advice_research_history_link(item)
         self._update_advice_contract_backtest_action(item, model)
         self._update_advice_research_decision_action(item, model)
@@ -5640,6 +5779,54 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "讀回失敗時不會改選其他結果。"
         )
         self.advice_source_result_button.show()
+
+    def _sync_advice_source_section_visibility(self) -> None:
+        """來源按鈕不可用時顯示精確同筆回查限制。"""
+
+        has_source_action = (
+            not self.advice_daily_source_button.isHidden()
+            or not self.advice_source_result_button.isHidden()
+        )
+        self.advice_source_heading.show()
+        self.advice_source_unavailable_label.setVisible(not has_source_action)
+        if has_source_action:
+            return
+        daily = (
+            self._dashboard.daily_evidence
+            if self._dashboard is not None and not self._dashboard_stale
+            else None
+        )
+        if daily is not None and self.daily_detail_button.isEnabled():
+            self.advice_source_unavailable_label.setText(
+                "尚未核對到與這筆 Advice 完全相同的每日結果。可"
+                f'<a href="today-source-details" style="color: {MIDNIGHT_ANALYST.accent}; '
+                'font-weight: 700;">開啟今日總覽的來源核對</a>'
+                "查看當日來源；這不代表來源已與本筆相同。完整判讀保留本筆已提供的來源欄位。"
+            )
+        else:
+            self.advice_source_unavailable_label.setText(
+                "目前沒有可用的同筆來源回查入口；請看完整判讀中的來源欄位。"
+                "系統不會替你改選其他結果。"
+            )
+
+    def _open_daily_source_overview(self, link: str) -> bool:
+        """開啟當日來源區供瀏覽，但不宣稱它與目前 Advice 同筆。"""
+
+        daily = (
+            self._dashboard.daily_evidence
+            if self._dashboard is not None and not self._dashboard_stale
+            else None
+        )
+        if (
+            link != "today-source-details"
+            or daily is None
+            or not self.daily_detail_button.isEnabled()
+        ):
+            return False
+        self.subtabs.setCurrentIndex(0)
+        self.daily_detail_button.setChecked(True)
+        self.overview_scroll_area.ensureWidgetVisible(self.daily_trace_label, 0, 12)
+        return True
 
     def _update_advice_daily_source_action(self, item: object, model: object) -> None:
         """只為與每日候選精確同筆的 Advice 提供來源詳情直達入口。"""
@@ -6089,6 +6276,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             if not accepted or not note.strip():
                 return False
+        pending_message = (
+            "正在重新讀取同筆人工研究狀態；完成後會更新此處。"
+            if action == "readback"
+            else "正在保存研究動作並核對同一筆；目前尚未確認結果。"
+        )
+        self.advice_research_decision_status.setText(pending_message)
+        self.advice_research_decision_status.show()
+        # Writer/readback callback is synchronous; repaint the status before it
+        # starts so a short wait is not mistaken for an ignored button click.
+        self.advice_research_decision_status.repaint()
         try:
             if action == "review_scheduled":
                 result = callback(
@@ -6323,7 +6520,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._dashboard_stale = True
             self._selected_advice_source_result_id = None
             self._selected_advice_source_stock_code = None
+            self._selected_advice_daily_source_result_id = None
             self.advice_source_result_button.hide()
+            self.advice_daily_source_button.hide()
+            self._sync_advice_source_section_visibility()
             self._selected_advice_decision_identity = None
             self._set_advice_research_decision_enabled(False)
             self.advice_research_decision_status.setText(
@@ -7330,6 +7530,77 @@ def _advice_warning_text(value: object) -> str:
         "verified_recommendation_read_missing": "當日候選缺少通過身分核對的保存結果。",
     }
     return known.get(raw, raw or "未提供警告內容。")
+
+
+def _advice_presentation_sections_html(sections: list[str]) -> str:
+    """將 Advice 唯讀文字分成可掃讀區塊；來源值一律當純文字處理。"""
+
+    return _readonly_sections_html(
+        sections,
+        warning_titles=("限制", "作者說明"),
+    )
+
+
+def _daily_trace_sections_html(text: str) -> str:
+    """把每日來源純文字依標題分區；保留外層捲動並突出排除限制。"""
+
+    headings = {
+        "本次結果",
+        "候選來源與範圍",
+        "篩選與排除",
+        "證據成熟度觀察",
+    }
+    lines = str(text or "").splitlines()
+    if not lines:
+        return _readonly_sections_html([], warning_titles=("篩選與排除",))
+    sections = [lines[0]]
+    current: list[str] = []
+    for line in lines[1:]:
+        if line in headings:
+            if current:
+                sections.append("\n".join(current))
+            current = [line]
+        elif current:
+            current.append(line)
+        else:
+            current = [line]
+    if current:
+        sections.append("\n".join(current))
+    return _readonly_sections_html(
+        sections,
+        warning_titles=("篩選與排除",),
+    )
+
+
+def _readonly_sections_html(
+    sections: list[str],
+    *,
+    warning_titles: tuple[str, ...],
+) -> str:
+    """用共用卡片層級呈現唯讀來源段落，並安全 escape 所有來源值。"""
+
+    rendered: list[str] = []
+    for index, section in enumerate(sections):
+        lines = section.splitlines()
+        if not lines:
+            continue
+        title = escape(lines[0])
+        body = "<br>".join(escape(line) for line in lines[1:] if line)
+        accent = MIDNIGHT_ANALYST.warning if any(
+            title in lines[0] for title in warning_titles
+        ) else MIDNIGHT_ANALYST.accent
+        margin = "0" if index == 0 else "8px 0 0 0"
+        rendered.append(
+            "<div style=\""
+            f"margin:{margin}; padding:7px 9px; "
+            f"background-color:{MIDNIGHT_ANALYST.surface_1}; "
+            f"border-left:3px solid {accent}; border-radius:4px;\">"
+            f"<div style=\"color:{accent}; font-weight:700; margin-bottom:4px;\">"
+            f"{title}</div>"
+            f"<div style=\"color:{MIDNIGHT_ANALYST.text_primary}; line-height:1.35;\">"
+            f"{body}</div></div>"
+        )
+    return "<html><body style=\"margin:2px;\">" + "".join(rendered) + "</body></html>"
 
 
 def _advice_contract_completeness(item: object) -> str:

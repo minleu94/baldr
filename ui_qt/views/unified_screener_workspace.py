@@ -450,6 +450,7 @@ class UnifiedScreenerWorkspace:
         )
         self.disabled_note.setObjectName("unifiedScreenerUsageHint")
         self.disabled_note.setWordWrap(True)
+        self._set_usage_note(self.disabled_note, "info")
         self.quick_routes = QVBoxLayout()
         self.quick_routes.setContentsMargins(0, 0, 0, 0)
         self.quick_routes.setSpacing(4)
@@ -499,7 +500,7 @@ class UnifiedScreenerWorkspace:
             self.condition_recipe_buttons[key] = button
             self.condition_recipe_layout.addWidget(button, 0, len(self.condition_recipe_buttons) - 1)
         self.condition_recipe_hint = QLabel(
-            "捷徑只替換技術規則，不會改變來源、其他條件或自動查詢。"
+            "捷徑只替換技術規則；目前來源與其他條件會保留。"
         )
         self.condition_recipe_hint.setObjectName("unifiedScreenerConditionRecipeHint")
         self.condition_recipe_hint.setWordWrap(True)
@@ -526,6 +527,7 @@ class UnifiedScreenerWorkspace:
         quick_routes_header.addWidget(self.save_filter_status_label)
         self.quick_routes.addLayout(self.condition_recipe_layout)
         self.quick_routes.addWidget(self.condition_recipe_hint)
+        self.quick_routes.addWidget(self.disabled_note)
         self.unavailable_conditions = QLabel(
             "尚未接通：題材條件、財報條件、法人條件。月營收可由「官方＋技術＋月營收」來源頁使用。"
         )
@@ -544,7 +546,6 @@ class UnifiedScreenerWorkspace:
         layout.addWidget(self.research_scope)
         layout.addWidget(self.funnel)
         layout.addWidget(self.funnel_details)
-        layout.addWidget(self.disabled_note)
         self.source_details = CollapsibleSectionPanel(
             "資料日期、來源版本與可用條件", collapsed=True
         )
@@ -567,6 +568,8 @@ class UnifiedScreenerWorkspace:
         self._active_key: str | None = None
         self._connected_operation_signals: set[int] = set()
         self._invalidated_source_widgets: set[int] = set()
+        self._condition_recipe_pending_widget: QWidget | None = None
+        self._condition_recipe_pending_status_text: str | None = None
         self._ml_mode = False
         self._explicit_mode_transition = False
         self._last_key_by_mode: dict[bool, str | None] = {False: None, True: None}
@@ -864,6 +867,22 @@ class UnifiedScreenerWorkspace:
             label.style().polish(label)
         label.show()
 
+    @staticmethod
+    def _set_usage_note(label: QLabel, level: str) -> None:
+        colors = {
+            "info": (MIDNIGHT_ANALYST.status_info, "#0b1c27"),
+            "warning": (MIDNIGHT_ANALYST.status_warning, "#221a10"),
+            "success": (MIDNIGHT_ANALYST.status_success, "#0b2624"),
+            "error": (MIDNIGHT_ANALYST.status_error, "#27162d"),
+        }
+        color, background = colors.get(level, colors["info"])
+        label.setProperty("statusLevel", level)
+        label.setStyleSheet(
+            f"color: {color}; background: {background}; "
+            f"border-left: 3px solid {color}; border-radius: 4px; "
+            "padding: 4px 7px; font-size: 11px;"
+        )
+
     def save_current_filter(self) -> bool:
         """只點擊目前精確來源已接通的收藏按鈕，沿用原有保存管線。"""
         native_button = self._refresh_save_filter_action()
@@ -891,13 +910,55 @@ class UnifiedScreenerWorkspace:
                 "請先在每日技術規則研究頁嚴格核驗並載入保存來源，並等待背景工作完成。"
                 "範本只替換規則條件；其他條件與來源保留，尚未查詢。"
             )
+            self._set_usage_note(self.disabled_note, "warning")
             return False
         self.disabled_note.setText(
             f"已套用條件：{self._CONDITION_RECIPE_LABELS[key]}。"
             "其他條件與保存來源保留；尚未查詢。請按來源頁「套用全域查詢」。"
             "此條件不代表資料資格或投資建議。"
         )
+        self._set_usage_note(self.disabled_note, "warning")
+        self._condition_recipe_pending_widget = matches[0].widget
+        source_status = getattr(matches[0].widget, "status", None)
+        status_reader = getattr(source_status, "text", None)
+        self._condition_recipe_pending_status_text = (
+            status_reader() if callable(status_reader) else None
+        )
         return True
+
+    def _sync_condition_recipe_status(self) -> None:
+        widget = self._condition_recipe_pending_widget
+        if widget is None:
+            return
+        dirty = getattr(widget, "_condition_recipe_dirty", None)
+        if dirty is False:
+            self.disabled_note.setText(
+                "全域查詢完成；下方結果表與母體漏斗已更新。"
+            )
+            self._set_usage_note(self.disabled_note, "success")
+            self._condition_recipe_pending_widget = None
+            self._condition_recipe_pending_status_text = None
+            return
+        state = self._source_operation_state(widget)
+        source_status = getattr(widget, "status", None)
+        status_reader = getattr(source_status, "text", None)
+        status_text = status_reader() if callable(status_reader) else None
+        status_changed = (
+            isinstance(status_text, str)
+            and isinstance(self._condition_recipe_pending_status_text, str)
+            and status_text != self._condition_recipe_pending_status_text
+        )
+        if state == "busy":
+            self.disabled_note.setText(
+                "全域查詢進行中；完成後查看下方更新的結果表與母體漏斗。"
+            )
+            self._set_usage_note(self.disabled_note, "info")
+        elif state == "failed" or status_changed:
+            self.disabled_note.setText(
+                "全域查詢失敗或取消；目前條件已套用，但舊結果仍保留。"
+                "請核對來源頁狀態訊息後重試查詢。"
+            )
+            self._set_usage_note(self.disabled_note, "error")
 
     def select_recipe(self, key: str) -> bool:
         """以來源的精確類別定位來源捷徑，不使用顯示名稱猜測路由。"""
@@ -1026,7 +1087,7 @@ class UnifiedScreenerWorkspace:
             "font-weight: 700; padding: 0; border: none; background: transparent;"
         )
         panel.toggle_button.setStyleSheet("min-height: 0px; padding: 2px 6px;")
-        panel.toggle_button.setFixedSize(48, 28)
+        panel.toggle_button.setFixedHeight(28)
 
     @staticmethod
     def _adapt_source_preparation(widget: QWidget) -> None:
@@ -1246,6 +1307,7 @@ class UnifiedScreenerWorkspace:
 
     def refresh_funnel(self) -> None:
         self._refresh_save_filter_action()
+        self._sync_condition_recipe_status()
         source = self._source_by_key.get(self._active_key or "")
         if source is None:
             self.research_scope.setText("研究用｜查詢截至：未提供；逐筆資料日依原表。")

@@ -5,7 +5,7 @@ from datetime import date
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QSizePolicy
 
 from app_module.workbench_dtos import (
     ResearchFallbackPacket,
@@ -150,7 +150,9 @@ def test_guided_home_keeps_mixed_sources_separate_and_advanced_collapsed() -> No
     assert "2330" in candidate_preview
     assert "2603" in candidate_preview
     assert "原來源說明：未提供個別說明" in candidate_preview
-    assert "個股研究候選：2 檔" in view.daily_candidate_detail_label.text()
+    assert "候選資料日=2026-07-05" in view.daily_candidate_detail_label.text()
+    assert "候選僅供研究" in view.daily_candidate_detail_label.text()
+    assert "個股研究候選：2 檔" not in view.daily_candidate_detail_label.text()
     assert "下一步：先查看資料與候選來源" in view.daily_journey_label.text()
     assert "下一步：" not in view.daily_candidate_detail_label.text()
 
@@ -236,6 +238,10 @@ def test_decision_desk_keeps_full_market_details_progressive_and_data_impact_vis
     assert "資料影響" in view.market_data_impact_label.text()
     assert "缺件" in view.market_data_impact_label.text()
     assert "資料缺漏" in view.warning_list.toPlainText()
+    assert view.stock_focus_research_button.parent() is view.market_focus_actions
+    assert view.market_details_button.parent() is view.market_focus_actions
+    assert view.stock_focus_research_button.sizePolicy().horizontalPolicy() == QSizePolicy.Fixed
+    assert view.market_details_button.sizePolicy().horizontalPolicy() == QSizePolicy.Fixed
 
     view.market_details_button.click()
     assert not view.advanced_market_panel.is_collapsed()

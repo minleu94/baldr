@@ -40,6 +40,8 @@ from app_module.workbench_dtos import (
 )
 from ui_qt.views.workbench_view import (
     UnifiedDecisionWorkbenchView,
+    _advice_presentation_sections_html,
+    _daily_trace_sections_html,
     _advice_warning_text,
 )
 
@@ -106,6 +108,77 @@ def _dashboard_with_advice() -> WorkbenchDashboardDTO:
         daily_checklist=(),
         advice_dashboard=advice,
     )
+
+
+def test_advice_detail_sections_have_visual_hierarchy_and_escape_source_text():
+    rendered = _advice_presentation_sections_html(
+        [
+            "本筆資料身份（唯讀）\n股票：1569",
+            "Advice 判讀與限制｜唯讀\n動作適合度：研究\n限制：<script>alert(1)</script>",
+            "逐股來源證據｜本筆保存結果\n來源：原始證據",
+            "策略版本作者說明｜選填；缺漏不阻擋 Advice\n進場論點：未提供",
+        ]
+    )
+
+    assert rendered.count("border-left:3px solid") == 4
+    assert "Advice 判讀與限制" in rendered
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in rendered
+    assert "<script>" not in rendered
+
+
+def test_daily_source_trace_uses_guided_sections_and_escapes_source_text():
+    rendered = _daily_trace_sections_html(
+        "本次每日來源（唯讀）\n"
+        "本次結果\n結果 ID：saved-1\n"
+        "候選來源與範圍\n來源 ID：<script>candidate</script>\n"
+        "篩選與排除\n來源未提供可顯示的排除摘要；不能據此判定沒有排除。\n"
+        "證據成熟度觀察\n• 20 日：總數 4｜已就緒 1｜待成熟 2｜缺漏 1"
+    )
+
+    assert rendered.count("border-left:3px solid") == 5
+    assert "候選來源與範圍" in rendered
+    assert "篩選與排除" in rendered
+    assert "&lt;script&gt;candidate&lt;/script&gt;" in rendered
+    assert "<script>candidate</script>" not in rendered
+
+
+def test_candidate_scope_details_remain_reachable_without_source_trace_text():
+    _app()
+    daily = WorkbenchDailyEvidence(
+        status="candidate",
+        decision_date="2026-10-28",
+        data_as_of_date="2026-10-27",
+        headline="有研究候選",
+        next_action="核對來源",
+        market_summary="",
+        industry_summary="",
+        stock_summary="1 檔候選",
+        watchlist_summary="",
+        portfolio_summary="",
+        candidate_count=1,
+        candidate_symbols=("1569",),
+        candidate_source_id="candidate-source-1",
+        candidate_data_date="2026-10-27",
+        candidate_quality="degraded",
+        candidate_requested_count=4,
+        candidate_degraded_count=1,
+        candidate_missing_count=2,
+    )
+    dashboard = replace(_dashboard_with_advice(), daily_evidence=daily)
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+
+    assert "來源 ID=candidate-source-1" in view.daily_candidate_detail_label.text()
+    assert "候選資料日=2026-10-27" in view.daily_candidate_detail_label.text()
+    assert "要求檔數" not in view.daily_candidate_detail_label.text()
+    assert "1 檔" in view.daily_candidate_card.value_label.text()
+    assert "1 檔" not in view.daily_state_label.text()
+    assert view.daily_detail_button.isEnabled()
+    view.daily_detail_button.click()
+    details = view.daily_trace_label.text()
+    assert "候選來源與範圍" in details
+    assert "要求檔數：4｜降級檔數：1｜缺漏檔數：2" in details
+    assert "全市場分母：未提供" in details
+    view.close()
 
 
 def test_workbench_renders_advice_dto_without_policy_execution() -> None:
@@ -229,7 +302,8 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     assert view.advice_metric_cards["research"].value_label.text() == "1"
     assert view.advice_metric_cards["allocation"].value_label.text() == "0"
     assert not view.advice_candidate_hint.isHidden()
-    assert "每筆 Advice 以獨立小卡呈現" in view.advice_candidate_hint.text()
+    assert "每筆 Advice 是一張獨立小卡" in view.advice_candidate_hint.text()
+    assert "依序核對來源、閱讀理由與限制" in view.advice_candidate_hint.text()
     assert "不會自動下單" in view.advice_candidate_hint.text()
     assert not view.advice_candidate_cards.isHidden()
     assert len(view._advice_candidate_card_buttons) == 1
@@ -241,20 +315,20 @@ def test_workbench_separates_professional_candidates_from_formal_advice() -> Non
     detail = view.advice_presentation_detail.toPlainText()
     assert "本筆資料身份（唯讀）" in detail
     assert "股票：2330" in detail
-    assert "1｜Advice 判讀與限制（唯讀）" in detail
-    assert detail.index("1｜Advice 判讀與限制（唯讀）") < detail.index(
+    assert "Advice 判讀與限制｜唯讀" in detail
+    assert detail.index("Advice 判讀與限制｜唯讀") < detail.index(
         "來源理由／論點"
     )
     assert detail.index("來源理由／論點") < detail.index(
-        "2｜這筆保存結果的逐股來源證據"
+        "逐股來源證據｜本筆保存結果"
     )
-    assert detail.index("2｜這筆保存結果的逐股來源證據") < detail.index(
-        "3｜策略版本作者說明"
+    assert detail.index("逐股來源證據｜本筆保存結果") < detail.index(
+        "策略版本作者說明｜選填"
     )
     assert "適用期間：未提供" in detail
     assert "風險：未提供" in detail
     assert "失效條件：未提供" in detail
-    assert "1｜Advice 判讀與限制（唯讀）" in detail
+    assert "Advice 判讀與限制｜唯讀" in detail
 
 
 def test_advice_cards_show_saved_comparison_fields_and_centralize_shared_notices() -> None:
@@ -447,6 +521,24 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
     assert view.advice_presentation_toggle.parentWidget() is view.advice_selection_detail_panel
     assert view.advice_lineage_button.parentWidget() is view.advice_selection_detail_panel
     assert view.advice_lineage_button.text() == "查看機率依據"
+    assert not view.advice_source_heading.isHidden()
+    assert not view.advice_source_unavailable_label.isHidden()
+    assert "today-source-details" not in view.advice_source_unavailable_label.text()
+    detail_layout = view.advice_selection_detail_layout
+    assert view.advice_source_heading.text() == "1｜核對每日來源與原始結果"
+    assert view.advice_evidence_heading.text() == "2｜閱讀判讀理由與限制"
+    assert detail_layout.indexOf(view.advice_source_heading) < detail_layout.indexOf(
+        view.advice_evidence_heading
+    )
+    assert detail_layout.indexOf(view.advice_evidence_heading) < detail_layout.indexOf(
+        view.advice_presentation_detail
+    )
+    assert detail_layout.indexOf(view.advice_presentation_detail) < detail_layout.indexOf(
+        view.advice_author_heading
+    )
+    assert detail_layout.indexOf(view.advice_author_heading) < detail_layout.indexOf(
+        view.advice_decision_heading
+    )
     assert view.advice_decision_heading.text() == "4｜記錄人工研究決定"
     assert view.advice_follow_up_heading.text() == "後續追蹤（不改變納入／略過決定）"
     assert "重新讀取只刷新狀態" in view.advice_follow_up_hint.text()
@@ -459,10 +551,23 @@ def test_professional_candidate_cards_expand_inline_and_keep_selection_bound_to_
         QSizePolicy.Policy.Fixed
     )
     assert view.advice_presentation_detail.isHidden()
+    view.resize(1700, 900)
+    view.show()
+    _app().processEvents()
     view.advice_presentation_toggle.click()
+    view.advice_presentation_detail.setPlainText(
+        "長篇判讀欄位：" + ("同筆來源與理由；" * 400)
+    )
+    _app().processEvents()
+    QTest.qWait(20)
+    _app().processEvents()
     assert not view.advice_presentation_detail.isHidden()
+    assert view.advice_presentation_detail.verticalScrollBar().maximum() == 0
     assert view.advice_selection_detail_panel.minimumHeight() >= (
         view.advice_selection_detail_layout.sizeHint().height()
+    )
+    assert view._advice_candidate_detail_hosts[0].height() >= (
+        view.advice_selection_detail_panel.minimumHeight()
     )
     assert view._advice_candidate_detail_hosts[0].isAncestorOf(
         view.advice_accept_decision_button
@@ -637,8 +742,14 @@ def test_advice_selection_card_bounds_height_and_keeps_full_text_reachable() -> 
     )
     _app().processEvents()
     assert view.advice_presentation_detail.isReadOnly()
-    assert view.advice_presentation_detail.maximumHeight() == 480
-    assert view.advice_presentation_detail.verticalScrollBar().maximum() > 0
+    assert view.advice_presentation_detail.minimumHeight() > 480
+    assert view.advice_presentation_detail.verticalScrollBar().maximum() == 0
+    wide_detail_height = view.advice_presentation_detail.minimumHeight()
+    view.resize(390, 844)
+    _app().processEvents()
+    assert view.advice_presentation_detail.minimumHeight() >= wide_detail_height
+    assert view.advice_presentation_detail.verticalScrollBar().maximum() == 0
+    assert view.overview_scroll_area.verticalScrollBar().maximum() > 0
     view.close()
 
 
@@ -737,8 +848,13 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
         candidate_symbols=("2330",),
         candidate_status="candidate",
         candidate_result_id=result_id,
+        candidate_source_id="daily-source-composed-e2e",
         candidate_source_snapshot_id="snapshot-composed-e2e",
         candidate_data_date="2026-07-11",
+        candidate_quality="degraded",
+        candidate_requested_count=5,
+        candidate_degraded_count=1,
+        candidate_missing_count=2,
         evidence_event_ids=("daily-event-for-ui-test",),
         source_trace=("industry source contract pending",),
     )
@@ -756,9 +872,14 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
     assert not view.advice_source_result_button.isHidden()
     assert not view.advice_daily_source_button.isHidden()
+    assert not view.advice_source_heading.isHidden()
+    assert view.advice_source_unavailable_label.isHidden()
     assert view.advice_daily_source_button.text() == "今日總覽｜每日來源與排除"
     assert view.advice_source_result_button.text() == "綜合選股｜保存推薦結果"
     assert "result_id=" + result_id in view.advice_daily_source_button.toolTip()
+    assert "來源 ID=daily-source-composed-e2e" in view.daily_candidate_detail_label.text()
+    assert "候選資料日=2026-07-11" in view.daily_candidate_detail_label.text()
+    assert "要求檔數" not in view.daily_candidate_detail_label.text()
     assert not view.advice_research_history_link.isHidden()
     assert "研究紀錄與覆盤" in view.advice_research_history_link.text()
     assert "查找這筆" in view.advice_research_history_link.text()
@@ -774,6 +895,9 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     assert "本次每日來源（唯讀）" in daily_trace_text
     assert daily_trace_text.index("本次結果") < daily_trace_text.index("篩選與排除")
     assert daily_trace_text.index(result_id) < daily_trace_text.index("篩選與排除")
+    assert daily_trace_text.index("候選來源與範圍") < daily_trace_text.index("篩選與排除")
+    assert "要求檔數：5｜降級檔數：1｜缺漏檔數：2" in daily_trace_text
+    assert "全市場分母：未提供" in daily_trace_text
     assert "研究候選" in daily_trace_text
     assert "來源未提供可顯示的排除摘要；不能據此判定沒有排除。" in daily_trace_text
     assert "daily-event-for-ui-test" not in daily_trace_text
@@ -794,6 +918,8 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     assert opened == [result_id]
     view._display_exception_dashboard("source read failed")
     assert view.advice_source_result_button.isHidden()
+    assert view.advice_daily_source_button.isHidden()
+    assert "today-source-details" not in view.advice_source_unavailable_label.text()
 
     mismatched_daily = replace(daily, candidate_result_id="another-result")
     mismatch_view = UnifiedDecisionWorkbenchView(
@@ -806,6 +932,15 @@ def test_composed_advice_restores_exact_saved_source_and_manual_research_entry()
     )
     assert mismatch_view.advice_source_result_button.isHidden()
     assert mismatch_view.advice_daily_source_button.isHidden()
+    assert not mismatch_view.advice_source_heading.isHidden()
+    assert not mismatch_view.advice_source_unavailable_label.isHidden()
+    assert 'href="today-source-details"' in mismatch_view.advice_source_unavailable_label.text()
+    assert "不代表來源已與本筆相同" in mismatch_view.advice_source_unavailable_label.text()
+    mismatch_view.advice_source_unavailable_label.linkActivated.emit(
+        "today-source-details"
+    )
+    assert mismatch_view.daily_detail_button.isChecked()
+    assert not mismatch_view.daily_trace_label.isHidden()
     assert not mismatch_view._open_selected_advice_source_result()
     assert opened == [result_id]
 
@@ -846,10 +981,15 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
         daily_evidence=daily,
     )
     saved: list[tuple[str, dict[str, str], str]] = []
+    callback_status: list[tuple[str, str]] = []
     readback_result: list[object] = []
+    view_holder: dict[str, UnifiedDecisionWorkbenchView] = {}
 
     def save(action: str, identity: dict[str, str], note: str) -> object:
         saved.append((action, identity, note))
+        view = view_holder.get("view")
+        if view is not None:
+            callback_status.append((action, view.advice_research_decision_status.text()))
         if action == "readback":
             return readback_result[0]
         return SimpleNamespace(success=True, readback_verified=True, message="測試讀回成功")
@@ -885,6 +1025,7 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
         save_advice_research_decision_callback=save,
         auto_refresh=False,
     )
+    view_holder["view"] = view
     view._show_advice_row_presentation(view.advice_recommendation_model, 0)
     assert "背景讀取" in view.advice_research_decision_status.text()
     assert _wait_for_qt(view.advice_skip_decision_button.isEnabled)
@@ -896,6 +1037,10 @@ def test_advice_manual_research_decision_requires_exact_current_identity() -> No
     assert [item[0] for item in saved] == ["readback", "skipped"]
     assert saved[1][1] == expected_identity
     assert saved[1][2] == ""
+    assert callback_status[-1] == (
+        "skipped",
+        "正在保存研究動作並核對同一筆；目前尚未確認結果。",
+    )
     assert "已保存並讀回核對" in view.advice_research_decision_status.text()
     assert "不建立交易或 fill" in view.advice_research_decision_status.text()
     assert "回查位置：研究紀錄與覆盤｜查找這筆" in view.advice_research_decision_status.text()

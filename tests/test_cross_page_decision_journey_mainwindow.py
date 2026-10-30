@@ -1180,7 +1180,6 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert window.product_shell.route_id == "journal"
         timeline = window.research_timeline_view
         assert timeline.stock_filter.text() == saved_id
-        timeline.refresh()
         _wait_for(
             lambda: not timeline.is_busy() and timeline._active_worker is None
         )

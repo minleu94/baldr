@@ -121,6 +121,10 @@ class BacktestProductLayout:
                     if original_layout is not None:
                         original_layout.removeWidget(pair_return)
                     summary_layout.insertWidget(0, pair_return)
+                interpretation = getattr(panel, "result_interpretation_label", None)
+                if isinstance(interpretation, QWidget):
+                    summary_layout.removeWidget(interpretation)
+                    summary_layout.insertWidget(0, interpretation)
         self.assumption_details_button = QPushButton("來源與假設", panel)
         self.assumption_details_button.setObjectName("backtestAssumptionDetailsToggle")
         self.assumption_details_button.setCheckable(True)

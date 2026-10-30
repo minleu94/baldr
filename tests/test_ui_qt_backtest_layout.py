@@ -815,6 +815,8 @@ def test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusi
     )
     assert view.config_panel_collapse_btn.width() < view.config_scroll.width()
     assert panel.result_tabs.isVisible()
+    # 無當次結果時，空摘要不得因固定 65/35 stretch 佔滿結果視窗。
+    assert panel.summary_group.height() < view.height() * 0.45
     assert (
         panel.result_interpretation_label.sizePolicy().verticalPolicy()
         == QSizePolicy.Policy.Maximum

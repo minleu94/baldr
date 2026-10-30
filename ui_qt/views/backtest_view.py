@@ -1201,10 +1201,23 @@ class BacktestView(QWidget):
             self.worker.cancelled.connect(lambda: self._on_backtest_error("回測已取消"))
             self.worker.start()
 
+    def _set_backtest_result_interpretation(
+        self, text: str, *, level: str
+    ) -> None:
+        panel = self.__dict__.get("result_panel")
+        setter = getattr(panel, "set_result_interpretation", None)
+        if callable(setter):
+            setter(text, level=level)
+            return
+        label = getattr(panel, "result_interpretation_label", None)
+        if label is not None:
+            label.setText(text)
+
     def _on_backtest_finished(self, report: BacktestReportDTO):
         """回測完成"""
         # ✅ 檢查日期是否被調整
         details = report.details
+        result_panel = self.__dict__.get("result_panel")
         if details.get('date_adjusted'):
             date_msg = details.get('date_adjusted', '')
             QMessageBox.information(
@@ -1220,9 +1233,13 @@ class BacktestView(QWidget):
         # 保存當前結果（用於後續保存）
         self.current_report = report
         self._single_backtest_result_generation = self._execution_generation
-        result_panel = self.__dict__.get("result_panel")
         if details.get("error"):
             self._single_backtest_result_generation = None
+            self._set_backtest_result_interpretation(
+                "本次回測未完成：先看停止原因與錯誤訊息；"
+                "沒有可判讀或可保存的績效，空明細也不代表零交易。",
+                level="error",
+            )
             self.summary_text.setPlainText(self._format_summary(report))
             self.result_panel.set_trades_table_model(None)
             self._set_single_backtest_save_state(enabled=False, status="回測未完成，不能保存空報告。", tooltip=str(details["error"]))
@@ -1235,6 +1252,11 @@ class BacktestView(QWidget):
             self._show_finished_result_in_windowed_mode()
             self.resultPresented.emit(report)
             return
+        self._set_backtest_result_interpretation(
+            "閱讀順序：淨報酬 → 最大回撤 → 交易筆數 → 成本與資料限制；"
+            "歷史結果只供比較，請搭配診斷與證據複核。",
+            level="info",
+        )
         if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
             result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(report))
 
@@ -1557,6 +1579,11 @@ class BacktestView(QWidget):
             self.export_report_btn.setEnabled(False)
         result_panel = self.__dict__.get("result_panel")
         if result_panel is not None:
+            self._set_backtest_result_interpretation(
+                "本次回測未完成：先看停止原因與錯誤訊息；"
+                "沒有可判讀或可保存的績效，空明細也不代表零交易。",
+                level="error",
+            )
             focus_summary = getattr(result_panel, "focus_result_tab", None)
             if callable(focus_summary):
                 focus_summary("summary")

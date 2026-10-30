@@ -804,8 +804,8 @@ class BacktestResultPanel(QWidget):
         self.result_interpretation_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum
         )
-        self.result_interpretation_label.setStyleSheet(
-            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 3px 0; font-size: 12px;"
+        self.set_result_interpretation(
+            self.result_interpretation_label.text(), level="info"
         )
         result_layout.addWidget(self.result_interpretation_label)
         
@@ -1338,6 +1338,25 @@ class BacktestResultPanel(QWidget):
         self._result_tab_widgets[key] = scroll_area
         self._result_tab_titles[key] = title
         self.result_tabs.addTab(scroll_area, title)
+
+    def set_result_interpretation(self, text: str, *, level: str = "info") -> None:
+        """Present the result reading guide with an explicit semantic state."""
+
+        colors = {
+            "info": (MIDNIGHT_ANALYST.status_info, MIDNIGHT_ANALYST.surface_2),
+            "success": (MIDNIGHT_ANALYST.status_success, "#0b2624"),
+            "warning": (MIDNIGHT_ANALYST.status_warning, "#221a10"),
+            "error": (MIDNIGHT_ANALYST.status_error, "#27162d"),
+        }
+        color, background = colors.get(level, colors["info"])
+        self.result_interpretation_label.setText(text)
+        self.result_interpretation_label.setProperty("statusLevel", level)
+        self.result_interpretation_label.setStyleSheet(
+            f"color: {color}; background: {background}; "
+            f"border-left: 4px solid {color}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; "
+            "padding: 7px 9px; font-size: 12px;"
+        )
 
     def result_tab_content_widget(self, key: str) -> QWidget | None:
         """依 semantic key 取得結果頁內層內容 widget。"""

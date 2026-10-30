@@ -98,6 +98,10 @@ def test_failed_report_cannot_save_export_promote_or_reuse_previous_chart(view):
     view.result_panel._pending_chart_plots["equity_chart"] = (("stale-result",), {})
     view._on_backtest_finished(_report({"error": "生成信號失敗：原OHLCV矛盾"}))
     assert "回測未完成" in view.summary_text.toPlainText()
+    assert "先看停止原因與錯誤訊息" in view.result_panel.result_interpretation_label.text()
+    assert "沒有可判讀或可保存的績效" in view.result_panel.result_interpretation_label.text()
+    assert view.result_panel.result_interpretation_label.property("statusLevel") == "error"
+    assert "#27162d" in view.result_panel.result_interpretation_label.styleSheet()
     assert "總交易次數: 0" not in view.summary_text.toPlainText()
     assert view.trades_table.isHidden()
     assert not view.result_panel.trades_empty_status.isHidden()
@@ -119,6 +123,8 @@ def test_worker_error_remains_in_result_summary_after_modal_closes(view, monkeyp
     view._on_backtest_error("來源資料載入失敗")
 
     assert "回測未完成" in view.summary_text.toPlainText()
+    assert "先看停止原因與錯誤訊息" in view.result_panel.result_interpretation_label.text()
+    assert view.result_panel.result_interpretation_label.property("statusLevel") == "error"
     assert "沒有可判讀或可保存" in view.summary_text.toPlainText()
     assert "來源資料載入失敗" in view.summary_text.toPlainText()
     assert not view.result_panel.save_current_result_button.isEnabled()
@@ -148,6 +154,8 @@ def test_open_or_observed_fill_does_not_claim_no_trade_or_suggest_lowering_thres
 
     view._on_backtest_finished(report)
 
+    assert "閱讀順序：淨報酬" in view.result_panel.result_interpretation_label.text()
+    assert view.result_panel.result_interpretation_label.property("statusLevel") == "info"
     text = view.summary_text.toPlainText()
     assert '尚無已完成交易' in text
     assert f'實際成交筆數：{fill}' in text and f'期末持股：{holding}' in text
@@ -160,6 +168,11 @@ def test_open_or_observed_fill_does_not_claim_no_trade_or_suggest_lowering_thres
 def test_live_summary_cards_own_primary_values_without_repeating_them_below(view):
     product_layout = BacktestProductLayout(view)
     assert product_layout.install()
+    summary_page = view.result_panel.result_tab_content_widget("summary")
+    summary_layout = summary_page.layout()
+    assert summary_layout.indexOf(view.result_panel.result_interpretation_label) < (
+        summary_layout.indexOf(product_layout.outcome_summary)
+    )
     view.resultPresented.connect(product_layout.refresh_assumptions)
     view._on_backtest_finished(_report({'execution_summary': {'trade_count': 0}, 'terminal_position': 0}))
 

@@ -2,7 +2,16 @@ from collections.abc import Iterable, Sequence
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ui_qt.theme import MIDNIGHT_ANALYST
 
@@ -210,12 +219,12 @@ class SectionPanel(QFrame):
             f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; }}"
         )
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(12, 10, 12, 10)
-        self.layout.setSpacing(6)
+        self.layout.setContentsMargins(10, 8, 10, 8)
+        self.layout.setSpacing(5)
         title_label = QLabel(title)
         title_label.setStyleSheet(
             f"background: {MIDNIGHT_ANALYST.surface_2}; color: {MIDNIGHT_ANALYST.text_primary}; "
-            f"border: 1px solid {MIDNIGHT_ANALYST.border_subtle}; "
+            "border: 1px solid transparent; "
             f"border-radius: {MIDNIGHT_ANALYST.radius_badge}px; "
             "font-weight: 800; font-size: 11pt; padding: 5px 8px;"
         )
@@ -245,14 +254,33 @@ class CollapsibleSectionPanel(QFrame):
         header_layout.setSpacing(8)
         self.title_label = QLabel(title)
         self.title_label.setStyleSheet(
-            f"background: {MIDNIGHT_ANALYST.surface_2}; color: {MIDNIGHT_ANALYST.text_primary}; "
-            f"border: 1px solid {MIDNIGHT_ANALYST.border_subtle}; "
-            f"border-radius: {MIDNIGHT_ANALYST.radius_badge}px; "
-            "font-weight: 800; font-size: 11pt; padding: 5px 8px;"
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            "font-weight: 700; font-size: 10pt; padding: 2px 0;"
         )
-        self.toggle_button = QPushButton("")
-        self.toggle_button.setProperty("variant", "secondary")
-        self.toggle_button.setFixedWidth(56)
+        self.toggle_button = QToolButton()
+        self.toggle_button.setObjectName("midnightCollapsibleToggle")
+        self.toggle_button.setAutoRaise(True)
+        self.toggle_button.setStyleSheet(
+            f"QToolButton#midnightCollapsibleToggle {{ background: transparent; "
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border_subtle}; "
+            f"border-radius: 4px; padding: 2px 5px; min-height: 22px; "
+            "font-weight: 600; }"
+            f"QToolButton#midnightCollapsibleToggle:hover {{ "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"border-color: {MIDNIGHT_ANALYST.accent}; }}"
+            f"QToolButton#midnightCollapsibleToggle:pressed {{ "
+            f"background: {MIDNIGHT_ANALYST.app_bg}; "
+            f"border-color: {MIDNIGHT_ANALYST.accent_hover}; }}"
+            f"QToolButton#midnightCollapsibleToggle:focus {{ "
+            f"border: 2px solid {MIDNIGHT_ANALYST.accent_hover}; }}"
+        )
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.toggle_button.setProperty("variant", "ghost")
         self.toggle_button.clicked.connect(self.toggle_collapsed)
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
@@ -266,6 +294,10 @@ class CollapsibleSectionPanel(QFrame):
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(6)
         self.layout.addWidget(self.content_widget)
+        self._default_tooltips = {
+            f"展開「{title}」區塊",
+            f"收合「{title}」區塊",
+        }
         self.set_collapsed(collapsed)
 
     def is_collapsed(self) -> bool:
@@ -278,6 +310,32 @@ class CollapsibleSectionPanel(QFrame):
         self._collapsed = bool(collapsed)
         self.content_widget.setVisible(not self._collapsed)
         self.toggle_button.setText("展開" if self._collapsed else "收合")
+        self.toggle_button.setArrowType(
+            Qt.ArrowType.RightArrow
+            if self._collapsed
+            else Qt.ArrowType.DownArrow
+        )
+        self.toggle_button.setChecked(not self._collapsed)
+        state = "展開" if self._collapsed else "收合"
+        accessible_name = self.toggle_button.accessibleName()
+        if accessible_name.startswith("展開"):
+            self.toggle_button.setAccessibleName(
+                f"{state}{accessible_name[len('展開'):]}"
+            )
+        elif accessible_name.startswith("收合"):
+            self.toggle_button.setAccessibleName(
+                f"{state}{accessible_name[len('收合'):]}"
+            )
+        if self.toggle_button.toolTip() in self._default_tooltips:
+            self.toggle_button.setToolTip(
+                f"{state}「{self.title_label.text()}」區塊"
+            )
+        if self.toggle_button.accessibleName() == "":
+            self.toggle_button.setAccessibleName(f"{state}{self.title_label.text()}")
+        if self.toggle_button.toolTip() == "":
+            self.toggle_button.setToolTip(
+                f"{state}「{self.title_label.text()}」區塊"
+            )
 
 
 class MetricCard(QFrame):

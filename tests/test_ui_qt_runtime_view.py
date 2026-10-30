@@ -168,6 +168,36 @@ def test_runtime_state_snapshot_renders_chinese_idle_text():
 
     assert "目前治理目標：尚未指派治理任務" in view.objective_label.text()
     assert "任務流程狀態：閒置" in view.status_label.text()
+    assert view.status_label.property("statusLevel") == "info"
+    assert MIDNIGHT_ANALYST.status_info in view.status_label.styleSheet()
+
+
+def test_runtime_task_status_tone_tracks_observed_and_unconfirmed_states():
+    app()
+    view = RuntimeView()
+    idle = RuntimeStateSnapshotDTO(
+        task_objective="runtime status fixture",
+        task_status="IDLE",
+        active_context_files=[],
+    )
+    for status, level, color in (
+        ("APPROVED", "success", MIDNIGHT_ANALYST.status_success),
+        ("RECOVERY", "warning", MIDNIGHT_ANALYST.status_warning),
+        ("ERROR", "error", MIDNIGHT_ANALYST.status_error),
+        ("HALTED", "error", MIDNIGHT_ANALYST.status_error),
+        ("IDLE", "info", MIDNIGHT_ANALYST.status_info),
+    ):
+        view.on_state_updated(replace(idle, task_status=status, raw_task_status=status))
+        assert view.status_label.property("statusLevel") == level
+        assert color in view.status_label.styleSheet()
+
+    view.on_state_updated(
+        replace(idle, task_status="IDLE", task_read_state="unreadable", raw_task_status="IDLE")
+    )
+    assert "未知（來源未確認）" in view.status_label.text()
+    assert view.status_label.property("statusLevel") == "warning"
+    assert MIDNIGHT_ANALYST.status_warning in view.status_label.styleSheet()
+    assert "task_read_state: unreadable" in view.status_label.toolTip()
 
 
 def test_runtime_health_halted_uses_error_status_and_chinese_labels():

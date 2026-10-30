@@ -505,6 +505,24 @@ def test_portfolio_active_summary_lists_position_count_and_top_symbols(tmp_path)
     assert "已標記市值 2/2 檔" in view.active_positions_summary_label.text()
 
 
+def test_portfolio_daily_summary_does_not_repeat_position_strip_contents(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    try:
+        view.refresh_all()
+        summary = view.portfolio_focus_summary
+        assert "持倉資料已讀取" in summary.conclusion_label.text()
+        assert "目前持有 2 檔" not in summary.conclusion_label.text()
+        assert "TWD 250,000.00" not in summary.conclusion_label.text()
+        assert "持倉數：2" not in summary.evidence_label.text()
+        assert "2330 台積電" not in summary.reasons_label.text()
+        assert "2317 鴻海" not in summary.reasons_label.text()
+        assert "模擬持倉健康" in summary.reasons_label.text()
+        assert "2330 台積電" in view.active_positions_summary_label.text()
+        assert "2317 鴻海" in view.active_positions_summary_label.text()
+    finally:
+        view.close()
+
+
 def test_portfolio_floating_pnl_distribution_counts_same_snapshot_positions(tmp_path):
     service = FakePortfolioService(FakeConfig(tmp_path))
     base = service.positions[0]

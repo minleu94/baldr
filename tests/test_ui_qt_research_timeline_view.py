@@ -168,6 +168,13 @@ def test_view_preserves_full_original_and_emits_only_selected_saved_entry():
     detail_heading = view.findChild(QLabel, "researchTimelineDetailHeading")
     assert entries_heading is not None and entries_heading.text() == "研究紀錄清單"
     assert detail_heading is not None and detail_heading.text() == "所選紀錄與延伸操作"
+    assert view.follow_up_content.isHidden()
+    assert "展開延伸核對與後續結果" in view.follow_up_toggle.text()
+    view.follow_up_toggle.click()
+    assert not view.follow_up_content.isHidden()
+    assert "收合延伸核對與後續結果" in view.follow_up_toggle.text()
+    view.follow_up_toggle.click()
+    assert view.follow_up_content.isHidden()
     _wait(application, lambda: view._entries == (report, manual) and _timeline_idle(view))
 
     assert view.original_text.toPlainText() == original
@@ -197,15 +204,33 @@ def test_view_preserves_full_original_and_emits_only_selected_saved_entry():
 def test_research_timeline_reflows_search_and_detail_for_narrow_windows():
     application = _app()
     view = ResearchTimelineView(
-        _Reader(ResearchTimelineReadResult(())),
+        _Reader(
+            ResearchTimelineReadResult(
+                (
+                    _entry(
+                        "decision",
+                        "decision-1",
+                        "已納入研究",
+                        stock="1569",
+                        result_id="rec_example_123",
+                    ),
+                    _entry("report", "report-1", "長原文摘要" * 30),
+                )
+            )
+        ),
         auto_refresh=False,
     )
     try:
         assert isinstance(view.search_controls_layout, QGridLayout)
         view.resize(390, 760)
+        view.show()
         view._apply_responsive_layout()
+        application.processEvents()
         assert view.splitter.orientation() == Qt.Orientation.Vertical
         assert view.evidence_actions_layout.direction() == QBoxLayout.TopToBottom
+        assert view.entries_table.isColumnHidden(3)
+        assert not view.entries_table.verticalHeader().isVisible()
+        assert view.entries_table.horizontalScrollBar().maximum() == 0
         assert view.search_controls_layout.getItemPosition(
             view.search_controls_layout.indexOf(view.source_filter)
         ) == (0, 1, 1, 3)
@@ -214,10 +239,19 @@ def test_research_timeline_reflows_search_and_detail_for_narrow_windows():
         ) == (1, 1, 1, 2)
         view.stock_filter.setText("rec_example_123")
 
+        view.resize(900, 700)
+        view._apply_responsive_layout()
+        application.processEvents()
+        assert view.splitter.orientation() == Qt.Orientation.Horizontal
+        assert view.entries_table.isColumnHidden(3)
+        assert view.entries_table.horizontalScrollBar().maximum() == 0
+
         view.resize(1280, 900)
         view._apply_responsive_layout()
+        application.processEvents()
         assert view.splitter.orientation() == Qt.Orientation.Horizontal
         assert view.evidence_actions_layout.direction() == QBoxLayout.LeftToRight
+        assert not view.entries_table.isColumnHidden(3)
         assert view.search_controls_layout.getItemPosition(
             view.search_controls_layout.indexOf(view.source_filter)
         ) == (0, 1, 1, 1)
@@ -255,20 +289,26 @@ def test_historical_decision_can_be_found_by_result_id_after_advice_changes():
         result_id="rec_old_recommendation",
     )
     result = ResearchTimelineReadResult((entry,))
-    view = ResearchTimelineView(_Reader(result), auto_refresh=False)
+    reader = _Reader(result)
+    view = ResearchTimelineView(reader, auto_refresh=False)
     view._receive(view._generation, result)
 
     # The Advice cross-page action must find its decision even if Journal was
     # previously narrowed to another source.
     view.source_filter.setCurrentIndex(view.source_filter.findData("manual"))
     assert view.search_result_id("rec_old_recommendation")
+    _wait(
+        _app(),
+        lambda: reader.search_queries[-1:] == ["rec_old_recommendation"]
+        and _timeline_idle(view),
+    )
 
     assert view.source_filter.currentData() == "decision"
     assert view.entries_table.rowCount() == 1
     assert view._selected is entry
     assert "result ID rec_old_recommendation" in view.detail_label.text()
     assert "來源 snapshot ID：snapshot-1" in view.original_text.toPlainText()
-    assert "完整已載入的研究紀錄中，「rec_old_recommendation」符合 1 筆" in view.status_label.text()
+    assert "完整 Journal 搜尋「rec_old_recommendation」找到 1 筆" in view.status_label.text()
     assert not view.compare_evidence_button.isEnabled()
     assert not view.paper_prerequisites_button.isEnabled()
     view.close()
@@ -300,6 +340,45 @@ def test_limited_timeline_searches_complete_history_by_stock_or_result_id():
     assert view._selected is older
     assert "完整 Journal 搜尋「rec_old」找到 1 筆" in view.status_label.text()
     assert view._full_history_limited is True
+    view.close()
+
+
+def test_exact_advice_history_search_refreshes_an_unlimited_stale_list():
+    application = _app()
+    cached = _entry("decision", "cached", "目前載入的較新決定", result_id="rec_cached")
+    saved = _entry(
+        "decision",
+        "saved-after-timeline-load",
+        "剛保存的納入研究決定",
+        stock="1569",
+        result_id="rec_saved_after_load",
+    )
+    reader = _Reader(
+        ResearchTimelineReadResult((cached,), limited=False),
+        search_results={
+            "rec_saved_after_load": ResearchTimelineReadResult((saved,)),
+        },
+    )
+    view = ResearchTimelineView(reader, auto_refresh=False)
+    view._receive(view._generation, reader.result)
+
+    assert view._full_history_limited is False
+    assert view.entries_table.rowCount() == 1
+    assert view.entries_table.item(0, 1).text() == "2330"
+
+    assert view.search_result_id("rec_saved_after_load")
+    _wait(
+        application,
+        lambda: reader.search_queries[-1:] == ["rec_saved_after_load"]
+        and _timeline_idle(view),
+    )
+
+    assert view.source_filter.currentData() == "decision"
+    assert view.stock_filter.text() == "rec_saved_after_load"
+    assert view._entries == (saved,)
+    assert view.entries_table.rowCount() == 1
+    assert view.entries_table.item(0, 1).text() == "1569"
+    assert "完整 Journal 搜尋「rec_saved_after_load」找到 1 筆" in view.status_label.text()
     view.close()
 
 
@@ -505,6 +584,7 @@ def test_manual_entry_can_request_comparison_without_a_saved_result_id():
     assert view._selected is entry
     assert view.journey_widget is None
     assert view.compare_evidence_button.isEnabled()
+    view.follow_up_toggle.click()
     view.compare_evidence_button.click()
     request_revision = view.evidence_comparison_revision
     assert emitted == [entry]
@@ -530,6 +610,7 @@ def test_evidence_comparison_rejects_stale_selection_and_late_close_result():
     result = ResearchTimelineReadResult((first, second))
     view = ResearchTimelineView(_Reader(result), auto_refresh=False)
     view._receive(view._generation, result)
+    view.follow_up_toggle.click()
     view.compare_evidence_button.click()
     assert view._comparison_loading
 
@@ -561,6 +642,7 @@ def test_evidence_comparison_revision_rejects_a_to_b_to_a_response():
     result = ResearchTimelineReadResult((first, second))
     view = ResearchTimelineView(_Reader(result), auto_refresh=False)
     view._receive(view._generation, result)
+    view.follow_up_toggle.click()
     view.compare_evidence_button.click()
     request_revision = view.evidence_comparison_revision
 
@@ -587,6 +669,7 @@ def test_refresh_revision_rejects_late_response_when_entry_object_is_preserved()
     reader = _Reader(result)
     view = ResearchTimelineView(reader, auto_refresh=False)
     view._receive(view._generation, result)
+    view.follow_up_toggle.click()
     view.compare_evidence_button.click()
     request_revision = view.evidence_comparison_revision
 
@@ -612,6 +695,7 @@ def test_leaving_timeline_invalidates_response_for_same_selected_entry():
     result = ResearchTimelineReadResult((entry,))
     view = ResearchTimelineView(_Reader(result), auto_refresh=False)
     view._receive(view._generation, result)
+    view.follow_up_toggle.click()
     view.compare_evidence_button.click()
     revision = view.evidence_comparison_revision
     view.invalidate_evidence_comparison()

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QProgressBar,
+    QSizePolicy,
     QToolButton,
     QScrollArea,
     QTableWidget,
@@ -240,16 +241,31 @@ class ResearchConsoleView(QWidget):
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
-        self.refresh_button = QPushButton("重新載入唯讀 projection")
-        self.refresh_button.setProperty("variant", "secondary")
-        self.refresh_button.clicked.connect(self.refresh_console)
-        layout.addWidget(self.refresh_button)
+        self.refresh_action_row = QWidget(content)
+        refresh_row_layout = QHBoxLayout(self.refresh_action_row)
+        refresh_row_layout.setContentsMargins(0, 0, 0, 0)
+        refresh_row_layout.setSpacing(8)
         self.refresh_status_label = QLabel("尚未載入；切換到此分頁時才會讀取唯讀投影。")
         self.refresh_status_label.setWordWrap(True)
+        self.refresh_status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         self.refresh_status_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary};"
         )
-        layout.addWidget(self.refresh_status_label)
+        self.refresh_button = QPushButton("重新載入唯讀 projection")
+        self.refresh_button.setProperty("variant", "secondary")
+        self.refresh_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.refresh_button.setAccessibleName("重新載入 Research Console 唯讀 projection")
+        self.refresh_button.setToolTip("只重新讀取既有唯讀投影；不執行資料更新或保存。")
+        self.refresh_button.clicked.connect(self.refresh_console)
+        refresh_row_layout.addWidget(self.refresh_status_label, 1)
+        refresh_row_layout.addWidget(self.refresh_button)
+        layout.addWidget(self.refresh_action_row)
 
         self.conclusion_banner = QLabel()
         self.conclusion_banner.setObjectName("ResearchConsoleConclusion")

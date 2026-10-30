@@ -3318,29 +3318,13 @@ class PortfolioView(QWidget):
         positions = tuple(getattr(portfolio, "positions", ()) or ())
         active_count = getattr(portfolio, "active_positions", None)
         count_text = str(active_count) if active_count is not None else str(len(positions))
-        invested = getattr(portfolio, "total_invested_amount", None)
-        invested_text = f"TWD {invested:,.2f}" if invested is not None else "未知"
         if positions:
-            names = [
-                f"{getattr(position, 'stock_code', '')} {getattr(position, 'stock_name', '')}".strip()
-                for position in positions[:2]
-            ]
-            names = [name for name in names if name]
-            known_positions = "、".join(names) if names else "持倉名稱未提供"
-            if len(positions) > 2:
-                known_positions += f" 等 {len(positions)} 檔"
-            reasons = [
-                "目前持有：" + known_positions + "。",
-                self._portfolio_health_focus_reason(),
-            ]
-            conclusion = (
-                f"目前持有 {count_text} 檔；投入金額（毛額，未扣費稅）{invested_text}。"
-            )
+            reasons = [self._portfolio_health_focus_reason()]
+            conclusion = "持倉資料已讀取；估值與損益請依下方狀態卡及同次報價資料日判讀。"
             next_step = "選取一檔後按「個股研究」核對同股原來源；缺原結果身份時保留未連結，不借同股最新結果。"
             sufficiency = "持倉資料可讀；健康與退出條件依獨立資料來源顯示。"
         else:
             reasons = [
-                "目前沒有可用的持倉。",
                 "待核對：沒有持倉資料時，不呈現健康與退出判讀。",
             ]
             conclusion = "目前沒有可用的持倉；尚不能形成持倉判讀。"
@@ -3356,7 +3340,7 @@ class PortfolioView(QWidget):
             reasons=reasons,
             next_step=next_step,
             evidence=(
-                f"手動登錄帳；持倉資料最後更新：{updated_at}（不是估值日）；持倉數：{count_text}。"
+                f"手動登錄帳；持倉資料最後更新：{updated_at}（不是估值日）。"
                 f"{recorded_costs}。"
             ),
             change=self._portfolio_valuation_context(positions),

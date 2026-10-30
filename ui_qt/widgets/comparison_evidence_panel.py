@@ -35,7 +35,7 @@ def compact_comparison_audit(panel: CollapsibleSectionPanel) -> None:
         "font-weight: 700; padding: 0; border: none; background: transparent;"
     )
     panel.toggle_button.setStyleSheet("min-height: 0px; padding: 2px 6px;")
-    panel.toggle_button.setFixedSize(48, 28)
+    panel.toggle_button.setFixedHeight(28)
 
 
 class ComparisonEvidencePanel(QWidget):

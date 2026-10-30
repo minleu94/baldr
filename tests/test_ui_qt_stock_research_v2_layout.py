@@ -11,7 +11,14 @@ from typing import Any
 import pytest
 
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication, QBoxLayout, QPushButton, QToolButton, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QBoxLayout,
+    QGroupBox,
+    QPushButton,
+    QToolButton,
+    QWidget,
+)
 
 from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_dtos import (
@@ -225,10 +232,19 @@ def test_loaded_report_compact_header_keeps_switch_shortcuts_and_four_facets_on_
         assert view.overview_price_group.objectName() == "stockResearchOverviewPrice"
         assert view.identity_quote_row.objectName() == "stockResearchIdentityQuoteRow"
         for name in ("營收", "法人", "信用", "集保"):
-            button = view.findChild(QPushButton, f"stockResearchSummaryFacetOpen_{name}")
+            button = view.findChild(QToolButton, f"stockResearchSummaryFacetOpen_{name}")
             assert button is not None and button.isVisibleTo(workspace)
+            assert button.autoRaise()
+            assert button.text() == "查看 →"
+            assert button.accessibleName() == f"查看{name}研究章節"
+            card = view.findChild(QGroupBox, f"stockResearchSummaryFacet_{name}")
+            assert card is not None
+            assert button.width() < card.width() * 0.5
             button_top = button.mapTo(workspace, QPoint(0, 0)).y()
             assert button_top + button.height() <= workspace.height()
+            button.click()
+            assert view.tabs.currentIndex() == (2 if name == "營收" else 3)
+            view.tabs.setCurrentIndex(0)
 
         switch_button.click()
         app.processEvents()

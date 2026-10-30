@@ -336,8 +336,7 @@ class RuntimeView(QWidget):
             label.setMinimumWidth(0)
             label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
-        # Apply CSS for clear visual boundaries
-        self.status_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self._set_task_status_tone("info")
 
         state_layout.addWidget(self.objective_label)
         state_layout.addWidget(self.status_label)
@@ -868,6 +867,22 @@ class RuntimeView(QWidget):
             splitter.setOrientation(desired_orientation)
             splitter.updateGeometry()
 
+    def _set_task_status_tone(self, level: str) -> None:
+        colors = {
+            "info": (MIDNIGHT_ANALYST.status_info, "#0b1c27"),
+            "success": (MIDNIGHT_ANALYST.status_success, "#0b2624"),
+            "warning": (MIDNIGHT_ANALYST.status_warning, "#221a10"),
+            "error": (MIDNIGHT_ANALYST.status_error, "#27162d"),
+        }
+        color, background = colors.get(level, colors["warning"])
+        self.status_label.setProperty("statusLevel", level)
+        self.status_label.setStyleSheet(
+            f"color: {color}; background: {background}; "
+            f"border-left: 3px solid {color}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; "
+            "font-weight: bold; font-size: 14px; padding: 5px 8px;"
+        )
+
     @Slot(RuntimeStateSnapshotDTO)
     def on_state_updated(self, dto: RuntimeStateSnapshotDTO) -> None:
         """Pure rendering slot for State Snapshot DTO"""
@@ -881,6 +896,21 @@ class RuntimeView(QWidget):
         )
         self.objective_label.setText(f"目前治理目標：{objective}")
         self.status_label.setText(f"任務流程狀態：{status}")
+        task_status_level = (
+            {
+                "IDLE": "info",
+                "DISPATCHED": "info",
+                "THINKING": "info",
+                "VALIDATING": "info",
+                "APPROVED": "success",
+                "ERROR": "error",
+                "RECOVERY": "warning",
+                "HALTED": "error",
+            }.get(dto.task_status, "warning")
+            if dto.task_read_state == "observed" and dto.task_status in STATE_LABELS
+            else "warning"
+        )
+        self._set_task_status_tone(task_status_level)
         self.status_label.setToolTip(
             f"task_read_state: {dto.task_read_state}\n"
             f"raw_status: {dto.raw_task_status or dto.task_status}\n"

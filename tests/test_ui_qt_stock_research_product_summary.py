@@ -59,7 +59,7 @@ def test_quote_header_and_four_summary_facets_keep_original_report_values(monkey
         if report.price_points:
             latest = report.price_points[-1]
             assert latest.data_date in view.quote_summary_label.text()
-            assert module._decimal_text(latest.close_price) in view.quote_summary_label.text()
+            assert module._decimal_text(latest.close_price) in view.quote_close_label.text()
             assert latest.change is None
             assert "漲跌 未知" in view.quote_summary_label.text()
         for name in ("營收", "法人", "信用", "集保"):
@@ -101,7 +101,9 @@ def test_quote_header_and_four_summary_facets_keep_original_report_values(monkey
         flow_toggle.setChecked(True)
         assert not view.findChild(module.QWidget, "stockResearchFlowDetails").isHidden()
         view._clear_loaded_report()
-        assert view.quote_summary_label.text() == "收盤 未知｜漲跌 未知｜行情日 未知"
+        assert view.quote_close_label.text() == "收盤 未知 TWD"
+        assert "漲跌 未知 TWD" in view.quote_summary_label.text()
+        assert "行情日 未知" in view.quote_summary_label.text()
     finally:
         view.close()
 

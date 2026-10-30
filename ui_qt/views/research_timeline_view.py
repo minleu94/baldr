@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -86,7 +87,7 @@ class ResearchTimelineView(QWidget):
         self.last_result: ResearchTimelineReadResult | None = None
         self._full_history_limited = False
         self._pending_search_query = ""
-        self._timeline_layout_mode: tuple[bool, bool, bool] | None = None
+        self._timeline_layout_mode: tuple[bool, bool, bool, bool] | None = None
         self._setup_ui(journey_service)
         if auto_refresh:
             self.refresh()
@@ -160,6 +161,7 @@ class ResearchTimelineView(QWidget):
         self.entries_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.entries_table.setAlternatingRowColors(True)
         self.entries_table.setAccessibleName("研究紀錄時間軸")
+        self.entries_table.verticalHeader().setVisible(False)
         header = self.entries_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -187,6 +189,22 @@ class ResearchTimelineView(QWidget):
         detail_layout.addWidget(self.detail_label)
         detail_layout.addWidget(self.original_text, 1)
         detail_layout.addWidget(self.open_original_button)
+        self.follow_up_toggle = QToolButton(detail)
+        self.follow_up_toggle.setObjectName("researchTimelineFollowUpToggle")
+        self.follow_up_toggle.setText("展開延伸核對與後續結果　▸")
+        self.follow_up_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.follow_up_toggle.setCheckable(True)
+        self.follow_up_toggle.setChecked(False)
+        self.follow_up_toggle.setAccessibleName("展開延伸核對與後續結果")
+        self.follow_up_toggle.setToolTip(
+            "對照目前資料、檢查 Paper 條件或查看已連結的後續結果；不影響原始研究紀錄。"
+        )
+        detail_layout.addWidget(self.follow_up_toggle)
+        self.follow_up_content = QWidget(detail)
+        self.follow_up_content.setObjectName("researchTimelineFollowUpContent")
+        follow_up_layout = QVBoxLayout(self.follow_up_content)
+        follow_up_layout.setContentsMargins(0, 0, 0, 0)
+        follow_up_layout.setSpacing(6)
         self.compare_evidence_button = QPushButton("對照目前可讀資料", detail)
         self.compare_evidence_button.setObjectName("researchTimelineCompareEvidence")
         self.compare_evidence_button.setAccessibleName("對照所選紀錄的固定證據與目前可讀資料")
@@ -198,28 +216,30 @@ class ResearchTimelineView(QWidget):
         self.evidence_actions_layout = QBoxLayout(QBoxLayout.LeftToRight)
         self.evidence_actions_layout.addWidget(self.compare_evidence_button)
         self.evidence_actions_layout.addWidget(self.paper_prerequisites_button)
-        detail_layout.addLayout(self.evidence_actions_layout)
+        follow_up_layout.addLayout(self.evidence_actions_layout)
         self.evidence_comparison_widget = ResearchEvidenceComparisonWidget(detail)
         self.evidence_comparison_widget.setMinimumHeight(150)
-        detail_layout.addWidget(self.evidence_comparison_widget, 1)
+        follow_up_layout.addWidget(self.evidence_comparison_widget, 1)
         if journey_service is None:
             self.journey_widget = None
             self.journey_placeholder = QLabel("Forward 成熟度需提供既有唯讀 journey reader。", detail)
             self.journey_placeholder.setObjectName("researchTimelineJourneyUnavailable")
             self.journey_placeholder.setWordWrap(True)
-            detail_layout.addWidget(self.journey_placeholder)
+            follow_up_layout.addWidget(self.journey_placeholder)
         else:
             self.journey_placeholder = QLabel("選取研究紀錄後可查看已連結的後續結果。", detail)
             self.journey_placeholder.setWordWrap(True)
-            detail_layout.addWidget(self.journey_placeholder)
+            follow_up_layout.addWidget(self.journey_placeholder)
             self.journey_widget = DecisionOutcomeJourneyWidget(
                 journey_service,
                 continuity_controller=None,
                 parent=detail,
             )
             self.journey_widget.readyToClose.connect(self._journey_ready_to_close)
-            detail_layout.addWidget(self.journey_widget, 1)
+            follow_up_layout.addWidget(self.journey_widget, 1)
             self.journey_widget.hide()
+        detail_layout.addWidget(self.follow_up_content)
+        self.follow_up_content.hide()
         self.splitter.addWidget(entries_panel)
         self.splitter.addWidget(detail)
         self.splitter.setStretchFactor(0, 2)
@@ -238,13 +258,23 @@ class ResearchTimelineView(QWidget):
         self.open_original_button.clicked.connect(self._open_original)
         self.compare_evidence_button.clicked.connect(self._request_evidence_comparison)
         self.paper_prerequisites_button.clicked.connect(self._request_paper_prerequisites)
+        self.follow_up_toggle.toggled.connect(self._set_follow_up_expanded)
         self._apply_responsive_layout()
+
+    def _set_follow_up_expanded(self, expanded: bool) -> None:
+        self.follow_up_content.setVisible(expanded)
+        self.follow_up_toggle.setText(
+            "收合延伸核對與後續結果　▾"
+            if expanded
+            else "展開延伸核對與後續結果　▸"
+        )
 
     def _apply_responsive_layout(self) -> None:
         narrow_controls = self.width() < 760
         stacked_panels = self.width() < 900
         stacked_actions = self.width() < 600
-        mode = (narrow_controls, stacked_panels, stacked_actions)
+        compact_list = self.width() < 1120
+        mode = (narrow_controls, stacked_panels, stacked_actions, compact_list)
         if self._timeline_layout_mode == mode:
             return
         for widget in (
@@ -280,6 +310,9 @@ class ResearchTimelineView(QWidget):
             if stacked_actions
             else QBoxLayout.LeftToRight
         )
+        # 詳情面板已完整顯示所選原文；中窄清單保留來源、股票與保存時間，
+        # 不讓摘要欄把表格撐出水平捲軸。
+        self.entries_table.setColumnHidden(3, compact_list)
         self._timeline_layout_mode = mode
 
     def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt覆寫方法
@@ -329,9 +362,10 @@ class ResearchTimelineView(QWidget):
         if decision_index >= 0:
             self.source_filter.setCurrentIndex(decision_index)
         self.stock_filter.setText(query)
-        if self._full_history_limited:
-            self._search_timer.stop()
-            self.refresh(search_query=query)
+        # 跨頁從 Advice 查找時，時間軸可能仍是保存決定之前讀取的舊快照。
+        # 精確查找一律重新讀取 Journal，不能只過濾目前記憶體中的清單。
+        self._search_timer.stop()
+        self.refresh(search_query=query)
         return True
 
     def _receive(self, generation: int, result: object) -> None:

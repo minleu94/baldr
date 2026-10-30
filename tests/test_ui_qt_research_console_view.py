@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QWidget,
 )
@@ -916,6 +917,22 @@ def test_view_has_no_apply_promote_retrain_blend_accept_or_trade_controls() -> N
         "下一頁",
     ]
     assert not any(token in text for text in button_texts for token in forbidden)
+
+
+def test_reload_action_stays_compact_and_next_to_its_status() -> None:
+    app()
+    view = ResearchConsoleView(console=_console(), auto_refresh=False)
+
+    assert view.refresh_status_label.parentWidget() is view.refresh_action_row
+    assert view.refresh_button.parentWidget() is view.refresh_action_row
+    assert view.refresh_button.sizePolicy().horizontalPolicy() == (
+        QSizePolicy.Policy.Fixed
+    )
+    assert view.refresh_button.sizeHint().width() < 300
+    assert view.refresh_button.accessibleName() == (
+        "重新載入 Research Console 唯讀 projection"
+    )
+    assert "不執行資料更新或保存" in view.refresh_button.toolTip()
 
 
 def test_view_source_has_no_domain_or_database_imports() -> None:

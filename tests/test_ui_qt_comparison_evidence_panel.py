@@ -3,7 +3,12 @@
 from PySide6.QtWidgets import QApplication, QDialog, QScrollArea, QWidget
 from ui_qt.theme import MIDNIGHT_ANALYST
 
-from ui_qt.widgets.comparison_evidence_panel import ComparisonEvidencePanel, style_comparison_dialog
+from ui_qt.widgets.comparison_evidence_panel import (
+    ComparisonEvidencePanel,
+    compact_comparison_audit,
+    style_comparison_dialog,
+)
+from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
 
 
 def test_original_text_and_missing_counterevidence_are_not_interpreted_or_carried_forward():
@@ -50,3 +55,16 @@ def test_comparison_dialog_has_opaque_background_under_transparent_scroll_ancest
     finally:
         dialog.close()
         scroll.close()
+
+
+def test_compact_comparison_disclosure_keeps_toggle_text_unclipped():
+    app = QApplication.instance() or QApplication([])
+    panel = CollapsibleSectionPanel("完整來源與原假設", collapsed=True)
+    try:
+        compact_comparison_audit(panel)
+        app.processEvents()
+        assert panel.toggle_button.height() == 28
+        assert panel.toggle_button.maximumWidth() > 48
+        assert panel.toggle_button.text() == "展開"
+    finally:
+        panel.close()

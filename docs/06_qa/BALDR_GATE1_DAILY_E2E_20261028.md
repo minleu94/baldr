@@ -96,3 +96,13 @@ Runner 設定並讀回 Windows Job 的 8 GiB committed-memory 上限與 12 個�
 研究時間軸一般清單最多呈現最新 500 筆；達上限後，搜尋欄輸入股票代號或 result ID 會改由 service 篩選完整 Journal 歷史，再呈現符合項目。搜尋結果若仍超過 500 筆，會提示使用完整 result ID 縮小範圍。故即使較早的研究決定不在一般清單中，也可依股票或保存推薦身分回查；這不依賴候選再次出現在 Advice，也不重建 Advice 或修改 Journal。
 
 受控 Windows Job 中，`tests/test_research_timeline_service.py` 與 `tests/test_ui_qt_research_timeline_view.py` **41 passed**，必要 Workbench UI suite **98 passed**；新增服務案例以 501 筆決定確認最舊項目不在一般清單時，仍可用股票代號及 result ID 找到。Update validator **25 passed／0 failed／4 skipped**；4 個修改 Python 檔 py_compile 通過，2 個修改模組 targeted mypy 無錯。每個 Job 均讀回 8 GiB committed-memory／12 程序限制及至少 8 GiB 啟動前可用記憶體，child 與 Job handles 關閉；兩個 UI 測試 Job peak 約 1.21 GiB、1.56 GiB。Repo-wide mypy 仍因未修改的 `data_module/mops_t164_pdf_disposition_bridge.py:411` 語法錯誤而停止，無法檢查其餘模組。此 QA 文件的 scoped document-control check 通過（12 features／1 link source／0 errors）；同時檢查操作手冊與 Snapshot 時，既有 `output` junction 引用遭 sandbox `WinError 5` 拒讀，未改動共享輸出。這是隔離測試證據，不替代 Owner 對正式環境的 GUI UAT；Owner UAT 第 1–3、5–6 項仍待完成。
+
+## 2026-11-02 Owner 原生 GUI UAT 與 Gate 1 限定範圍接受
+
+Owner 在目前 Baldr Workbench／「今日策略建議」完成原生 GUI 核對，並提供當日唯讀來源摘要及保存結果回讀：決策日與行情資料日均為 `2026-11-02`；Advice 共 5 筆（`1416`、`1528`、`1456`、`1232`、`1235`），未升格 Advice 0 筆、配置資料列 0 筆。展開 `1416` 卡確認動作為「新增候選」、規則分數 `81.65`、決策理由可讀，confidence 明示不可用、風險／成交能力未核實，資料日及 `observed` 品質可見；畫面清楚說明 Advice 僅供人工研究、不會自動下單，來源／PIT 尚未核驗。
+
+當日來源唯讀摘要回讀結果 `rec_ab35aaa1276841879f706f9d4e10486a`，決策日及行情資料日均為 `2026-11-02`；5 筆候選與 Advice 清單相同。候選來源 ID、篩選／排除事件 `result_id`、`source_id`、`source_snapshot_id` 均指向同一結果 ID；Owner 隨後從「綜合選股｜保存推薦結果」回報讀回相同 `result_id`。因此此筆 Advice 至保存推薦結果及 included-event cohort 的身份鏈在 Owner UAT 中對齊。
+
+限制照原樣保留：來源摘要的全市場分母未提供；篩選事件品質為 `missing`（包含篩選通過事件），不得推論來源完整或正式接受；5／10 日 maturity 各缺漏 22 筆，20／60 日仍有待成熟／缺漏；Advice 顯示來源與 PIT 資格尚未核驗、完整 typed source/data snapshot refs 未齊。這些限制在畫面／來源摘要中有明確揭露。Owner 另以「我的投資 → 研究紀錄與覆盤」找到既有 `1569` 研究決定，核對其 `result_id=rec_bc108d4d483a46f4bd758706e6fb8d37`、決策日 `2026-10-28`、來源 snapshot ID 與 `accepted` 狀態；這是既存 Journal 記錄，未要求新增決定。
+
+依 Gate 1 可在 read-only／paper mode closeout、而 Gate 3 負責正式來源／PIT 接受的邊界，Owner UAT **接受 Gate 1 日常 Advice 流程（read-only／paper 限定範圍）**。此接受不包含正式來源／PIT／全市場 coverage 資格，不授權 production evidence scheduler、真實交易或任何來源／資料寫入。Gate 0 歷史 closeout 由 Owner 於 2026-11-02 接受作為 Gate 1 前置。UAT 依據為 Owner 提供的 2026-11-02 Advice 與時間軸畫面、唯讀來源摘要文字及保存結果 ID 回報；本次狀態更新沒有重跑程式測試或寫入正式資料。

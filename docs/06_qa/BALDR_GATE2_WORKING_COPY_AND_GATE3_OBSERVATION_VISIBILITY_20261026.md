@@ -1,5 +1,17 @@
 # Gate 2 working-copy 接線與 Gate 3 現況觀測可見性 QA
 
+## 2026-11-02 Gate 2 三個操作日 evidence event 唯讀盤點
+
+以 evidence-only read-only access 分別查詢 `decision_date` 2026-10-29、2026-10-30、2026-11-02 的 `recommendation_included`。查詢均回傳 `writes_allowed=false`、`outcomes_count=0`、無 diagnostics。三個不同操作日各有真實 EOD research event，`event_date`／`decision_date`／`available_date` 同日、`data_quality=observed`、`temporal_status=verified`、`source_availability_preserved=true`；皆為 `research_only=true`、`natural_authority=false`，且 event 的 `source_trace.run_id` 為空。
+
+| 操作日 | 收錄事件 | result／source snapshot identity | Event IDs（symbol） |
+|---|---:|---|---|
+| 2026-10-29 | 1 | `rec_8b6ec436d61241209445c2fe6148b59a` | `evt_de4016a796e04713aad06b2aee0721d0`（1201） |
+| 2026-10-30 | 2 | `rec_3eac8902caae4328bd88ec5f7e8fd1dd` | `evt_08ef7a0d729f41bebe2442ebe32b5191`（1526）；`evt_9b41ab21096e4957b3ee39b1e2f88658`（1201） |
+| 2026-11-02 | 5 | `rec_ab35aaa1276841879f706f9d4e10486a` | `evt_4a965fd662fc436c97eb18051b32db59`（1456）；`evt_5b89d73e8bc84519b5b1778e11bf1a4b`（1235）；`evt_af58f9e595be49bf966a5092ee7dae46`（1416）；`evt_c283300c9c7347e58b9e5b17b5e248f6`（1232）；`evt_f05733a6b7e241eda73326ecf0b9c6fb`（1528） |
+
+**Gate 2 判讀：**三個操作日的實際 evidence event 已可定位；這只確認事件存在，不等於 Gate 2 的操作日證據包已完成。因 `run_id` 為空，排程 run identity 尚未由這些 event rows 綁定；也沒有 forward outcome。仍須依 Runbook 補齊每日期所需的 freshness、coverage、scheduled／manual dry-run、weekly report、write-safety、warning／blocking、具名覆核及 recovery 等材料，並由 Owner 審閱。上述事件為 research-only，不授正式來源、PIT、financial 或 Gate credit。
+
 ## 2026-10-27 Action Item lifecycle append-only 投影
 
 Evidence Review「覆盤歷史」新增 Action Item 人工追蹤流程。操作者必須先明選通過路徑守衛的非正式 working-copy DB，再選獨立 JSON 投影檔；兩個條件缺一時，操作按鈕維持停用。服務僅接受 checkpoint 完成且無非空 WAL／rollback journal 的 DB，以 SQLite `mode=ro`／`query_only` 讀取 action row 與 review hash／期間，並比較讀取前後主檔與 WAL／journal 狀態以拒絕讀取期間的變動；操作時不得另有工作程序寫入該副本。狀態事件綁定 working-copy path identity 及完整 action payload hash；事件由跨程序鎖序列化，重讀來源並驗證轉態與 hash chain 後，以原子替換追加。來源列改變／消失、投影損毀、來源 DB 不同、無時區時間或不允許轉態會 fail closed。來源 DB、週報 history、Owner approval projection、正式資料與 scheduler 均不由此流程寫入。

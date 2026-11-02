@@ -914,3 +914,85 @@ Recommendation「回看已保存結果」的來源選擇／來源讀取在第一
 有持倉時，首屏摘要結論與下方狀態卡已顯示持倉數／投入額，活躍持倉條與表格也列股票名稱；摘要理由和證據又複述持倉名稱、數量，讓同一資訊連續出現。現在保留估值日期限制、健康來源狀態與操作下一步，把持倉名稱留給下方名單／原表、從證據行移除重複筆數。帳本數值、健康判讀、損益或來源沒有變動。
 
 - Portfolio populated fixture offscreen screenshot `.pytest-owned-temp/portfolio_populated_review/portfolio_populated.png` verified the final, non-repeating summary. `tests/test_ui_qt_portfolio_view.py` active summary＋dedup **2 passed**; py_compile passed; `portfolio_view.py` scoped mypy **0 issues**; required Update UI **102 passed**, validator **25 passed／0 failed／4 skipped**. Repo-wide mypy remains blocked at the unrelated, unmodified T164 bridge line 411 syntax error. UI feature／QA document-control passed (12 features／1 link source); Portfolio manual check reports the pre-existing `../../../output/trial/Baldr-Theme-Research-03/TRIAL_GUIDE.md` escape, and Snapshot references are unreadable through the existing `output/` Junction (`WinError 5`). `git diff --check` had no whitespace errors; Git emitted existing fsmonitor IPC／CRLF notices.
+
+
+## 2026-10-31 第九十九輪：UI 全域收斂、台股紅漲綠跌色系一致性、深層版面首屏優化與全庫 mypy 解鎖
+
+本輪依據使用者全域 UI 盤點指令與工作單，解決多處長期積累的視覺摩擦、閱讀阻礙、橫向欄寬撐爆、工程術語干擾，並徹底解鎖全庫類型檢查阻擋點。
+
+### 1. 核心修復與優化項目
+1. **全庫 mypy 解鎖**：修復 `data_module/mops_t164_pdf_disposition_bridge.py:411` 的 stray `\` 行尾語法錯誤，使全專案 1,161 個 Python 檔 `mypy` 順利通過（0 issues）。
+2. **色彩與主題一致性（台股紅漲綠跌）**：
+   - 修正 `chart_payloads.py`、`fast_chart_widget.py`、`chart_widget.py`，落實台股正報酬/盈利為紅（`market_up` `#ef4444`）、負報酬/虧損為綠（`market_down` `#22c55e`）標準慣例，圖例同步翻轉為「獲利（紅）／虧損（綠）」。
+   - 清除個股研究工作區（`stock_research_workspace.py`）亮色系寫死樣式（`#174ea6`、`#e8f0fe` 等），全面替換為 `MIDNIGHT_ANALYST` 主題 Token。
+   - 回測設定面板（`backtest/config_panel.py`）警示區與動作按鈕改為暗黑主題語意色彩，去除刺眼亮黃與彩虹樣式。
+3. **個股研究深層頁面與籌碼可讀性**：
+   - 集保股權 1–15 級分布視覺改為直向直方圖（`chart_kind="column"`），直觀呈現散戶到大戶股權分布。
+   - 籌碼章節（`stock_research_report_view.py`）保證 4 大核心切面（法人買賣超、融資融券、集保股權分級、分點籌碼）固定在首排卡片，次要指標移至延伸區。
+   - 清理工程代碼字串（例如將「沒有可用分點 row；請檢查 broker_flows 更新狀態。」轉化為「目前無可用分點籌碼資料；可至「資料與更新」檢查分點更新狀態。」）。
+4. **綜合選股與策略比較版面優化**：
+   - 綜合選股工作區（`unified_screener_workspace.py`）：將研究範圍與母體漏斗整合至水平列（`scope_funnel_row`），緊湊按鈕間距，在 1366×768 解析度下大幅釋放垂直空間，讓推薦結果表標題與內容首屏可見。
+   - 策略對照面板（`run_registry_compare_widget.py`）：放寬來源文字框 130px 侷限高度（改為 140–320px 彈性範圍）；13 欄對照表改用交互式欄寬並以 95px 為基準；資料表格模型更新後加入 280px 最大欄寬限制，防止寬欄位橫向撐爆。
+5. **Paper Portfolio 與全域欄寬守衛**：
+   - `portfolio_view.py` Paper 狀態摘要卡增加暗色容器邊框與內距（`surface_2` 卡片層級），建立清晰主次階層。
+   - 在 `ui_qt/widgets/table_style.py` 抽出共用欄寬守衛函式 `clamp_table_column_widths`，套用至持倉表、成交記錄表、分點明細表、強勢股表、弱勢股表、自選清單表與回測結果表，根除長字串撐爆橫向捲動問題。
+6. **導覽符號豆腐塊修復與例外訊息安全化**：
+   - 主導覽列（`main_window_coordinator.py`）移除未嵌入中文字型環境下會破成空心方塊（Tofu）的 `⚙` 符號，統一為乾淨的「系統管理」。
+   - 清理 `strong_stocks_view.py`、`weak_stocks_view.py`、`watchlist_view.py` 與 `backtest_view.py` 中直接向使用者彈出原始 Python stack trace 的行為，改為清晰親切的錯誤摘要，並完整保留日誌記錄供排錯查驗。
+
+### 2. 驗證結果
+- **Repo-wide mypy**：`app_module data_module analysis_module backtest_module decision_module portfolio_module runtime ui_qt` 共 1,161 個原始碼檔案 **0 issues**。
+- **Update Tab Validator**：`python scripts/qa_validate_update_tab.py` **25 passed, 0 failed, 4 skipped**。
+- **Update View Workbench**：`tests/test_ui_qt_update_view_workbench.py` **102 passed**。
+- **Portfolio View**：`tests/test_ui_qt_portfolio_view.py` **112 passed**。
+- **Unified Screener Workspace**：`tests/test_ui_qt_unified_screener_workspace.py` **28 passed**。
+- **Run Registry Compare**：`tests/test_ui_qt_run_registry_compare.py` **27 passed**。
+- **Weak Market Views & Market Layout**：`tests/test_ui_qt_weak_market_views.py`（15 passed）+ `tests/test_ui_qt_market_layout.py`（24 passed）共 **39 passed**。
+- **Watchlist Layout & Presentation**：`tests/test_ui_qt_watchlist_layout.py`（14 passed）+ `tests/test_watchlist_empty_pool_presentation.py` & `test_watchlist_trigger_presentation.py`（7 passed）共 **21 passed**。
+- **Left Navigation**：`tests/test_ui_qt_left_navigation.py` **7 passed**。
+- **Backtest Presenter**：`tests/test_backtest_view_presenter.py` **9 passed**。
+- **Stock Research Visuals & Product Summary**：`tests/test_stock_research_visuals.py` & `tests/test_ui_qt_stock_research_product_summary.py` **15 passed**。
+- **Git diff check**：`git diff --check` 通過，無 whitespace errors。
+
+## 2026-11-02 第一百零一輪：窄視窗幾何補查與選股頁最小寬度修正
+
+延續上一輪 UI 盤點，補查題材搜尋抽屜在多個視窗尺寸下的控制元件可視範圍，並重跑 v4 技術選股頁窄寬度版面。檢查發現 v4 頁面根版面仍以內部水平操作列產生 813px 最小寬度，導致視窗縮至 600px 時 resize/reflow 仍受限。調整根版面的 size constraint 並將頁面最小寬度歸零後，窄視窗可由既有 resize 邏輯重新排版；未改資料或選股行為。
+
+- Industry Theme Map、載入／清除／導航、題材目錄、股票反查及共用版面測試合計：**108 passed**；新增幾何斷言確認 1366、900、390px 視窗的題材定位、清除、股票定位及結果選單皆留在可視範圍。跨頁聚焦版面與 v4 600px reflow 測試：**18 passed**；Research Timeline 與 Forward Performance：**27 passed**。
+- Update View Workbench：**102 passed**；Update Tab validator：**25 passed／0 failed／4 skipped**；repo-wide mypy：**1,161 個來源檔 0 issues**；修改 Python 檔 `py_compile` 通過；`git diff --check` 無 whitespace errors。
+- 額外全頁面回歸重跑受 Windows sandbox 的 pytest 暫存目錄建立／解析權限影響，部分 suite 報 `WinError 3/5`；本次串行跨頁 runner 在進入官方選股 suite 後長時間無測例輸出，整輪未完成。這些結果不計為通過，故本輪不宣稱所有受影響頁面完整回歸通過。原生 GUI／Owner UAT 仍未完成。
+
+## 2026-11-01 第一百輪：全域頂部版本與來源控制區收斂、向下展開「⋯」抽屜與視窗縮放寬度跟隨綁定
+
+針對使用者於「產業與題材（`IndustryThemeMapView`）」等頁面回饋之四大空間與縮放痛點（頂部版本區龐大且鎖死畫面、篩選與搜尋區佔據過多列、視窗縮放時右側按鍵如 `[定位題材]`／`[清除]`／`[定位所選股票]` 被切出視窗外、次要維護與靜態說明常駐擠壓閱讀區），完成全專案 `ui_qt/views/` 盤點與四批次結構收斂。
+
+### 1. 核心修復與結構收斂項目
+1. **共用響應式寬度綁定與「⋯」向下展開工具（`ui_qt/widgets/layout_helpers.py`）**：
+   - 新增 `bind_scroll_area_viewport_width(scroll_area, content)`：安裝 `_ViewportWidthFilter` 監聽 `QScrollArea.viewport()` 的 `Resize` 與 `Show` 事件，動態將內層容器 `maximumWidth` 同步為 `viewport.width()` 並設定 `HorizontalScrollBarPolicy=ScrollBarAlwaysOff`，根除多欄表單或長路徑標籤將 `content` 撐寬而導致右側按鈕被裁切的問題（同時保留 `backtest_view.py` 與 `recommendation_view.py` 左側設定面板在 390px 極窄視窗下特意設計的 `ScrollBarAsNeeded` 行為）。
+   - 擴充 `create_more_actions_button`：統一建立 28×26 緊湊 checkable `"⋯"` 按鈕（`QToolButton`），支援傳入 `targets`、`expanded`、`tooltip_collapsed`、`tooltip_expanded`，點擊後向下展開／收合次要維護動作或靜態提示抽屜，並保留所有既有元件屬性、`objectName`、`accessibleName` 與訊號契約。
+2. **產業與題材（`ui_qt/views/industry_theme_map_view.py`）**：
+   - **解除頂部鎖定**：將 `self.version_group`（「選擇已保存的題材版本」）移入 `self.scroll_area` 頂部，往下捲動閱讀觀察卡與題材成員時頂部控制區隨頁面自然捲走，不再吃掉固定畫面高度。
+   - **頂部版本列單行化＋`⋯` 抽屜（解決狀態多行擠壓與次要操作佔幅）**：主列 Row 0 嚴格收斂為「標題＋版本下拉選單＋載入所選版本＋`[⋯]`」單行（~32px 高度）；次要動作（`載入最新可讀`、`更新清單`、`更換版本庫位置…`、`清除研究`）、長路徑以及可換行的詳細狀態文字（`status_label`、`catalog_list_status_label`）全數移入向下展開的 `version_more_drawer`，避免窄視窗下長狀態換行撐高版本列或擠壓控制鍵。
+   - **低頻搜尋列預設收合＋即時輸入自動展開**：`filter_more_button ("⋯")` 預設為收合（`expanded=False`），初始狀態僅保留「產業鏈選單＋題材選單＋`⋯`」，將題材名稱搜尋與股票反查列隱藏，初次進入頁面立即可收回約 90px 垂直可讀空間；當使用者點擊 `⋯` 或在搜尋框輸入非空文字時，抽屜自動展開。
+   - **防裁切與多解析度幾何驗證**：透過 `bind_scroll_area_viewport_width` 將內容寬度動態鎖定於 viewport，並加入自動化多解析度幾何驗證（1366×768、900×700、390×844），確保 `[定位題材]`、`[清除]`、`[定位個股]` 在任意尺寸下均在 viewport 範圍內無裁切。註：自動化幾何斷言負責確保按鍵不超出可見邊界與抽屜正確收放，目標 DPI 之視覺閱讀節奏仍保留 Owner 原生 GUI 人工檢視。
+3. **綜合選股工作區與 7 個技術／官方處置／月營收選股子頁**：
+   - `UnifiedScreenerWorkspace`：標題列新增 `header_more_button ("⋯")` 收納範本補充說明與未接通條件提示（點選條件範本時自動展開提示），並綁定外層 `scroll` 視窗寬度。
+   - `DailyMarketTechnicalUniverseV4View` 與 `DailyMarketTechnicalUniversePriceViewV1`：標題列與來源準備區首列接入 `"⋯"` 按鈕，將 `載入更多`、`產製選股結果`、`續跑選股產製`、`取消背景工作`、長路徑與 pins 明細收進向下展開抽屜，並保留 `從目前資料庫產製官方選股版本` 於首列。
+   - `DailyMarketTechnicalOfficialDispositionView`、`MaView`、`RevenueView`、`CompositeView`、`CompositeViewV2`：統一補齊 `screenerSourcePreparation` 與 `screenerAdvancedConditions` `objectName`（並修復 `MaView` 原先以 `technicalOfficialMaSourceBox` 覆寫 `screenerSourcePreparation` 導致外層工作區無法自動收合來源準備區的問題），將 `catalog_list` 高度上限收斂至 110–115px，綁定 `page_scroll` 視窗寬度，並為資格／法規揭露長文加上 `"⋯"` 切換鈕。
+4. **個股研究、回測結果、自選清單、每日市場研究、投組、研究時間軸、證據覆盤、數據更新與運作狀態**：
+   - `StockResearchReportView`：各章節分頁 `QScrollArea` 全面綁定 `bind_scroll_area_viewport_width`；「保存判斷」分頁的「明確選擇此股的保存推薦來源」收斂為單一主控制列＋動作列＋`decision_source_more_button ("⋯")` 說明抽屜。
+   - `BacktestResultPanel`：頂部查詢列將「保存策略版本與假設」與「Paper 檢查點（模擬）」收納至 `lookup_more_button ("⋯")`（程式觸發展開時自動同步顯示）。
+   - `WatchlistView`：頂部批次操作列新增 `bookmarks_more_button ("⋯")` 控制三大研究書籤群組（技術母體、價格研究、個人 H20）的展開／收合。
+   - `DailyMarketResearchView`、`ResearchTimelineView`、`EvidenceReviewView`、`DecisionQualityView`、`ForwardPerformanceView`、`EvidenceOperationsHistoryView`、`PortfolioView`、`UpdateView`、`RuntimeView`：全面綁定頁面／篩選區 `QScrollArea` 視窗寬度，並將次要靜態說明、資料庫路徑複製列、週報 working-copy／Action Item 進階工具及排程狀態篩選收納至 `"⋯"` 抽屜。
+   - **QSS 解析錯誤修復**：修復 `create_more_actions_button` 多行樣式字串中多餘未跳脫之 `}}`，徹底根除應用啟動時 `Could not parse stylesheet of object QToolButton` 警告。
+
+### 2. 驗證結果
+- **Scoped mypy（22 個修改原始碼檔）**：**0 issues**。
+- **Update Tab Validator**：`python scripts/qa_validate_update_tab.py` **25 passed, 0 failed, 4 skipped**。
+- **Industry Theme Map & Stock Lookup 全套**：`tests/test_ui_qt_industry_theme_map_view.py`（64 passed）、`tests/test_ui_qt_theme_catalog_loading.py`（10 passed）、`tests/test_industry_theme_main_navigation.py`（8 passed）、`tests/test_ui_qt_industry_theme_stock_lookup.py`（6 passed）、`tests/test_ui_qt_theme_research_clear.py`（7 passed）共 **95 passed**。
+- **Unified Screener & Technical Official Views**：`tests/test_ui_qt_unified_screener_workspace.py`、`tests/test_ui_qt_technical_official_ma_view.py`、`tests/test_ui_qt_current_selection_production.py` 及價格／複合選股定向測試共 **46 passed**。
+- **Stock Research Report & Workspace**：`tests/test_ui_qt_stock_research_report.py`、`tests/test_ui_qt_stock_research_v2_layout.py`、`tests/test_ui_qt_stock_research_workspace.py`、`tests/test_ui_qt_personal_recommendation_choice.py` 共 **137 passed**。
+- **Research Timeline & Forward Performance**：`tests/test_ui_qt_research_timeline_view.py`、`tests/test_ui_qt_forward_performance_view.py` 共 **27 passed**。
+- **Evidence Review, Runtime, Watchlist & Backtest Diagnostics**：`tests/test_ui_qt_evidence_review_dashboards.py`、`tests/test_ui_qt_runtime_view.py`、`tests/test_ui_qt_watchlist_layout.py`、`tests/test_ui_qt_backtest_trade_diagnostics.py` 共 **160 passed**。
+- **Daily Market Research & Portfolio View**：`tests/test_ux04_05_daily_market_research_view.py`、`tests/test_ui_qt_portfolio_view.py` 共 **116 passed**。
+- **Update View Workbench & Layout Helpers**：`tests/test_ui_qt_update_view_workbench.py`（102 passed）+ `tests/test_ui_qt_layout_helpers.py`（13 passed，含新增 `bind_scroll_area_viewport_width` 與 `create_more_actions_button` 單元測試）共 **115 passed**。

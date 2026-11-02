@@ -407,5 +407,3 @@ def _require_fail_closed(payload: Mapping[str, Any], label: str) -> None:
     for field in ("source_acceptance", "formal_source_acceptance"):
         if field in payload:
             _require(payload.get(field) is False, f"{label} {field} must be false")
-
-\n

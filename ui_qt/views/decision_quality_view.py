@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -23,6 +24,10 @@ from ui_qt.decision_quality_labels import label_with_raw_value
 from ui_qt.models.decision_quality_table_model import DecisionQualityTableModel
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.date_filter_edit import OptionalDateFilterEdit, date_filter_value
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+)
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -140,13 +145,29 @@ class DecisionQualityView(QWidget):
         self.filter_scroll_area.setWidgetResizable(True)
         self.filter_scroll_area.setFrameShape(QScrollArea.NoFrame)
         self.filter_scroll_area.setWidget(filter_box)
+        bind_scroll_area_viewport_width(self.filter_scroll_area, filter_box)
         filter_panel = QWidget()
         filter_panel.setObjectName("decisionQualityFilterPanel")
         filter_panel_layout = QVBoxLayout(filter_panel)
         filter_panel_layout.setContentsMargins(0, 0, 0, 0)
         filter_panel_layout.setSpacing(8)
         filter_panel_layout.addWidget(self.filter_scroll_area, stretch=1)
-        filter_panel_layout.addWidget(self.refresh_button, stretch=0)
+        filter_actions_row = QHBoxLayout()
+        filter_actions_row.setContentsMargins(0, 0, 0, 0)
+        filter_actions_row.setSpacing(6)
+        filter_actions_row.addWidget(self.refresh_button, stretch=1)
+        self.filter_hints_more_button = create_more_actions_button(
+            "展開篩選範圍說明",
+            targets=[self.symbol_scope_hint, self.min_score_scope_hint],
+            expanded=True,
+            tooltip_collapsed="展開篩選範圍說明",
+            tooltip_expanded="收合篩選範圍說明",
+            object_name="decisionQualityFilterHintsMoreButton",
+            accessible_name="展開或收合決策品質篩選範圍說明",
+            parent=filter_panel,
+        )
+        filter_actions_row.addWidget(self.filter_hints_more_button, stretch=0)
+        filter_panel_layout.addLayout(filter_actions_row)
         self.filter_panel = filter_panel
         self._update_filter_panel_height_limit()
         body.addWidget(filter_panel)

@@ -12,11 +12,15 @@ from PySide6.QtGui import QFont
 import pandas as pd
 from typing import Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.screening_service import ScreeningService
 from app_module.watchlist_service import WatchlistService
 from ui_qt.widgets.info_button import InfoButton
-from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.table_style import apply_financial_table_style, clamp_table_column_widths
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 from ui_qt.shared_market_research_consumer import SharedStockResearchMixin
 
@@ -264,6 +268,7 @@ class WeakStocksView(SharedStockResearchMixin, QWidget):
         
         # 調整列寬
         self.stocks_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.stocks_table)
         if '弱勢理由' in df.columns:
             reason_col_idx = list(df.columns).index('弱勢理由')
             self.stocks_table.setColumnWidth(reason_col_idx, 300)
@@ -338,8 +343,8 @@ class WeakStocksView(SharedStockResearchMixin, QWidget):
             
         except Exception as e:
             import traceback
-            error_msg = f"刷新弱勢股失敗：\n{str(e)}\n\n{traceback.format_exc()}"
-            QMessageBox.critical(self, "錯誤", error_msg)
+            logger.error(f"[WeakStocksView] 刷新弱勢股失敗: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "錯誤", f"刷新弱勢股失敗：{e}\n\n（詳細錯誤請查看日誌）")
             self.stocks_model = PandasTableModel(self._empty_frame(), red_positive_columns={'跌幅%'})
             self.stocks_table.setModel(self.stocks_model)
             self.refresh_btn.setVisible(False)
@@ -395,8 +400,6 @@ class WeakStocksView(SharedStockResearchMixin, QWidget):
                         'stock_name': stock_name
                     })
                 except Exception as e:
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.warning(f"處理第 {row} 行股票數據時出錯: {e}")
                     continue
         
@@ -409,8 +412,8 @@ class WeakStocksView(SharedStockResearchMixin, QWidget):
                     QMessageBox.warning(self, "提示", "選中的股票已在觀察清單中")
             except Exception as e:
                 import traceback
-                error_msg = f"加入觀察清單失敗：\n{str(e)}\n\n{traceback.format_exc()}"
-                QMessageBox.critical(self, "錯誤", error_msg)
+                logger.error(f"[WeakStocksView] 加入觀察清單失敗: {e}\n{traceback.format_exc()}")
+                QMessageBox.critical(self, "錯誤", f"加入觀察清單失敗：{e}\n\n（詳細錯誤請查看日誌）")
     
     def _on_selection_changed(self):
         """表格選擇改變"""
@@ -421,6 +424,7 @@ class WeakStocksView(SharedStockResearchMixin, QWidget):
         self.stocks_model = PandasTableModel(self._empty_frame(), red_positive_columns={'跌幅%'})
         self.stocks_table.setModel(self.stocks_model)
         self.stocks_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.stocks_table)
         self._set_status_label(
             self.status_label,
             "尚未載入：請點擊「載入數據」按鈕開始計算",

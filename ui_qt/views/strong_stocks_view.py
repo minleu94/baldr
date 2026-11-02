@@ -14,12 +14,16 @@ from PySide6.QtGui import QFont
 import pandas as pd
 from typing import Any, Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.screening_service import ScreeningService
 from app_module.watchlist_service import WatchlistService
 from ui_qt.widgets.info_button import InfoButton
-from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.table_style import apply_financial_table_style, clamp_table_column_widths
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 from ui_qt.shared_market_research_consumer import SharedStockResearchMixin
 
@@ -331,6 +335,7 @@ class StrongStocksView(SharedStockResearchMixin, QWidget):
         
         # 調整列寬
         self.stocks_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.stocks_table)
         if '推薦理由' in df.columns:
             reason_col_idx = list(df.columns).index('推薦理由')
             self.stocks_table.setColumnWidth(reason_col_idx, 300)
@@ -611,6 +616,7 @@ class StrongStocksView(SharedStockResearchMixin, QWidget):
         self._search_result_loaded = False
         self._apply_stocks_search()
         self.stocks_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.stocks_table)
         self.universe_label.setText("Universe: -")
         self._set_screening_controls_busy(False)
         self._set_status_label(
@@ -762,8 +768,6 @@ class StrongStocksView(SharedStockResearchMixin, QWidget):
                         'stock_name': stock_name
                     })
                 except Exception as e:
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.warning(f"處理第 {row} 行股票數據時出錯: {e}")
                     continue
         
@@ -776,8 +780,8 @@ class StrongStocksView(SharedStockResearchMixin, QWidget):
                     QMessageBox.warning(self, "提示", "選中的股票已在觀察清單中")
             except Exception as e:
                 import traceback
-                error_msg = f"加入觀察清單失敗：\n{str(e)}\n\n{traceback.format_exc()}"
-                QMessageBox.critical(self, "錯誤", error_msg)
+                logger.error(f"[StrongStocksView] 加入觀察清單失敗: {e}\n{traceback.format_exc()}")
+                QMessageBox.critical(self, "錯誤", f"加入觀察清單失敗：{e}\n\n（詳細錯誤請查看日誌）")
     
     def load_data_if_needed(self):
         """如果需要，載入數據（當 tab 被點擊時調用）"""

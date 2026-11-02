@@ -10,6 +10,8 @@ from datetime import datetime
 from decimal import Decimal
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
     ensure_visible_rows,
     set_scroll_content_constraints,
 )
@@ -135,6 +137,7 @@ class RuntimeView(QWidget):
         self.content_widget = content_widget
         outer_layout.addWidget(self.content_scroll)
         self.content_scroll.setWidget(content_widget)
+        bind_scroll_area_viewport_width(self.content_scroll, content_widget)
 
         main_layout = QVBoxLayout(content_widget)
         main_layout.setContentsMargins(10, 8, 10, 10)
@@ -259,7 +262,10 @@ class RuntimeView(QWidget):
         self.operations_state_filter.currentIndexChanged.connect(
             self._render_scheduled_operations
         )
-        operations_layout.addWidget(self.operations_summary_label)
+        operations_header_row = QHBoxLayout()
+        operations_header_row.setContentsMargins(0, 0, 0, 0)
+        operations_header_row.setSpacing(6)
+        operations_header_row.addWidget(self.operations_summary_label, stretch=1)
         self.operations_distribution_label = QLabel(
             "本次已保存狀態快照：尚未讀取"
         )
@@ -274,6 +280,18 @@ class RuntimeView(QWidget):
         self.operations_distribution_label.setSizePolicy(
             QSizePolicy.Ignored, QSizePolicy.Preferred
         )
+        self.operations_filter_more_button = create_more_actions_button(
+            "展開排程狀態篩選與分布說明",
+            targets=[self.operations_distribution_label, self.operations_state_filter],
+            expanded=False,
+            tooltip_collapsed="展開排程狀態篩選與分布說明",
+            tooltip_expanded="收合排程狀態篩選與分布說明",
+            object_name="runtimeOperationsFilterMoreButton",
+            accessible_name="展開或收合營運排程狀態篩選與分布說明",
+            parent=self.operations_group,
+        )
+        operations_header_row.addWidget(self.operations_filter_more_button, stretch=0)
+        operations_layout.addLayout(operations_header_row)
         operations_layout.addWidget(self.operations_distribution_label)
         self.operations_distribution_bar = QWidget()
         self.operations_distribution_bar.setObjectName(

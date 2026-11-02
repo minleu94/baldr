@@ -9,7 +9,7 @@ from ui_qt.views.live_research_gap_view import LiveResearchGapView
 from ui_qt.views.scheduled_evidence_status_view import ScheduledEvidenceStatusView
 from ui_qt.views.signal_decay_view import SignalDecayView
 from ui_qt.widgets.evidence_boundary_banner import EvidenceBoundaryBanner
-from ui_qt.widgets.layout_helpers import create_scroll_area
+from ui_qt.widgets.layout_helpers import create_more_actions_button, create_scroll_area
 
 
 class EvidenceReviewView(QWidget):
@@ -41,8 +41,23 @@ class EvidenceReviewView(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
         self.boundary_banner = EvidenceBoundaryBanner("任何 demote / retire candidate 都只代表人工覆盤候選，不會自動執行。")
-        layout.addWidget(self.boundary_banner)
         self._add_database_path_row(layout)
+        banner_row = QHBoxLayout()
+        banner_row.setContentsMargins(0, 0, 0, 0)
+        banner_row.setSpacing(6)
+        banner_row.addWidget(self.boundary_banner, stretch=1)
+        self.db_path_more_button = create_more_actions_button(
+            "展開資料庫路徑與複製工具",
+            targets=[self.db_path_row_widget],
+            expanded=False,
+            tooltip_collapsed="展開資料庫路徑與複製工具",
+            tooltip_expanded="收合資料庫路徑與複製工具",
+            object_name="evidenceReviewDbPathMoreButton",
+            accessible_name="展開或收合資料庫路徑與複製工具",
+            parent=content,
+        )
+        banner_row.addWidget(self.db_path_more_button, stretch=0)
+        layout.insertLayout(0, banner_row)
         self.tabs = QTabWidget()
 
         # 1. 今日決策
@@ -97,7 +112,10 @@ class EvidenceReviewView(QWidget):
         )
 
     def _add_database_path_row(self, layout: QVBoxLayout) -> None:
-        row = QHBoxLayout()
+        self.db_path_row_widget = QWidget()
+        self.db_path_row_widget.setObjectName("evidenceReviewDbPathRow")
+        row = QHBoxLayout(self.db_path_row_widget)
+        row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
         path_text = self.evidence_db_path or "未提供"
         self.evidence_db_path_label = QLabel(f"目前資料庫：{path_text}")
@@ -113,7 +131,7 @@ class EvidenceReviewView(QWidget):
         self.copy_db_path_button.setToolTip("複製目前 Evidence Review 實際讀取的 SQLite 路徑")
         self.copy_db_path_button.clicked.connect(self._copy_database_path)
         row.addWidget(self.copy_db_path_button)
-        layout.addLayout(row)
+        layout.addWidget(self.db_path_row_widget)
 
     def _copy_database_path(self) -> None:
         if self.evidence_db_path:

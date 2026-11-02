@@ -116,6 +116,8 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
     ensure_visible_rows,
     set_scroll_content_constraints,
 )
@@ -1355,6 +1357,7 @@ class StockResearchReportView(QWidget):
         scroll.setMinimumSize(0, 0)
         scroll.setObjectName(f"stockResearchScroll_{page_id}")
         scroll.setWidget(inner)
+        bind_scroll_area_viewport_width(scroll, inner)
         scroll.setAccessibleName(f"{title}內容")
         self.tabs.addTab(scroll, title)
         self._page_layouts[page_id] = layout
@@ -4374,13 +4377,35 @@ class StockResearchReportView(QWidget):
         detail_layout = QVBoxLayout(detail_panel)
         detail_layout.setContentsMargins(0, 0, 0, 0)
         detail_layout.addWidget(self._wrapped_label("詳細圖表與原表；日期、品質及來源沿用原 DTO。"))
+        inst_groups = metric_visuals("法人原觀測", report.institutional)
+        tier_groups = shareholding_tier_visuals(report.shareholding)
+        credit_groups = metric_visuals("信用原觀測", report.credit)
+        shareholding_groups = metric_visuals("集保原觀測", report.shareholding)
+        flow_groups = flow_visuals(report.flows)
+
+        primary_groups = []
+        secondary_groups = []
+        if inst_groups:
+            primary_groups.append(inst_groups[0])
+            secondary_groups.extend(inst_groups[1:])
+        if credit_groups:
+            primary_groups.append(credit_groups[0])
+            secondary_groups.extend(credit_groups[1:])
+        if tier_groups:
+            primary_groups.append(tier_groups[0])
+            secondary_groups.extend(tier_groups[1:])
+        elif shareholding_groups:
+            primary_groups.append(shareholding_groups[0])
+            secondary_groups.extend(shareholding_groups[1:])
+        if flow_groups:
+            primary_groups.append(flow_groups[0])
+            secondary_groups.extend(flow_groups[1:])
+        if tier_groups and shareholding_groups:
+            secondary_groups.extend(shareholding_groups)
+
         self._add_research_visuals(
             detail_layout,
-            (*metric_visuals("法人原觀測", report.institutional),
-             *shareholding_tier_visuals(report.shareholding),
-             *metric_visuals("信用原觀測", report.credit),
-             *metric_visuals("集保原觀測", report.shareholding),
-             *flow_visuals(report.flows)),
+            (*primary_groups, *secondary_groups),
             "目前沒有同日、同來源且已知單位的籌碼數值可繪圖；原表仍可查。",
         )
         if report.flows:
@@ -4404,7 +4429,7 @@ class StockResearchReportView(QWidget):
                 350,
             )
         else:
-            detail_layout.addWidget(self._missing_panel("沒有可用分點 row；請檢查 broker_flows 更新狀態。"))
+            detail_layout.addWidget(self._missing_panel("目前無可用分點籌碼資料；可至「資料與更新」檢查分點更新狀態。"))
 
         detail_layout.addWidget(
             self._render_metric_group(
@@ -4439,7 +4464,7 @@ class StockResearchReportView(QWidget):
         self._add_flow_facet(facets, "法人", report.institutional, section="flows", opener=open_details)
         self._add_flow_facet(facets, "信用", report.credit, section="flows", opener=open_details)
         self._add_flow_facet(facets, "集保", report.shareholding, section="flows", opener=open_details)
-        branch_value = "缺少分點 row" if not report.flows else f"原順序 {len(report.flows)} 列"
+        branch_value = "無分點資料" if not report.flows else f"原順序 {len(report.flows)} 列"
         branch_date = (report.flows[0].data_date or "資料日未知") if report.flows else "未知"
         self._add_flow_facet(facets, "分點", (), section="flows", opener=open_details,
                              value_override=branch_value, date_override=branch_date,
@@ -5092,15 +5117,12 @@ class StockResearchReportView(QWidget):
         self.saved_source_combo.addItem("請明確選擇；不自動套用最新結果", None)
         for option in report.saved_source_options:
             self.saved_source_combo.addItem(f"{option.label}｜決策 {option.decision_date or '未知'}｜資料 {option.data_date or '未知'}", option.result_id)
-        source_layout.addWidget(self.saved_source_combo)
         self.use_saved_source_button = QPushButton("載入選定來源")
         self.use_saved_source_button.setObjectName("stockResearchUseSavedSource")
         self.use_saved_source_button.clicked.connect(self._use_saved_source)
-        source_layout.addWidget(self.use_saved_source_button)
         self.create_analysis_button = QPushButton(f"前往推薦分析，分析 {report.stock_code} 並保存")
         self.create_analysis_button.setObjectName("stockResearchCreateAnalysis")
         self.create_analysis_button.clicked.connect(lambda: self.createAnalysisRequested.emit(self._active_code))
-        source_layout.addWidget(self.create_analysis_button)
         self.current_ml_mode_button = QPushButton("查看當下獨立 ML 研究（保留保存 Advice）")
         self.current_ml_mode_button.setObjectName("stockResearchCurrentMLMode")
         self.current_ml_mode_button.setToolTip(
@@ -5111,7 +5133,6 @@ class StockResearchReportView(QWidget):
             self.context is None
             or self.context.ml_scope_mode != "current_stock_research"
         )
-        source_layout.addWidget(self.current_ml_mode_button)
         saved_context = self._saved_decision_context
         self.saved_ml_mode_button = QPushButton("返回此股已選保存來源與 Advice")
         self.saved_ml_mode_button.setObjectName("stockResearchSavedDecisionMode")
@@ -5126,8 +5147,31 @@ class StockResearchReportView(QWidget):
                 and self.context.ml_scope_mode == "selected_saved_decision"
             )
         )
-        source_layout.addWidget(self.saved_ml_mode_button)
-        source_layout.addWidget(self._wrapped_label("只列查詢日期內且包含此股的最近保存來源（最多檢查30筆）。若無來源，可建立指定股票分析、保存後返回本頁重新載入，再明確選取。未入選時仍保留排除理由，不補造 Advice／ML 機率。"))
+        self.saved_source_hint_label = self._wrapped_label(
+            "只列查詢日期內且包含此股的最近保存來源（最多檢查30筆）。若無來源，可建立指定股票分析、保存後返回本頁重新載入，再明確選取。未入選時仍保留排除理由，不補造 Advice／ML 機率。"
+        )
+        self.decision_source_more_button = create_more_actions_button(
+            targets=[self.saved_source_hint_label],
+            expanded=False,
+            tooltip_collapsed="展開保存推薦來源說明",
+            tooltip_expanded="收合保存推薦來源說明",
+            accessible_name="保存推薦來源更多說明",
+        )
+        self.decision_source_more_button.setObjectName("stockResearchDecisionSourceMore")
+        source_primary_row = QHBoxLayout()
+        source_primary_row.setContentsMargins(0, 0, 0, 0)
+        source_primary_row.addWidget(self.saved_source_combo, 1)
+        source_primary_row.addWidget(self.use_saved_source_button, 0)
+        source_primary_row.addWidget(self.decision_source_more_button, 0)
+        source_layout.addLayout(source_primary_row)
+        source_actions_row = QHBoxLayout()
+        source_actions_row.setContentsMargins(0, 0, 0, 0)
+        source_actions_row.addWidget(self.create_analysis_button)
+        source_actions_row.addWidget(self.current_ml_mode_button)
+        source_actions_row.addWidget(self.saved_ml_mode_button)
+        source_actions_row.addStretch(1)
+        source_layout.addLayout(source_actions_row)
+        source_layout.addWidget(self.saved_source_hint_label)
         layout.addWidget(source_group)
         advice_group = QGroupBox("Advice（沿用既有 AdviceComposer）")
         advice_layout = QVBoxLayout(advice_group)

@@ -11,6 +11,10 @@ import re
 from typing import Literal, cast
 
 from PySide6.QtCore import QModelIndex, Qt, Signal
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+)
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -414,13 +418,27 @@ class DailyMarketTechnicalOfficialDispositionCompositeView(QWidget):
         body_widget = QWidget()
         body = QVBoxLayout(body_widget)
         self.page_scroll.setWidget(body_widget)
+        bind_scroll_area_viewport_width(self.page_scroll, body_widget)
         outer.addWidget(self.page_scroll, 1)
-        body.addWidget(QLabel("官方市場狀態與技術條件研究"))
+
         disclosure = QLabel(
             "研究用途；只讀明示保存版本。官方資料可得時間未知，不具歷史 PIT 資格。"
             "不監看來源，也不建立或更新來源。"
         )
         disclosure.setWordWrap(True)
+        self.disclosure_more_button = create_more_actions_button(
+            targets=[disclosure],
+            expanded=False,
+            tooltip_collapsed="展開官方市場與技術條件研究限制說明",
+            tooltip_expanded="收合官方市場與技術條件研究限制說明",
+            accessible_name="官方市場與技術條件研究說明展開切換",
+        )
+        self.disclosure_more_button.setObjectName("technicalOfficialCompositeDisclosureMore")
+        heading_row = QHBoxLayout()
+        heading_row.setContentsMargins(0, 0, 0, 0)
+        heading_row.addWidget(QLabel("官方市場狀態與技術條件研究"), 1)
+        heading_row.addWidget(self.disclosure_more_button, 0)
+        body.addLayout(heading_row)
         body.addWidget(disclosure)
 
         source_box = QGroupBox("已保存來源（需明確選取）")
@@ -449,6 +467,7 @@ class DailyMarketTechnicalOfficialDispositionCompositeView(QWidget):
         source_layout.addLayout(source_actions)
         self.catalog_list = QListWidget()
         self.catalog_list.setMinimumHeight(90)
+        self.catalog_list.setMaximumHeight(115)
         source_layout.addWidget(self.catalog_list)
         self.open_candidate_button = QPushButton("核驗並開啟所選保存版本")
         self.open_candidate_button.clicked.connect(self.open_selected_candidate)

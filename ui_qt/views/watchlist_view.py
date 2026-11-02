@@ -95,8 +95,12 @@ from app_module.daily_market_technical_universe_v4_bookmark import (
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.info_button import InfoButton
-from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
-from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.layout_helpers import (
+    create_more_actions_button,
+    create_scroll_area,
+    ensure_visible_rows,
+)
+from ui_qt.widgets.table_style import apply_financial_table_style, clamp_table_column_widths
 from ui_qt.widgets.technical_universe_bookmark_controls import (
     DailyMarketTechnicalUniverseV4BookmarkControls,
 )
@@ -627,6 +631,22 @@ class WatchlistView(QWidget):
         self._personal_h20_bookmark_hint.setWordWrap(True)
         self._personal_h20_bookmark_layout.addWidget(self._personal_h20_bookmark_hint)
         next_actions_layout.addWidget(self.personal_h20_bookmark_group)
+        self.bookmarks_more_button = create_more_actions_button(
+            targets=[
+                technical_bookmark_group,
+                price_bookmark_group,
+                self.personal_h20_bookmark_group,
+            ],
+            expanded=False,
+            tooltip_collapsed="展開技術、價格與個人 H20 研究收藏",
+            tooltip_expanded="收合技術、價格與個人 H20 研究收藏",
+            accessible_name="研究收藏更多區塊",
+        )
+        self.bookmarks_more_button.setObjectName("watchlistBookmarksMore")
+        batch_actions_layout.insertWidget(
+            batch_actions_layout.count() - 1,
+            self.bookmarks_more_button,
+        )
         candidate_layout.addWidget(next_actions_group)
 
         observation_group = QGroupBox("收藏理由與查看狀態")
@@ -1551,6 +1571,7 @@ class WatchlistView(QWidget):
             logger.info("[WatchlistView._load_watchlist] 調整列寬...")
             try:
                 self.stocks_table.resizeColumnsToContents()
+                clamp_table_column_widths(self.stocks_table)
                 logger.info("[WatchlistView._load_watchlist] 列寬調整完成")
             except Exception as e:
                 logger.error(f"[WatchlistView._load_watchlist] 調整列寬失敗: {e}")
@@ -1612,10 +1633,9 @@ class WatchlistView(QWidget):
             logger.error(f"[WatchlistView._load_watchlist] 錯誤訊息: {str(e)}")
             logger.error(f"[WatchlistView._load_watchlist] 詳細堆疊追蹤:\n{traceback.format_exc()}")
             
-            error_msg = f"載入觀察清單失敗：\n{str(e)}\n\n{traceback.format_exc()}"
             if _request_generation is None:
                 try:
-                    QMessageBox.critical(self, "錯誤", error_msg)
+                    QMessageBox.critical(self, "錯誤", f"載入觀察清單失敗：{e}\n\n（詳細錯誤請查看日誌）")
                 except Exception:
                     logger.error("[WatchlistView._load_watchlist] 無法顯示錯誤對話框")
             

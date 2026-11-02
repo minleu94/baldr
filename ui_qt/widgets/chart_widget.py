@@ -601,8 +601,8 @@ class EquityCurveWidget(QWidget):
                 buy_equity_values, 
                 marker='^', 
                 s=100, 
-                color='#4CAF50', 
-                edgecolors='darkgreen',
+                color=MIDNIGHT_ANALYST.market_up,
+                edgecolors='darkred',
                 linewidths=1.5,
                 alpha=0.8,
                 label='買點',
@@ -617,8 +617,8 @@ class EquityCurveWidget(QWidget):
                 sell_equity_values, 
                 marker='v', 
                 s=100, 
-                color='#F44336', 
-                edgecolors='darkred',
+                color=MIDNIGHT_ANALYST.market_down,
+                edgecolors='darkgreen',
                 linewidths=1.5,
                 alpha=0.8,
                 label='賣點',
@@ -661,7 +661,7 @@ class EquityCurveWidget(QWidget):
             fontsize=9,
             verticalalignment='top',
             horizontalalignment='right',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.9, edgecolor='gray', linewidth=1),
+            bbox=dict(boxstyle='round,pad=0.5', facecolor=MIDNIGHT_ANALYST.surface_2, alpha=0.9, edgecolor=MIDNIGHT_ANALYST.border, linewidth=1),
             zorder=101,  # 確保資訊框也在最上層
             visible=False
         )
@@ -995,7 +995,7 @@ class DrawdownCurveWidget(QWidget):
                     xy=(max_dd_date, max_dd_value),
                     xytext=(10, -30),
                     textcoords='offset points',
-                    bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7),
+                    bbox=dict(boxstyle='round,pad=0.5', facecolor=MIDNIGHT_ANALYST.surface_2, edgecolor=MIDNIGHT_ANALYST.status_warning, alpha=0.9),
                     arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
                 )
             
@@ -1009,7 +1009,7 @@ class DrawdownCurveWidget(QWidget):
                 if recovery_days:
                     self.ax.text(0.02, 0.98, f'恢復天數: {recovery_days} 天', 
                                transform=self.ax.transAxes, verticalalignment='top',
-                               bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.7))
+                               bbox=dict(boxstyle='round', facecolor=MIDNIGHT_ANALYST.surface_2, edgecolor=MIDNIGHT_ANALYST.status_success, alpha=0.9))
         
         self.ax.set_title('回撤曲線 (Drawdown Curve)', fontsize=12, fontweight='bold')
         self.ax.set_xlabel('日期')
@@ -1064,7 +1064,7 @@ class TradeReturnHistogramWidget(QWidget):
         sample_count = len(values)
         if sample_count < 10:
             positions = np.arange(sample_count)
-            colors = ['#F44336' if value < 0 else '#4CAF50' for value in values]
+            colors = [MIDNIGHT_ANALYST.market_down if value < 0 else MIDNIGHT_ANALYST.market_up for value in values]
             max_abs = max(float(np.max(np.abs(values))), 1.0)
             self.ax.axvline(0, color='#64748b', linewidth=1.5)
             self.ax.barh(positions, values, color=colors, alpha=0.85)
@@ -1101,7 +1101,7 @@ class TradeReturnHistogramWidget(QWidget):
                 edgecolor='black',
             )
             for patch, bin_val in zip(patches, bins[:-1]):
-                patch.set_facecolor('#F44336' if bin_val < 0 else '#4CAF50')
+                patch.set_facecolor(MIDNIGHT_ANALYST.market_down if bin_val < 0 else MIDNIGHT_ANALYST.market_up)
             self.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
             self.ax.set_title(

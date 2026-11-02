@@ -28,6 +28,8 @@ from PySide6.QtGui import QFont, QColor, QPalette, QBrush
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
     create_scroll_area,
     ensure_visible_rows,
     set_scroll_content_constraints,
@@ -66,7 +68,7 @@ from portfolio_module import PortfolioValidationError
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.info_button import InfoButton
-from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.table_style import apply_financial_table_style, clamp_table_column_widths
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.strategy_version_service import StrategyVersionService
@@ -2174,6 +2176,10 @@ class PortfolioView(QWidget):
             "研究結果與安全邊界在此頁內垂直捲動；不會改變 Portfolio 或 Paper identity。"
         )
         self.user_declared_research_scroll_area.setWidget(self.user_declared_research_widget)
+        bind_scroll_area_viewport_width(
+            self.user_declared_research_scroll_area,
+            self.user_declared_research_widget,
+        )
         user_declared_layout.addWidget(self.user_declared_research_scroll_area)
         right_widget.addTab(user_declared_tab, "聲明持倉研究")
 
@@ -2238,10 +2244,16 @@ class PortfolioView(QWidget):
         self.paper_readiness_summary_label = QLabel("尚未讀取 Paper Portfolio 狀態。")
         self.paper_readiness_summary_label.setWordWrap(True)
         self.paper_readiness_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.paper_readiness_summary_label.setStyleSheet(
+            f"background-color: {MIDNIGHT_ANALYST.surface_2}; border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 6px 10px;"
+        )
         paper_layout.addWidget(self.paper_readiness_summary_label)
         self.paper_identity_label = QLabel("帳戶命名空間：未知｜最新 snapshot ID：未知")
         self.paper_identity_label.setWordWrap(True)
         self.paper_identity_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.paper_identity_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px; padding: 0 4px;"
+        )
         paper_layout.addWidget(self.paper_identity_label)
         self.paper_snapshot_empty_label = QLabel("")
         self.paper_snapshot_empty_label.setWordWrap(True)
@@ -2252,6 +2264,9 @@ class PortfolioView(QWidget):
         self.paper_weekly_summary_label = QLabel("最近週報尚未計算。")
         self.paper_weekly_summary_label.setWordWrap(True)
         self.paper_weekly_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.paper_weekly_summary_label.setStyleSheet(
+            f"background-color: {MIDNIGHT_ANALYST.surface_2}; border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 6px 10px;"
+        )
         paper_layout.addWidget(self.paper_weekly_summary_label)
         self.paper_diagnostics_toggle = QPushButton("展開來源與完整診斷")
         self.paper_diagnostics_toggle.setCheckable(True)
@@ -2312,6 +2327,10 @@ class PortfolioView(QWidget):
             self.portfolio_research_scenario_widget
         )
         right_widget.addTab(self.portfolio_research_scenario_scroll, "配置研究封存")
+        bind_scroll_area_viewport_width(
+            self.portfolio_research_scenario_scroll,
+            self.portfolio_research_scenario_widget,
+        )
 
         # Right Tab 4: 情境與壓力測試（唯讀研究投影）
         stress_tab = QWidget()
@@ -4190,6 +4209,7 @@ class PortfolioView(QWidget):
         self.paper_snapshot_table.show()
         self.paper_snapshot_table.setModel(PandasTableModel(pd.DataFrame(rows, columns=columns)))
         self.paper_snapshot_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.paper_snapshot_table)
 
     def _load_paper_weekly_evidence(self) -> None:
         """只讀重建最近 Paper 週報；沒有完整 evidence 時明確顯示原因。"""
@@ -4562,6 +4582,7 @@ class PortfolioView(QWidget):
             "選取一列持倉，可核對該列同次報價來源與完整 SHA-256。"
         )
         self.stress_positions_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.stress_positions_table)
         source_column = columns.index("報價來源")
         self.stress_positions_table.setColumnWidth(source_column, 230)
         self._constrain_stress_positions_table_height()
@@ -4699,6 +4720,7 @@ class PortfolioView(QWidget):
         history_model.setVisibleColumns([column for column in columns if column != "__record_id"])
         self.stress_history_table.setModel(history_model)
         self.stress_history_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.stress_history_table)
         self._constrain_stress_history_table_height()
         self.stress_history_table.selectionModel().currentRowChanged.connect(
             self._show_stress_history_record
@@ -4888,6 +4910,7 @@ class PortfolioView(QWidget):
         self.stress_history_positions_table.setVisible(bool(rows))
         self.stress_history_positions_table.setSortingEnabled(False)
         self.stress_history_positions_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.stress_history_positions_table)
         self.stress_history_positions_table.selectionModel().currentRowChanged.connect(
             self._show_stress_history_position
         )
@@ -5536,6 +5559,7 @@ class PortfolioView(QWidget):
 
             self.positions_table.setModel(self.positions_model)
             self.positions_table.resizeColumnsToContents()
+            clamp_table_column_widths(self.positions_table)
             # 空帳仍保留零列模型與上方明確空狀態摘要；隱藏空表以免佔用首屏高度。
             self.positions_table.setVisible(bool(positions))
             # 少量持倉時表格不占用大片空白，讓下方操作與證據更容易到達。
@@ -6022,6 +6046,7 @@ class PortfolioView(QWidget):
         )
         self.trades_table.setModel(self.trades_model)
         self.trades_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.trades_table)
         self.trades_table.setEnabled(True)
         selection_model = self.trades_table.selectionModel()
         if selection_model is not None:
@@ -7082,6 +7107,7 @@ class PortfolioView(QWidget):
                     self.lbl_chip_detail_empty.setVisible(False)
                     self.chip_detail_table.setVisible(True)
                     self.chip_detail_table.resizeColumnsToContents()
+                    clamp_table_column_widths(self.chip_detail_table)
                     self.chip_detail_table.resizeRowsToContents()
                     visible_rows = min(5, len(detail_data))
                     table_height = (

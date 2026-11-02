@@ -116,6 +116,9 @@ def _double_click_member(
     application,
     stock_id: str,
 ) -> None:
+    if view.member_table.isHidden():
+        view.member_view_combo.setCurrentIndex(view.member_view_combo.findData("table"))
+        application.processEvents()
     row = next(
         row_index
         for row_index in range(view.member_table.rowCount())
@@ -127,6 +130,12 @@ def _double_click_member(
     view.member_table.scrollToItem(item)
     application.processEvents()
     position = view.member_table.visualItemRect(item).center()
+    outer_position = view.scroll_area.viewport().mapFromGlobal(
+        member_viewport.mapToGlobal(position)
+    )
+    outer_scroll = view.scroll_area.verticalScrollBar()
+    outer_scroll.setValue(outer_scroll.value() + outer_position.y() - 60)
+    application.processEvents()
     assert member_viewport.rect().contains(position)
     assert member_viewport.visibleRegion().contains(position)
     QTest.mouseClick(member_viewport, Qt.MouseButton.LeftButton, pos=position)
@@ -308,6 +317,9 @@ def test_lookup_fields_shrink_and_remain_in_narrow_scrolling_page():
     view.resize(420, 700)
     view.set_snapshot(_lookup_snapshot())
     view.show()
+    assert not view.filter_more_button.isChecked()
+    assert view.filter_search_container.isHidden()
+    view.filter_more_button.click()
     _wait_until(
         application,
         lambda: view.stock_lookup_input.isVisible(),

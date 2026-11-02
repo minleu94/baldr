@@ -31,7 +31,11 @@ from ui_qt.views.evidence_review_view import EvidenceReviewView
 from ui_qt.views.forward_performance_view import ForwardPerformanceView
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.table_style import apply_financial_table_style
-from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
+from ui_qt.widgets.layout_helpers import (
+    create_more_actions_button,
+    create_scroll_area,
+    ensure_visible_rows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -702,6 +706,21 @@ class BacktestResultPanel(QWidget):
             self.paper_checkpoint_button,
         ):
             lookup_row.addWidget(button)
+        self.lookup_more_button = create_more_actions_button(
+            targets=[self.saved_strategy_version_button, self.paper_checkpoint_button],
+            expanded=False,
+            tooltip_collapsed="展開策略版本與 Paper 快照補充查找",
+            tooltip_expanded="收合策略版本與 Paper 快照補充查找",
+            accessible_name="補充查找更多入口",
+        )
+        self.lookup_more_button.setObjectName("backtestResultLookupMore")
+        self.saved_strategy_version_button.toggled.connect(
+            lambda checked: self.lookup_more_button.setChecked(True) if checked else None
+        )
+        self.paper_checkpoint_button.toggled.connect(
+            lambda checked: self.lookup_more_button.setChecked(True) if checked else None
+        )
+        lookup_row.addWidget(self.lookup_more_button)
         lookup_row.addStretch(1)
         layout.addLayout(lookup_row)
 

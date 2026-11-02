@@ -173,8 +173,11 @@ def shareholding_tier_visuals(metrics: Sequence[StockMetricDTO]) -> tuple[Resear
                     Decimal(ratio) if ratio is not None else None,
                     f"可用 {metric.available_at or '未知'}｜品質 {metric.quality}"))
         if any(point.value is not None for point in points):
-            result.append(ResearchVisualGroup("集保持股級距分布", "基點", tuple(points),
-                f"資料日 {metric.data_as_of}｜1–15級原比例；100基點為1%。"
+            result.append(ResearchVisualGroup(
+                "集保持股級距分布", "基點", tuple(points),
+                f"資料日 {metric.data_as_of}｜1–15級原比例；100基點為1%（散戶至大戶由左至右分布）。"
                 "調整與合計列只留原表，不與級距混比；這是一個快照，不是大戶增減趨勢。缺值不補零。",
-                detail_note=f"來源 {metric.source_id}｜品質及可用時間見逐筆明細。"))
+                chart_kind="column",
+                detail_note=f"來源 {metric.source_id}｜品質及可用時間見逐筆明細。",
+            ))
     return tuple(result)

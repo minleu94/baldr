@@ -53,7 +53,7 @@ PRIMARY_NAVIGATION = (
     WorkspaceDefinition("explore", "探索與研究", "radar"),
     WorkspaceDefinition("investment", "我的投資", "briefcase"),
     WorkspaceDefinition("laboratory", "策略實驗室", "replay"),
-    WorkspaceDefinition("systems", "⚙ 系統管理", "database-sync"),
+    WorkspaceDefinition("systems", "系統管理", "database-sync"),
 )
 
 

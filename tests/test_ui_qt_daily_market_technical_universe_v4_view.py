@@ -121,7 +121,10 @@ def test_v4_result_actions_are_grouped_and_reflow_at_narrow_width(app: QApplicat
 
         view.resize(600, 800)
         app.processEvents()
-        assert view.action_groups_layout.direction() == QBoxLayout.Direction.TopToBottom
+        assert view.action_groups_layout.direction() == QBoxLayout.Direction.TopToBottom, (
+            f"view width={view.width()}, minimum width={view.minimumWidth()}, "
+            f"minimum size hint={view.minimumSizeHint().width()}"
+        )
         assert view.comparison_controls_layout.direction() == QBoxLayout.Direction.TopToBottom
         assert view.apply_button.geometry().right() < (
             view.apply_button.parentWidget().contentsRect().right()

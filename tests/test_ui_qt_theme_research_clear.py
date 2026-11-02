@@ -195,7 +195,7 @@ def test_clear_research_resets_view_and_discards_confirmed_draft(monkeypatch):
         assert "尚未載入" in view.overview_label.text()
         assert "已清除" in view.status_label.text()
         assert not view.clear_research_button.isEnabled()
-        assert view.open_snapshot_button.isEnabled()
+        assert not view.open_snapshot_button.isEnabled()
         assert selected_stocks == []
     finally:
         view.shutdown()

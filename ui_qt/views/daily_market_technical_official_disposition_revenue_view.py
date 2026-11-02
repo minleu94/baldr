@@ -14,6 +14,10 @@ from typing import Literal, cast
 from uuid import uuid4
 
 from PySide6.QtCore import QModelIndex, Qt, Signal
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+)
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -812,11 +816,11 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         body = QVBoxLayout(self.page_body)
         body.setContentsMargins(5, 6, 5, 6)
         self.page_scroll.setWidget(self.page_body)
+        bind_scroll_area_viewport_width(self.page_scroll, self.page_body)
         outer.addWidget(self.page_scroll, 1)
 
         heading = QLabel("官方來源與月營收 YoY 全母體研究")
         heading.setStyleSheet("font-size: 18px; font-weight: 600;")
-        body.addWidget(heading)
         self.qualification_label = QLabel(
             "月營收僅 current-observed；官方與月營收 available_at 未知；不具歷史 PIT 資格。"
             "每次查詢、翻頁或收藏重開都使用明示保存版本，不自動尋找 latest，也不執行 producer。"
@@ -824,6 +828,19 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.qualification_label.setWordWrap(True)
         if self.daily_source_config_v2 is not None:
             self.qualification_label.setText("每日快照沿固定接受選定：月營收 cohort 小時可用；官方／整體 F17 可用時間仍未知，current-only、非歷史 PIT。翻頁與收藏重開沿原版本，不重新選批次。")
+        self.qualification_more_button = create_more_actions_button(
+            targets=[self.qualification_label],
+            expanded=False,
+            tooltip_collapsed="展開月營收與官方來源研究限制說明",
+            tooltip_expanded="收合月營收與官方來源研究限制說明",
+            accessible_name="月營收研究限制說明展開切換",
+        )
+        self.qualification_more_button.setObjectName("technicalOfficialRevenueQualificationMore")
+        heading_row = QHBoxLayout()
+        heading_row.setContentsMargins(0, 0, 0, 0)
+        heading_row.addWidget(heading, 1)
+        heading_row.addWidget(self.qualification_more_button, 0)
+        body.addLayout(heading_row)
         body.addWidget(self.qualification_label)
 
         source_box = QGroupBox("明示保存來源")
@@ -915,6 +932,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.catalog_list = QListWidget()
         self.catalog_list.setObjectName("technicalOfficialRevenueCatalog")
         self.catalog_list.setMinimumHeight(105)
+        self.catalog_list.setMaximumHeight(115)
         source_layout.addWidget(self.catalog_list)
         self.open_candidate_button = QPushButton("核驗所選 F17 版本並執行全母體查詢")
         self.open_candidate_button.setMinimumHeight(36)

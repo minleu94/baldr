@@ -76,3 +76,28 @@ def apply_financial_table_style(table: QTableView, *, minimum_visible_rows: int 
     table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
     table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
     ensure_visible_rows(table, minimum_visible_rows)
+
+
+def clamp_table_column_widths(
+    table: QTableView, *, max_width: int = 280, min_width: int = 50
+) -> None:
+    """防止欄寬因長字串或自動調整而無限制撐爆。"""
+    header = table.horizontalHeader()
+    if header is None:
+        return
+    model = table.model()
+    col_count = model.columnCount() if model is not None else header.count()
+    for col in range(col_count):
+        current_size = header.sectionSize(col)
+        if current_size > max_width:
+            header.resizeSection(col, max_width)
+        elif 0 < current_size < min_width:
+            header.resizeSection(col, min_width)
+
+
+def resize_and_clamp_columns(
+    table: QTableView, *, max_width: int = 280, min_width: int = 50
+) -> None:
+    """自動調整欄寬並限制極大值，避免橫向捲動失控。"""
+    table.resizeColumnsToContents()
+    clamp_table_column_widths(table, max_width=max_width, min_width=min_width)

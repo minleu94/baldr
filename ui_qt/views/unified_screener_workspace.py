@@ -23,6 +23,10 @@ from PySide6.QtWidgets import (
     QWidget,
     QScrollArea,
 )
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+)
 from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
 from ui_qt.theme import MIDNIGHT_ANALYST
 
@@ -481,7 +485,7 @@ class UnifiedScreenerWorkspace:
         self.condition_recipe_layout = QGridLayout()
         self.condition_recipe_layout.setContentsMargins(0, 0, 0, 0)
         self.condition_recipe_layout.setHorizontalSpacing(6)
-        self.condition_recipe_layout.setVerticalSpacing(4)
+        self.condition_recipe_layout.setVerticalSpacing(2)
         self.condition_recipe_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.condition_recipe_buttons: dict[str, QPushButton] = {}
         for key, label in (
@@ -524,7 +528,16 @@ class UnifiedScreenerWorkspace:
         self.save_filter_status_label.setWordWrap(False)
         self.save_filter_status_label.hide()
         quick_routes_header.addWidget(self.save_filter_button)
+        self.header_more_button = create_more_actions_button(
+            targets=[self.condition_recipe_hint, self.disabled_note],
+            expanded=False,
+            tooltip_collapsed="展開研究線索篩選說明與操作提示",
+            tooltip_expanded="收合研究線索篩選說明與操作提示",
+            accessible_name="研究線索篩選更多說明",
+        )
+        self.header_more_button.setObjectName("unifiedScreenerHeaderMore")
         quick_routes_header.addWidget(self.save_filter_status_label)
+        quick_routes_header.addWidget(self.header_more_button)
         self.quick_routes.addLayout(self.condition_recipe_layout)
         self.quick_routes.addWidget(self.condition_recipe_hint)
         self.quick_routes.addWidget(self.disabled_note)
@@ -541,10 +554,14 @@ class UnifiedScreenerWorkspace:
         layout.setSpacing(2)
         layout.addWidget(self.combo)
         layout.addLayout(self.quick_routes)
+        scope_funnel_row = QHBoxLayout()
+        scope_funnel_row.setContentsMargins(0, 0, 0, 0)
+        scope_funnel_row.setSpacing(8)
         self.research_scope = QLabel("研究用｜查詢截至：未提供；逐筆資料日依原表。")
         self.research_scope.setWordWrap(True)
-        layout.addWidget(self.research_scope)
-        layout.addWidget(self.funnel)
+        scope_funnel_row.addWidget(self.research_scope, 1)
+        scope_funnel_row.addWidget(self.funnel, 0)
+        layout.addLayout(scope_funnel_row)
         layout.addWidget(self.funnel_details)
         self.source_details = CollapsibleSectionPanel(
             "資料日期、來源版本與可用條件", collapsed=True
@@ -560,6 +577,7 @@ class UnifiedScreenerWorkspace:
             raise ValueError("RecommendationView.result_scroll is not in main_splitter")
         self.splitter.replaceWidget(index, self.host)
         layout.addWidget(self.scroll, 1)
+        bind_scroll_area_viewport_width(self.scroll, self.tabs)
         self.tabs.tabBar().hide()
 
         self._sources: list[_Source] = []
@@ -919,6 +937,8 @@ class UnifiedScreenerWorkspace:
         )
         self._set_usage_note(self.disabled_note, "warning")
         self._condition_recipe_pending_widget = matches[0].widget
+        if hasattr(self, "header_more_button"):
+            self.header_more_button.setChecked(True)
         source_status = getattr(matches[0].widget, "status", None)
         status_reader = getattr(source_status, "text", None)
         self._condition_recipe_pending_status_text = (

@@ -15,10 +15,13 @@ from PySide6.QtWidgets import (
     QListView,
     QTableView,
     QTabWidget,
+    QToolButton,
     QStyle,
     QWidget,
 )
 from shiboken6 import getCppPointer
+
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 class CurrentPageSizeTabWidget(QTabWidget):
@@ -159,6 +162,123 @@ def set_scroll_content_constraints(
 
     if not horizontal_scroll:
         content.setMinimumWidth(0)
+
+
+class _ViewportWidthBinder(QObject):
+    """將 QScrollArea 內部容器最大寬度綁定至 viewport 寬度，防止寬子元件造成右側截斷。"""
+
+    def __init__(self, scroll_area: QScrollArea, content: QWidget) -> None:
+        super().__init__(scroll_area)
+        self._scroll_ref: ReferenceType[QScrollArea] = ref(scroll_area)
+        self._content_ref: ReferenceType[QWidget] = ref(content)
+
+    def sync_width(self) -> None:
+        scroll_area = self._scroll_ref()
+        content = self._content_ref()
+        if scroll_area is None or content is None:
+            return
+        try:
+            if not scroll_area.isVisible():
+                content.setMaximumWidth(16777215)
+                return
+            viewport = scroll_area.viewport()
+            width = viewport.width() if viewport is not None else 0
+            if width >= 200:
+                content.setMaximumWidth(width)
+            else:
+                content.setMaximumWidth(16777215)
+        except RuntimeError:
+            return
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+            QEvent.Type.Hide,
+            QEvent.Type.LayoutRequest,
+        ):
+            self.sync_width()
+        return False
+
+
+def bind_scroll_area_viewport_width(
+    scroll_area: QScrollArea,
+    content: QWidget | None = None,
+) -> None:
+    """關閉頁面級 QScrollArea 水平捲軸並強制內容寬度跟隨 viewport，消除右側截字／按鈕裁切。"""
+
+    target = content if content is not None else scroll_area.widget()
+    scroll_area.setWidgetResizable(True)
+    scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    if target is None:
+        return
+    target.setMinimumWidth(0)
+    binder = _ViewportWidthBinder(scroll_area, target)
+    setattr(scroll_area, "_viewport_width_binder", binder)
+    viewport = scroll_area.viewport()
+    if viewport is not None:
+        viewport.installEventFilter(binder)
+    scroll_area.installEventFilter(binder)
+    binder.sync_width()
+
+
+def create_more_actions_button(
+    tooltip: str = "展開更多操作與詳細狀態",
+    *,
+    targets: Sequence[QWidget] | None = None,
+    expanded: bool = False,
+    tooltip_collapsed: str | None = None,
+    tooltip_expanded: str | None = None,
+    object_name: str = "",
+    accessible_name: str = "展開或收合更多操作",
+    parent: QWidget | None = None,
+) -> QToolButton:
+    """建立統一的『⋯』向下展開功能鍵，收納低頻按鈕與路徑狀態。"""
+
+    collapsed_tip = tooltip_collapsed or tooltip
+    expanded_tip = tooltip_expanded or tooltip
+    button = QToolButton(parent)
+    if object_name:
+        button.setObjectName(object_name)
+    button.setText("⋯")
+    button.setCheckable(True)
+    button.setChecked(expanded)
+    button.setAccessibleName(accessible_name)
+    button.setToolTip(expanded_tip if expanded else collapsed_tip)
+    button.setMinimumSize(30, 26)
+    button.setStyleSheet(
+        f"QToolButton {{\n"
+        f"    background: {MIDNIGHT_ANALYST.surface_2};\n"
+        f"    color: {MIDNIGHT_ANALYST.text_primary};\n"
+        f"    border: 1px solid {MIDNIGHT_ANALYST.border};\n"
+        f"    border-radius: {MIDNIGHT_ANALYST.radius_badge}px;\n"
+        f"    padding: 2px 8px;\n"
+        f"    font-weight: 800;\n"
+        f"    font-size: 13px;\n"
+        f"}}\n"
+        f"QToolButton:hover {{\n"
+        f"    border-color: {MIDNIGHT_ANALYST.accent};\n"
+        f"    background: {MIDNIGHT_ANALYST.surface_1};\n"
+        f"}}\n"
+        f"QToolButton:checked {{\n"
+        f"    background: {MIDNIGHT_ANALYST.accent};\n"
+        f"    color: {MIDNIGHT_ANALYST.app_bg};\n"
+        f"    border-color: {MIDNIGHT_ANALYST.accent};\n"
+        f"}}"
+    )
+    if targets is not None:
+        target_tuple = tuple(targets)
+        for widget in target_tuple:
+            widget.setVisible(expanded)
+
+        def _on_toggled(checked: bool) -> None:
+            for widget in target_tuple:
+                widget.setVisible(checked)
+            button.setToolTip(expanded_tip if checked else collapsed_tip)
+
+        button.toggled.connect(_on_toggled)
+    return button
+
 
 
 def ensure_visible_rows(view: QAbstractItemView, rows: int = 5) -> int:

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QPushButton,
     QSizePolicy,
@@ -81,6 +82,7 @@ from ui_qt.models.saved_research_page_table_model import (
 from ui_qt.widgets.daily_market_technical_v4_production_setup import (
     DailyMarketTechnicalV4DeferredProductionSetup,
 )
+from ui_qt.widgets.layout_helpers import create_more_actions_button
 
 
 _STATE_LABELS: dict[str, str] = {
@@ -828,13 +830,13 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self._comparison_basket: list[_ComparisonBasketItem] = []
 
         root = QVBoxLayout(self)
+        root.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(7)
 
         title = QLabel("每日技術規則研究（v4 保存來源）")
         title.setObjectName("dailyMarketTechnicalUniverseV4Title")
         title.setAccessibleName("每日技術規則研究 v4")
-        root.addWidget(title)
         self.disclaimer = QLabel(
             "只瀏覽已保存的研究來源；五項規則顯示符合、不符合或未知。"
             "母體是來源清冊，不代表全市場、推薦、獲利機率或交易指令。"
@@ -843,6 +845,19 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.disclaimer.setObjectName("dailyMarketTechnicalUniverseV4Disclaimer")
         self.disclaimer.setWordWrap(True)
         self.disclaimer.setTextFormat(Qt.TextFormat.PlainText)
+        self.disclaimer_more_button = create_more_actions_button(
+            targets=[self.disclaimer],
+            expanded=False,
+            tooltip_collapsed="展開研究限制與來源聲明",
+            tooltip_expanded="收合研究限制與來源聲明",
+            accessible_name="每日技術規則研究說明展開切換",
+        )
+        self.disclaimer_more_button.setObjectName("dailyMarketTechnicalUniverseV4DisclaimerMore")
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.addWidget(title, 1)
+        title_row.addWidget(self.disclaimer_more_button, 0)
+        root.addLayout(title_row)
         root.addWidget(self.disclaimer)
 
         source_group = QGroupBox("已保存來源")
@@ -865,40 +880,56 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.cancel_button = QPushButton("取消目前工作")
         self.cancel_button.setObjectName("dailyMarketTechnicalUniverseV4Cancel")
         self.cancel_button.setEnabled(False)
-        source_layout.addWidget(self.sources, 0, 0, 1, 4)
-        source_layout.addWidget(self.refresh_button, 0, 4)
-        source_layout.addWidget(self.load_button, 1, 0)
-        source_layout.addWidget(self.more_sources_button, 1, 1)
-        source_layout.addWidget(self.produce_button, 1, 2)
-        source_layout.addWidget(self.resume_button, 1, 3)
-        source_layout.addWidget(self.cancel_button, 1, 4)
         self.produce_official_button = QPushButton("產製技術與官方來源研究")
         self.produce_official_button.setObjectName("dailyMarketTechnicalUniverseV4ProduceOfficial")
         self.produce_official_button.setAccessibleName("選取官方保存來源並產製新研究")
         self.produce_official_button.setToolTip("先選取官方來源指標檔，再核對新研究母體與截止時間。")
-        source_layout.addWidget(self.produce_official_button, 2, 0, 1, 5)
         self.official_publication_status = QLabel("官方聯合研究尚未產製。")
         self.official_publication_status.setWordWrap(True)
         self.official_publication_status.setTextFormat(Qt.TextFormat.PlainText)
         self.official_publication_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.official_publication_status.setObjectName("dailyMarketTechnicalUniverseV4OfficialPublication")
-        source_layout.addWidget(self.official_publication_status, 3, 0, 1, 5)
-        source_layout.setColumnStretch(0, 1)
-        root.addWidget(source_group)
-
         self.source_pins = QLabel("尚未選取保存來源。")
         self.source_pins.setObjectName("dailyMarketTechnicalUniverseV4SourcePins")
         self.source_pins.setAccessibleName("保存來源狀態與完整識別資訊")
         self.source_pins.setWordWrap(True)
         self.source_pins.setTextFormat(Qt.TextFormat.PlainText)
         self.source_pins.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        root.addWidget(self.source_pins)
         self.verified_pins = QLabel("尚未嚴格核驗查詢來源。")
         self.verified_pins.setObjectName("dailyMarketTechnicalUniverseV4VerifiedPins")
         self.verified_pins.setAccessibleName("目前表格使用的嚴格核驗來源 pin")
         self.verified_pins.setWordWrap(True)
         self.verified_pins.setTextFormat(Qt.TextFormat.PlainText)
         self.verified_pins.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.source_more_button = create_more_actions_button(
+            targets=[
+                self.more_sources_button,
+                self.produce_button,
+                self.resume_button,
+                self.cancel_button,
+                self.official_publication_status,
+                self.source_pins,
+                self.verified_pins,
+            ],
+            expanded=False,
+            tooltip_collapsed="展開更多來源管理動作與核驗識別資訊",
+            tooltip_expanded="收合更多來源管理動作與核驗識別資訊",
+            accessible_name="已保存來源更多操作",
+        )
+        self.source_more_button.setObjectName("dailyMarketTechnicalUniverseV4SourceMore")
+        source_layout.addWidget(self.sources, 0, 0, 1, 2)
+        source_layout.addWidget(self.load_button, 0, 2)
+        source_layout.addWidget(self.refresh_button, 0, 3)
+        source_layout.addWidget(self.produce_official_button, 0, 4)
+        source_layout.addWidget(self.source_more_button, 0, 5)
+        source_layout.addWidget(self.more_sources_button, 1, 0)
+        source_layout.addWidget(self.produce_button, 1, 1)
+        source_layout.addWidget(self.resume_button, 1, 2)
+        source_layout.addWidget(self.cancel_button, 1, 3, 1, 3)
+        source_layout.addWidget(self.official_publication_status, 2, 0, 1, 6)
+        source_layout.setColumnStretch(0, 1)
+        root.addWidget(source_group)
+        root.addWidget(self.source_pins)
         root.addWidget(self.verified_pins)
 
         filter_group = QGroupBox("全母體規則篩選與排序")
@@ -1096,6 +1127,8 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(self.status)
         root.addStretch(1)
+        # 允許父級 viewport 縮窄後觸發 resizeEvent，讓操作群組先切直向再量測最小寬度。
+        self.setMinimumWidth(0)
 
         self.refresh_button.clicked.connect(self.refresh_sources)
         self.more_sources_button.clicked.connect(lambda: self.refresh_sources(append=True))

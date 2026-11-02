@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from PySide6.QtCore import QModelIndex, Qt, Signal
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -806,6 +810,7 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         content.setMinimumWidth(0)
         content_layout = QVBoxLayout(content)
         self.page_scroll.setWidget(content)
+        bind_scroll_area_viewport_width(self.page_scroll, content)
         outer.addWidget(self.page_scroll)
         title = QLabel("官方處置與市場對照研究（已保存資料）")
         title.setObjectName("technicalOfficialDispositionTitle")
@@ -816,6 +821,7 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         content_layout.addWidget(self.status_label)
 
         catalog_box = QGroupBox("已保存的研究來源")
+        catalog_box.setObjectName("screenerSourcePreparation")
         catalog_layout = QVBoxLayout(catalog_box)
         catalog_controls = QHBoxLayout()
         self.choose_root_button = QPushButton("選擇保存來源資料夾")
@@ -829,15 +835,26 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         catalog_controls.addWidget(self.choose_root_button)
         catalog_controls.addWidget(self.refresh_catalog_button)
         catalog_controls.addWidget(self.next_catalog_button)
+        self.catalog_more_button = create_more_actions_button(
+            targets=[self.next_catalog_button, self.cancel_button],
+            expanded=False,
+            tooltip_collapsed="展開下一頁來源與取消背景工作操作",
+            tooltip_expanded="收合下一頁來源與取消背景工作操作",
+            accessible_name="已保存的研究來源更多操作",
+        )
+        self.catalog_more_button.setObjectName("technicalOfficialDispositionCatalogMore")
         catalog_controls.addWidget(self.cancel_button)
+        catalog_controls.addWidget(self.catalog_more_button)
         catalog_layout.addLayout(catalog_controls)
         self.catalog_list = QListWidget()
         self.catalog_list.setObjectName("technicalOfficialDispositionCatalog")
+        self.catalog_list.setMaximumHeight(110)
         self.catalog_list.currentRowChanged.connect(self._catalog_row_changed)
         catalog_layout.addWidget(self.catalog_list)
         content_layout.addWidget(catalog_box)
 
         filters_box = QGroupBox("全母體條件（先過濾與全域排序，再分頁）")
+        filters_box.setObjectName("screenerAdvancedConditions")
         filters_layout = QVBoxLayout(filters_box)
         filters = QGridLayout()
         filters_layout.addLayout(filters)

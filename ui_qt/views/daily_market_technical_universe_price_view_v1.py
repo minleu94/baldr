@@ -69,6 +69,7 @@ from ui_qt.models.saved_research_page_table_model import (
     SavedResearchPageTableModel,
     SavedResearchTableRow,
 )
+from ui_qt.widgets.layout_helpers import create_more_actions_button
 from ui_qt.workers.task_worker import TaskWorker
 
 
@@ -536,7 +537,6 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         root.setSpacing(7)
         title = QLabel("價格研究：從保存資料篩選股票")
         title.setObjectName("dailyMarketTechnicalPriceV1Title")
-        root.addWidget(title)
         self.workflow_help = QLabel(
             "① 查詢版本，只選一份保存資料，再按「嚴格核驗並載入」。\n"
             "② 可填股票代碼（例如 2330,2317）；留空會顯示該批次已處理的全部股票。\n"
@@ -546,7 +546,6 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.workflow_help.setObjectName("dailyMarketTechnicalPriceV1WorkflowHelp")
         self.workflow_help.setWordWrap(True)
         self.workflow_help.setTextFormat(Qt.TextFormat.PlainText)
-        root.addWidget(self.workflow_help)
         self.disclaimer = QLabel(
             "只讀已保存 v4 批次中的收盤價；不查最新行情。來源名冊不保證涵蓋當日全市場，"
             "批次研究基準日也不是每股實際價格日。此來源契約的可得時間未知，"
@@ -555,6 +554,20 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.disclaimer.setObjectName("dailyMarketTechnicalPriceV1Disclaimer")
         self.disclaimer.setWordWrap(True)
         self.disclaimer.setTextFormat(Qt.TextFormat.PlainText)
+        self.help_more_button = create_more_actions_button(
+            targets=[self.workflow_help, self.disclaimer],
+            expanded=False,
+            tooltip_collapsed="展開價格研究步驟說明與來源聲明",
+            tooltip_expanded="收合價格研究步驟說明與來源聲明",
+            accessible_name="價格研究說明展開切換",
+        )
+        self.help_more_button.setObjectName("dailyMarketTechnicalPriceV1HelpMore")
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.addWidget(title, 1)
+        title_row.addWidget(self.help_more_button, 0)
+        root.addLayout(title_row)
+        root.addWidget(self.workflow_help)
         root.addWidget(self.disclaimer)
 
         source_group = QGroupBox("步驟 1：選擇來源批次（一次一份）")
@@ -576,11 +589,21 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.cancel_button = QPushButton("取消目前工作")
         self.cancel_button.setObjectName("dailyMarketTechnicalPriceV1Cancel")
         self.cancel_button.setEnabled(False)
-        source_layout.addWidget(self.sources, 0, 0, 1, 3)
+        self.source_more_button = create_more_actions_button(
+            targets=[self.more_sources_button, self.cancel_button],
+            expanded=False,
+            tooltip_collapsed="展開更多版本與取消工作操作",
+            tooltip_expanded="收合更多版本與取消工作操作",
+            accessible_name="價格研究來源更多操作",
+        )
+        self.source_more_button.setObjectName("dailyMarketTechnicalPriceV1SourceMore")
+        source_layout.addWidget(self.sources, 0, 0, 1, 2)
+        source_layout.addWidget(self.load_source_button, 0, 2)
         source_layout.addWidget(self.refresh_sources_button, 0, 3)
-        source_layout.addWidget(self.more_sources_button, 0, 4)
-        source_layout.addWidget(self.load_source_button, 1, 0)
+        source_layout.addWidget(self.source_more_button, 0, 4)
+        source_layout.addWidget(self.more_sources_button, 1, 0)
         source_layout.addWidget(self.cancel_button, 1, 1)
+        source_layout.setColumnStretch(0, 1)
         root.addWidget(source_group)
 
         self.source_summary = QLabel(

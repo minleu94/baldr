@@ -25,6 +25,7 @@ from app_module.daily_market_technical_universe_price_comparison_v1 import (
     DailyMarketTechnicalUniversePriceSelectionV1,
 )
 from ui_qt.views.stock_research_report_view import StockResearchReportView
+from ui_qt.theme.tokens import MIDNIGHT_ANALYST
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.pinned_stock_research_notes_widget import PinnedStockResearchNotesWidget
@@ -91,9 +92,9 @@ class StockResearchWorkspace(QWidget):
         self.product_action_row = QWidget(self)
         self.product_action_row.setObjectName("stockResearchWorkspaceActionRow")
         self.product_action_row.setStyleSheet(
-            "QPushButton { padding: 1px 6px; min-height: 19px; font-size: 9pt; }"
-            "QPushButton:checked { color: #174ea6; background: #e8f0fe; "
-            "border: 1px solid #8ab4f8; font-weight: 600; }"
+            f"QPushButton {{ padding: 1px 6px; min-height: 19px; font-size: 9pt; color: {MIDNIGHT_ANALYST.text_secondary}; }}"
+            f"QPushButton:checked {{ color: {MIDNIGHT_ANALYST.text_primary}; background: {MIDNIGHT_ANALYST.surface_3}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.accent}; font-weight: 600; }}"
         )
         product_action_layout = QBoxLayout(
             QBoxLayout.Direction.LeftToRight, self.product_action_row
@@ -107,7 +108,7 @@ class StockResearchWorkspace(QWidget):
         navigation_layout.setContentsMargins(0, 0, 0, 0)
         navigation_layout.setSpacing(4)
         navigation_label = QLabel("研究區段", navigation_group)
-        navigation_label.setStyleSheet("color: #5f6368; font-weight: 600;")
+        navigation_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-weight: 600;")
         navigation_layout.addWidget(navigation_label)
 
         self.favorite_action = QPushButton("加入自選", self.product_action_row)
@@ -132,7 +133,7 @@ class StockResearchWorkspace(QWidget):
         operations_layout.setContentsMargins(0, 0, 0, 0)
         operations_layout.setSpacing(4)
         operations_label = QLabel("這檔操作", operations_group)
-        operations_label.setStyleSheet("color: #5f6368; font-weight: 600;")
+        operations_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-weight: 600;")
         operations_layout.addWidget(operations_label)
         self.general_lookup_button.setParent(operations_group)
         operations_layout.addWidget(self.general_lookup_button)

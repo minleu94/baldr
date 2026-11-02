@@ -11,6 +11,10 @@ import time
 from typing import Literal, Protocol, cast
 
 from PySide6.QtCore import QModelIndex, Qt, Signal
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+)
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -496,25 +500,37 @@ class DailyMarketTechnicalOfficialDispositionMaView(QWidget):
         body_margins = body.contentsMargins()
         body.setContentsMargins(5, body_margins.top(), 5, body_margins.bottom())
         self.page_scroll.setWidget(page_body)
+        bind_scroll_area_viewport_width(self.page_scroll, page_body)
         outer.addWidget(self.page_scroll, 1)
 
         heading = QLabel("官方市場／處置與四均線研究")
         heading.setStyleSheet("font-size: 18px; font-weight: 600;")
-        body.addWidget(heading)
         self.qualification_label = QLabel(
             "研究範圍：current-only；官方 available_at 未知；不具歷史 PIT 資格。"
             "來源沿明示保存版本核驗，來源不持續監測。"
         )
         self.qualification_label.setWordWrap(True)
-        body.addWidget(self.qualification_label)
 
         source_box = QGroupBox("保存來源")
         source_box.setObjectName("screenerSourcePreparation")
-        source_box.setObjectName("technicalOfficialMaSourceBox")
         source_layout = QVBoxLayout(source_box)
         self.root_label = QLabel(str(self.bundle_output_root) if self.bundle_output_root else "尚未選擇")
         self.root_label.setObjectName("technicalOfficialMaSourceRoot")
         self.root_label.setWordWrap(True)
+        self.qualification_more_button = create_more_actions_button(
+            targets=[self.qualification_label, self.root_label],
+            expanded=False,
+            tooltip_collapsed="展開研究限制說明與保存來源路徑",
+            tooltip_expanded="收合研究限制說明與保存來源路徑",
+            accessible_name="四均線研究說明與路徑展開切換",
+        )
+        self.qualification_more_button.setObjectName("technicalOfficialMaQualificationMore")
+        heading_row = QHBoxLayout()
+        heading_row.setContentsMargins(0, 0, 0, 0)
+        heading_row.addWidget(heading, 1)
+        heading_row.addWidget(self.qualification_more_button, 0)
+        body.addLayout(heading_row)
+        body.addWidget(self.qualification_label)
         self.choose_root_button = QPushButton("選擇保存來源資料夾")
         self.choose_root_button.setObjectName("technicalOfficialMaChooseRoot")
         self.choose_root_button.clicked.connect(self.choose_bundle_output_root)
@@ -533,6 +549,7 @@ class DailyMarketTechnicalOfficialDispositionMaView(QWidget):
         self.catalog_list = QListWidget()
         self.catalog_list.setObjectName("technicalOfficialMaCatalog")
         self.catalog_list.setMinimumHeight(100)
+        self.catalog_list.setMaximumHeight(115)
         source_layout.addWidget(self.catalog_list)
         candidate_row = QHBoxLayout()
         self.open_candidate_button = QPushButton("核驗並開啟所選保存版本")

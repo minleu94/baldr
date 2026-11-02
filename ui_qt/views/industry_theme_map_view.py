@@ -63,6 +63,11 @@ from app_module.theme_snapshot_catalog import (
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.views.theme_member_navigation import ThemeMemberNavigation
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+    set_scroll_content_constraints,
+)
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.observation_bar_delegate import (
     ObservationBarDelegate,
@@ -222,57 +227,42 @@ class IndustryThemeMapView(QWidget):
     def _build_ui(self) -> None:
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(8)
+        page_layout.setSpacing(6)
 
-        header = QHBoxLayout()
-        self.title_label = QLabel("產業與題材")
-        self.title_label.setAccessibleName("產業與題材頁標題")
-        self.title_label.setStyleSheet(
-            f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 18px; font-weight: 600;"
-        )
-        header.addWidget(self.title_label)
-        header.addStretch(1)
-        self.clear_research_button = QPushButton("清除研究")
-        self.clear_research_button.setObjectName("industryThemeClearResearchButton")
-        self.clear_research_button.setAccessibleName("清除目前題材研究")
-        self.clear_research_button.setToolTip(
-            "只清除此頁目前顯示版本並停止讀取；未保存草稿會在確認後清除，"
-            "已保存筆記與來源檔案不會刪除。"
-        )
-        self.clear_research_button.clicked.connect(self.clear_research)
-        header.addWidget(self.clear_research_button)
-        page_layout.addLayout(header)
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setAccessibleName("產業與題材內容捲動區")
+        self.scroll_container = QWidget()
+        scroll_container_layout = QVBoxLayout(self.scroll_container)
+        scroll_container_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_container_layout.setSpacing(6)
 
         self.version_group = QGroupBox("選擇已保存的題材版本")
         self.version_group.setObjectName("industryThemeVersionPicker")
         version_layout = QVBoxLayout(self.version_group)
-        version_location = QHBoxLayout()
-        version_location.addWidget(QLabel("版本庫"))
-        self.catalog_root_label = QLabel("尚未設定")
-        self.catalog_root_label.setObjectName("industryThemeCatalogRootPath")
-        self.catalog_root_label.setAccessibleName("題材版本庫位置")
-        self.catalog_root_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.catalog_root_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self.catalog_root_label.setWordWrap(True)
-        version_location.addWidget(self.catalog_root_label, 1)
-        self.choose_catalog_root_button = QPushButton("更換版本庫位置…")
-        self.choose_catalog_root_button.setObjectName("industryThemeChooseCatalogRootButton")
-        self.choose_catalog_root_button.setAccessibleName("更換本機題材版本庫位置")
-        self.choose_catalog_root_button.setToolTip(
-            "一般情況使用預設版本庫；只有版本檔存放在其他位置時才需要更換。"
-        )
-        self.choose_catalog_root_button.clicked.connect(self._choose_catalog_root)
-        version_location.addWidget(self.choose_catalog_root_button)
-        version_layout.addLayout(version_location)
+        version_layout.setContentsMargins(10, 6, 10, 6)
+        version_layout.setSpacing(4)
 
         version_controls = QHBoxLayout()
+        version_controls.setSpacing(6)
+        self.title_label = QLabel("產業與題材")
+        self.title_label.setAccessibleName("產業與題材頁標題")
+        self.title_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 16px; font-weight: 700;"
+        )
+        version_controls.addWidget(self.title_label)
         self.catalog_version_combo = QComboBox()
         self.catalog_version_combo.setObjectName("industryThemeSavedVersionCombo")
         self.catalog_version_combo.setAccessibleName("已驗證的題材研究版本")
         self.catalog_version_combo.addItem("正在讀取已保存版本…", None)
         self.catalog_version_combo.currentIndexChanged.connect(self._update_controls)
+        self.catalog_version_combo.setMinimumWidth(0)
+        self.catalog_version_combo.setMinimumContentsLength(14)
+        self.catalog_version_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         self.catalog_version_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
@@ -282,6 +272,24 @@ class IndustryThemeMapView(QWidget):
         self.open_snapshot_button.setAccessibleName("載入清單中所選題材版本")
         self.open_snapshot_button.clicked.connect(self._load_selected_catalog_version)
         version_controls.addWidget(self.open_snapshot_button)
+
+        self.version_more_button = create_more_actions_button(
+            "展開或收合版本庫位置、載入最新可讀、更新清單、清除研究與核驗狀態",
+            object_name="industryThemeVersionMoreButton",
+            accessible_name="展開或收合題材版本更多操作",
+            parent=self.version_group,
+        )
+        version_controls.addWidget(self.version_more_button)
+        version_layout.addLayout(version_controls)
+
+        self.version_more_drawer = QWidget(self.version_group)
+        self.version_more_drawer.setObjectName("industryThemeVersionMoreDrawer")
+        drawer_layout = QVBoxLayout(self.version_more_drawer)
+        drawer_layout.setContentsMargins(0, 4, 0, 0)
+        drawer_layout.setSpacing(4)
+
+        version_actions = QHBoxLayout()
+        version_actions.setSpacing(6)
         self.latest_snapshot_button = QPushButton("載入最新可讀")
         self.latest_snapshot_button.setObjectName("industryThemeLoadLatestButton")
         self.latest_snapshot_button.setAccessibleName("載入最新可讀價量題材版本")
@@ -289,33 +297,73 @@ class IndustryThemeMapView(QWidget):
             "依資料日與保存時間載入版本庫中最新且完整通過既有 reader 的 price-v1。"
         )
         self.latest_snapshot_button.clicked.connect(self.load_latest_snapshot)
-        version_controls.addWidget(self.latest_snapshot_button)
+        version_actions.addWidget(self.latest_snapshot_button)
+
         self.refresh_catalog_button = QPushButton("更新清單")
         self.refresh_catalog_button.setObjectName("industryThemeRefreshCatalogButton")
         self.refresh_catalog_button.setAccessibleName("重新掃描題材已保存版本")
         self.refresh_catalog_button.clicked.connect(self.refresh_catalog_versions)
-        version_controls.addWidget(self.refresh_catalog_button)
-        version_layout.addLayout(version_controls)
+        version_actions.addWidget(self.refresh_catalog_button)
+
+        self.choose_catalog_root_button = QPushButton("更換版本庫位置…")
+        self.choose_catalog_root_button.setObjectName("industryThemeChooseCatalogRootButton")
+        self.choose_catalog_root_button.setAccessibleName("更換本機題材版本庫位置")
+        self.choose_catalog_root_button.setToolTip(
+            "一般情況使用預設版本庫；只有版本檔存放在其他位置時才需要更換。"
+        )
+        self.choose_catalog_root_button.clicked.connect(self._choose_catalog_root)
+        version_actions.addWidget(self.choose_catalog_root_button)
+
+        self.clear_research_button = QPushButton("清除研究")
+        self.clear_research_button.setObjectName("industryThemeClearResearchButton")
+        self.clear_research_button.setAccessibleName("清除目前題材研究")
+        self.clear_research_button.setToolTip(
+            "只清除此頁目前顯示版本並停止讀取；未保存草稿會在確認後清除，"
+            "已保存筆記與來源檔案不會刪除。"
+        )
+        self.clear_research_button.clicked.connect(self.clear_research)
+        version_actions.addWidget(self.clear_research_button)
+        version_actions.addStretch(1)
+        drawer_layout.addLayout(version_actions)
+
+        version_location = QHBoxLayout()
+        version_location.setSpacing(6)
+        version_location.addWidget(QLabel("版本庫"))
+        self.catalog_root_label = QLabel("尚未設定")
+        self.catalog_root_label.setObjectName("industryThemeCatalogRootPath")
+        self.catalog_root_label.setAccessibleName("題材版本庫位置")
+        self.catalog_root_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.catalog_root_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.catalog_root_label.setWordWrap(True)
+        self.catalog_root_label.setMinimumWidth(0)
+        version_location.addWidget(self.catalog_root_label, 1)
+        drawer_layout.addLayout(version_location)
+
         self.catalog_list_status_label = QLabel("版本清單尚未載入。")
         self.catalog_list_status_label.setObjectName("industryThemeCatalogListStatus")
         self.catalog_list_status_label.setAccessibleName("題材版本清單狀態")
         self.catalog_list_status_label.setWordWrap(True)
+        self.catalog_list_status_label.setMinimumWidth(0)
         self.catalog_list_status_label.setTextFormat(Qt.TextFormat.PlainText)
-        version_layout.addWidget(self.catalog_list_status_label)
-        page_layout.addWidget(self.version_group)
+        self.catalog_list_status_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+        drawer_layout.addWidget(self.catalog_list_status_label)
 
         self.status_label = QLabel("尚未載入題材研究版本。")
+        self.status_label.setObjectName("industryThemeStatusLabel")
         self.status_label.setAccessibleName("題材研究版本讀取狀態")
         self.status_label.setWordWrap(True)
+        self.status_label.setMinimumWidth(0)
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
         self.status_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
-        page_layout.addWidget(self.status_label)
+        drawer_layout.addWidget(self.status_label)
 
-        self.scroll_area = QScrollArea(self)
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.scroll_area.setAccessibleName("產業與題材內容捲動區")
+        self.version_more_drawer.setVisible(False)
+        self.version_more_button.toggled.connect(self.version_more_drawer.setVisible)
+        version_layout.addWidget(self.version_more_drawer)
+        scroll_container_layout.addWidget(self.version_group)
+
         self.content = QWidget()
         content_layout = QVBoxLayout(self.content)
         content_layout.setContentsMargins(10, 4, 10, 10)
@@ -761,7 +809,10 @@ class IndustryThemeMapView(QWidget):
 
         self.filter_group = QGroupBox("選擇產業鏈、題材與股票")
         filter_layout = QVBoxLayout(self.filter_group)
+        filter_layout.setContentsMargins(10, 6, 10, 6)
+        filter_layout.setSpacing(4)
         selector_layout = QHBoxLayout()
+        selector_layout.setSpacing(6)
         self.chain_filter = QComboBox()
         self.chain_filter.setAccessibleName("產業鏈篩選")
         self.chain_filter.currentIndexChanged.connect(self._on_chain_changed)
@@ -774,9 +825,25 @@ class IndustryThemeMapView(QWidget):
         selector_layout.addWidget(self.chain_filter, 1)
         selector_layout.addWidget(QLabel("題材"))
         selector_layout.addWidget(self.theme_filter, 2)
+        self.filter_search_container = QWidget(self.filter_group)
+        self.filter_search_container.setObjectName("industryThemeFilterSearchContainer")
+        filter_search_layout = QVBoxLayout(self.filter_search_container)
+        filter_search_layout.setContentsMargins(0, 0, 0, 0)
+        filter_search_layout.setSpacing(4)
+
+        self.filter_more_button = create_more_actions_button(
+            "展開或收合題材名稱搜尋與股票反查列",
+            object_name="industryThemeFilterMoreButton",
+            accessible_name="展開或收合題材搜尋與股票反查",
+            targets=[self.filter_search_container],
+            expanded=False,
+            parent=self.filter_group,
+        )
+        selector_layout.addWidget(self.filter_more_button)
         filter_layout.addLayout(selector_layout)
 
         theme_search_layout = QHBoxLayout()
+        theme_search_layout.setSpacing(4)
         theme_search_layout.addWidget(QLabel("題材名稱搜尋"))
         self.theme_search_input = QLineEdit()
         self.theme_search_input.setObjectName("industryThemeNameSearchInput")
@@ -816,16 +883,22 @@ class IndustryThemeMapView(QWidget):
         self.theme_search_clear_button.setAccessibleName("清除題材名稱搜尋")
         self.theme_search_clear_button.clicked.connect(self.theme_search_input.clear)
         theme_search_layout.addWidget(self.theme_search_clear_button)
-        filter_layout.addLayout(theme_search_layout)
+        filter_search_layout.addLayout(theme_search_layout)
 
         self.theme_search_status_label = QLabel("載入版本後可輸入題材名稱片段。")
         self.theme_search_status_label.setObjectName("industryThemeNameSearchStatus")
         self.theme_search_status_label.setAccessibleName("題材名稱搜尋狀態")
         self.theme_search_status_label.setWordWrap(True)
+        self.theme_search_status_label.setMinimumWidth(0)
         self.theme_search_status_label.setTextFormat(Qt.TextFormat.PlainText)
-        filter_layout.addWidget(self.theme_search_status_label)
+        self.theme_search_status_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
+        self.theme_search_status_label.setVisible(False)
+        filter_search_layout.addWidget(self.theme_search_status_label)
 
         lookup_layout = QHBoxLayout()
+        lookup_layout.setSpacing(4)
         lookup_layout.addWidget(QLabel("股票反查"))
         self.stock_lookup_input = QLineEdit()
         self.stock_lookup_input.setObjectName("industryThemeStockLookupInput")
@@ -860,7 +933,7 @@ class IndustryThemeMapView(QWidget):
             self._locate_selected_stock_lookup_result
         )
         lookup_layout.addWidget(self.stock_lookup_locate_button)
-        filter_layout.addLayout(lookup_layout)
+        filter_search_layout.addLayout(lookup_layout)
 
         self.stock_lookup_status_label = QLabel(
             "尚未載入版本；請先選取本機研究版本。"
@@ -870,8 +943,15 @@ class IndustryThemeMapView(QWidget):
         )
         self.stock_lookup_status_label.setAccessibleName("股票反查狀態")
         self.stock_lookup_status_label.setWordWrap(True)
+        self.stock_lookup_status_label.setMinimumWidth(0)
         self.stock_lookup_status_label.setTextFormat(Qt.TextFormat.PlainText)
-        filter_layout.addWidget(self.stock_lookup_status_label)
+        self.stock_lookup_status_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
+        self.stock_lookup_status_label.setVisible(False)
+        filter_search_layout.addWidget(self.stock_lookup_status_label)
+
+        filter_layout.addWidget(self.filter_search_container)
         content_layout.addWidget(self.filter_group)
 
         self.selected_theme_summary = QLabel("選擇題材以對照原指標與成員。")
@@ -1115,7 +1195,10 @@ class IndustryThemeMapView(QWidget):
 
         content_layout.addStretch(1)
 
-        self.scroll_area.setWidget(self.content)
+        self.content.setMinimumWidth(0)
+        scroll_container_layout.addWidget(self.content, 1)
+        self.scroll_area.setWidget(self.scroll_container)
+        bind_scroll_area_viewport_width(self.scroll_area, self.scroll_container)
         page_layout.addWidget(self.scroll_area, 1)
 
     @Slot(bool)
@@ -2313,6 +2396,9 @@ class IndustryThemeMapView(QWidget):
         else:
             message = "已載入本機版本；代號需完整四碼，名稱可輸入片段。"
         self.stock_lookup_status_label.setText(message)
+        self.stock_lookup_status_label.setVisible(
+            bool(self.stock_lookup_input.text().strip())
+        )
 
     @staticmethod
     def _stock_lookup_selection(value: object) -> tuple[str, str, str, str] | None:
@@ -2344,6 +2430,13 @@ class IndustryThemeMapView(QWidget):
             return
 
         normalized = query.strip()
+        if (
+            normalized
+            and hasattr(self, "filter_more_button")
+            and not self.filter_more_button.isChecked()
+        ):
+            self.filter_more_button.setChecked(True)
+        self.stock_lookup_status_label.setVisible(bool(normalized))
         if not normalized:
             self.stock_lookup_status_label.setText(
                 "請輸入完整四碼代號，或輸入公司名稱片段。"
@@ -2504,6 +2597,12 @@ class IndustryThemeMapView(QWidget):
     def _search_theme_names(self, query: str) -> None:
         """只搜尋目前快照的原題材名稱，結果仍保留各自鏈／題材鍵。"""
         normalized = query.strip().casefold()
+        if (
+            normalized
+            and hasattr(self, "filter_more_button")
+            and not self.filter_more_button.isChecked()
+        ):
+            self.filter_more_button.setChecked(True)
         blocker = QSignalBlocker(self.theme_search_results)
         self.theme_search_results.clear()
         self.theme_search_results.addItem(
@@ -2590,6 +2689,7 @@ class IndustryThemeMapView(QWidget):
                 f"找到 {result_count} 個題材；同名題材分列，請明選結果後定位。"
             )
         self.theme_search_status_label.setText(message)
+        self.theme_search_status_label.setVisible(bool(query))
 
     @Slot()
     def _locate_selected_theme_search_result(self) -> None:
@@ -2804,6 +2904,17 @@ class IndustryThemeMapView(QWidget):
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
+        if (
+            hasattr(self, "scroll_area")
+            and self.scroll_area.isVisible()
+            and self.scroll_area.viewport() is not None
+        ):
+            vp_width = self.scroll_area.viewport().width()
+            if vp_width >= 200:
+                if hasattr(self, "scroll_container"):
+                    self.scroll_container.setMaximumWidth(vp_width)
+                if hasattr(self, "content"):
+                    self.content.setMaximumWidth(vp_width)
         self._arrange_observation_cards()
         if hasattr(self, "return_tiles_grid") and self._return_tile_buttons:
             self._arrange_return_tile_buttons()
@@ -4873,13 +4984,13 @@ class IndustryThemeMapView(QWidget):
         self.member_table.scrollToItem(
             item, QAbstractItemView.ScrollHint.PositionAtCenter
         )
-        self.scroll_area.ensureWidgetVisible(self.members_group, 0, 0)
+        self.scroll_area.ensureWidgetVisible(self.members_group, 0, 80)
         if self.member_view_combo.currentData() == "cards":
             card_button = self._member_card_buttons.get(stock_id)
             if card_button is not None:
-                self.scroll_area.ensureWidgetVisible(card_button, 0, 0)
+                self.scroll_area.ensureWidgetVisible(card_button, 0, 80)
         else:
-            self.scroll_area.ensureWidgetVisible(self.member_table, 0, 0)
+            self.scroll_area.ensureWidgetVisible(self.member_table, 0, 120)
         return True
 
     def _clear_metric_cards(self) -> None:

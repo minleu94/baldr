@@ -24,7 +24,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtTest import QTest
 
 from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
     bounded_initial_window_geometry,
+    create_more_actions_button,
     create_scroll_area,
     ensure_visible_rows,
 )
@@ -396,4 +398,80 @@ def test_scroll_area_can_expose_horizontal_overflow_when_requested():
     finally:
         area.close()
         area.deleteLater()
+        app.processEvents()
+
+
+def test_bind_scroll_area_viewport_width_tracks_viewport_and_prevents_horizontal_overflow():
+    app = _app()
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    wide_child = QWidget()
+    wide_child.setMinimumHeight(40)
+    layout.addWidget(wide_child)
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setWidget(content)
+    bind_scroll_area_viewport_width(area, content)
+    try:
+        area.resize(640, 240)
+        area.show()
+        app.processEvents()
+        assert area.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        assert content.maximumWidth() == area.viewport().width()
+        assert content.width() <= area.viewport().width()
+
+        area.resize(390, 240)
+        app.processEvents()
+        assert content.maximumWidth() == area.viewport().width()
+        assert content.width() <= area.viewport().width()
+    finally:
+        area.close()
+        area.deleteLater()
+        app.processEvents()
+
+
+def test_create_more_actions_button_toggles_targets_and_updates_tooltips():
+    app = _app()
+    parent = QWidget()
+    layout = QVBoxLayout(parent)
+    target_a = QWidget(parent)
+    target_b = QWidget(parent)
+    button = create_more_actions_button(
+        "展開進階選項",
+        targets=[target_a, target_b],
+        expanded=False,
+        tooltip_collapsed="展開進階選項",
+        tooltip_expanded="收合進階選項",
+        object_name="testMoreActionsButton",
+        accessible_name="展開或收合進階選項",
+        parent=parent,
+    )
+    layout.addWidget(button)
+    layout.addWidget(target_a)
+    layout.addWidget(target_b)
+    try:
+        parent.show()
+        app.processEvents()
+        assert button.text() == "⋯"
+        assert not button.isChecked()
+        assert target_a.isHidden()
+        assert target_b.isHidden()
+        assert button.toolTip() == "展開進階選項"
+
+        button.click()
+        app.processEvents()
+        assert button.isChecked()
+        assert not target_a.isHidden()
+        assert not target_b.isHidden()
+        assert button.toolTip() == "收合進階選項"
+
+        button.click()
+        app.processEvents()
+        assert not button.isChecked()
+        assert target_a.isHidden()
+        assert target_b.isHidden()
+        assert button.toolTip() == "展開進階選項"
+    finally:
+        parent.close()
+        parent.deleteLater()
         app.processEvents()

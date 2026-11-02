@@ -33,6 +33,7 @@ from ui_qt.widgets.decision_outcome_journey_widget import (
     DecisionOutcomeJourneyReadPort,
     DecisionOutcomeJourneyWidget,
 )
+from ui_qt.widgets.layout_helpers import create_more_actions_button
 from ui_qt.widgets.research_evidence_comparison_widget import ResearchEvidenceComparisonWidget
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -125,8 +126,6 @@ class ResearchTimelineView(QWidget):
         self.refresh_button.setObjectName("researchTimelineRefresh")
         self.refresh_button.setAccessibleName("重新讀取研究時間軸")
         controls.addWidget(self.refresh_button, 0, 4)
-        self.search_controls_layout = controls
-        root.addWidget(controls_group)
 
         self.search_hint_label = QLabel(
             "研究決定會保留在 Journal，不依賴今日 Advice 清單；貼上完整 result ID 可找回同一筆。",
@@ -137,6 +136,19 @@ class ResearchTimelineView(QWidget):
         self.search_hint_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
+        self.search_more_button = create_more_actions_button(
+            "展開查找說明",
+            targets=[self.search_hint_label],
+            expanded=False,
+            tooltip_collapsed="展開查找說明",
+            tooltip_expanded="收合查找說明",
+            object_name="researchTimelineSearchMoreButton",
+            accessible_name="展開或收合研究時間軸查找說明",
+            parent=controls_group,
+        )
+        controls.addWidget(self.search_more_button, 0, 5)
+        self.search_controls_layout = controls
+        root.addWidget(controls_group)
         root.addWidget(self.search_hint_label)
 
         self.status_label = QLabel("正在讀取原始研究紀錄…", self)
@@ -283,9 +295,10 @@ class ResearchTimelineView(QWidget):
             self.stock_filter_label,
             self.stock_filter,
             self.refresh_button,
+            self.search_more_button,
         ):
             self.search_controls_layout.removeWidget(widget)
-        for column in range(5):
+        for column in range(6):
             self.search_controls_layout.setColumnStretch(column, 0)
         if narrow_controls:
             self.search_controls_layout.addWidget(self.source_filter_label, 0, 0)
@@ -293,6 +306,7 @@ class ResearchTimelineView(QWidget):
             self.search_controls_layout.addWidget(self.stock_filter_label, 1, 0)
             self.search_controls_layout.addWidget(self.stock_filter, 1, 1, 1, 2)
             self.search_controls_layout.addWidget(self.refresh_button, 1, 3)
+            self.search_controls_layout.addWidget(self.search_more_button, 0, 4)
             self.search_controls_layout.setColumnStretch(1, 1)
             self.search_controls_layout.setColumnStretch(2, 1)
         else:
@@ -301,6 +315,7 @@ class ResearchTimelineView(QWidget):
             self.search_controls_layout.addWidget(self.stock_filter_label, 0, 2)
             self.search_controls_layout.addWidget(self.stock_filter, 0, 3)
             self.search_controls_layout.addWidget(self.refresh_button, 0, 4)
+            self.search_controls_layout.addWidget(self.search_more_button, 0, 5)
             self.search_controls_layout.setColumnStretch(3, 1)
         self.splitter.setOrientation(
             Qt.Orientation.Vertical if stacked_panels else Qt.Orientation.Horizontal

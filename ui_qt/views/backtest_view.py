@@ -33,6 +33,7 @@ _QWIDGET_DIR = set(dir(QWidget))
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import ensure_visible_rows
+from ui_qt.widgets.table_style import clamp_table_column_widths
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.backtest_service import BacktestService
 from app_module.registered_strategy_spec import registered_strategy_spec
@@ -2749,11 +2750,8 @@ class BacktestView(QWidget):
             )
         except Exception as e:
             import traceback
-            QMessageBox.critical(
-                self,
-                "錯誤",
-                f"載入推薦結果失敗：\n{str(e)}\n\n{traceback.format_exc()}"
-            )
+            logger.error(f"[BacktestView] 載入推薦結果失敗: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "錯誤", f"載入推薦結果失敗：{e}\n\n（詳細錯誤請查看日誌）")
 
     def _load_recommendation_portfolio_config(self, config):
         self.current_recommendation_portfolio_config = config
@@ -3768,6 +3766,7 @@ class BacktestView(QWidget):
         })
         self.compare_table.setModel(self.compare_model)
         self.compare_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.compare_table)
 
     def _on_compare_table_double_clicked(self, index):
         """比較表格雙擊事件：載入該回測結果的詳細信息"""
@@ -4388,6 +4387,7 @@ class BacktestView(QWidget):
         self.optimization_model = PandasTableModel(summary_df)
         self.optimization_table.setModel(self.optimization_model)
         self.optimization_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.optimization_table)
 
         legacy_notice = (
             "\n含舊結果未驗證的排名；請先核對來源契約。"
@@ -5290,6 +5290,7 @@ class BacktestView(QWidget):
         self.batch_leaderboard_model = PandasTableModel(df)
         self.batch_leaderboard_table.setModel(self.batch_leaderboard_model)
         self.batch_leaderboard_table.resizeColumnsToContents()
+        clamp_table_column_widths(self.batch_leaderboard_table)
 
         # 保存 run_id 映射（用於點擊載入）
         self.batch_run_id_map = {}

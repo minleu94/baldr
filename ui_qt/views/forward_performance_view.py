@@ -31,6 +31,7 @@ from ui_qt.models.forward_performance_table_model import ForwardPerformanceTable
 from ui_qt.forward_performance_warning_labels import format_forward_warning_counts
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.date_filter_edit import OptionalDateFilterEdit, date_filter_value
+from ui_qt.widgets.layout_helpers import create_more_actions_button
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -86,10 +87,14 @@ class ForwardPerformanceView(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(8)
         title = QLabel("前瞻績效證據")
         title.setFont(QFont("Arial", 13, QFont.Bold))
         title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
-        root.addWidget(title)
+        header_row.addWidget(title)
+        header_row.addStretch(1)
 
         self.boundary_label = QLabel(
             "這是 research evidence，不是買賣建議。Close-to-close forward return 不代表實盤可執行績效。"
@@ -99,6 +104,18 @@ class ForwardPerformanceView(QWidget):
             f"color: {MIDNIGHT_ANALYST.warning}; background: {MIDNIGHT_ANALYST.surface_2}; "
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 6px; padding: 7px;"
         )
+        self.boundary_more_button = create_more_actions_button(
+            "展開研究證據邊界說明",
+            targets=[self.boundary_label],
+            expanded=False,
+            tooltip_collapsed="展開研究證據邊界說明",
+            tooltip_expanded="收合研究證據邊界說明",
+            object_name="forwardPerformanceBoundaryMoreButton",
+            accessible_name="展開或收合前瞻績效證據邊界說明",
+            parent=self,
+        )
+        header_row.addWidget(self.boundary_more_button)
+        root.addLayout(header_row)
         root.addWidget(self.boundary_label)
 
         body = QSplitter(Qt.Horizontal)

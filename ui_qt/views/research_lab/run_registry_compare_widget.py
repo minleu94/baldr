@@ -383,7 +383,8 @@ class RunRegistryCompareWidget(QWidget):
         compact_comparison_audit(self.basic_pair_sources)
         self.basic_pair_source_text = QTextBrowser()
         self.basic_pair_source_text.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
-        self.basic_pair_source_text.setMaximumHeight(130)
+        self.basic_pair_source_text.setMinimumHeight(140)
+        self.basic_pair_source_text.setMaximumHeight(320)
         self.basic_pair_sources.content_layout.addWidget(self.basic_pair_source_text)
         self.basic_pair_sources.hide()
         basic_layout.addWidget(self.basic_pair_sources)
@@ -428,9 +429,10 @@ class RunRegistryCompareWidget(QWidget):
         self.period_observations_table.setWordWrap(False)
         self.period_observations_table.setMinimumHeight(180)
         self.period_observations_table.setMaximumHeight(420)
-        self.period_observations_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeToContents
-        )
+        period_obs_header = self.period_observations_table.horizontalHeader()
+        period_obs_header.setSectionResizeMode(QHeaderView.Interactive)
+        period_obs_header.setDefaultSectionSize(95)
+        period_obs_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         apply_financial_table_style(self.period_observations_table)
         self.period_observations_table.hide()
         period_pair_layout.addWidget(self.period_observations_table)
@@ -1936,6 +1938,11 @@ class RunRegistryCompareWidget(QWidget):
         model = PandasTableModel(frame)
         table.setModel(model)
         table.resizeColumnsToContents()
+        header = table.horizontalHeader()
+        if header is not None and model is not None:
+            for col in range(model.columnCount()):
+                if header.sectionSize(col) > 280:
+                    header.resizeSection(col, 280)
 
     def _params_summary_text(self, frame: pd.DataFrame) -> str:
         if frame.empty:

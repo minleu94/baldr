@@ -11,6 +11,10 @@ import re
 from typing import Literal, cast
 
 from PySide6.QtCore import QModelIndex, QTimer, Qt, Signal
+from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
+)
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -487,13 +491,26 @@ class DailyMarketTechnicalOfficialDispositionCompositeViewV2(QWidget):
         body_widget = QWidget()
         body = QVBoxLayout(body_widget)
         self.page_scroll.setWidget(body_widget)
+        bind_scroll_area_viewport_width(self.page_scroll, body_widget)
         outer.addWidget(self.page_scroll, 1)
-        body.addWidget(QLabel("官方市場、技術四群與 F07 價格研究"))
         disclosure = QLabel(
             "研究用途；只讀明示保存版本。四群條件先依 AND／OR 計算，F07 價格另作共通 AND 閘門。"
             "官方資料可得時間未知，不具歷史 PIT 資格；不監看或更新來源。"
         )
         disclosure.setWordWrap(True)
+        self.disclosure_more_button = create_more_actions_button(
+            targets=[disclosure],
+            expanded=False,
+            tooltip_collapsed="展開 V2 複合研究限制說明",
+            tooltip_expanded="收合 V2 複合研究限制說明",
+            accessible_name="V2 複合研究說明展開切換",
+        )
+        self.disclosure_more_button.setObjectName("technicalOfficialCompositeV2DisclosureMore")
+        heading_row = QHBoxLayout()
+        heading_row.setContentsMargins(0, 0, 0, 0)
+        heading_row.addWidget(QLabel("官方市場、技術四群與 F07 價格研究"), 1)
+        heading_row.addWidget(self.disclosure_more_button, 0)
+        body.addLayout(heading_row)
         body.addWidget(disclosure)
 
         source_box = QGroupBox("已保存來源（需明確選取）")
@@ -519,6 +536,7 @@ class DailyMarketTechnicalOfficialDispositionCompositeViewV2(QWidget):
         source_layout.addLayout(source_actions)
         self.catalog_list = QListWidget()
         self.catalog_list.setMinimumHeight(90)
+        self.catalog_list.setMaximumHeight(115)
         source_layout.addWidget(self.catalog_list)
         self.open_candidate_button = QPushButton("核驗並開啟所選保存版本")
         self.open_candidate_button.clicked.connect(self.open_selected_candidate)

@@ -131,7 +131,7 @@ class BacktestConfigPanel(QWidget):
             self.research_registry_status_label.setWordWrap(True)
             self.research_registry_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             self.research_registry_status_label.setStyleSheet(
-                "color: #92400e; background: #fffbeb; border: 1px solid #fbbf24; "
+                f"color: {MIDNIGHT_ANALYST.status_warning}; background: #221a10; border: 1px solid #92400e; "
                 "border-radius: 6px; padding: 6px;"
             )
             config_layout.addWidget(self.research_registry_status_label)
@@ -618,7 +618,7 @@ class BacktestConfigPanel(QWidget):
             )
 
             self.optimize_btn = QPushButton("執行參數掃描")
-            self.optimize_btn.setStyleSheet("background-color: #2196F3; color: white;")
+            self.optimize_btn.setStyleSheet(f"background-color: {MIDNIGHT_ANALYST.surface_3}; color: {MIDNIGHT_ANALYST.text_primary}; border: 1px solid {MIDNIGHT_ANALYST.accent}; border-radius: 4px; padding: 4px 12px;")
             self.optimize_btn.clicked.connect(lambda: self.parent_view._execute_optimization())
             self.optimize_btn.setAccessibleName("參數最佳化相容執行按鈕")
             self.optimize_btn.setToolTip("目前由下方唯一主要執行按鈕依模式觸發；此相容按鈕不在畫面顯示")
@@ -697,7 +697,7 @@ class BacktestConfigPanel(QWidget):
             self.wf_mode_combo.currentTextChanged.connect(on_wf_mode_changed)
 
             self.wf_execute_btn = QPushButton("執行驗證")
-            self.wf_execute_btn.setStyleSheet("background-color: #FF9800; color: white;")
+            self.wf_execute_btn.setStyleSheet(f"background-color: {MIDNIGHT_ANALYST.surface_3}; color: {MIDNIGHT_ANALYST.text_primary}; border: 1px solid {MIDNIGHT_ANALYST.status_warning}; border-radius: 4px; padding: 4px 12px;")
             self.wf_execute_btn.clicked.connect(lambda: self.parent_view._execute_walkforward())
             self.wf_execute_btn.setAccessibleName("Walk-forward 相容執行按鈕")
             self.wf_execute_btn.setToolTip("目前由下方唯一主要執行按鈕依模式觸發；此相容按鈕不在畫面顯示")
@@ -768,7 +768,7 @@ class BacktestConfigPanel(QWidget):
         recommendation_portfolio_layout.addLayout(recommendation_portfolio_form)
 
         self.execute_recommendation_portfolio_btn = QPushButton("執行推薦回放")
-        self.execute_recommendation_portfolio_btn.setStyleSheet("background-color: #607D8B; color: white; font-weight: bold;")
+        self.execute_recommendation_portfolio_btn.setStyleSheet(f"background-color: {MIDNIGHT_ANALYST.surface_3}; color: {MIDNIGHT_ANALYST.text_primary}; border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 4px; padding: 4px 12px;")
         self.execute_recommendation_portfolio_btn.clicked.connect(lambda: self.parent_view._execute_recommendation_portfolio_backtest())
         self.execute_recommendation_portfolio_btn.setAccessibleName("推薦回放相容執行按鈕")
         self.execute_recommendation_portfolio_btn.setToolTip("目前由下方唯一主要執行按鈕觸發；此相容按鈕不在畫面顯示")
@@ -814,7 +814,7 @@ class BacktestConfigPanel(QWidget):
         execute_row = QHBoxLayout()
         self.execute_btn = QPushButton("執行實驗")
         self.execute_btn.setMinimumHeight(40)
-        self.execute_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        self.execute_btn.setStyleSheet(f"background-color: {MIDNIGHT_ANALYST.accent}; color: {MIDNIGHT_ANALYST.app_bg}; font-weight: bold; border-radius: 4px; padding: 6px 16px;")
         self.execute_btn.setAccessibleName("主要執行回測")
         self.execute_btn.setToolTip("依目前研究模式與最佳化／Walk-forward 選擇執行唯一主要動作")
         self.execute_btn.clicked.connect(lambda: self.parent_view._execute_backtest())
@@ -837,7 +837,7 @@ class BacktestConfigPanel(QWidget):
             self.promote_btn.setMaximumWidth(120)
             self.promote_btn.setEnabled(False)
             self.promote_btn.setToolTip("先保存回測結果後，才能進入策略版本升級條件檢查。")
-            self.promote_btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+            self.promote_btn.setStyleSheet(f"background-color: {MIDNIGHT_ANALYST.surface_3}; color: {MIDNIGHT_ANALYST.text_primary}; border: 1px solid {MIDNIGHT_ANALYST.accent}; font-weight: bold; border-radius: 4px;")
             self.promote_btn.clicked.connect(lambda: self.parent_view._promote_backtest_result())
             execute_row.addWidget(self.promote_btn)
         else:
@@ -851,7 +851,7 @@ class BacktestConfigPanel(QWidget):
 
         self.progress_label = QLabel("")
         self.progress_label.setVisible(False)
-        self.progress_label.setStyleSheet("color: #666; font-size: 10pt;")
+        self.progress_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 10pt;")
         progress_layout.addWidget(self.progress_label)
 
         self.progress_bar = QProgressBar()
@@ -862,7 +862,7 @@ class BacktestConfigPanel(QWidget):
         self.cancel_btn = QPushButton("取消執行")
         self.cancel_btn.setVisible(False)
         self.cancel_btn.setMinimumHeight(30)
-        self.cancel_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
+        self.cancel_btn.setStyleSheet(f"background-color: {MIDNIGHT_ANALYST.danger}; color: white; font-weight: bold; border-radius: 4px;")
         self.cancel_btn.clicked.connect(lambda: self.parent_view._on_cancel_clicked())
         progress_layout.addWidget(self.cancel_btn)
 

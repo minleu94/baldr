@@ -39,7 +39,10 @@ from app_module.daily_market_cohort_projection import (
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
 from app_module.daily_research_source_selection import DailyResearchQuery
 from ui_qt.widgets.daily_research_source_selector import DailyResearchSourceSelector
-from ui_qt.widgets.layout_helpers import CurrentPageSizeTabWidget
+from ui_qt.widgets.layout_helpers import (
+    CurrentPageSizeTabWidget,
+    create_more_actions_button,
+)
 from ui_qt.views.daily_market_technical_universe_v4_view import DailyMarketTechnicalUniverseV4View
 from ui_qt.views.daily_market_technical_stock_v4_view import DailyMarketTechnicalStockV4View
 from app_module.daily_market_technical_universe_v4_stock import DailyMarketTechnicalUniverseV4Stock
@@ -411,6 +414,15 @@ class DailyMarketResearchView(QWidget):
         self.preset_help_label.setWordWrap(True)
         self.preset_help_label.setToolTip(_METHOD_HELP)
         root.addWidget(self.preset_help_label)
+        self.inputs_more_button = create_more_actions_button(
+            targets=[self.disclaimer_label, self.preset_help_label],
+            expanded=False,
+            tooltip_collapsed="展開每日研究條件安全說明與預設使用說明",
+            tooltip_expanded="收合每日研究條件安全說明與預設使用說明",
+            accessible_name="每日研究說明展開切換",
+        )
+        self.inputs_more_button.setObjectName("dailyMarketResearchInputsMore")
+        preset_row.insertWidget(preset_row.count() - 1, self.inputs_more_button)
 
         self.market_cohort_group = QGroupBox("研究母體盤勢")
         self.market_cohort_group.setObjectName("dailyMarketResearchCohortSummary")

@@ -14,7 +14,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QGroupBox, QProgressBar, QPushButton
 
@@ -2616,5 +2616,139 @@ def test_tpex_diagnostics_explains_market_scope_and_partial_flow_denominator():
         assert view.metrics_table.item(missing_returns, 2).text() == "0 / 1 位成員"
         assert view.metrics_table.item(missing_flows, 2).text() == "0 / 1 位成員"
     finally:
+        view.close()
+        application.processEvents()
+
+
+def test_version_and_filter_more_drawers_and_zero_right_clipping():
+    application = app()
+    view = IndustryThemeMapView()
+    try:
+        view.resize(960, 720)
+        view.set_snapshot(_snapshot())
+        view.show()
+        application.processEvents()
+
+        assert view.scroll_area.widget().isAncestorOf(view.version_group)
+        assert view.version_more_button.text() == "⋯"
+        assert not view.version_more_button.isChecked()
+        assert view.version_more_drawer.isHidden()
+        assert not view.clear_research_button.isVisible()
+        assert not view.status_label.isVisible()
+
+        view.version_more_button.click()
+        application.processEvents()
+        assert view.version_more_button.isChecked()
+        assert view.version_more_drawer.isVisible()
+        assert view.latest_snapshot_button.isVisible()
+        assert view.refresh_catalog_button.isVisible()
+        assert view.choose_catalog_root_button.isVisible()
+        assert view.clear_research_button.isVisible()
+        assert view.status_label.isVisible()
+
+        # Filter group starts collapsed by default
+        assert not view.filter_more_button.isChecked()
+        assert view.filter_search_container.isHidden()
+
+        # Expand filter group via more actions button
+        view.filter_more_button.click()
+        application.processEvents()
+        assert view.filter_more_button.isChecked()
+        assert view.filter_search_container.isVisible()
+
+        assert view.theme_search_status_label.isHidden()
+        assert view.stock_lookup_status_label.isHidden()
+        for button in (
+            view.theme_search_locate_button,
+            view.theme_search_clear_button,
+            view.stock_lookup_locate_button,
+        ):
+            assert button.geometry().right() <= view.filter_group.width()
+
+        view.theme_search_input.setText("AI")
+        application.processEvents()
+        assert view.theme_search_status_label.isVisible()
+
+        view.filter_more_button.click()
+        application.processEvents()
+        assert view.filter_search_container.isHidden()
+    finally:
+        view.shutdown()
+        view.close()
+        application.processEvents()
+
+
+def test_industry_theme_map_view_multi_resolution_geometry_and_auto_expand():
+    application = app()
+    view = IndustryThemeMapView()
+    snapshot = _snapshot()
+    try:
+        view.set_snapshot(snapshot)
+        view.show()
+
+        resolutions = [
+            (1366, 768),  # Standard laptop
+            (900, 700),   # Compact / narrow window
+            (390, 844),   # Ultra-narrow mobile / sidebar
+        ]
+
+        for width, height in resolutions:
+            view.resize(width, height)
+            application.processEvents()
+
+            # Viewport width verification
+            vp_width = view.scroll_area.viewport().width()
+            assert vp_width <= width
+
+            # Row 0 header controls fit within viewport
+            assert view.title_label.geometry().right() <= vp_width + 10
+            assert view.version_more_button.geometry().right() <= vp_width + 10
+
+            # Drawer toggle check at this resolution
+            view.version_more_button.setChecked(True)
+            application.processEvents()
+            assert view.version_more_drawer.isVisible()
+            assert view.clear_research_button.isVisible()
+            assert view.status_label.isVisible()
+
+            view.version_more_button.setChecked(False)
+            application.processEvents()
+            assert view.version_more_drawer.isHidden()
+
+            # Filter group collapsed initially; collapse height is compact
+            view.filter_more_button.setChecked(False)
+            application.processEvents()
+            assert view.filter_search_container.isHidden()
+            assert view.filter_group.height() < 95
+
+            # Typing into search auto-expands the filter container
+            view.stock_lookup_input.setText("2330")
+            application.processEvents()
+            assert view.filter_more_button.isChecked()
+            assert view.filter_search_container.isVisible()
+
+            for control in (
+                view.theme_search_locate_button,
+                view.theme_search_clear_button,
+                view.stock_lookup_locate_button,
+                view.theme_search_results,
+                view.stock_lookup_results,
+            ):
+                assert control.isVisible()
+                control_bounds = QRect(
+                    control.mapTo(view.scroll_area.viewport(), QPoint(0, 0)),
+                    control.size(),
+                )
+                assert view.scroll_area.viewport().rect().contains(control_bounds), (
+                    f"{width}x{height}: {control.objectName()} is clipped "
+                    f"at {control_bounds} in {view.scroll_area.viewport().rect()}"
+                )
+
+            # Reset search input and collapse for next resolution test
+            view.stock_lookup_input.clear()
+            view.filter_more_button.setChecked(False)
+            application.processEvents()
+    finally:
+        view.shutdown()
         view.close()
         application.processEvents()

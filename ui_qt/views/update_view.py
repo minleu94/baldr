@@ -26,6 +26,8 @@ import inspect
 
 from ui_qt.workers.task_worker import TaskWorker, ProgressTaskWorker
 from ui_qt.widgets.layout_helpers import (
+    bind_scroll_area_viewport_width,
+    create_more_actions_button,
     ensure_visible_rows,
     set_scroll_content_constraints,
 )
@@ -1039,6 +1041,7 @@ class UpdateView(QWidget):
         self.content_widget = content_widget
         outer_layout.addWidget(self.content_scroll)
         self.content_scroll.setWidget(content_widget)
+        bind_scroll_area_viewport_width(self.content_scroll, content_widget)
 
         main_layout = QVBoxLayout(content_widget)
         main_layout.setSpacing(12)
@@ -1140,6 +1143,17 @@ class UpdateView(QWidget):
         desc_label.setWordWrap(True)
         desc_label.setMinimumWidth(0)
         desc_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.overview_more_button = create_more_actions_button(
+            "展開看板說明",
+            targets=[desc_label],
+            expanded=False,
+            tooltip_collapsed="展開看板說明",
+            tooltip_expanded="收合看板說明",
+            object_name="updateOverviewMoreButton",
+            accessible_name="展開或收合數據更新看板說明",
+            parent=all_page,
+        )
+        title_layout.insertWidget(title_layout.count() - 1, self.overview_more_button)
         all_layout.addWidget(desc_label)
 
         self.update_impact_label = QLabel(

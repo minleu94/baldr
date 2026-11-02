@@ -34,6 +34,7 @@ from ui_qt.evidence_operations_history_labels import (
 from ui_qt.models.evidence_operations_history_table_model import EvidenceOperationsHistoryTableModel
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.date_filter_edit import OptionalDateFilterEdit, date_filter_value
+from ui_qt.widgets.layout_helpers import create_more_actions_button
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -117,7 +118,12 @@ class EvidenceOperationsHistoryView(QWidget):
         filter_row.addWidget(self.refresh_button, 0, 4)
         filter_row.addWidget(self.previous_button, 0, 5)
         filter_row.addWidget(self.next_button, 0, 6)
-        root.addLayout(filter_row)
+
+        self.operations_drawer = QWidget(self)
+        self.operations_drawer.setObjectName("evidenceOperationsHistoryDrawer")
+        drawer_layout = QVBoxLayout(self.operations_drawer)
+        drawer_layout.setContentsMargins(0, 0, 0, 0)
+        drawer_layout.setSpacing(6)
 
         history_source_row = QHBoxLayout()
         self.history_source_label = QLabel(
@@ -145,7 +151,7 @@ class EvidenceOperationsHistoryView(QWidget):
             lambda: self._apply_history_source(None)
         )
         history_source_row.addWidget(self.default_history_source_button)
-        root.addLayout(history_source_row)
+        drawer_layout.addLayout(history_source_row)
 
         action_lifecycle_row = QHBoxLayout()
         self.action_item_projection_label = QLabel("Action Item 狀態投影：尚未選擇（唯讀週報來源不會被修改）")
@@ -171,12 +177,12 @@ class EvidenceOperationsHistoryView(QWidget):
         )
         self.review_action_items_button.clicked.connect(self._review_action_items)
         action_lifecycle_row.addWidget(self.review_action_items_button)
-        root.addLayout(action_lifecycle_row)
+        drawer_layout.addLayout(action_lifecycle_row)
         self.action_item_lifecycle_status_label = QLabel(
             "Action Item 處置是人工自我聲明，不代表週報核准或 Gate 2 通過。"
         )
         self.action_item_lifecycle_status_label.setWordWrap(True)
-        root.addWidget(self.action_item_lifecycle_status_label)
+        drawer_layout.addWidget(self.action_item_lifecycle_status_label)
 
         approval_row = QGridLayout()
         self.owner_approval_button = QPushButton("Owner 覆核此週報…")
@@ -204,7 +210,21 @@ class EvidenceOperationsHistoryView(QWidget):
         )
         self.save_candidate_history_status_label.setWordWrap(True)
         approval_row.addWidget(self.save_candidate_history_status_label, 1, 1)
-        root.addLayout(approval_row)
+        drawer_layout.addLayout(approval_row)
+
+        self.operations_more_button = create_more_actions_button(
+            "展開來源切換、Action Item 與進階覆核工具",
+            targets=[self.operations_drawer],
+            expanded=False,
+            tooltip_collapsed="展開來源切換、Action Item 與進階覆核工具",
+            tooltip_expanded="收合來源切換、Action Item 與進階覆核工具",
+            object_name="evidenceOperationsHistoryMoreButton",
+            accessible_name="展開或收合週報歷史來源與進階覆核工具",
+            parent=self,
+        )
+        filter_row.addWidget(self.operations_more_button, 0, 7)
+        root.addLayout(filter_row)
+        root.addWidget(self.operations_drawer)
 
         self.cards_layout = QGridLayout()
         self.cards_layout.setHorizontalSpacing(8)

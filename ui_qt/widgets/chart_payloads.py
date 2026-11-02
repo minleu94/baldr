@@ -4,6 +4,7 @@ import math
 from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
+from ui_qt.theme.tokens import MIDNIGHT_ANALYST
 
 
 def build_equity_chart_payload(
@@ -104,7 +105,7 @@ def build_histogram_chart_payload(
         center = (start + end) / 2
         color = default_color
         if positive_negative_colors:
-            color = "#ef4444" if center < 0 else "#22c55e"
+            color = MIDNIGHT_ANALYST.market_down if center < 0 else MIDNIGHT_ANALYST.market_up
         bin_payload.append(
             {
                 "start": float(start),
@@ -153,7 +154,7 @@ def build_trade_return_histogram_payload(
                     "label": f"交易 {index}",
                     "index": index,
                     "value": round(float(value), 2),
-                    "color": "#ef4444" if value < 0 else "#22c55e",
+                    "color": MIDNIGHT_ANALYST.market_down if value < 0 else MIDNIGHT_ANALYST.market_up,
                 }
             )
         return {
@@ -196,7 +197,7 @@ def build_trade_return_histogram_payload(
                 "end": round(float(end), 2),
                 "center": round(float(center), 2),
                 "count": int(count),
-                "color": "#ef4444" if center < 0 else "#22c55e",
+                "color": MIDNIGHT_ANALYST.market_down if center < 0 else MIDNIGHT_ANALYST.market_up,
             }
         )
 
@@ -402,8 +403,8 @@ def _histogram_markers(
 
 def _return_legend() -> List[Dict[str, str]]:
     return [
-        {"label": "虧損", "color": "#ef4444"},
-        {"label": "獲利", "color": "#22c55e"},
+        {"label": "虧損", "color": MIDNIGHT_ANALYST.market_down},
+        {"label": "獲利", "color": MIDNIGHT_ANALYST.market_up},
     ]
 
 

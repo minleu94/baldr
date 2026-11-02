@@ -1215,7 +1215,7 @@ def _build_html(payload: dict, render_token: str = "0") -> str:
         const valueX = area.left + ((value - minX) / (maxX - minX)) * width;
         const barLeft = Math.min(zeroX, valueX);
         const barWidth = Math.abs(valueX - zeroX);
-        ctx.fillStyle = item.color || (value < 0 ? '#ef4444' : '#22c55e');
+        ctx.fillStyle = item.color || (value < 0 ? '#22c55e' : '#ef4444');
         ctx.fillRect(barLeft, y - Math.min(12, rowHeight * 0.28), Math.max(2, barWidth), Math.min(24, rowHeight * 0.56));
         ctx.beginPath();
         ctx.arc(valueX, y, 4, 0, Math.PI * 2);

@@ -3,6 +3,7 @@
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy
+from ui_qt.theme.tokens import MIDNIGHT_ANALYST
 
 from app_module.research_session import (
     ResearchSessionSnapshotDTO,
@@ -50,11 +51,11 @@ class SessionContextStrip(QFrame):
         self.setStyleSheet(
             """
             QFrame#SessionContextStrip {
-                border-left: 1px solid #5f6368;
-                color: #d7dadf;
+                border-left: 1px solid #2a3548;
+                color: #a8b3c2;
             }
             QLabel {
-                color: #d7dadf;
+                color: #a8b3c2;
                 font-size: 11px;
             }
             """

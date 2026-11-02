@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import asdict, replace
 from decimal import Decimal
 import json
@@ -55,6 +55,7 @@ from ui_qt.views.stock_research_report_view import (
     _decimal_text,
     _price_direction_color,
 )
+from ui_qt.stock_research_chart_indicators import derive_display_indicators
 import ui_qt.views.stock_research_report_view as stock_research_report_view
 from ui_qt.views.stock_research_workspace import StockResearchWorkspace
 from ui_qt.theme.tokens import MIDNIGHT_ANALYST
@@ -650,8 +651,10 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     app.processEvents()
     chart = view.findChild(StockPriceChartWidget)
     assert chart is not None
-    assert chart.minimumHeight() == chart.maximumHeight() == 360
-    assert chart.accessibleName() == "個股價格與均線圖"
+    assert chart.minimumHeight() == chart.maximumHeight() == 520
+    assert chart.accessibleName() == "個股 K 線、成交量、RSI 與 MACD 圖"
+    assert "RSI(14)" in chart.accessibleDescription()
+    assert "不是保存來源指標或推薦訊號" in chart.accessibleDescription()
     assert "2026-09-08" in chart.toolTip()
     chart_range = view.findChild(QLabel, "stockResearchPriceChartRange")
     assert chart_range is not None
@@ -1301,6 +1304,64 @@ def test_incomplete_ohlc_keeps_close_line_and_does_not_infer_direction() -> None
     assert chart._points[1].source_id == "sqlite.daily_prices"
     assert not chart.grab().isNull()
     chart.close()
+
+
+def test_chart_display_indicators_use_decimal_warmup_and_reset_at_price_gaps() -> None:
+    increasing = tuple(Decimal(100 + index) for index in range(60))
+    series = derive_display_indicators(increasing)
+    assert series.rsi14[:14] == (None,) * 14
+    assert series.rsi14[14] == Decimal(100)
+    assert series.macd[:25] == (None,) * 25
+    assert series.macd[25] is not None and series.macd[25] > 0
+    assert series.signal[:33] == (None,) * 33
+    assert series.signal[33] is not None
+    assert series.histogram[33] == series.macd[33] - series.signal[33]
+
+    with_gap = increasing[:20] + (None,) + increasing[21:]
+    gap_series = derive_display_indicators(with_gap)
+    assert gap_series.rsi14[19] is not None
+    assert gap_series.rsi14[20] is None
+    assert gap_series.rsi14[34] is None
+    assert gap_series.rsi14[35] == Decimal(100)
+    assert gap_series.macd[45] is None
+    assert gap_series.macd[46] is not None
+
+    flat = derive_display_indicators((Decimal(50),) * 40)
+    assert flat.rsi14[14] == Decimal(50)
+    assert flat.macd[25] == Decimal(0)
+    assert flat.signal[33] == Decimal(0)
+
+
+def test_stock_chart_shows_rsi_macd_for_slice_using_full_source_warmup() -> None:
+    app = _app()
+    points = tuple(
+        StockPricePointDTO(
+            data_date=(datetime(2026, 1, 1) + timedelta(days=index)).date().isoformat(),
+            open_price=Decimal(100 + index),
+            high_price=Decimal(102 + index),
+            low_price=Decimal(99 + index),
+            close_price=Decimal(101 + index),
+            volume=1000 + index,
+        )
+        for index in range(40)
+    )
+    chart = StockPriceChartWidget(show_indicators=True)
+    chart.set_indicator_source_points(points)
+    chart.set_points(points[-10:])
+    chart.resize(640, 520)
+    chart.show()
+    app.processEvents()
+    try:
+        assert chart.display_mode == "ohlc_volume"
+        assert chart._indicators_by_date[points[-1].data_date][0] == Decimal(100)
+        assert chart._indicators_by_date[points[-1].data_date][2] is not None
+        chart._select_point(0)
+        assert "圖表衍生觀察（只用同源收盤價）" in chart.toolTip()
+        assert "RSI(14)：100" in chart.toolTip()
+        assert "MACD(12,26,9)" in chart.toolTip()
+        assert not chart.grab().isNull()
+    finally:
+        chart.close()
 
 
 def _price_page_table(view: StockResearchReportView) -> QTableView | None:

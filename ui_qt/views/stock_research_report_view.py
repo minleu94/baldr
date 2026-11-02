@@ -24,6 +24,10 @@ from ui_qt.stock_research_visuals import (
     ResearchVisualGroup, fundamental_visuals, metric_visuals, flow_visuals, shareholding_tier_visuals,
 )
 from ui_qt.widgets.research_metric_chart import ResearchMetricChart
+from ui_qt.stock_research_chart_indicators import (
+    DisplayIndicatorSeries,
+    derive_display_indicators,
+)
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal, QUrl, QSignalBlocker
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QDesktopServices
@@ -259,25 +263,50 @@ class StockPriceChartWidget(QWidget):
 
     dateSelected = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        show_indicators: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._markers: tuple[StockChartMarkerDTO, ...] = ()
         self.setFocusPolicy(Qt.StrongFocus)
         self._points: tuple[StockPricePointDTO, ...] = ()
         self._technical_lines: tuple[StockChartTechnicalLineDTO, ...] = ()
         self._mode = "close"
+        self._show_indicators = bool(show_indicators)
+        self._indicator_source_points: tuple[StockPricePointDTO, ...] | None = None
+        self._display_indicators = DisplayIndicatorSeries((), (), (), ())
+        self._indicators_by_date: dict[str, tuple[Decimal | None, ...]] = {}
         self._hover_index: int | None = None
         self._base_tooltip = "目前沒有可繪製的價格資料。"
         self.setMinimumHeight(188)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setMouseTracking(True)
-        self.setAccessibleName("個股價格與均線圖")
-        self.setAccessibleDescription(
-            "最近有限交易日的價格與技術均線圖；下方價格表提供同日收盤、均線與成交資料。"
+        self.setAccessibleName(
+            "個股 K 線、成交量、RSI 與 MACD 圖"
+            if self._show_indicators
+            else "個股價格與均線圖"
         )
+        self.setAccessibleDescription(
+            "最近有限交易日的價格圖；下方價格表提供同日收盤、均線與成交資料。"
+        )
+
+    def set_indicator_source_points(
+        self, points: Sequence[StockPricePointDTO]
+    ) -> None:
+        """以完整同源價格歷史預熱指標，縮放視窗不改變暖機結果。"""
+
+        self._indicator_source_points = tuple(points)
+        self._refresh_display_indicators()
 
     def set_points(self, points: Sequence[StockPricePointDTO]) -> None:
         self._points = tuple(points)
+        if self._show_indicators:
+            if self._indicator_source_points is None:
+                self._indicator_source_points = self._points
+            self._refresh_display_indicators()
         self._technical_lines = ()
         self._markers = ()
         self._mode = self._resolve_mode(self._points)
@@ -304,6 +333,12 @@ class StockPriceChartWidget(QWidget):
                 "將游標移到各資料點查看該日日期、開高低收與成交量；",
                 "圖表只作視覺化，不代表預測。",
             ))
+            if self._show_indicators:
+                tooltip_parts.append(
+                    "圖表衍生觀察（同源收盤價）："
+                    + self._display_indicator_summary(last.data_date)
+                    + "。"
+                )
             self._base_tooltip = "".join(tooltip_parts)
             self.setToolTip(self._base_tooltip)
             description_parts = [f"{mode_text}；{_price_chart_range_text(self._points)}；"]
@@ -313,12 +348,49 @@ class StockPriceChartWidget(QWidget):
                 "將游標移到各資料點查看該日日期、開高低收與成交量；",
                 "下方單一摘要表提供可選取的日期、收盤、MA20、MA60、漲跌與成交量。",
             ))
+            if self._show_indicators:
+                description_parts.append(
+                    "圖表下方 RSI(14) 與 MACD(12,26,9) 為同源收盤價衍生顯示，"
+                    "不是保存來源指標或推薦訊號。最新顯示值："
+                    + self._display_indicator_summary(last.data_date)
+                    + "。"
+                )
             self.setAccessibleDescription("".join(description_parts))
         else:
             self._base_tooltip = "目前沒有可繪製的價格資料。"
             self.setToolTip(self._base_tooltip)
             self.setAccessibleDescription("目前沒有可繪製的價格資料。")
         self.update()
+
+    def _refresh_display_indicators(self) -> None:
+        if not self._show_indicators:
+            return
+        source_points = self._indicator_source_points or ()
+        series = derive_display_indicators(
+            tuple(point.close_price for point in source_points)
+        )
+        self._display_indicators = series
+        self._indicators_by_date = {
+            point.data_date: (
+                series.rsi14[index],
+                series.macd[index],
+                series.signal[index],
+                series.histogram[index],
+            )
+            for index, point in enumerate(source_points)
+        }
+
+    def _display_indicator_summary(self, data_date: str) -> str:
+        values = self._indicators_by_date.get(data_date)
+        if values is None:
+            return "RSI(14)：—；MACD(12,26,9)：—（暖機不足或缺值）"
+        rsi, macd, signal, histogram = values
+        return (
+            f"RSI(14)：{_chart_exact_decimal_text(rsi)}；"
+            f"MACD(12,26,9)：{_chart_exact_decimal_text(macd)}；"
+            f"訊號線：{_chart_exact_decimal_text(signal)}；"
+            f"柱狀圖：{_chart_exact_decimal_text(histogram)}"
+        )
 
     def set_technical_lines(self, lines: Sequence[StockChartTechnicalLineDTO]) -> None:
         """只更新同源投影線；保留價格日期、模式、游標與 widget 幾何。"""
@@ -371,6 +443,10 @@ class StockPriceChartWidget(QWidget):
         technical_text = self._technical_tooltip(point.data_date)
         if technical_text:
             text += "\n" + technical_text
+        if self._show_indicators:
+            text += "\n圖表衍生觀察（只用同源收盤價）：" + self._display_indicator_summary(
+                point.data_date
+            )
         for marker in self._markers:
             if marker.event_date == point.data_date:
                 text += f"\n{marker.label}；帳本：{marker.account_id}"
@@ -536,11 +612,27 @@ class StockPriceChartWidget(QWidget):
                 return
 
             left, right = self._plot_x_bounds()
-            show_technical_legend = bool(self._technical_lines) and self.height() >= 280
+            show_technical_legend = (
+                bool(self._technical_lines) or self._show_indicators
+            ) and self.height() >= 280
             top = 48 if show_technical_legend else 25
             volume_enabled = self._mode == "ohlc_volume"
-            volume_top = max(top + 70, self.height() - 48)
-            bottom = max(top + 50, volume_top - 24 if volume_enabled else self.height() - 32)
+            if self._show_indicators:
+                macd_bottom = self.height() - 30
+                macd_top = macd_bottom - 76
+                rsi_bottom = macd_top - 14
+                rsi_top = rsi_bottom - 70
+                price_bottom = rsi_top - 14
+                volume_top = max(top + 70, price_bottom - 43)
+                bottom = max(top + 50, volume_top - 22 if volume_enabled else price_bottom)
+            else:
+                macd_top = macd_bottom = rsi_top = rsi_bottom = 0
+                price_bottom = self.height() - 27
+                volume_top = max(top + 70, self.height() - 48)
+                bottom = max(
+                    top + 50,
+                    volume_top - 24 if volume_enabled else self.height() - 32,
+                )
             if self._mode in {"ohlc", "ohlc_volume"}:
                 values = tuple(
                     value
@@ -607,6 +699,29 @@ class StockPriceChartWidget(QWidget):
                     painter.setPen(QPen(QColor(color)))
                     painter.drawText(legend_x + 15, legend_y, legend_text)
                     legend_x += painter.fontMetrics().horizontalAdvance(legend_text) + 38
+                if self._show_indicators:
+                    last_date = self._points[-1].data_date
+                    indicator_values = self._indicators_by_date.get(last_date)
+                    rsi_value = indicator_values[0] if indicator_values else None
+                    macd_value = indicator_values[1] if indicator_values else None
+                    signal_value = indicator_values[2] if indicator_values else None
+                    rsi_text = f"RSI(14) {_chart_exact_decimal_text(rsi_value)}"
+                    painter.setPen(QPen(QColor("#c084fc"), 3))
+                    painter.drawLine(legend_x, legend_y - 4, legend_x + 10, legend_y - 4)
+                    painter.setPen(QPen(QColor("#c084fc")))
+                    painter.drawText(legend_x + 15, legend_y, rsi_text)
+                    legend_x += painter.fontMetrics().horizontalAdvance(rsi_text) + 34
+                    macd_text = f"MACD {_chart_exact_decimal_text(macd_value)}"
+                    painter.setPen(QPen(QColor("#60a5fa"), 3))
+                    painter.drawLine(legend_x, legend_y - 4, legend_x + 10, legend_y - 4)
+                    painter.setPen(QPen(QColor("#60a5fa")))
+                    painter.drawText(legend_x + 15, legend_y, macd_text)
+                    legend_x += painter.fontMetrics().horizontalAdvance(macd_text) + 34
+                    signal_text = f"訊號 {_chart_exact_decimal_text(signal_value)}"
+                    painter.setPen(QPen(QColor("#fbbf24"), 3))
+                    painter.drawLine(legend_x, legend_y - 4, legend_x + 10, legend_y - 4)
+                    painter.setPen(QPen(QColor("#fbbf24")))
+                    painter.drawText(legend_x + 15, legend_y, signal_text)
 
             denominator = max(1, len(points) - 1)
             if self._mode in {"ohlc", "ohlc_volume"}:
@@ -655,6 +770,8 @@ class StockPriceChartWidget(QWidget):
                     )
                     max_volume = max(volumes, default=0)
                     volume_base = max(volume_top + 1, self.height() - 27)
+                    if self._show_indicators:
+                        volume_base = max(volume_top + 1, price_bottom - 2)
                     volume_area_top = volume_top + 4
                     volume_area_height = max(1, volume_base - volume_area_top)
                     painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border)))
@@ -711,6 +828,13 @@ class StockPriceChartWidget(QWidget):
                 for segment in segments:
                     if segment:
                         painter.drawEllipse(segment[-1], 3, 3)
+            if self._show_indicators:
+                self._paint_rsi_panel(
+                    painter, left, right, denominator, rsi_top, rsi_bottom
+                )
+                self._paint_macd_panel(
+                    painter, left, right, denominator, macd_top, macd_bottom
+                )
             for line in self._technical_lines:
                 color = "#fbbf24" if line.key.upper() == "MA20" else "#60a5fa"
                 painter.setPen(QPen(QColor(color), 2))
@@ -749,13 +873,158 @@ class StockPriceChartWidget(QWidget):
                 x = left + int(Decimal(right - left) * Decimal(self._hover_index) / Decimal(denominator))
                 pen = QPen(QColor(MIDNIGHT_ANALYST.text_secondary), 1, Qt.DashLine)
                 painter.setPen(pen)
-                painter.drawLine(x, top, x, bottom)
+                hover_bottom = macd_bottom if self._show_indicators else bottom
+                painter.drawLine(x, top, x, hover_bottom)
                 if point.close_price is not None:
                     y = bottom - int(Decimal(bottom - top) * (point.close_price - low) / span)
                     painter.drawLine(left, y, right, y)
         finally:
             if painter.isActive():
                 painter.end()
+
+    def _paint_rsi_panel(
+        self,
+        painter: QPainter,
+        left: int,
+        right: int,
+        denominator: int,
+        top: int,
+        bottom: int,
+    ) -> None:
+        painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border)))
+        painter.drawLine(left, top, right, top)
+        painter.drawLine(left, bottom, right, bottom)
+        painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_secondary)))
+        painter.drawText(6, top + 14, "RSI(14)")
+        height = max(1, bottom - top)
+        for level in (Decimal(70), Decimal(50), Decimal(30)):
+            y = bottom - int(Decimal(height) * level / Decimal(100))
+            painter.setPen(
+                QPen(
+                    QColor(MIDNIGHT_ANALYST.border),
+                    1,
+                    Qt.DotLine if level != Decimal(50) else Qt.DashLine,
+                )
+            )
+            painter.drawLine(left, y, right, y)
+            painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_muted)))
+            painter.drawText(48, y + 4, str(int(level)))
+        values = tuple(
+            self._indicators_by_date.get(point.data_date, (None, None, None, None))[0]
+            for point in self._points
+        )
+        if not any(value is not None for value in values):
+            painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_muted)))
+            painter.drawText(left + 12, top + 38, "資料不足：需 15 筆連續有效收盤價")
+            return
+        self._paint_indicator_line(
+            painter,
+            values,
+            left,
+            right,
+            denominator,
+            top,
+            bottom,
+            Decimal(0),
+            Decimal(100),
+            "#c084fc",
+        )
+
+    def _paint_macd_panel(
+        self,
+        painter: QPainter,
+        left: int,
+        right: int,
+        denominator: int,
+        top: int,
+        bottom: int,
+    ) -> None:
+        painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border)))
+        painter.drawLine(left, top, right, top)
+        painter.drawLine(left, bottom, right, bottom)
+        painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_secondary)))
+        painter.drawText(6, top + 14, "MACD")
+        mapped = tuple(
+            self._indicators_by_date.get(point.data_date, (None, None, None, None))
+            for point in self._points
+        )
+        macd_values = tuple(value[1] for value in mapped)
+        signal_values = tuple(value[2] for value in mapped)
+        histogram_values = tuple(value[3] for value in mapped)
+        numeric_values = tuple(
+            value
+            for series in (macd_values, signal_values, histogram_values)
+            for value in series
+            if value is not None
+        )
+        if not numeric_values:
+            painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_muted)))
+            painter.drawText(left + 12, top + 38, "資料不足：需 34 筆連續有效收盤價")
+            return
+        maximum = max(abs(value) for value in numeric_values)
+        if maximum == 0:
+            maximum = Decimal(1)
+        baseline = top + (bottom - top) // 2
+        painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border), 1, Qt.DotLine))
+        painter.drawLine(left, baseline, right, baseline)
+        bar_width = max(2, min(8, (right - left) // max(1, len(self._points) * 2)))
+        for index, value in enumerate(histogram_values):
+            if value is None:
+                continue
+            x = left + int(Decimal(right - left) * Decimal(index) / Decimal(denominator))
+            y = baseline - int(
+                Decimal((bottom - top) // 2) * value / maximum
+            )
+            color = (
+                MIDNIGHT_ANALYST.market_up
+                if value >= 0
+                else MIDNIGHT_ANALYST.market_down
+            )
+            painter.fillRect(
+                x - bar_width // 2,
+                min(y, baseline),
+                bar_width,
+                max(1, abs(baseline - y)),
+                QBrush(QColor(color)),
+            )
+        self._paint_indicator_line(
+            painter, macd_values, left, right, denominator, top, bottom,
+            -maximum, maximum, "#60a5fa",
+        )
+        self._paint_indicator_line(
+            painter, signal_values, left, right, denominator, top, bottom,
+            -maximum, maximum, "#fbbf24",
+        )
+
+    def _paint_indicator_line(
+        self,
+        painter: QPainter,
+        values: Sequence[Decimal | None],
+        left: int,
+        right: int,
+        denominator: int,
+        top: int,
+        bottom: int,
+        low: Decimal,
+        high: Decimal,
+        color: str,
+    ) -> None:
+        span = high - low
+        if span == 0:
+            span = Decimal(1)
+        painter.setPen(QPen(QColor(color), 2))
+        current: list[QPoint] = []
+        for index, value in enumerate(values):
+            if value is None:
+                for first, second in zip(current, current[1:]):
+                    painter.drawLine(first, second)
+                current = []
+                continue
+            x = left + int(Decimal(right - left) * Decimal(index) / Decimal(denominator))
+            y = bottom - int(Decimal(bottom - top) * (value - low) / span)
+            current.append(QPoint(x, y))
+        for first, second in zip(current, current[1:]):
+            painter.drawLine(first, second)
 
 
 class StockResearchReportView(QWidget):
@@ -3883,7 +4152,9 @@ class StockResearchReportView(QWidget):
         render_serial = self._chart_render_serial
         self._chart_widget = None
         layout = self._reset_page("price")
-        layout.addWidget(self._section_heading("價格與成交量", report, "price"))
+        layout.addWidget(
+            self._section_heading("價格與技術指標", report, "price")
+        )
         context = self._loaded_request_context
         cutoff_date = _stock_chart_cutoff_date(report, context)
         if self._chart_marker_reader is not None and self._saved_projection_snapshot is None:
@@ -3944,19 +4215,20 @@ class StockResearchReportView(QWidget):
                 tuple(point.data_date for point in payload.price_points),
                 self._chart_viewport_identity(report, payload),
             )
-            chart = StockPriceChartWidget()
+            chart = StockPriceChartWidget(show_indicators=True)
+            chart.set_indicator_source_points(payload.price_points)
             chart.set_points(self._chart_viewport.slice_points(payload.price_points))
             chart.set_technical_lines(payload.technical_lines)
             chart.set_markers(payload.verified_markers)
-            chart.setFixedHeight(360)
+            chart.setFixedHeight(520)
             chart.dateSelected.connect(lambda day, current=chart: self._sync_chart_date_to_tables(current, day))
             self._chart_widget = chart
             layout.addWidget(chart)
             self._add_chart_viewport_controls(layout, chart, payload)
             chart_mode_text = {
-                "ohlc_volume": "原生圖表：OHLC K 線與成交量；均線以圖例與游標讀值，逐日數據集中在一張摘要表。",
-                "ohlc": "原生圖表：OHLC K 線；成交量缺值會保留，逐日數據集中在一張摘要表。",
-                "close": "原生圖表：收盤線；不完整 OHLC 不補值，逐日數據集中在一張摘要表。",
+                "ohlc_volume": "原生圖表：OHLC K 線、成交量、RSI(14) 與 MACD(12,26,9)；均線以圖例與游標讀值。RSI／MACD 只由同源收盤價衍生作圖，不回用為推薦訊號。",
+                "ohlc": "原生圖表：OHLC K 線、RSI(14) 與 MACD(12,26,9)；成交量缺值保留。指標只由同源收盤價衍生作圖。",
+                "close": "原生圖表：收盤線、RSI(14) 與 MACD(12,26,9)；不完整 OHLC 不補值，指標只由同源收盤價衍生作圖。",
             }[chart.display_mode]
         except Exception as exc:
             self._chart_widget = None
@@ -4025,9 +4297,14 @@ class StockResearchReportView(QWidget):
 
         technical = payload.technical_snapshot
         history_label = QLabel(
-            "MA20（金色）／MA60（藍色）：既存歷史值，空值或缺列處斷線；暖機與可得時間未確認，不代表歷史 PIT。"
+            "RSI(14) 與 MACD(12,26,9) 由圖表同源收盤價以 Decimal 衍生，僅供視覺研究；"
+            "暖機不足或價格缺值時保留空白，不插值。這不是保存來源指標、推薦訊號或歷史 PIT 證據。"
+            " MA20（金色）／MA60（藍色）沿用既存歷史值，空值或缺列處斷線；"
+            "暖機與可得時間未確認，不代表歷史 PIT。"
             if payload.technical_lines
-            else "沒有可核對的歷史 MA20／MA60 序列；不以單日快照或最新值補線。"
+            else "RSI(14) 與 MACD(12,26,9) 由圖表同源收盤價以 Decimal 衍生，只作圖表觀察；"
+            "暖機不足或缺值處留白，不插值，亦不作推薦訊號或歷史 PIT 證據。"
+            "沒有可核對的歷史 MA20／MA60 序列；不以單日快照或最新值補線。"
         )
         history_label.setObjectName("stockResearchTechnicalHistoryStatus")
         history_label.setWordWrap(True)

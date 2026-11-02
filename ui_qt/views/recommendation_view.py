@@ -3968,13 +3968,38 @@ class RecommendationView(QWidget):
         self.research_context_label.setVisible(False)
         layout.addWidget(self.research_context_label)
 
+        saved_result_history_toggle = QToolButton()
+        self.saved_result_history_toggle = saved_result_history_toggle
+        saved_result_history_toggle.setObjectName("savedRecommendationHistoryToggle")
+        saved_result_history_toggle.setText("回看已保存結果")
+        saved_result_history_toggle.setCheckable(True)
+        saved_result_history_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        saved_result_history_toggle.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        saved_result_history_toggle.setAccessibleName("展開回看已保存推薦結果")
+        saved_result_history_toggle.setToolTip(
+            "展開後可讀取今日排程結果或明選一筆已保存結果；不會重新執行推薦。"
+        )
+        saved_result_history_toggle.toggled.connect(
+            self._toggle_saved_result_history
+        )
+        layout.addWidget(saved_result_history_toggle)
+
+        saved_result_history_widget = QWidget()
+        saved_result_history_widget.setObjectName("savedRecommendationHistoryControls")
+        self.saved_result_history_widget = saved_result_history_widget
+        saved_result_history_layout = QVBoxLayout(saved_result_history_widget)
+        saved_result_history_layout.setContentsMargins(12, 2, 0, 2)
+        saved_result_history_layout.setSpacing(6)
+
         saved_result_select_row = QHBoxLayout()
         self.saved_result_select_row = saved_result_select_row
         self.saved_result_row = saved_result_select_row
-        saved_result_select_row.addWidget(QLabel("回看已保存結果"))
         self.saved_source_combo = QComboBox()
         self.saved_source_combo.setObjectName("savedRecommendationSourceChoice")
         self.saved_source_combo.setAccessibleName("選擇已核驗保存推薦來源")
+        self.saved_source_combo.setMinimumHeight(32)
         self.saved_source_combo.setMinimumWidth(0)
         self.saved_source_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.saved_source_combo.addItem("請先讀取可用來源", None)
@@ -3984,7 +4009,7 @@ class RecommendationView(QWidget):
         self.refresh_saved_sources_button.setEnabled(self.config is not None)
         self.refresh_saved_sources_button.clicked.connect(self._refresh_saved_sources)
         saved_result_select_row.addWidget(self.refresh_saved_sources_button)
-        layout.addLayout(saved_result_select_row)
+        saved_result_history_layout.addLayout(saved_result_select_row)
 
         self.saved_result_workflow_hint = QLabel(
             "回看舊結果：先讀取可用來源，再選一筆並讀取；今天的排程結果可直接查看。"
@@ -4002,7 +4027,7 @@ class RecommendationView(QWidget):
         self.saved_result_workflow_hint.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 0 2px;"
         )
-        layout.addWidget(self.saved_result_workflow_hint)
+        saved_result_history_layout.addWidget(self.saved_result_workflow_hint)
 
         saved_result_actions_row = QHBoxLayout()
         self.saved_result_actions_row = saved_result_actions_row
@@ -4054,7 +4079,9 @@ class RecommendationView(QWidget):
         )
         saved_result_actions_row.addWidget(self.saved_research_to_workbench_button)
         saved_result_actions_row.addStretch(1)
-        layout.addLayout(saved_result_actions_row)
+        saved_result_history_layout.addLayout(saved_result_actions_row)
+        saved_result_history_widget.setVisible(False)
+        layout.addWidget(saved_result_history_widget)
 
         # 標題只承載閱讀層級與欄位展開；結果操作另列，避免標題被按鈕切碎。
         title_layout = QHBoxLayout()
@@ -4120,6 +4147,13 @@ class RecommendationView(QWidget):
         self.research_actions_toggle = QToolButton()
         self.research_actions_toggle.setText("研究與匯出")
         self.research_actions_toggle.setCheckable(True)
+        self.research_actions_toggle.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.research_actions_toggle.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+        self.research_actions_toggle.setMinimumWidth(92)
         self.research_actions_toggle.setAccessibleName("展開推薦研究與匯出動作")
         self.research_actions_toggle.setToolTip(
             "展開批次回測、推薦回放與 Excel 匯出；這些動作不會改寫目前推薦結果。"
@@ -4670,6 +4704,7 @@ class RecommendationView(QWidget):
         # 使用分割器來控制表格和詳情的比例
         result_splitter = QSplitter(Qt.Vertical)
         result_splitter.setChildrenCollapsible(False)
+        result_splitter.setHandleWidth(12)
         self.result_splitter = result_splitter
 
         # 結果表格
@@ -5291,6 +5326,23 @@ class RecommendationView(QWidget):
         toggle = getattr(self, "research_context_toggle", None)
         if toggle is not None:
             toggle.setText("收合本次資料日期與來源" if checked else "本次資料日期與來源")
+
+    def _toggle_saved_result_history(self, checked: bool) -> None:
+        """按需展開保存結果讀回操作，不改目前推薦結果。"""
+
+        controls = getattr(self, "saved_result_history_widget", None)
+        if controls is not None:
+            controls.setVisible(bool(checked))
+        toggle = getattr(self, "saved_result_history_toggle", None)
+        if toggle is not None:
+            toggle.setArrowType(
+                Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+            )
+            toggle.setAccessibleName(
+                "收合回看已保存推薦結果"
+                if checked
+                else "展開回看已保存推薦結果"
+            )
 
     def _toggle_research_actions(self, checked: bool) -> None:
         """展開既有研究與匯出按鈕；動作本身與 handlers 保持不變。"""

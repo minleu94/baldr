@@ -515,13 +515,32 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
         assert view.result_title_layout.indexOf(view.stock_research_btn) >= 0
         assert view.result_heading_layout.indexOf(view.stock_research_btn) == -1
         assert view.result_heading_layout.indexOf(view.result_columns_toggle) >= 0
-        assert view.saved_result_select_row.itemAt(0).widget().text() == "回看已保存結果"
-        assert view.saved_result_workflow_hint.isVisible()
+        assert view.saved_result_history_toggle.text() == "回看已保存結果"
+        assert view.saved_result_history_toggle.isVisible()
+        assert view.saved_result_history_widget.isHidden()
+        assert view.saved_result_history_toggle.accessibleName() == (
+            "展開回看已保存推薦結果"
+        )
+        assert result_layout.indexOf(view.saved_result_history_toggle) < result_layout.indexOf(
+            view.saved_result_history_widget
+        )
+        assert view.saved_result_history_widget.layout().indexOf(
+            view.saved_result_select_row
+        ) < view.saved_result_history_widget.layout().indexOf(
+            view.saved_result_workflow_hint
+        ) < view.saved_result_history_widget.layout().indexOf(
+            view.saved_result_actions_row
+        )
+        assert not view.saved_result_workflow_hint.isVisible()
         assert "先讀取可用來源，再選一筆並讀取" in view.saved_result_workflow_hint.text()
         assert view.saved_result_workflow_hint.accessibleName() == "已保存推薦結果讀取步驟"
-        assert result_layout.indexOf(view.saved_result_select_row) < result_layout.indexOf(
-            view.saved_result_workflow_hint
-        ) < result_layout.indexOf(view.saved_result_actions_row)
+        assert view.research_actions_toggle.toolButtonStyle() == (
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        assert view.research_actions_toggle.minimumWidth() >= 92
+        view.saved_result_history_toggle.click()
+        assert view.saved_result_history_widget.isVisible()
+        assert view.saved_result_workflow_hint.isVisible()
         assert view.load_daily_recommendation_button.text() == "讀取今日排程結果"
         assert view.load_saved_result_button.text() == "讀取所選結果"
         assert view.load_daily_recommendation_button.accessibleName() == (
@@ -602,6 +621,12 @@ def test_saved_recommendation_primary_controls_keep_their_readable_height() -> N
                         label.size(),
                         required_height,
                     )
+
+        view.saved_result_history_toggle.click()
+        assert view.saved_result_history_widget.isHidden()
+        assert view.saved_result_history_toggle.accessibleName() == (
+            "展開回看已保存推薦結果"
+        )
 
         view.result_source_tabs.setCurrentIndex(1)
         daily_research = view.daily_market_research_view

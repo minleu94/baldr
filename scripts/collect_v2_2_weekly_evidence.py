@@ -474,45 +474,55 @@ def _report_paths(output_root: Path, *, period_end: str) -> tuple[Path, Path]:
 
 
 def _render_markdown(payload: dict[str, Any]) -> str:
+    record = payload.get("collection_record")
+    record = record if isinstance(record, dict) else {}
+    period_suffix = str(payload["period_end"]).replace("-", "")
+    json_artifact = f"v2_2_weekly_collection_{period_suffix}.json"
     lines = [
-        "# V2.2 Weekly Evidence Collection",
+        "# 每週行情收集｜人工覆核摘要",
         "",
-        f"- Collection status: `{payload['collection_status']}`",
-        f"- Period: `{payload['period_start']}` to `{payload['period_end']}`",
-        f"- Last trading date: `{payload.get('last_trading_date', '')}`",
-        "- Source access: `SQLite mode=ro`",
-        "- Human approval required: `true`",
-        "- Write intent: `false`",
-        f"- Automatic revalidation: `{str(payload.get('automatic_revalidation', False)).lower()}`",
-        f"- Gate credit status: `{payload.get('gate_credit_status', '')}`",
+        f"- 週期：`{payload['period_start']}` 至 `{payload['period_end']}`；最後交易日：`{payload.get('last_trading_date', '未提供')}`",
+        f"- Collection ID：`{record.get('collection_id', '未提供')}`",
+        f"- 收集狀態：`{payload.get('collection_status', 'unknown')}`；Gate credit：`{payload.get('gate_credit_status', 'unknown')}`",
+        f"- 來源：`{payload.get('source_db_path', '未提供')}`（唯讀採集）",
+        "- Human approval required: `true`；Write intent: `false`",
     ]
     coverage = payload.get("source_coverage")
     if isinstance(coverage, dict):
         lines.extend(
             [
                 "",
-                "## Observed source coverage (not full-universe coverage)",
+                "## 先看這裡",
                 "",
-                f"- Status: `{coverage.get('status', 'unknown')}`",
-                f"- Trading dates: `{coverage.get('trading_day_count', 0)}`",
-                f"- Observed rows: `{coverage.get('observed_row_count', 0)}`",
-                f"- Duplicate symbol rows: `{coverage.get('duplicate_symbol_rows', 0)}`",
-                f"- Expected universe count: `{coverage.get('expected_universe_count')}`",
-                f"- Full coverage claimed: `{str(coverage.get('full_coverage_claimed', False)).lower()}`",
-                f"- Official source reports missing OHLC: `{coverage.get('official_source_missing_value_rows', 'unknown')}`",
-                f"- Local rows missing values present in official response: `{coverage.get('local_projection_missing_official_value_rows', 'unknown')}`",
-                f"- Missing-value cause unverified: `{coverage.get('unverified_missing_value_rows', 'unknown')}`",
+                f"- 資料品質：`{coverage.get('status', 'unknown')}`；涵蓋 `{coverage.get('trading_day_count', 0)}` 個交易日、`{coverage.get('observed_row_count', 0)}` 列；重複股票日列 `{coverage.get('duplicate_symbol_rows', 0)}`。",
+                f"- OHLC 缺值：官方原始回報缺值 `{coverage.get('official_source_missing_value_rows', 'unknown')}` 列；本機缺值但官方有值 `{coverage.get('local_projection_missing_official_value_rows', 'unknown')}` 列；原因未核實 `{coverage.get('unverified_missing_value_rows', 'unknown')}` 列。",
+                f"- 全市場分母：`{coverage.get('expected_universe_count')}`；Full coverage claimed: `{str(coverage.get('full_coverage_claimed', False)).lower()}`。",
+                "- 判讀：這是待審採集候選，不是已保存的 Weekly Review History；`pending_human_review` 不會自動授予 Gate credit。",
+                f"- 完整逐筆內容與官方收據雜湊：同目錄 `{json_artifact}`；本摘要可先讀到此處。",
             ]
         )
         findings = coverage.get("quality_findings", [])
         if findings:
-            lines.extend(["- Quality findings:", *[f"  - `{item}`" for item in findings]])
+            lines.extend(["- Quality finding code：" + ", ".join(f"`{item}`" for item in findings)])
+        lines.extend(
+            [
+                "",
+                "## 需要人工做什麼",
+                "",
+                "請依判讀選擇 `reviewed`、`dismissed` 或 `follow_up`；若選 `follow_up`，列出具體追查。要計入 Gate 2 weekly review，仍須依 Runbook 完成具名覆核、working-copy history、Owner 核准及 recovery 等證據。",
+                "",
+                "<details>",
+                "<summary>展開逐列缺值、官方回應與收據雜湊</summary>",
+                "",
+                "### 逐列來源證據",
+                "",
+            ]
+        )
         examples = coverage.get("integrity_examples", [])
         if examples:
-            lines.extend(["- Incomplete rows (date / symbol / missing fields):"])
             for item in examples:
                 lines.append(
-                    "  - `{date}` / `{symbol}` / `{fields}` / `{classification}` / official `{official}` / receipt `{receipt}` / activity `{activity}`".format(
+                    "- `{date}` / `{symbol}` / `{fields}` / `{classification}` / official `{official}` / receipt `{receipt}` / activity `{activity}`".format(
                         date=item.get("date", "unknown"),
                         symbol=item.get("symbol", "unknown"),
                         fields=", ".join(item.get("missing_fields", [])) or "unknown",
@@ -523,12 +533,27 @@ def _render_markdown(payload: dict[str, Any]) -> str:
                     )
                 )
             if coverage.get("integrity_examples_truncated"):
-                lines.append("  - Additional incomplete rows were omitted; inspect the JSON artifact.")
+                lines.append("- 其餘逐列資料請查閱同期間 JSON。")
         for limitation in coverage.get("limitations", []):
-            lines.append(f"- Limitation: {limitation}")
+            lines.append(f"- 限制：{limitation}")
+        lines.extend(["", "</details>"])
+    else:
+        lines.extend(
+            [
+                "",
+                "## 審查結果",
+                "",
+                "本次收據沒有來源覆蓋與資料品質摘要。這不代表該週採集或 PIT 自動失效；人工週審可將覆蓋／品質標為未知或降級並記錄追查。此收據本身仍不是已保存的人工 review history。",
+                "",
+                "## 需要人工做什麼",
+                "",
+                "人工覆核時將覆蓋／品質標為未知或降級，列出具體追查；不要把缺少的覆蓋資料推定為完整。完成處置後仍須依 Runbook 保存具名 review history。",
+                f"完整採集收據：同目錄 `{json_artifact}`。",
+            ]
+        )
     if payload.get("error"):
         error = payload["error"]
-        lines.extend(["", "## Error", "", f"- Type: `{error['type']}`", f"- Message: {error['message']}"])
+        lines.extend(["", "## 採集錯誤", "", f"- Type: `{error['type']}`", f"- Message: {error['message']}"])
     return "\n".join(lines) + "\n"
 
 

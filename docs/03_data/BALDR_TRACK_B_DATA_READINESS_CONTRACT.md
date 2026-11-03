@@ -54,7 +54,7 @@ Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資�
 
 **剩餘來源工程：逐筆價格版本與可得時間映射。** 現行 `daily_prices` 只有市場欄位及 `(symbol, date)` 主鍵，沒有 source version、revision ID 或 available_at；同鍵更新不保留舊版本。現有 revision gate 只作全域 cutoff／修訂風險檢查，不能替 Forward 同次 fetched rows 授逐筆來源資格。合格接口須將 `(symbol, date, row content／source_row_id)` 綁至已接受的不可變官方 payload／revision ID／SHA、可信發布及本機可得時間，並保留被替換版本。相同價格值、交易日期、全域 gate 或目前 DB hash 均不能代替此映射；目前沒有可安全接用的合格 resolver，不改正式表或回填歷史來製造資格。
 
-單 chunk／manifest 上限各 512 KiB，每 run 64 MiB／128 chunks／500,000 rows／4,096 queries／10,000 outcomes；保留目錄達 4,096 runs 或 12 GiB 即拒絕，不自行清理。Consumer 應依 manifest／chunk SHA 讀回，仍須另外取得來源用途、availability、revision／custody 及 OOS 資格，不能只憑此引用授訓練或正式績效。
+單 chunk 上限 512 KiB，manifest 上限 16 MiB；每 run 與 readback 各 64 MiB／4,096 chunks／500,000 rows／4,096 queries／10,000 outcomes。此容量支援 2,500 events × 4 windows 的排程上限，manifest／chunks 仍同時受整體 run 預算約束。保留目錄達 4,096 runs 或 12 GiB 即拒絕，不自行清理。Consumer 應依 manifest／chunk SHA 讀回，仍須另外取得來源用途、availability、revision／custody 及 OOS 資格，不能只憑此引用授訓練或正式績效。
 
 上游新增TPEx同次逐列projection／SQLite publication，與既有TWSE列證據分開；只有本次raw、原列ordinal、parser重建17欄、CSV／merged唯一鍵及readonly SQLite全部吻合才產生映射。後續來源身份接線如下；這仍不是Forward金融合格resolver，不能把觀測時刻填成官方availability或補回舊172筆。
 
@@ -64,7 +64,7 @@ Quick僅將本輪SQLite同步回傳的captured TWSE／TPEx publication descripto
 
 Forward從`config.output_root`／`config.data_root`讀來源bundle，與本輪artifact output root分離；可由caller明選bundle descriptor，不從DB父目錄猜來源根。正常價格SELECT在同一次fetch取17欄，計算仍只沿原日期與close；binder不重讀SQLite、不按相同收盤價搜尋來源。每列只能有一個family的完整投影吻合；兩者吻合、缺descriptor／欄位、列漂移或來源證據無效均為具名unknown。TWSE原raw ordinal由固定parser重建，明示`derived_verified_raw_ordinal`，不改舊artifact。來源證據的本輪快取不替代每列內容比對。
 
-有逐列binding時，manifest為`forward-source-observations.v2`，保留原query／outcome／cache-reuse關聯與actual rows hash，另記`source_bindings_sha256`；`forward-source-observation-bound-chunk.v2`把rows和bindings按相同位置分chunk。無binding的既有呼叫仍發v1。原512KiB／64MiB等預算不放寬；binding bytes一併計入。Track A可唯讀展示`source_identity_bound`及原件SHA／ordinal，不能顯示來源已接受；Track C不得從此狀態授訓練、OOS或label資格。
+有逐列binding時，manifest為`forward-source-observations.v2`，保留原query／outcome／cache-reuse關聯與actual rows hash，另記`source_bindings_sha256`；`forward-source-observation-bound-chunk.v2`把rows和bindings按相同位置分chunk。無binding的既有呼叫仍發v1。manifest／chunk／run／readback 的16MiB／512KiB／64MiB界線不放寬；binding bytes一併計入。未捕獲來源bundle時不建立逐列binder，只保存實際計算所需的日期／收盤價讀取，receipt 仍明示來源 unknown、PIT／training false；有 captured bundle 時逐列binding與資格守衛不變。Track A可唯讀展示`source_identity_bound`及原件SHA／ordinal，不能顯示來源已接受；Track C不得從此狀態授訓練、OOS或label資格。
 
 所有結果仍為`source_use_accepted=false`、`available_at=null`、`source_published_at=null`、PIT／training=false。尚缺可信發布／可得時間、來源用途接受及完整歷史修訂版本；同鍵被替換前尚未保存的歷史不能由新接線恢復。定向QA與自然生效狀態以[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)為準。
 

@@ -3,6 +3,7 @@
 - [產業題材頁探索與卡片優先呈現（2026-10-28）](BALDR_THEME_PAGE_EXPLORATION_ORDER_20261028.md)：排行與成員預設卡片、九項指標改以指標卡閱讀，完整表格可切換／展開；主要題材探索及明細前移。題材 UI 61 passed，必要 Workbench UI、Update validator、定向 mypy 與編譯結果及 repo-wide mypy 阻塞均有記錄。
 - [Gate 1 日常 Advice 與保存讀回證據（2026-10-28）](BALDR_GATE1_DAILY_E2E_20261028.md)：隔離 MainWindow／journal readback、busy-close 與 500 筆上限外的歷史查找已通過；凍結資料／策略／Advice policy 的完整推薦至 Advice deterministic replay 也通過。正式來源仍 estimated/missing、research-only 且無 formal credit；Owner 原生 GUI UAT 尚未完成。
 - [2026-10-27 Evidence Review 內保存候選處置與 SQLite WAL 防競態](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-27-evidence-review-內保存候選處置與-sqlite-wal-防競態)：候選處置可由 UI 綁到明選 working-copy weekly history，完整重驗 SQLite file set 並讀回 ID/hash；Owner UAT 與 Gate 2 真實週期仍未完成。
+- [2026-11-03 Gate 2 三操作日 outcome 唯讀 dry-run](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-11-03-三操作日-outcome-dry-run-與未發布年度行事曆分類修正)：修正未發布未來年度行事曆的成熟度分類並驗證三操作日 observation readback；不寫 evidence DB、不代表 Gate 2 通過。
 
 - [MarketSessionCadence 與 Evidence dry-run 修正（2026-10-26/27）](BALDR_MARKET_SESSION_TEMPORARY_CLOSURE_CADENCE_20261026.md)：讀取臨時休市 sidecar、歷史 replay 以決策日驗證日曆，並以 hash-verified TWSE 原始方向符分類 Breadth；完整隔離流程無 pipeline blocker，已知官方不可比排除保留數量並列 advisory，Forward summary 仍 degraded。
 - [Forward 來源觀察 chunk 上限修正（2026-10-26）](BALDR_FORWARD_SOURCE_OBSERVATION_CHUNK_CAP_20261026.md)：修復 128 chunk 上限早於 query／manifest／run-byte 契約失敗，129 個小型 query 回歸通過；正式自然 Forward run 尚待驗。

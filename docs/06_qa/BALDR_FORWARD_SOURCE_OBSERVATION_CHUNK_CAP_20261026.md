@@ -1,5 +1,7 @@
 # Forward 來源觀察 chunk 上限修正（2026-10-26）
 
+> 本文記錄 2026-10-26 的 chunk-count 修正與當時 512 KiB manifest 預算。2026-11-03 為支援排程批次另將 manifest 上限調至 16 MiB；單 chunk 512 KiB 與每 run／readback 64 MiB 界線保留。後續 dry-run、readback 及其餘 Gate 限制見[Gate 2 最新觀察 QA](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-11-03-三操作日-outcome-dry-run-與未發布年度行事曆分類修正)。
+
 唯讀盤點最新 Forward outcomes 執行時，發現來源觀察 recorder 會因 `source_observation_chunk_count_limit` 停止發布；該 run 未產生 Forward outcomes。根因是每個小型 query 至少需要一個 chunk，但 recorder 原本只允許 128 chunks，低於既有 4,096 query 上限，且可能在 run byte／row、chunk 檔案大小及 manifest 大小都仍符合契約時先行失敗。
 
 `app_module/forward_source_observation.py` 現將 `MAX_CHUNKS` 從 128 提升至明確的 4,096。這沒有放寬既有總 query、總 row、單檔 512 KiB、manifest 512 KiB 或 run 64 MiB 上限；超出任一上限仍拒絕。每個 chunk 的 query 身分、row hash、source binding 與 outcome 關聯格式不變。

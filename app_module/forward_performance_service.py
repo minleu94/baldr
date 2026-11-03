@@ -670,6 +670,41 @@ class ForwardPerformanceService:
             )
         event_price_metadata["maturity_calendar_comparison"] = comparison
         if planned.planned_date is None:
+            missing_years = planned.calendar.get("missing_years")
+            calendar_as_of_year = date.fromisoformat(calendar_as_of_date).year
+            waiting_for_future_calendar = (
+                planned.calendar.get("reason") == "official_calendar_cache_file_missing"
+                and isinstance(missing_years, list)
+                and bool(missing_years)
+                and all(
+                    type(year) is int and year > calendar_as_of_year
+                    for year in missing_years
+                )
+            )
+            if waiting_for_future_calendar:
+                event_price_metadata.update(
+                    {
+                        "maturity_basis": "official_market_sessions",
+                        "planned_official_maturity_status": "waiting_for_calendar",
+                        "planned_official_calendar": planned.calendar,
+                        "time_contract_state": "waiting_for_natural_calendar",
+                        "target_price_state": "waiting_for_future_official_calendar",
+                        "maturity_calendar_comparison": (
+                            "future_official_calendar_not_yet_published"
+                        ),
+                    }
+                )
+                return EvidenceOutcome(
+                    outcome_id=f"out_{uuid4().hex}",
+                    event_id=event.event_id,
+                    window_days=window_days,
+                    event_price_date=event_price_date,
+                    event_close=str(event_close),
+                    outcome_status=EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA,
+                    data_quality=EvidenceDataQuality.MISSING,
+                    warnings=("future_official_calendar_not_yet_published",),
+                    metadata=event_price_metadata,
+                )
             event_price_metadata["time_contract_state"] = "blocked_time_contract"
             event_price_metadata["readiness_blocker"] = (
                 "official_maturity_calendar_unavailable"

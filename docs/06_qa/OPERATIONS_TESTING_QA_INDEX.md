@@ -14,9 +14,11 @@
 
 ## 近期營運與測試收據
 
+[11/03 Gate 2 排程 outcome 容量與成熟度 dry-run](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-11-03-三操作日-outcome-dry-run-與未發布年度行事曆分類修正)：修正 2,500×4 批次 manifest 容量及未來官方行事曆尚未發布的分類；8 筆三操作日事件、32 筆 pending 結果與觀察包 readback 已核，正式 DB 未寫入，Gate 2 仍有真實 Action Item／approval 待辦。
+
 [10/26 Gate 2 隔離 recovery rehearsal 工具](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-10-26-隔離-gate-2-recovery-rehearsal-工具)：合成 DB／projection 的 scratch 備份、故障注入與還原測試 3 passed；未操作真實 working-copy／Owner projection 或 Task Scheduler，不計 Gate credit。
 
-[10/26 Gate 2 週報 Owner 覆核入口](BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md)：歷史週報提供 hash 綁定、具名自我聲明與 append-only projection 覆核；86 個聚焦測試、Update Workbench 93 測試、validator 25/0/4 與全域 mypy 通過。尚未由真正 Owner 覆核，Gate 2 時間／操作日及復原演練仍缺，未授來源、Gate 或 ML 資格。
+[10/26 Gate 2 週報 Owner 覆核入口](BALDR_GATE2_WEEKLY_OWNER_REVIEW_WORKFLOW_20261026.md)：當時歷史週報具名覆核入口已可用，但實際週期尚未由 Owner 審查。後續 Archie 已接受並保存三週 history；其餘 Gate 2 工程待辦看[11/03 最新 Gate 2 QA](BALDR_GATE2_WORKING_COPY_AND_GATE3_OBSERVATION_VISIBILITY_20261026.md#2026-11-03-三操作日-outcome-dry-run-與未發布年度行事曆分類修正)。
 
 [10/25 Scheduled Evidence 受控 Replay 路徑隔離](BALDR_SCHEDULED_EVIDENCE_REPLAY_ISOLATION_20261025.md)：正式 recommendation 唯讀綁定與 scratch 輸出分離通過；乾跑為 `degraded`，0 errors／20 warnings、0 event writes，未形成 weekly review 或 Gate credit。
 

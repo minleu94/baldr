@@ -24,7 +24,10 @@ CHUNK_SCHEMA_VERSION = "forward-source-observation-chunk.v1"
 BOUND_SCHEMA_VERSION = "forward-source-observations.v2"
 BOUND_CHUNK_SCHEMA_VERSION = "forward-source-observation-bound-chunk.v2"
 MAX_CHUNK_BYTES = 512 * 1024
-MAX_MANIFEST_BYTES = 512 * 1024
+# Daily processing can emit 2,500 events × 4 windows of outcome metadata, plus
+# bounded per-query references. Keep the manifest within the existing 64 MiB
+# run budget while allowing that supported batch to be recorded and read back.
+MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_RUN_BYTES = 64 * 1024 * 1024
 MAX_RETAINED_BYTES = 12 * 1024 * 1024 * 1024
 MAX_RETAINED_RUNS = 4096

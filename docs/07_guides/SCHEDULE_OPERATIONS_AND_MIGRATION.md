@@ -135,7 +135,7 @@ Manifest 公版欄位與範例見 [`examples/machine_bootstrap_manifest.example.
 
 開發來源的詳細欄位另會顯示「時間用途」與「共用資源等待」。即使同次 `passed`、snapshot 已保存、Evidence 已寫入，若顯示「收盤後研究；不具開盤前或自然證據資格」，這份結果只能依研究用途閱讀；等候時間用來定位排程衝突，不能改寫結果的可得時間或成熟資格。10/15 的唯讀核對正是此情形：05:25 啟動的擷取等鎖約70分鐘，06:35 以 `eod_research` 完成；同時段 Raw/PIT 的 current-stock cycle 用相同共用鎖，Raw/PIT 父 run 最終仍被歷史來源版本守衛擋下。兩個 Task 的 LastResult=0 均不取代各自終態。具名來源 SHA、收據與受影響驗證見[Increment91 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)；固定試用版90尚未包含此開發來源畫面，正式 Task 未更動。
 
-對 Paper／Forward，保留其共同 08:25 wakeup 與 08:30 readiness/cutoff 的不同角色；未到 cutoff、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 不能結案成成功或自然成熟。對 recommendation learning、Forward outcome、promotion 與 model shadow，source／樣本不完整或未到 maturity 保持 pending，不從工程試跑、舊 latest 或離線 replay 增授自然 credit。
+對 Paper／Forward，保留其共同 08:25 wakeup 與 08:30 readiness/cutoff 的不同角色；未到 cutoff、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 不能結案成成功或自然成熟。對 recommendation learning、Forward outcome、promotion 與 model shadow，source／樣本不完整或未到 maturity 保持 pending，不從工程試跑、舊 latest 或離線 replay 增授自然 credit。Forward horizon 若只缺少晚於 calendar cache as-of 年度的官方市場行事曆，應標成等待未來官方行事曆／`insufficient_future_data`；不得推測該年度休市或交易日，亦不得當作 matured outcome。當前或過去年份行事曆缺失仍 fail closed，須查明來源。
 
 ### 精確重算既有 Forward outcome
 

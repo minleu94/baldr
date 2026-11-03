@@ -184,7 +184,11 @@ def _record_from_row(
         reviewability_status = FAILED_STATUS
         reviewability_reasons.append("collection_failed")
     elif not isinstance(source_coverage, Mapping):
-        reviewability_status = "recollection_required"
+        # Older scheduled receipts captured the source DB identity/hash but
+        # predate the coverage summary. Keep them reviewable with an explicit
+        # unknown-coverage limitation; missing metrics alone do not invalidate
+        # the period or its capture-time identity.
+        reviewability_status = "reviewable_candidate"
         reviewability_reasons.append("source_coverage_not_captured")
     elif not str(source_coverage.get("status") or "").strip():
         reviewability_status = "recollection_required"
@@ -796,6 +800,8 @@ def render_markdown(packet: Mapping[str, Any]) -> str:
         collection_payload = record.get("collection_payload", {})
         coverage = collection_payload.get("source_coverage", {})
         findings = coverage.get("quality_findings", [])
+        if not isinstance(collection_payload.get("source_coverage"), Mapping):
+            findings = ["source_coverage_not_captured; coverage_quality_unknown"]
         evidence = record.get("runbook_evidence", {})
         lines.append(
             "| {start}..{end} | `{collection}` | `{source_hash}` | `{last_trading}` | `{reviewability}` | "

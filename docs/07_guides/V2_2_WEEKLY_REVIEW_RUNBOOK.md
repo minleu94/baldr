@@ -9,13 +9,14 @@
 - 未取得對應週期的 append-only review receipt 前，不推算 Week 2／Week 3 或目前累積數；`production_scheduler_allowed=false` 與 formal closeout 條件仍須依 Snapshot 及具名最新 QA 判讀。
 - 此流程不產生交易建議、不串 broker、不自動交易、不自動套用 lifecycle action。
 - `--save-history` 與 `--confirm-action-items` 只能在明確選定、可回溯且核准作為工作副本的 working-copy DB 使用；這裡的副本核准是環境／路徑核可，不代表本週 weekly history 已經 Owner approval。CLI 會 canonicalize 實際 `--db-path`，並同時比對 configured、環境 `DATA_ROOT` 與預設正式 root；因此 `--data-root` 不能使正式 DB 變成可接受路徑。production-like DB 一律拒絕，沒有 `--allow-production-like-db` 繞過旗標；正式 DB、production-like DB 與 scheduler write-mode 均不在本 runbook 的授權範圍。
-- replay、fixture、單次 smoke、raw scheduled report 或手動補表不計入三週 Gate。每列只記錄該週實際取得的證據。
+- replay、fixture、單次 smoke、raw scheduled report 或手動補表本身都不是已完成的三週人工 review history；但自然排程產生的 raw report 是該週有效的採集輸入，Owner 延後審查不會單憑審查時間使 capture-time PIT 失效。若原排程逾時而後補採，須記錄原始失敗與補採來源／時點，不把補採宣稱為原排程成功。每列只記錄該週實際取得的證據。
 
 ## 2. 週日 Sidecar Collection（不屬於人工 weekly review）
 
 - Windows Task Scheduler 的 `baldr-v2-2-weekly-collection` 於每週日 18:00 執行 `run_v2_2_weekly_collection.cmd`。它只執行 collection CLI，將來源的週期資料保存為 sidecar record，結果只能是 `pending_human_review` 或 `collection_failed`。
 - `pending_human_review` 只代表資料已收集、等待人工判讀；它**不是** manual review、不代表 Gate 通過、不會確認 action item，也不會寫入或補造 weekly history。此 task 不帶 `--save-history` 或 `--confirm-action-items`。
 - 此 task 不改正式 source DB、不啟用 production scheduler，且 `production_scheduler_allowed=false` 維持不變。真實三週人工 review 與 append-only history 仍必須依本 runbook 的後續章節，由人工在隔離的 working-copy DB 完成。
+- Collector 產生的 Markdown 先列人工覆核摘要：週期／Collection ID、品質與缺值計數、覆蓋限制及下一步；逐列缺值與 receipt hash 收在可展開區，完整機器證據保留於同週 JSON。若沒有 `source_coverage`，代表此收據不能證明覆蓋品質完整；人工仍可依當週自然排程收據與來源雜湊進行週審，將品質／覆蓋列為未知或降級並記錄 follow-up，不得因摘要缺件推定完整，也不得因此把自然收集逕自判作無效。`pending_human_review` 仍須依後續章節保存具名人工 review history，採集報告本身不是已完成覆核。
 - 註冊前可執行 `scripts\scheduled\register_baldr_scheduled_tasks.cmd dryrun` 檢視排程；`weekly-register` 只建立或取代此週日 task，不建立、取代或啟用任何既有每日 task。查核使用 `schtasks /Query /TN baldr-v2-2-weekly-collection /V /FO LIST`。
 - 回復此收集 task 時，只能在 Windows Task Scheduler 停用，或執行 `scripts\scheduled\unregister_baldr_scheduled_tasks.cmd weekly-unregister`。禁止自動刪除 sidecar SQLite table；既有 record 與錯誤記錄保留供人工診斷。
 

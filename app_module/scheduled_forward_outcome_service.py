@@ -459,15 +459,19 @@ def run_scheduled_forward_outcomes(
                 qualification_verifier = verify_observed_qualification
             else:
                 qualification_verifier = None
-            price_source_binder = ForwardDailyPriceSourceBinder(
-                output_root=Path(config.output_root),
-                data_root=Path(configured_data_root),
-                database_path=resolved_db,
-                bundle=source_bundle,
-                revision_ledger=revision_ledger,
-                qualification_policy=qualification_policy,
-                qualification_resolver=qualification_resolver,
-            )
+            # 沒有實際封存的 bundle 時，只在 run receipt 標示來源未知；
+            # 不必為每一筆歷史價格讀取完整投影，再重複保存「資格未知」binding。
+            # 有 captured bundle 時仍逐列讀取、綁定並套用原資格守衛。
+            if source_bundle.get("status") == "captured":
+                price_source_binder = ForwardDailyPriceSourceBinder(
+                    output_root=Path(config.output_root),
+                    data_root=Path(configured_data_root),
+                    database_path=resolved_db,
+                    bundle=source_bundle,
+                    revision_ledger=revision_ledger,
+                    qualification_policy=qualification_policy,
+                    qualification_resolver=qualification_resolver,
+                )
         elif qualification_requested:
             raise ScheduledForwardOutcomeError(
                 "daily_price_qualification_data_root_unavailable"
